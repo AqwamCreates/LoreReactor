@@ -52,8 +52,8 @@ At ≤10B Q4, individual KV cache files are 50–150MB. Disk I/O is faster than 
 
 ### Why Internal IDs Instead of Names?
 
-Small models (<10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
+Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
 ### Why Image-Only Appearance?
 
-Text descriptions consume tokens permanently and risk contradicting the visual. Speaker-conditional image injection with embedding caching gives the model visual grounding at first speech with zero ongoing token cost. Subsequent turns load cached embeddings in <10ms.
+Text descriptions consume tokens permanently and risk contradicting the visual. Speaker-conditional image injection with embedding caching gives the model visual grounding at first speech with zero ongoing token cost. Subsequent turns load cached embeddings in ≤10ms.
