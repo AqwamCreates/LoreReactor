@@ -1,5 +1,7 @@
 # Lore Reactor
 
+> The familiarity of ChatGPT-style chat. The depth of a dedicated roleplay engine.
+
 Author: Aqwam Harish Aiman
 
 ## Things To Keep In Mind
