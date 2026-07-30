@@ -31,4 +31,3 @@ llama-server.exe
 cudart64_12.dll
 cublas64_12.dll
 cublasLt64_12.dll
-start.bat
