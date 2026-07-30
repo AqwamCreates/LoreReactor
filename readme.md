@@ -4,7 +4,7 @@ Author: Aqwam Harish Aiman
 
 ## Things To Keep In Mind
 
-### Storage Requirements
+### High Storage Requirements For High Speeds
 
 Unlike other LLM WebUIs where they only produce KV cache when needed, Lore Reactor will save KV cache for every single messages for fast resume. As a result, it could eat up your local storage quickly. We recommend you to actually do symbolic link for kv-cache folder for this project to your external storage.
 
