@@ -8,6 +8,6 @@
     -ngl 99 ^
     --mmproj "user_data\mmproj\Gemma-4-E4B-mmproj-F16.gguf" ^
     --cache-reuse 256 ^
-    --no-mmap ^
     --no-chat-template ^
+    --chat-template-kwargs "{\"enable_thinking\": false}"
     -fa on
