@@ -24,5 +24,11 @@ dist-ssr
 *.sw?
 
 # User data
-
 user-data/
+
+# PrismML / llama.cpp runtime dependencies
+llama-server.exe
+cudart64_12.dll
+cublas64_12.dll
+cublasLt64_12.dll
+start.bat
