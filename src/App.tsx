@@ -225,21 +225,21 @@ function getCharacterPromptId(character: Character, participants: Character[]): 
   return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-function buildPromptFromHistory(chatData: ChatData, currentSpeaker: Character, triggerText: string): string {
+function buildPromptFromHistory(chatData: ChatData, character: Character, triggerText: string): string {
   const lines: string[] = [];
 
   // System context uses ID if name never revealed.
-  const speakerEverRevealed = chatData.chatMessageHistory.some(
-    m => m.character.id === currentSpeaker.id && m.isNameRevealed
+  const characterEverRevealed = chatData.chatMessageHistory.some(
+    m => m.character.id === character.id && m.isNameRevealed
   );
-  const speakerId = getCharacterPromptId(currentSpeaker, chatData.participants);
-  const speakerLabel = speakerEverRevealed ? currentSpeaker.name : speakerId;
+  const characterId = getCharacterPromptId(character, chatData.participants);
+  const characterLabel = characterEverRevealed ? character.name : characterId;
 
-  if (currentSpeaker.systemPrompt) {
-    lines.push(`[System: ${currentSpeaker.systemPrompt}]`);
+  if (character.systemPrompt) {
+    lines.push(`[System: ${character.systemPrompt}]`);
   }
-  if (currentSpeaker.description) {
-    lines.push(`[${speakerLabel} Info: ${currentSpeaker.description}]`);
+  if (character.description) {
+    lines.push(`[${characterLabel} Info: ${character.description}]`);
   }
 
   // Identity map so model learns real names while using safe IDs.
@@ -264,7 +264,7 @@ function buildPromptFromHistory(chatData: ChatData, currentSpeaker: Character, t
 
   const protagonistId = getCharacterPromptId(chatData.protagonist, chatData.participants);
   lines.push(`${protagonistId}: ${triggerText}`);
-  lines.push(`${speakerId}:`);
+  lines.push(`${characterId}:`);
 
   return lines.join('\n');
 }
@@ -311,7 +311,7 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, user
       prompt,
       n_predict: sampler?.maxTokens ?? 512,
       stop: stopSequences,
-      speaker_image: shouldInjectImage ? aiCharacter.image : undefined, // ← Conditional injection
+      character_image: shouldInjectImage ? aiCharacter.image : undefined, // Conditional injection.
       ...params,
     }),
   });
@@ -448,26 +448,24 @@ function App() {
       let updatedChatData = addMessageToChatData(chatData, protagonistChatMessage);
       updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(updatedChatData, inputText);
       setChatData(updatedChatData);
-      await saveChatData(updatedChatData); // ← Persist after full turn completes.
+      await saveChatData(updatedChatData); // Persist after full turn completes.
       setInputText('');
     } finally {
-      setIsLoading(false); // ← Critical: always reset loading state.
+      setIsLoading(false); // Critical: always reset loading state.
     }
   };
 
-  // Example edit handler (wire to your edit button)
   const onEditMessage = async (messageId: string, newText: string) => {
     if (!chatData) return;
     const updatedChatData = editChatMessage(chatData, messageId, newText);
     setChatData(updatedChatData);
-    await saveChatData(updatedChatData); // ← Persist edit.
+    await saveChatData(updatedChatData); // Persist edit.
   };
 
-  // Example branch handler (wire to your branch button)
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
     const branchedChatData = branchChatAtMessage(chatData, messageId);
-    await saveChatData(branchedChatData); // ← Persist new branch.
+    await saveChatData(branchedChatData); // Persist new branch.
     // Optionally open in new window/tab here.
   };
 
