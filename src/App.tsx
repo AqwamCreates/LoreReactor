@@ -3,12 +3,12 @@ import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'; 
 import './App.css'
 
-const userDataPath = `${import.meta.env.BASE_URL}user-data`;
-const characterDataPath = `${userDataPath}/character-data`;
-const characterImagesPath = `${userDataPath}/character-images`;
-const samplerDataPath = `${userDataPath}/sampler-data`;
-const chatDataPath = `${userDataPath}/chat-data`;
-const kvCachesPath = `${userDataPath}/kv-caches`;
+const userDataPath = `${import.meta.env.BASE_URL}user_data`;
+const characterDataPath = `${userDataPath}/character_data`;
+const characterImagesPath = `${userDataPath}/character_images`;
+const samplerDataPath = `${userDataPath}/sampler_data`;
+const chatDataPath = `${userDataPath}/chat_data`;
+const kvCachesPath = `${userDataPath}/kv_caches`;
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
 const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
