@@ -1,0 +1,18 @@
+{
+  "id": "test_ai_1",
+  "name": "Alice",
+  "image": null,
+  "description": "A shy librarian who speaks softly but quickly when prompted.",
+  "systemPrompt": "Roleplay as Alice, a shy librarian.",
+  "initiativeWeight": 3,
+  "chatProbability": 0.2,
+  "sampler": {
+    "id": "alice_sampler",
+    "name": "Alice Sampler",
+    "parameters": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "top_k": 30
+    }
+  }
+}

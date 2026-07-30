@@ -1,0 +1,18 @@
+{
+  "id": "test_protagonist",
+  "name": "Test User",
+  "image": null,
+  "description": "A test protagonist for integration testing.",
+  "systemPrompt": "You are roleplaying as Test User.",
+  "initiativeWeight": 1,
+  "chatProbability": 0.5,
+  "sampler": {
+    "id": "default",
+    "name": "Default Sampler",
+    "parameters": {
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "top_k": 40
+    }
+  }
+}

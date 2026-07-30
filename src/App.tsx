@@ -295,6 +295,8 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, user
   const shouldInjectImage = !everAppearedBefore && !!aiCharacter.image;
 
   const stopSequences = [
+    '<|end_of_turn|>',
+    '<|start_of_turn|>',
     ...chatData.participants
       .filter(p => p.id !== aiCharacter.id)
       .flatMap(p => {
@@ -311,7 +313,7 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, user
       prompt,
       n_predict: sampler?.maxTokens ?? 512,
       stop: stopSequences,
-      character_image: shouldInjectImage ? aiCharacter.image : undefined, // Conditional injection.
+      // character_image: shouldInjectImage ? aiCharacter.image : undefined, // — not supported by llama-server API
       ...params,
     }),
   });
@@ -437,8 +439,22 @@ function App() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const onProtagonistSendMessage = async () => {
+  // Temporary bootstrap to load first chat for testing
+  React.useEffect(() => {
+    if (!chatData || !currentCharacter) {
+      listChatIds().then(async (ids) => {
+        if (ids.length > 0) {
+          const loaded = await loadChatData(ids[0]);
+          if (loaded) {
+            setChatData(loaded);
+            setCurrentCharacter(loaded.protagonist);
+          }
+        }
+      });
+    }
+  }, []);
 
+  const onProtagonistSendMessage = async () => {
     if (!inputText.trim() || !currentCharacter || !chatData) return;
 
     setIsLoading(true);
@@ -448,10 +464,10 @@ function App() {
       let updatedChatData = addMessageToChatData(chatData, protagonistChatMessage);
       updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(updatedChatData, inputText);
       setChatData(updatedChatData);
-      await saveChatData(updatedChatData); // Persist after full turn completes.
+      await saveChatData(updatedChatData);
       setInputText('');
     } finally {
-      setIsLoading(false); // Critical: always reset loading state.
+      setIsLoading(false);
     }
   };
 
@@ -459,18 +475,78 @@ function App() {
     if (!chatData) return;
     const updatedChatData = editChatMessage(chatData, messageId, newText);
     setChatData(updatedChatData);
-    await saveChatData(updatedChatData); // Persist edit.
+    await saveChatData(updatedChatData);
   };
 
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
     const branchedChatData = branchChatAtMessage(chatData, messageId);
-    await saveChatData(branchedChatData); // Persist new branch.
-    // Optionally open in new window/tab here.
+    await saveChatData(branchedChatData);
+    window.open(window.location.href, '_blank');
   };
 
+  if (!chatData || !currentCharacter) {
+    return <div style={{ padding: '2rem' }}>Loading chat session...</div>;
+  }
+
   return (
-    // Your JSX here
+    <div style={{ padding: '2rem', fontFamily: 'monospace', maxWidth: '800px', margin: '0 auto' }}>
+      {/* Chat History */}
+      <div style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem', minHeight: '300px', overflowY: 'auto' }}>
+        {chatData.chatMessageHistory.map((msg) => {
+          const displayName = msg.isNameRevealed
+            ? msg.character.name
+            : getCharacterPromptId(msg.character, chatData.participants);
+
+          return (
+            <div key={msg.id} style={{ marginBottom: '0.75rem' }}>
+              <strong>{displayName}{!msg.isNameRevealed && ' (Unknown)'}</strong>
+              <span
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={(e) => onEditMessage(msg.id, e.currentTarget.textContent || '')}
+                style={{ marginLeft: '0.5rem', cursor: 'text' }}
+              >
+                {msg.textContent}
+              </span>
+              <button
+                onClick={() => onBranchAtMessage(msg.id)}
+                title="Branch from this message"
+                style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}
+              >
+                
+              </button>
+            </div>
+          );
+        })}
+        {isLoading && <p><em>Characters are responding...</em></p>}
+      </div>
+
+      {/* Input Area */}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <textarea
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              onProtagonistSendMessage();
+            }
+          }}
+          placeholder={`Message as ${currentCharacter.name}...`}
+          disabled={isLoading}
+          rows={3}
+          style={{ flex: 1, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={onProtagonistSendMessage}
+          disabled={isLoading || !inputText.trim()}
+          style={{ padding: '0 1.5rem' }}
+        >
+          {isLoading ? 'Sending...' : 'Send'}
+        </button>
+      </div>
+    </div>
   );
 }
 
