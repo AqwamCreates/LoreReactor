@@ -530,33 +530,67 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
   }
 }
 
-async function handleAllParticipantsResponseExceptTheProtagonist(chatData: ChatData, abortController: AbortController): Promise<ChatData> {
+async function handleAllParticipantsResponseExceptTheProtagonist(
+  chatData: ChatData, 
+  abortController: AbortController
+): Promise<ChatData> {
   let updatedChatData = chatData;
+  
+  // 1. Get eligible characters (not protagonist, has >0 chatProbability)
   const eligible = updatedChatData.participants.filter(
     p => p.id !== updatedChatData.protagonist.id && (p.chatProbability ?? 0.5) > 0
   );
+
   if (eligible.length === 0) return updatedChatData;
 
-  const responders = eligible.filter(p => Math.random() < (p.chatProbability ?? 0.5));
-  if (responders.length === 0 && eligible.length > 0) {
-    const highestProb = eligible.reduce((best, p) =>
-      (p.chatProbability ?? 0.5) > (best.chatProbability ?? 0.5) ? p : best
-    );
-    responders.push(highestProb);
+  // 2. Determine HOW MANY characters should speak this turn.
+  // We iterate through eligible characters and roll against their chatProbability.
+  // This allows multiple people to speak, or just one, randomly.
+  const potentialSpeakers = eligible.filter(p => Math.random() < (p.chatProbability ?? 0.5));
+
+  // Fallback: If RNG says no one speaks, force the single highest-probability character to speak
+  // so the chat doesn't stall.
+  const speakersToProcess = potentialSpeakers.length === 0
+    ? [eligible.reduce((best, p) =>
+        (p.chatProbability ?? 0.5) > (best.chatProbability ?? 0.5) ? p : best
+      )]
+    : potentialSpeakers;
+
+  const queue = [...speakersToProcess];
+  const orderedResponders: Character[] = [];
+
+  while (queue.length > 0) {
+    // Calculate total weight of everyone currently in the queue
+    const totalWeight = queue.reduce((sum, p) => sum + (p.initiativeWeight ?? 1), 0);
+    
+    // Pick a random number between 0 and totalWeight
+    let randomPoint = Math.random() * totalWeight;
+    
+    // Find which character corresponds to that random point
+    for (const character of queue) {
+      const weight = character.initiativeWeight ?? 1;
+      if (randomPoint < weight) {
+        // This character is selected!
+        orderedResponders.push(character);
+        // Remove them from the queue so they don't get picked again this turn
+        queue.splice(queue.indexOf(character), 1);
+        break;
+      }
+      randomPoint -= weight;
+    }
   }
 
-  responders.sort((a, b) => (b.initiativeWeight ?? 1) - (a.initiativeWeight ?? 1));
-  
-  for (const responder of responders) {
+  // 4. Execute generation in the newly calculated weighted order
+  for (const responder of orderedResponders) {
     if (abortController.signal.aborted) break; 
     
     const result = await handleAIResponse(updatedChatData, responder, abortController);
     
-    // If result is null (aborted), stop the loop.
     if (!result) break; 
     
     updatedChatData = result;
   }
+
   return updatedChatData;
 }
 
