@@ -393,14 +393,17 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
   const mappings = chatData.participants
     .map(p => {
       const id = getCharacterPromptId(p, chatData.participants);
+
+      const isCurrentParticipant = id === characterId
+
       const nameRevealed = chatData.chatMessageHistory.some(
         m => m.character.id === p.id && m.isNameRevealed
       );
       const appearanceRevealed = chatData.chatMessageHistory.some(
         m => m.character.id === p.id && m.isAppearanceRevealed
       );
-      const namePart = nameRevealed ? p.name : '[name unknown]';
-      const appearancePart = appearanceRevealed 
+      const namePart = nameRevealed || isCurrentParticipant ? p.name : '[name unknown]';
+      const appearancePart = appearanceRevealed || isCurrentParticipant
         ? '[appearance known]' 
         : '[appearance unknown]';
       return `${id} = ${namePart}, ${appearancePart}`;
@@ -595,6 +598,29 @@ function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: str
 function getCharacterAvatarUrl(character: Character): string | null {
   if (!character.image) return null;
   return `${characterImagesPath}/${character.image}`;
+}
+
+function getDelayedDisplayName(
+  history: ChatMessage[], 
+  currentIndex: number, 
+  characterId: string, 
+  participants: Character[]
+): string {
+  // Scan backwards from the current index to find the immediate predecessor
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (history[i].character.id === characterId) {
+      // If the previous message had the name revealed, show the real name now
+      if (history[i].isNameRevealed) {
+        return history[currentIndex].character.name;
+      }
+      // Otherwise, fall through to show the ID
+      break; 
+    }
+  }
+  
+  // Default: Show the generic ID if no previous reveal was found
+  const index = participants.findIndex(p => p.id === characterId);
+  return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
 function App() {
@@ -806,12 +832,10 @@ function App() {
     <div className="chat-container">
       <div className="chat-history">
         {chatData.chatMessageHistory.map((msg, index) => {
-          const isProtagonist = msg.character.id === currentCharacter.id;
-          
-          // Name logic remains: Show ID if name not revealed, else Show Name.
-          const displayName = msg.isNameRevealed
-            ? msg.character.name
-            : getCharacterPromptId(msg.character, chatData.participants);
+          const currentCharacterId = currentCharacter.id
+          const isProtagonist = msg.character.id === currentCharacterId;
+
+          const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
           
           // Image logic: Always attempt to get the URL if the character has one.
           const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
