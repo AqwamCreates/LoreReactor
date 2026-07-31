@@ -26,6 +26,47 @@ const NAME_REVEAL_PATTERNS_LOWERCASE = [
   new RegExp(`you may call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
 ];
 
+const NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE = [
+  // 1. Explicit Name Questions.
+  /\b(?:what|may\s+i\s+have)\s+(?:is|'s|be)?\s*(?:your|thy)\s+name\b/i,
+  
+  // 2. Identity Questions.
+  /\bwho\s+(?:are|is)\s+(?:you|thy|thee)\b/i,
+  
+  // 3. "How to call/address" Generalization (Your original request).
+  /\b(?:how|what).*?\b(?:call|address|refer\s+to)\s+(?:you|thy|thee)\b/i,
+  
+  // 4. THE MISSING PIECE: Reciprocal/Elliptical Questions.
+  // Matches: "And you?", "And you are?", "And yourself?", "What about you?".
+  /\b(?:and|so)\s+(?:you|yourself|what\s+about\s+you)\b/i,
+  
+  // 5. Direct "You are?" (Often used after a pause or as a prompt).
+  /\b(?:you\s+are\??|and\s+who\s+are\s+you)\b/i
+];
+
+const NAME_PERMISSION_QUESTION_PATTERNS = [
+  /\b(?:do|would|should|can|may)\s+(?:you|u)\s+(?:want|like|wish)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
+  /\b(?:want|would\s+you\s+like)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
+  /\b(?:shall|i\s+should)\s+(?:tell|say)\s+(?:you|u)\s+(?:my|our)\s+name\b/i,
+  /\b(?:ready\s+for\s+my\s+name|should\s+i\s+introduce\s+myself)\b/i
+];
+
+// Patterns that affirm/accept the offer (Short positive responses).
+const NAME_AFFIRMATION_PATTERNS = [
+  /\b(?:yes|yeah|yep|sure|certainly|absolutely|please|go\s+ahead|ok|okay|i\s+would\s+love\s+to|i'\s+d\s+like\s+that)\b/i,
+  /\b(?:tell\s+me|let'\s+s\s+hear\s+it|I'\s+m\s+listening)\b/i
+];
+
+// Patterns indicating the user is proceeding to say their name regardless of context.
+const NAME_REVEAL_INTENT_PATTERNS = [
+  /\b(?:i'll|I will|I shall|let me|I'm gonna|I am going to)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
+  /\b(?:anyway|regardless|either way|in any case|fine|alright|ok),?\s*(?:i'm|i am|my name is|call me)\b/i,
+  /\b(?:here(?:'s| is)|it is|that is)\s+(?:my|the)\s+name\b/i,
+  /\b(?:never mind|doesn't matter),?\s*(?:i'm|i am|my name is)\b/i,
+  /\b(?:just)\s+(?:know|call me|remember)\s+(?:that)?\s*I['']?m\b/i,
+  /\b(?:by the way|btw),?\s*(?:i'm|i am|my name is)\b/i
+];
+
 interface StopPattern {
   id: string;
   name: string;
@@ -164,6 +205,55 @@ function detectNameReveal(text: string, characterName: string): boolean {
   return false;
 }
 
+function detectNamePermissionSequence(
+  chatHistory: ChatMessage[], 
+  currentCharacterId: string, 
+  currentText: string, 
+  characterName: string
+): boolean {
+  if (chatHistory.length < 2) return false;
+
+  const lastMessage = chatHistory[chatHistory.length - 1];
+  const secondLastMessage = chatHistory[chatHistory.length - 2];
+
+  // Scenario: 
+  // Msg[-2] (User): "Do you want to know my name?"
+  // Msg[-1] (AI):   "Yes!"
+  // Msg[Current] (User): "Aqwam"
+
+  // 1. Check if the second-to-last message contains a permission question
+  const hasPermissionQuestion = NAME_PERMISSION_QUESTION_PATTERNS.some(p => p.test(secondLastMessage.textContent));
+  
+  // 2. Check if the last message (AI) is an affirmation
+  // Ensure the last message is NOT from the current character (it must be the AI responding to the user)
+  const isAiAffirmation = lastMessage.character.id !== currentCharacterId && 
+                          NAME_AFFIRMATION_PATTERNS.some(p => p.test(lastMessage.textContent));
+
+  if (hasPermissionQuestion && isAiAffirmation) {
+    // 3. Check if current text is likely the name
+    const isLikelyJustAName = currentText.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(currentText);
+    const isDirectReveal = detectNameReveal(currentText, characterName);
+    
+    if (isLikelyJustAName || isDirectReveal) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function detectIntentToReveal(text: string, characterName: string): boolean {
+  
+  // Check if any intent pattern exists in the text.
+  const hasIntent = NAME_REVEAL_INTENT_PATTERNS.some(pattern => pattern.test(text));
+  
+  if (!hasIntent) return false;
+
+  // If intent exists, verify there is actually a name-like word following it or in the sentence.
+  // We reuse the existing strict name capture logic but apply it to the whole sentence.
+  return detectNameReveal(text, characterName); 
+}
+
 function findPreviousChatMessage(chatMessageHistory: ChatMessage[], characterId: string): ChatMessage | null {
   for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
     if (chatMessageHistory[i].character.id === characterId) return chatMessageHistory[i];
@@ -175,12 +265,55 @@ function createChatMessage(chatData: ChatData, character: Character, textContent
   const characterId = character.id;
   const characterName = character.name;
   const chatMessageHistory = chatData.chatMessageHistory;
+  
+  // 1. Find previous message by this character to check existing state
   const previousMessage = findPreviousChatMessage(chatMessageHistory, characterId);
+  
+  // 2. Determine baseline states from history
   const isAppearancePreviouslyRevealed = previousMessage ? previousMessage.isAppearanceRevealed : false;
-  const isAppearanceRevealed = isAppearancePreviouslyRevealed || !!previousMessage;
   const isNamePreviouslyRevealed = previousMessage ? previousMessage.isNameRevealed : false;
-  const previousTextContent = previousMessage ? previousMessage.textContent : '';
-  const isNameRevealed = isNamePreviouslyRevealed || detectNameReveal(previousTextContent, characterName);
+  
+  // 3. Check for direct name declaration in the CURRENT message (Standard: "My name is X")
+  const isDirectNameReveal = detectNameReveal(textContent, characterName);
+
+  // 4. Check for "Intent to Reveal" regardless of history (e.g., "I'll tell you anyway. Aqwam")
+  const isIntentionalReveal = detectIntentToReveal(textContent, characterName);
+
+  // 5. Contextual Check: Answering a standard question from history
+  let isAnsweringStandardQuestion = false;
+  if (!isNamePreviouslyRevealed && !isDirectNameReveal && !isIntentionalReveal) {
+    const questionAskedPreviously = chatMessageHistory.some(msg => {
+      return NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE.some(pattern => 
+        pattern.test(msg.textContent)
+      );
+    });
+
+    if (questionAskedPreviously) {
+      const isLikelyJustAName = textContent.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(textContent);
+      if (isLikelyJustAName) {
+        isAnsweringStandardQuestion = true;
+      }
+    }
+  }
+
+  // 6. Contextual Check: The Permission Sequence (Optional backup)
+  // Even if we have intentional reveal, this catches cases where they say just "Aqwam" after "Yes"
+  let isAnsweringPermissionSequence = false;
+  if (!isNamePreviouslyRevealed && !isDirectNameReveal && !isIntentionalReveal && !isAnsweringStandardQuestion) {
+    isAnsweringPermissionSequence = detectNamePermissionSequence(chatMessageHistory, characterId, textContent, characterName);
+  }
+
+  // Combine ALL conditions
+  const isNameRevealed = 
+    isNamePreviouslyRevealed || 
+    isDirectNameReveal || 
+    isIntentionalReveal ||       // <-- Handles "No." -> "I'll tell you anyway. Aqwam"
+    isAnsweringStandardQuestion || 
+    isAnsweringPermissionSequence;
+  
+  // Appearance logic remains unchanged
+  const isAppearanceRevealed = isAppearancePreviouslyRevealed || !!previousMessage;
+
   const hasChatData = chatMessageHistory.length > 0;
   const parentMessageId = hasChatData ? chatMessageHistory[chatMessageHistory.length - 1].id : null;
 
@@ -189,7 +322,7 @@ function createChatMessage(chatData: ChatData, character: Character, textContent
     character: { ...character },
     textContent,
     isAppearanceRevealed,
-    isNameRevealed,
+    isNameRevealed, 
     timestamp: Date.now(),
     parentMessageId,
   };
@@ -208,20 +341,24 @@ function getCharacterPromptId(character: Character, participants: Character[]): 
   return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-function buildPromptFromHistory(chatData: ChatData, character: Character, triggerText: string): string {
+function buildPromptFromHistory(chatData: ChatData, character: Character): string {
   const lines: string[] = [];
+
+  const name = character.name
+  const systemPrompt = character.systemPrompt
+  const description = character.description
 
   // System context for current speaker
   const characterEverRevealed = chatData.chatMessageHistory.some(
     m => m.character.id === character.id && m.isNameRevealed
   );
   const characterId = getCharacterPromptId(character, chatData.participants);
-  const characterLabel = characterEverRevealed ? character.name : characterId;
+  const characterLabel = characterEverRevealed ? name : characterId;
 
-  if (character.systemPrompt) lines.push(`[System: ${character.systemPrompt}]`);
-  if (character.description) lines.push(`[${characterLabel} Info: ${character.description}]`);
+  if (!characterEverRevealed) lines.push(`[${characterLabel} Identity: ${name}]`);
+  if (systemPrompt) lines.push(`[${characterLabel} System Prompt: ${systemPrompt}]`);
+  if (description) lines.push(`[${characterLabel} Description: ${description}]`);
 
-  // ✅ Session-wide instructions injected ONCE per generation call
   if (chatData.instructions?.length) {
     const instructionBlock = chatData.instructions
       .map(i => `[Instruction: ${i.content}]`)
@@ -229,8 +366,22 @@ function buildPromptFromHistory(chatData: ChatData, character: Character, trigge
     lines.push(instructionBlock);
   }
 
-  // Identity map, message history, trigger text...
-  const mappings = chatData.participants.map(p => { /* ... */ }).join('; ');
+  const mappings = chatData.participants
+    .map(p => {
+      const id = getCharacterPromptId(p, chatData.participants);
+      const nameRevealed = chatData.chatMessageHistory.some(
+        m => m.character.id === p.id && m.isNameRevealed
+      );
+      const appearanceRevealed = chatData.chatMessageHistory.some(
+        m => m.character.id === p.id && m.isAppearanceRevealed
+      );
+      const namePart = nameRevealed ? p.name : '[name unknown]';
+      const appearancePart = appearanceRevealed 
+        ? '[appearance known]' 
+        : '[appearance unknown]';
+      return `${id} = ${namePart}, ${appearancePart}`;
+    })
+    .join('; ');
   lines.push(`[Identity Map: ${mappings}]`);
 
   for (const msg of chatData.chatMessageHistory) {
@@ -238,8 +389,6 @@ function buildPromptFromHistory(chatData: ChatData, character: Character, trigge
     lines.push(`${promptId}: ${msg.textContent}`);
   }
 
-  const protagonistId = getCharacterPromptId(chatData.protagonist, chatData.participants);
-  lines.push(`${protagonistId}: ${triggerText}`);
   lines.push(`${characterId}:`);
   return lines.join('\n');
 }
@@ -254,10 +403,13 @@ function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
   return result;
 }
 
-async function handleAIResponse(chatData: ChatData, aiCharacter: Character, userText: string): Promise<ChatData> {
+// Add abortController as an optional argument
+async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abortController?: AbortController): Promise<ChatData | null> {
   const sampler = aiCharacter.sampler;
   const params = sampler?.parameters ?? {};
-  const prompt = buildPromptFromHistory(chatData, aiCharacter, userText);
+  const prompt = buildPromptFromHistory(chatData, aiCharacter);
+
+  console.log(`${prompt}\n`);
 
   const allParticipantStops = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -271,25 +423,39 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, user
     ...(sampler?.stopPattern?.patterns ?? []),
   ];
 
-  const response = await fetch('/api/completion', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      n_predict: sampler?.maxTokens ?? 512,
-      stop: stopSequences,
-      ...params,
-    }),
-  });
+  try {
+    const response = await fetch('/api/completion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        n_predict: sampler?.maxTokens ?? 512,
+        stop: stopSequences,
+        ...params,
+      }),
+      signal: abortController?.signal, // ✅ Pass the signal here
+    });
 
-  const result = await response.json();
-  const displayText = convertIdsToDisplayNames(result.content.trim(), chatData);
-  const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
+    if (!response.ok) {
+      if (abortController?.signal.aborted) return null; // Handle abort gracefully
+      throw new Error(`API Error: ${response.status}`);
+    }
 
-  return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: result.kv_cache_path });
+    const result = await response.json();
+    const displayText = convertIdsToDisplayNames(result.content.trim(), chatData);
+    const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
+
+    return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: result.kv_cache_path });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      console.log('Generation stopped by user');
+      return null;
+    }
+    throw error;
+  }
 }
 
-async function handleAllParticipantsResponseExceptTheProtagonist(chatData: ChatData, userText: string): Promise<ChatData> {
+async function handleAllParticipantsResponseExceptTheProtagonist(chatData: ChatData, abortController: AbortController): Promise<ChatData> {
   let updatedChatData = chatData;
   const eligible = updatedChatData.participants.filter(
     p => p.id !== updatedChatData.protagonist.id && (p.chatProbability ?? 0.5) > 0
@@ -305,8 +471,16 @@ async function handleAllParticipantsResponseExceptTheProtagonist(chatData: ChatD
   }
 
   responders.sort((a, b) => (b.initiativeWeight ?? 1) - (a.initiativeWeight ?? 1));
+  
   for (const responder of responders) {
-    updatedChatData = await handleAIResponse(updatedChatData, responder, userText);
+    if (abortController.signal.aborted) break; 
+    
+    const result = await handleAIResponse(updatedChatData, responder, abortController);
+    
+    // If result is null (aborted), stop the loop.
+    if (!result) break; 
+    
+    updatedChatData = result;
   }
   return updatedChatData;
 }
@@ -350,11 +524,13 @@ function App() {
   const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [generatingMessageId, setGeneratingMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const fileInputReference = React.useRef<HTMLInputElement>(null);
+  const messagesEndReference = React.useRef<HTMLDivElement>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
@@ -368,7 +544,7 @@ function App() {
         }
       });
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndReference.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatData?.chatMessageHistory.length, editingMessageId]);
 
   const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -388,24 +564,53 @@ function App() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const onStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsLoading(false);
+    setGeneratingMessageId(null);
+  };
+
   const onProtagonistSendMessage = async () => {
     if (!inputText.trim() || !currentCharacter || !chatData || isLoading) return;
 
+    // ✅ Initialize new AbortController
+    abortControllerRef.current = new AbortController();
+    
     const protagonistChatMessage = createChatMessage(chatData, chatData.protagonist, inputText);
-    const chatDataWithUserMsg = addMessageToChatData(chatData, protagonistChatMessage);
-    setChatData(chatDataWithUserMsg);
+    const chatDataWithUserMessage = addMessageToChatData(chatData, protagonistChatMessage);
+    
+    setChatData(chatDataWithUserMessage);
     setInputText('');
-    setPendingFiles([]); // ✅ Clear attachments after send
+    setPendingFiles([]);
     setIsLoading(true);
+    setGeneratingMessageId(null); // Reset until AI starts
 
     try {
-      const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(chatDataWithUserMsg, inputText);
-      await saveChatData(updatedChatData);
-      setChatData(updatedChatData);
+      const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
+        chatDataWithUserMessage, 
+        abortControllerRef.current
+      );
+      
+      // Only save and update if not aborted (updatedChatData might be partial or same as input if aborted immediately)
+      if (!abortControllerRef.current?.signal.aborted) {
+        await saveChatData(updatedChatData);
+        setChatData(updatedChatData);
+      } else {
+        // If aborted, we might want to keep the partial state or revert depending on preference.
+        // Here we just ensure the UI reflects the stop.
+        setChatData(prev => prev ? { ...prev, last_updated_timestamp: Date.now() } : null);
+      }
     } catch (error) {
-      console.error('AI response failed:', error);
+      if ((error as Error).name !== 'AbortError') {
+        console.error('AI response failed:', error);
+      }
     } finally {
       setIsLoading(false);
+      setGeneratingMessageId(null);
+      abortControllerRef.current = null;
     }
   };
 
@@ -422,8 +627,6 @@ function App() {
     
     // Safety: don't regenerate if there are no AI messages or we're already at the end
     if (trimIndex === 0 || trimIndex === history.length) return;
-
-    const triggerMessage = history[trimIndex - 1];
     
     // Get the original responders in their exact order
     const originalResponders = history
@@ -443,14 +646,12 @@ function App() {
     try {
       let regeneratedChatData = trimmedChatData;
       
-      // Re-generate each responder sequentially with updated context
+      // Re-generate each responder sequentially with updated context.
       for (const responder of originalResponders) {
-        // Use the full updated history as context, passing trigger text only for the first responder
-        const userTextForResponse = regeneratedChatData.chatMessageHistory.length === trimIndex 
-          ? triggerMessage.textContent 
-          : ''; // Subsequent responders use the accumulated prompt
-        
-        regeneratedChatData = await handleAIResponse(regeneratedChatData, responder, userTextForResponse);
+        if (abortControllerRef.current?.signal.aborted) break;
+        const result = await handleAIResponse(regeneratedChatData, responder);
+        if (!result) break;
+        regeneratedChatData = result;
       }
       
       await saveChatData(regeneratedChatData);
@@ -480,6 +681,36 @@ function App() {
   const onCancelEdit = () => {
     setEditingMessageId(null);
     setEditDraft('');
+  };
+
+  const onDeleteMessage = async (messageId: string) => {
+    if (!chatData || isLoading) return;
+    
+    // Prevent deleting while generating if it's the current message being written
+    if (generatingMessageId === messageId) {
+      onStopGeneration();
+    }
+
+    const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
+    
+    // Invalidate KV caches for all subsequent messages since context changed
+    const finalHistory = updatedHistory.map((msg, idx) => {
+      const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === msg.id);
+      // If this message originally came after the deleted one, clear its cache
+      if (originalIndex > chatData.chatMessageHistory.findIndex(m => m.id === messageId)) {
+        return { ...msg, kvCachePath: undefined };
+      }
+      return msg;
+    });
+
+    const updatedChatData: ChatData = {
+      ...chatData,
+      chatMessageHistory: finalHistory,
+      last_updated_timestamp: Date.now(),
+    };
+
+    setChatData(updatedChatData);
+    await saveChatData(updatedChatData);
   };
 
   const onBranchAtMessage = async (messageId: string) => {
@@ -550,6 +781,15 @@ function App() {
                         <button onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
                       )}
                       <button onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
+                      {/* ✅ NEW: Delete Button */}
+                      <button 
+                        onClick={() => onDeleteMessage(msg.id)} 
+                        title="Delete" 
+                        className="toolbar-btn delete-btn"
+                        style={{ color: '#ff4444' }} // Optional inline style for red color
+                      >
+                        🗑
+                      </button>
                     </div>
                   </>
                 )}
@@ -563,7 +803,7 @@ function App() {
             <div className="typing-indicator">The characters are responding...</div>
           </div>
         )}
-        <div ref={messagesEndRef} style={{ height: '1px' }} />
+        <div ref={messagesEndReference} style={{ height: '1px' }} />
       </div>
 
       <div className="input-wrapper">
@@ -589,13 +829,14 @@ function App() {
         {/* ✅ Input row: attach button + textarea + send */}
         <div className="input-area">
           <button
-            onClick={() => fileInputRef.current?.click()}
+            type="button"
+            onClick={() => fileInputReference.current?.click()}
             disabled={isLoading}
             className="attach-button toolbar-btn"
             title="Attach file"
           >📎</button>
           <input
-            ref={fileInputRef}
+            ref={fileInputReference}
             type="file"
             multiple
             onChange={onFileSelected}
@@ -614,12 +855,15 @@ function App() {
             rows={3}
             className="chat-input"
           />
+          {/* ✅ Dynamic Send / Stop Button */}
           <button
-            onClick={onProtagonistSendMessage}
-            disabled={isLoading || (!inputText.trim() && pendingFiles.length === 0)}
-            className="send-button counter"
+            type="button"
+            onClick={isLoading ? onStopGeneration : onProtagonistSendMessage}
+            disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)}
+            className={"send-button counter"}
+            title={isLoading ? "Stop Generating" : "Send Message"}
           >
-            Send
+            {isLoading ? '⏹ Stop' : 'Send'}
           </button>
         </div>
       </div>
