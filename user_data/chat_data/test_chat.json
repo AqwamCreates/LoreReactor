@@ -21,13 +21,22 @@
       "chatProbability": 0.5
     },
     {
-      "id": "test_ai_1",
+      "id": "Alice",
       "name": "Alice",
-      "image": "test_ai_1.webp",
+      "image": "Alice.webp",
       "description": "A librarian.",
       "systemPrompt": null,
       "initiativeWeight": 3,
-      "chatProbability": 0.2
+      "chatProbability": 0.9
+    },
+    {
+      "id": "Velina",
+      "name": "Velina",
+      "image": "Velina.webp",
+      "description": "A politician.",
+      "systemPrompt": null,
+      "initiativeWeight": 3,
+      "chatProbability": 0.9
     }
   ],
   "instructions": [
