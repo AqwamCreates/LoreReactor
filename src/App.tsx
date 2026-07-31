@@ -1,288 +1,10 @@
 import React from 'react'
 import { useState } from 'react'
-import { v4 as uuidv4 } from 'uuid'; 
+import { v4 as uuidv4 } from 'uuid';
+import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData} from "./types"
+import {detectName} from "./nameDetection"
+import {loadChatData, saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
 import './App.css'
-
-const userDataPath = `${import.meta.env.BASE_URL}user_data`;
-const characterDataPath = `${userDataPath}/character_data`;
-const characterImagesPath = `${userDataPath}/character_images`;
-const samplerDataPath = `${userDataPath}/sampler_data`;
-const instructionDataPath = `${userDataPath}/instruction_data`;
-const chatDataPath = `${userDataPath}/chat_data`;
-const kvCachesPath = `${userDataPath}/kv_caches`;
-
-const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
-const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
-
-const NAME_REVEAL_PATTERNS_LOWERCASE = [
-  new RegExp(`i am ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`i'm ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`my name is ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`my name's ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`${NAME_CAPTURE} is my name`, 'i'),
-  new RegExp(`s+go\\s+by\\s+${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-];
-
-const NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE = [
-  // 1. ... name(s)?
-  // Must end with "name?" or "names?"
-  /\bnames?\?/i,
-
-  // 2. ... call/address/refer you/thy?
-  // Must contain the verb phrase AND end with a question mark
-  /\b(?:call|address|refer\s+to)\s+(?:you|thy|thee).*?\?/i,
-
-  // 3. ... about you?
-  // Must contain "about you" AND end with a question mark
-  /\babout\s+(?:you|thy|thee).*?\?/i,
-
-  // 4. ... are you?
-  // Must contain "are you" AND end with a question mark
-  /\bare\s+(?:you|thy|thee).*?\?/i,
-
-  // 5. ... you are?
-  // Must contain "you are" AND end with a question mark
-  /\b(?:you|thy|thee)\s+are.*?\?/i,
-
-  // 6. ... you are?
-  // Must contain "you are" AND end with a question mark
-  /\b(?:you|thy|thee)\s+go\s+by\b.*?\?/i,
-];
-
-const NAME_PERMISSION_QUESTION_PATTERNS = [
-  /\b(?:do|would|should|can|may)\s+(?:you|u)\s+(?:want|like|wish)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
-  /\b(?:want|would\s+you\s+like)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
-  /\b(?:shall|i\s+should)\s+(?:tell|say)\s+(?:you|u)\s+(?:my|our)\s+name\b/i,
-  /\b(?:ready\s+for\s+my\s+name|should\s+i\s+introduce\s+myself)\b/i,
-  /\bi\s+go\s+by\b.*?\?/i,
-];
-
-// Patterns that affirm/accept the offer (Short positive responses).
-const NAME_AFFIRMATION_PATTERNS = [
-  /\b(?:yes|yeah|yep|sure|certainly|absolutely|please|go\s+ahead|ok|okay|i\s+would\s+love\s+to|i'\s+d\s+like\s+that)\b/i,
-  /\b(?:tell\s+me|let'\s+s\s+hear\s+it|I'\s+m\s+listening)\b/i
-];
-
-// Patterns indicating the user is proceeding to say their name regardless of context.
-const NAME_REVEAL_INTENT_PATTERNS = [
-  /\b(?:i'll|i will|i shall|let me|i'm gonna|i am going to)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
-  /\b(?:anyway|regardless|either way|in any case|fine|alright|ok),?\s*(?:i'm|i am|my name is|call me)\b/i,
-  /\b(?:here(?:'s| is)|it is|that is)\s+(?:my|the)\s+name\b/i,
-  /\b(?:never mind|doesn't matter),?\s*(?:i'm|i am|my name is)\b/i,
-  /\b(?:just)\s+(?:know|call me|remember)\s+(?:that)?\s*i['']?m\b/i,
-  /\b(?:by the way|btw),?\s*(?:i'm|i am|my name is)\b/i
-];
-
-interface StopPattern {
-  id: string;
-  name: string;
-  description?: string;
-  patterns: string[];
-}
-
-interface Sampler {
-  id: string;
-  name: string;
-  description?: string;
-  parameters: Record<string, unknown>;
-  stopPattern?: StopPattern;
-  maxTokens?: number;
-}
-
-interface Instruction {
-  id: string;
-  name: string;
-  description?: string;
-  content: string;
-}
-
-interface Character {
-  id: string;
-  name: string;
-  image?: string;
-  description?: string;
-  systemPrompt?: string;
-  initiativeWeight?: number | undefined;
-  chatProbability?: number | undefined;
-  sampler?: Sampler | undefined;
-}
-
-interface ChatMessage {
-  id: string;
-  character: Character;
-  textContent: string;
-  isAppearanceRevealed?: boolean;
-  isNameRevealed?: boolean;
-  kvCachePath?: string;
-  timestamp: number;
-  parentMessageId?: string | null;
-}
-
-interface ChatData {
-  id: string;
-  title: string;
-  protagonist: Character;
-  participants: Character[];
-  instructions?: Instruction[]; // ← Session-level, applies to all
-  chatMessageHistory: ChatMessage[];
-  first_created_timestamp: number;
-  last_updated_timestamp: number;
-}
-
-async function loadCharacterFromLocalStorage(characterId: string): Promise<Character | null> {
-  try {
-    const response = await fetch(`${characterDataPath}/${characterId}.json`);
-    if (!response.ok) return null;
-    const data = await response.json();
-    return {
-      id: data.id || characterId,
-      name: data.name || 'Unknown',
-      image: data.image,
-      description: data.description,
-      systemPrompt: data.systemPrompt,
-      initiativeWeight: data.initiativeWeight ?? 1,
-      chatProbability: data.chatProbability ?? 0.5,
-      sampler: data.sampler,
-    };
-  } catch (error) {
-    console.error(`Failed to load character ${characterId}:`, error);
-    return null;
-  }
-}
-
-async function loadAllCharactersFromLocalStorage(): Promise<Character[]> {
-  try {
-    const manifestResponse = await fetch(`${characterDataPath}/manifest.json`);
-    if (!manifestResponse.ok) return [];
-    const characterIds: string[] = await manifestResponse.json();
-    const results = await Promise.allSettled(
-      characterIds.map(id => loadCharacterFromLocalStorage(id))
-    );
-    return results
-      .filter((r): r is PromiseFulfilledResult<Character> => r.status === 'fulfilled' && r.value !== null)
-      .map(r => r.value);
-  } catch (error) {
-    console.error('Failed to load character manifest:', error);
-    return [];
-  }
-}
-
-async function saveChatData(chatData: ChatData): Promise<void> {
-  const response = await fetch(`${chatDataPath}/${chatData.id}.json`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(chatData),
-  });
-  if (!response.ok) throw new Error(`Failed to save chat ${chatData.id}`);
-}
-
-async function loadChatData(chatId: string): Promise<ChatData | null> {
-  try {
-    const response = await fetch(`${chatDataPath}/${chatId}.json`);
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    console.error(`Failed to load chat ${chatId}:`, error);
-    return null;
-  }
-}
-
-async function listChatIds(): Promise<string[]> {
-  try {
-    const response = await fetch(`${chatDataPath}/manifest.json`);
-    if (!response.ok) return [];
-    return await response.json();
-  } catch {
-    return [];
-  }
-}
-
-function detectNameReveal(text: string, characterName: string): boolean {
-  const characterNameLower = characterName.toLowerCase();
-  for (const pattern of NAME_REVEAL_PATTERNS_LOWERCASE) {
-    const match = text.match(pattern);
-    if (match) {
-      const capturedName = match[1].toLowerCase();
-      if (capturedName.includes(characterNameLower) || characterNameLower.includes(capturedName)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function detectNamePermissionSequence(
-  chatHistory: ChatMessage[], 
-  currentCharacterId: string, 
-  currentText: string, 
-  characterName: string
-): boolean {
-  if (chatHistory.length < 2) return false;
-
-  const lastMessage = chatHistory[chatHistory.length - 1];
-  const secondLastMessage = chatHistory[chatHistory.length - 2];
-
-  // Scenario: 
-  // Msg[-2] (User): "Do you want to know my name?"
-  // Msg[-1] (AI):   "Yes!"
-  // Msg[Current] (User): "Aqwam"
-
-  // 1. Check if the second-to-last message contains a permission question
-  const hasPermissionQuestion = NAME_PERMISSION_QUESTION_PATTERNS.some(p => p.test(secondLastMessage.textContent));
-  
-  // 2. Check if the last message (AI) is an affirmation
-  // Ensure the last message is NOT from the current character (it must be the AI responding to the user)
-  const isAiAffirmation = lastMessage.character.id !== currentCharacterId && NAME_AFFIRMATION_PATTERNS.some(p => p.test(lastMessage.textContent));
-
-  if (hasPermissionQuestion && isAiAffirmation) {
-    // 3. Check if current text is likely the name
-    const isLikelyJustAName = currentText.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(currentText);
-    const isDirectReveal = detectNameReveal(currentText, characterName);
-    
-    if (isLikelyJustAName || isDirectReveal) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function detectIntentToReveal(text: string, characterName: string): boolean {
-  const characterNameLower = characterName.toLowerCase();
-  
-  // 1. Check if any intent pattern exists in the text
-  const hasIntent = NAME_REVEAL_INTENT_PATTERNS.some(pattern => pattern.test(text));
-  
-  if (!hasIntent) return false;
-
-  // 2. Try strict detection first ("I'm Aqwam", "My name is Aqwam").
-  if (detectNameReveal(text, characterName)) {
-    return true;
-  }
-
-  // 3. FALLBACK: If intent is present but strict regex failed (e.g., "Fine. Aqwam").
-  // Assume the last significant word(s) are the name.
-  const cleanText = text.replace(/[.,!?;]/g, '').trim();
-  const words = cleanText.split(/\s+/);
-  
-  // Get the last 1 or 2 words as potential name candidates
-  const potentialCandidates = [];
-  if (words.length > 0) potentialCandidates.push(words[words.length - 1]);
-  if (words.length > 1) potentialCandidates.push(words.slice(words.length - 2).join(' '));
-
-  for (const candidate of potentialCandidates) {
-    const candidateLower = candidate.toLowerCase();
-    // Check for inclusion or exact match
-    if (candidateLower === characterNameLower || 
-        characterNameLower.includes(candidateLower) || 
-        candidateLower.includes(characterNameLower)) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 function findPreviousChatMessage(chatMessageHistory: ChatMessage[], characterId: string): ChatMessage | null {
   for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
@@ -296,54 +18,11 @@ function createChatMessage(chatData: ChatData, character: Character, textContent
   const characterName = character.name;
   const chatMessageHistory = chatData.chatMessageHistory;
   
-  // 1. Find previous message by this character to check existing state.
   const previousMessage = findPreviousChatMessage(chatMessageHistory, characterId);
-  
-  // 2. Determine baseline states from history
   const isAppearancePreviouslyRevealed = previousMessage ? previousMessage.isAppearanceRevealed : false;
   const isNamePreviouslyRevealed = previousMessage ? previousMessage.isNameRevealed : false;
-  
-  // 3. Check for direct name declaration in the CURRENT message (Standard: "My name is X").
-  const isDirectNameReveal = detectNameReveal(textContent, characterName);
-
-  // 4. Check for "Intent to Reveal" regardless of history (e.g., "I'll tell you anyway. Aqwam").
-  const isIntentionalReveal = detectIntentToReveal(textContent, characterName);
-
-  // 5. Contextual Check: Answering a standard question from history
-  let isAnsweringStandardQuestion = false;
-  if (!isNamePreviouslyRevealed && !isDirectNameReveal && !isIntentionalReveal) {
-    const questionAskedPreviously = chatMessageHistory.some(msg => {
-      return NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE.some(pattern => 
-        pattern.test(msg.textContent)
-      );
-    });
-
-    if (questionAskedPreviously) {
-      const isLikelyJustAName = textContent.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(textContent);
-      if (isLikelyJustAName) {
-        isAnsweringStandardQuestion = true;
-      }
-    }
-  }
-
-  // 6. Contextual Check: The Permission Sequence (Optional backup)
-  // Even if we have intentional reveal, this catches cases where they say just "Aqwam" after "Yes"
-  let isAnsweringPermissionSequence = false;
-  if (!isNamePreviouslyRevealed && !isDirectNameReveal && !isIntentionalReveal && !isAnsweringStandardQuestion) {
-    isAnsweringPermissionSequence = detectNamePermissionSequence(chatMessageHistory, characterId, textContent, characterName);
-  }
-
-  // Combine ALL conditions
-  const isNameRevealed = 
-    isNamePreviouslyRevealed || 
-    isDirectNameReveal || 
-    isIntentionalReveal ||       // <-- Handles "No." -> "I'll tell you anyway. Aqwam"
-    isAnsweringStandardQuestion || 
-    isAnsweringPermissionSequence;
-  
-  // Appearance logic remains unchanged
+  const isNameRevealed = isNamePreviouslyRevealed || detectName(chatMessageHistory, characterId, characterName, textContent)
   const isAppearanceRevealed = isAppearancePreviouslyRevealed || !!previousMessage;
-
   const hasChatData = chatMessageHistory.length > 0;
   const parentMessageId = hasChatData ? chatMessageHistory[chatMessageHistory.length - 1].id : null;
 
@@ -470,16 +149,20 @@ async function handleServerResponse(
 
   // ... [Image Data Logic remains exactly the same as your original code] ...
   let imageData: any = undefined;
-  if (aiCharacter.image) {
-    const imageUrl = `${characterImagesPath}/${aiCharacter.image}`;
-    try {
-      const imageBase64Data = await getImageBase64(imageUrl);
-      if (imageBase64Data) {
-        imageData = [{ data: imageBase64Data, id: 12 }];
+  const aiCharacterImage = aiCharacter.image;
+  if (aiCharacterImage) {
+    const imageUrl = getCharacterImageUrl(aiCharacterImage);
+
+    if (imageUrl){
+      try {
+            const imageBase64Data = await getImageBase64(imageUrl);
+            if (imageBase64Data) {
+              imageData = [{ data: imageBase64Data, id: 12 }];
+            }
+      } catch (err) {
+          console.error("Failed to load image for multimodal input:", err);
       }
-    } catch (err) {
-      console.error("Failed to load image for multimodal input:", err);
-    }
+    } 
   }
 
   const prompt = buildPromptFromHistory(chatData, aiCharacter);
@@ -655,55 +338,31 @@ function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: str
   };
 }
 
-function getCharacterAvatarUrl(character: Character): string | null {
-  if (!character.image) return null;
-  return `${characterImagesPath}/${character.image}`;
-}
+function getDelayedDisplayName(chatMessageHistory: ChatMessage[], currentIndex: number, characterId: string, participants: Character[]): string {
 
-function getDelayedDisplayName(
-  history: ChatMessage[], 
-  currentIndex: number, 
-  characterId: string, 
-  participants: Character[]
-): string {
-  // ✅ SAFETY CHECK
-  if (!history || history.length === 0 || currentIndex < 0 || currentIndex >= history.length) {
+  if (!chatMessageHistory || chatMessageHistory.length === 0 || currentIndex < 0 || currentIndex >= chatMessageHistory.length) {
     const index = participants.findIndex(p => p.id === characterId);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
   }
 
-  const currentMsg = history[currentIndex];
-  
-  // OPTIMIZATION 1: If the current message itself already has the name revealed (e.g., during re-render after save), show it.
-  if (currentMsg?.isNameRevealed) {
-    return currentMsg.character.name;
-  }
-
-  // OPTIMIZATION 2: Global History Check.
-  // Even if this specific character hasn't spoken recently, if THEY EVER revealed their name 
-  // in the existing history, we should show their name now.
-  const hasEverRevealedName = history.some(
-    m => m.character.id === characterId && m.isNameRevealed
-  );
-
-  if (hasEverRevealedName) {
-    const participant = participants.find(p => p.id === characterId);
-    return participant ? participant.name : `Character ${participants.findIndex(p => p.id === characterId) + 1}`;
-  }
-
-  // ORIGINAL LOGIC: Scan backwards for the immediate predecessor by this character
+  // Scan backwards from the current index to find the immediate predecessor.
+  // We start at currentIndex - 1 because we want to look at PREVIOUS messages.
   for (let i = currentIndex - 1; i >= 0; i--) {
-    if (history[i].character.id === characterId) {
-      if (history[i].isNameRevealed) {
-        const participant = participants.find(p => p.id === characterId);
-        return participant ? participant.name : `Character ${participants.findIndex(p => p.id === characterId) + 1}`;
+
+    const chatMessage = chatMessageHistory[i]
+
+    const character = chatMessage.character
+
+    if (character.id === characterId) {
+      if (chatMessage.isNameRevealed) {
+        // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
+        if (chatMessageHistory[currentIndex]) {return character.name}
       }
-      // If we found a previous message by them but it wasn't revealed, stop looking.
       break; 
     }
   }
   
-  // Default Fallback
+  // Default: Show the generic ID if no previous reveal was found
   const index = participants.findIndex(p => p.id === characterId);
   return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
@@ -764,12 +423,12 @@ function App() {
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
-      listChatIds().then(async (ids) => {
-        if (ids.length > 0) {
-          const loaded = await loadChatData(ids[0]);
-          if (loaded) {
-            setChatData(loaded);
-            setCurrentCharacter(loaded.protagonist);
+      loadAllChatData().then(async (chatDataArray) => {
+        if (chatDataArray.length > 0) {
+          const chatData = chatDataArray[0];
+          if (chatData) {
+            setChatData(chatData);
+            setCurrentCharacter(chatData.protagonist);
           }
         }
       });
@@ -785,25 +444,17 @@ function App() {
         await processProtagonistImageSilently(chatData, currentCharacter);
         return;
       }
-
-      // 2. If we don't have chat data yet, try to load it.
       if (!chatData || !currentCharacter) {
-        const ids = await listChatIds();
-        if (ids.length > 0) {
-          const loaded = await loadChatData(ids[0]);
-          if (loaded) {
-            setChatData(loaded);
-            setCurrentCharacter(loaded.protagonist);
-            // Note: We do NOT call processProtagonistImageSilently here directly.
-            // Setting the state will trigger a re-render, which will run this effect again.
-            // On the next run, condition #1 will catch it and process the image.
-            // This prevents state update conflicts during the initial load.
+        const chatDataArray = await loadAllChatData();
+        if (chatDataArray.length > 0) {
+          const chatData = chatDataArray[0];
+          if (chatData) {
+            setChatData(chatData);
+            setCurrentCharacter(chatData.protagonist);
           } else {
-            // No chat found, mark as processed so we don't keep trying
             setIsInitialImageProcessed(true);
           }
         } else {
-          // No chats exist at all, mark as processed
           setIsInitialImageProcessed(true);
         }
       }
@@ -814,7 +465,7 @@ function App() {
     if (isLoading && streamingText && messageEndReference.current) {
       messageEndReference.current.scrollIntoView({ behavior: 'auto' }); // 'auto' is instant/snappy for typing
     }
-  }, [streamingText, isLoading]);
+  }, [streamingText, isLoading, chatData, currentCharacter, isInitialImageProcessed]);
 
   const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -862,11 +513,7 @@ function App() {
     setStreamingText(""); // Reset streaming buffer
 
     try {
-      // 2. Define how to update the UI when a chunk arrives
 
-      // 3. Run generation with the callback
-      // Note: We don't await the full result immediately for UI updates, 
-      // but we still await the function to manage the loading state correctly.
       const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
         chatDataWithUserMessage, 
         abortControllerRef.current,
@@ -931,13 +578,14 @@ function App() {
       
       // Define Stream Handlers (Same as SendMessage)
 
+      console.log(originalResponders)
+
       // 3. Re-generate each responder sequentially WITH streaming
       for (const responder of originalResponders) {
         if (abortControllerRef.current?.signal.aborted) break;
 
         setStreamingCharacter(responder);
         
-        // 👇 PASS THE CALLBACKS HERE
         const result = await handleServerResponse(
           regeneratedChatData, 
           responder, 
@@ -1001,8 +649,6 @@ function App() {
     try {
 
       const chatDataWithUserMessage = trimmedChatData
-
-      console.log(chatDataWithUserMessage)
 
       const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
         chatDataWithUserMessage, 
@@ -1146,19 +792,21 @@ function App() {
         {chatData.chatMessageHistory.map((msg, index) => {
           const currentCharacterId = currentCharacter.id;
           const isProtagonist = msg.character.id === currentCharacterId;
+          const isNotAProtagonist = !isProtagonist
 
           const displayText = msg.textContent;
 
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
+
+          console.log(displayName)
           
-          // Image logic
-          const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
+          const characterImage = isNotAProtagonist ? getCharacterImageUrl(msg.character.image) : null;
           
           const aiParticipantIds = new Set(
             chatData.participants.filter(p => p.id !== chatData.protagonist.id).map(p => p.id)
           );
           
-          const isLastAIMessage = !isProtagonist && 
+          const isLastAIMessage = isNotAProtagonist && 
             !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
 
           const isLastProtagonistMessage = isProtagonist 
@@ -1178,9 +826,9 @@ function App() {
               {/* Avatar Column */}
               {!isProtagonist && (
                 <div className="avatar-column">
-                  {avatarUrl ? (
+                  {characterImage ? (
                     <img 
-                      src={avatarUrl} 
+                      src={characterImage} 
                       alt={displayName} 
                       className="character-avatar" 
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -1273,7 +921,7 @@ function App() {
             <div className="avatar-column">
               {streamingCharacter.image ? (
                 <img 
-                  src={`${characterImagesPath}/${streamingCharacter.image}`} 
+                  src={`${getCharacterImageUrl(streamingCharacter.image)}`} 
                   alt={streamingCharacter.name} 
                   className="character-avatar" 
                 />
