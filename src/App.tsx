@@ -250,12 +250,12 @@ function detectIntentToReveal(text: string, characterName: string): boolean {
   
   if (!hasIntent) return false;
 
-  // 2. Try strict detection first ("I'm Aqwam", "My name is Aqwam")
+  // 2. Try strict detection first ("I'm Aqwam", "My name is Aqwam").
   if (detectNameReveal(text, characterName)) {
     return true;
   }
 
-  // 3. FALLBACK: If intent is present but strict regex failed (e.g., "Fine. Aqwam")
+  // 3. FALLBACK: If intent is present but strict regex failed (e.g., "Fine. Aqwam").
   // Assume the last significant word(s) are the name.
   const cleanText = text.replace(/[.,!?;]/g, '').trim();
   const words = cleanText.split(/\s+/);
@@ -290,17 +290,17 @@ function createChatMessage(chatData: ChatData, character: Character, textContent
   const characterName = character.name;
   const chatMessageHistory = chatData.chatMessageHistory;
   
-  // 1. Find previous message by this character to check existing state
+  // 1. Find previous message by this character to check existing state.
   const previousMessage = findPreviousChatMessage(chatMessageHistory, characterId);
   
   // 2. Determine baseline states from history
   const isAppearancePreviouslyRevealed = previousMessage ? previousMessage.isAppearanceRevealed : false;
   const isNamePreviouslyRevealed = previousMessage ? previousMessage.isNameRevealed : false;
   
-  // 3. Check for direct name declaration in the CURRENT message (Standard: "My name is X")
+  // 3. Check for direct name declaration in the CURRENT message (Standard: "My name is X").
   const isDirectNameReveal = detectNameReveal(textContent, characterName);
 
-  // 4. Check for "Intent to Reveal" regardless of history (e.g., "I'll tell you anyway. Aqwam")
+  // 4. Check for "Intent to Reveal" regardless of history (e.g., "I'll tell you anyway. Aqwam").
   const isIntentionalReveal = detectIntentToReveal(textContent, characterName);
 
   // 5. Contextual Check: Answering a standard question from history
@@ -427,15 +427,28 @@ function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
   return result;
 }
 
-// Add abortController as an optional argument
+async function getImageBase64(imageUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`Failed to convert image to base64: ${imageUrl}`, error);
+    return null;
+  }
+}
+
 async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abortController?: AbortController): Promise<ChatData | null> {
   const sampler = aiCharacter.sampler;
   const params = sampler?.parameters ?? {};
-  const prompt = buildPromptFromHistory(chatData, aiCharacter);
 
-  console.log(`${prompt}\n`);
-
-  const allParticipantStops = chatData.participants.flatMap(p => {
+  const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
     return [`\n${id}:`, `\n${p.name}:`];
   });
@@ -443,30 +456,70 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
   const stopSequences = [
     '<|end_of_turn|>',
     '<|start_of_turn|>',
-    ...allParticipantStops,
+    ...stopPatterns,
     ...(sampler?.stopPattern?.patterns ?? []),
   ];
 
+  // ✅ PREPARE IMAGE DATA FOR LLAMA.CPP (mmproj)
+  let imageData: any = undefined;
+
+  if (aiCharacter.image) {
+    const imageUrl = `${characterImagesPath}/${aiCharacter.image}`;
+    
+    try {
+      // ✅ FIX: Added 'await' here to wait for the file reading to complete
+      const imageBase64Data = await getImageBase64(imageUrl);
+      
+      if (imageBase64Data) {
+        // llama.cpp server expects an array of objects with 'data' (base64 string)
+        // Some versions also accept 'id' to cache the image, but 'data' is essential.
+        imageData = [
+          {
+            data: imageBase64Data, 
+            id: 12 // Optional: ID for caching if supported by your server version
+          }
+        ];
+      }
+    } catch (err) {
+      console.error("Failed to load image for multimodal input:", err);
+    }
+  }
+
+  const prompt = buildPromptFromHistory(chatData, aiCharacter);
+
+  console.log(`${prompt}\n`);
+
   try {
+    const requestBody: any = {
+      prompt,
+      n_predict: sampler?.maxTokens ?? 512,
+      stop: stopSequences,
+      ...params,
+    };
+
+    if (imageData) {
+      requestBody.image_data = imageData;
+    }
+
     const response = await fetch('/api/completion', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        n_predict: sampler?.maxTokens ?? 512,
-        stop: stopSequences,
-        ...params,
-      }),
-      signal: abortController?.signal, // ✅ Pass the signal here
+      body: JSON.stringify(requestBody),
+      signal: abortController?.signal,
     });
 
     if (!response.ok) {
-      if (abortController?.signal.aborted) return null; // Handle abort gracefully
+      if (abortController?.signal.aborted) return null;
+      const errorText = await response.text();
+      console.error("LLM API Error:", errorText);
       throw new Error(`API Error: ${response.status}`);
     }
 
     const result = await response.json();
-    const displayText = convertIdsToDisplayNames(result.content.trim(), chatData);
+    
+    const content = result.content || result.choices?.[0]?.text || "";
+    
+    const displayText = convertIdsToDisplayNames(content.trim(), chatData);
     const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
 
     return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: result.kv_cache_path });
@@ -475,6 +528,7 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
       console.log('Generation stopped by user');
       return null;
     }
+    console.error("Error in handleAIResponse:", error);
     throw error;
   }
 }
@@ -618,7 +672,7 @@ function App() {
         abortControllerRef.current
       );
       
-      // Only save and update if not aborted (updatedChatData might be partial or same as input if aborted immediately)
+      // Only save and update if not aborted (updatedChatData might be partial or same as input if aborted immediately).
       if (!abortControllerRef.current?.signal.aborted) {
         await saveChatData(updatedChatData);
         setChatData(updatedChatData);
@@ -649,14 +703,14 @@ function App() {
       trimIndex--;
     }
     
-    // Safety: don't regenerate if there are no AI messages or we're already at the end
+    // Safety: don't regenerate if there are no AI messages or we're already at the end.
     if (trimIndex === 0 || trimIndex === history.length) return;
     
     // Get the original responders in their exact order
     const originalResponders = history
       .slice(trimIndex)
       .map(m => m.character)
-      .filter((char, i, arr) => arr.findIndex(c => c.id === char.id) === i); // Deduplicate
+      .filter((char, i, arr) => arr.findIndex(c => c.id === char.id) === i); // Deduplicate.
     
     const trimmedChatData: ChatData = {
       ...chatData,
@@ -710,17 +764,17 @@ function App() {
   const onDeleteMessage = async (messageId: string) => {
     if (!chatData || isLoading) return;
     
-    // Prevent deleting while generating if it's the current message being written
+    // Prevent deleting while generating if it's the current message being written.
     if (generatingMessageId === messageId) {
       onStopGeneration();
     }
 
     const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
     
-    // Invalidate KV caches for all subsequent messages since context changed
+    // Invalidate KV caches for all subsequent messages since context changed.
     const finalHistory = updatedHistory.map((msg) => {
       const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === msg.id);
-      // If this message originally came after the deleted one, clear its cache
+      // If this message originally came after the deleted one, clear its cache.
       if (originalIndex > chatData.chatMessageHistory.findIndex(m => m.id === messageId)) {
         return { ...msg, kvCachePath: undefined };
       }
@@ -754,12 +808,12 @@ function App() {
         {chatData.chatMessageHistory.map((msg, index) => {
           const isProtagonist = msg.character.id === currentCharacter.id;
           
-          // Name logic remains: Show ID if name not revealed, else Show Name
+          // Name logic remains: Show ID if name not revealed, else Show Name.
           const displayName = msg.isNameRevealed
             ? msg.character.name
             : getCharacterPromptId(msg.character, chatData.participants);
           
-          // Image logic: Always attempt to get the URL if the character has one
+          // Image logic: Always attempt to get the URL if the character has one.
           const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
           
           const aiParticipantIds = new Set(
@@ -779,7 +833,7 @@ function App() {
                     alt={displayName} 
                     className="character-avatar" 
                     onError={(e) => {
-                      // Optional: Handle broken image links gracefully
+                      // Optional: Handle broken image links gracefully.
                       (e.target as HTMLImageElement).style.display = 'none';
                     }}
                   />

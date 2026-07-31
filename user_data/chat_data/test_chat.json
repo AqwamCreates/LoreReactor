@@ -16,16 +16,16 @@
       "name": "Aqwam",
       "image": null,
       "description": "A test protagonist.",
-      "systemPrompt": "",
+      "systemPrompt": null,
       "initiativeWeight": 1,
       "chatProbability": 0.5
     },
     {
       "id": "test_ai_1",
       "name": "Alice",
-      "image": null,
+      "image": "test_ai_1.webp",
       "description": "A librarian.",
-      "systemPrompt": "Roleplay as Alice.",
+      "systemPrompt": null,
       "initiativeWeight": 3,
       "chatProbability": 0.2
     }
@@ -34,7 +34,7 @@
     {
       "id": "test_instruction_1",
       "name": "Test Instruction",
-      "content": "You are a helpful assistant."
+      "content": "This is a conversation between a group of people."
     }
   ],
   "chatMessageHistory": [],
