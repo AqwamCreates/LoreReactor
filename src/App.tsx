@@ -993,8 +993,6 @@ function App() {
           const currentCharacterId = currentCharacter.id;
           const isProtagonist = msg.character.id === currentCharacterId;
 
-          // ❌ REMOVED: No more merging streaming text here. 
-          // We rely on the separate row below for the live view.
           const displayText = msg.textContent;
 
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
@@ -1122,8 +1120,6 @@ function App() {
               ) : (
                 <div className="character-avatar placeholder" /> 
               )}
-              
-              {/* 🔥 FIX: Calculate name safely */}
               <span className="avatar-name">
                 {(() => {
                   // Try to get the delayed name based on history
@@ -1150,7 +1146,6 @@ function App() {
       </div>
 
       <div className="input-wrapper">
-        {/* ✅ Pending file previews */}
         {pendingFiles.length > 0 && (
           <div className="attachment-strip">
             {pendingFiles.map((file, idx) => (
@@ -1169,8 +1164,6 @@ function App() {
             ))}
           </div>
         )}
-
-        {/* ✅ Input row: attach button + textarea + send */}
         <div className="input-area">
           <button
             type="button"
@@ -1199,7 +1192,6 @@ function App() {
             rows={3}
             className="chat-input"
           />
-          {/* ✅ Dynamic Send / Stop Button */}
           <button
             type="button"
             onClick={isLoading ? onStopGeneration : onProtagonistSendMessage}
