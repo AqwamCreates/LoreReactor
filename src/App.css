@@ -105,9 +105,10 @@
 
 /* === Read Mode Text === */
 .message-text {
-  outline: none; white-space: pre-wrap; cursor: pointer; transition: opacity 0.15s;
+  outline: none;
+  white-space: pre-wrap;
+  user-select: text; /* Ensures normal text selection still works */
 }
-.message-text:hover { opacity: 0.85; }
 
 /* === Unified Hover Toolbar === */
 .message-toolbar {
