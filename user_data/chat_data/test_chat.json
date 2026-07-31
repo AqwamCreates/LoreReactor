@@ -14,7 +14,7 @@
     {
       "id": "test_protagonist",
       "name": "Aqwam",
-      "image": null,
+      "image": "Aqwam.jpg",
       "description": "A test protagonist.",
       "systemPrompt": null,
       "initiativeWeight": 1,

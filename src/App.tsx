@@ -97,9 +97,9 @@ interface Character {
   image?: string;
   description?: string;
   systemPrompt?: string;
-  initiativeWeight: number;
-  chatProbability: number;
-  sampler?: Sampler;
+  initiativeWeight?: number | undefined;
+  chatProbability?: number | undefined;
+  sampler?: Sampler | undefined;
 }
 
 interface ChatMessage {
@@ -441,7 +441,7 @@ async function getImageBase64(imageUrl: string): Promise<string | null> {
   }
 }
 
-async function handleAIResponse(
+async function handleServerResponse(
   chatData: ChatData, 
   aiCharacter: Character, 
   abortController?: AbortController,
@@ -610,7 +610,7 @@ async function handleAllParticipantsResponseExceptTheProtagonist(
     }
     
     // Pass the callback here
-    const result = await handleAIResponse(updatedChatData, responder, abortController, onStreamUpdate);
+    const result = await handleServerResponse(updatedChatData, responder, abortController, onStreamUpdate);
     
     if (!result) break; 
     
@@ -702,6 +702,43 @@ function App() {
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
   const [streamingText, setStreamingText] = useState<string>("");
+  const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
+
+  const processProtagonistImageSilently = async (currentChatData: ChatData, character: Character) => {
+    if (!character.image) {
+      setIsInitialImageProcessed(true);
+      return;
+    }
+
+    const sampler = character.sampler
+
+    const silentCharacter: Character = {
+      ...character,
+      sampler: {
+        ...sampler,
+        id: sampler?.id || uuidv4(),
+        name: sampler?.name || 'silent',
+        maxTokens: 0,
+        parameters: { ...sampler?.parameters, n_predict: 0 }
+      }
+    };
+
+    try {
+      const silentController = new AbortController();
+      
+      await handleServerResponse(
+        currentChatData, 
+        silentCharacter, 
+        silentController, 
+        undefined // onStreamUpdate: undefined ensures no text appears in UI
+      );
+
+      setIsInitialImageProcessed(true);
+    } catch (error) {
+      console.warn("Silent image processing failed (non-critical):", error);
+      setIsInitialImageProcessed(true);
+    }
+  };
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
@@ -719,7 +756,39 @@ function App() {
   }, [chatData?.chatMessageHistory.length, editingMessageId]);
 
   React.useEffect(() => {
-    // Only scroll if we are actively streaming text
+
+    const initializeSession = async () => {
+      // 1. If we already have chat data and haven't processed the image yet, process it.
+      if (chatData && currentCharacter && !isInitialImageProcessed) {
+        await processProtagonistImageSilently(chatData, currentCharacter);
+        return;
+      }
+
+      // 2. If we don't have chat data yet, try to load it.
+      if (!chatData || !currentCharacter) {
+        const ids = await listChatIds();
+        if (ids.length > 0) {
+          const loaded = await loadChatData(ids[0]);
+          if (loaded) {
+            setChatData(loaded);
+            setCurrentCharacter(loaded.protagonist);
+            // Note: We do NOT call processProtagonistImageSilently here directly.
+            // Setting the state will trigger a re-render, which will run this effect again.
+            // On the next run, condition #1 will catch it and process the image.
+            // This prevents state update conflicts during the initial load.
+          } else {
+            // No chat found, mark as processed so we don't keep trying
+            setIsInitialImageProcessed(true);
+          }
+        } else {
+          // No chats exist at all, mark as processed
+          setIsInitialImageProcessed(true);
+        }
+      }
+    };
+
+    initializeSession();
+
     if (isLoading && streamingText && messageEndReference.current) {
       messageEndReference.current.scrollIntoView({ behavior: 'auto' }); // 'auto' is instant/snappy for typing
     }
@@ -847,7 +916,7 @@ function App() {
         setStreamingCharacter(responder);
         
         // 👇 PASS THE CALLBACKS HERE
-        const result = await handleAIResponse(
+        const result = await handleServerResponse(
           regeneratedChatData, 
           responder, 
           abortControllerRef.current, 
@@ -923,7 +992,7 @@ function App() {
         setStreamingCharacter(responder);
         
         // 👇 PASS THE CALLBACKS HERE
-        const result = await handleAIResponse(
+        const result = await handleServerResponse(
           regeneratedChatData, 
           responder, 
           abortControllerRef.current, 
