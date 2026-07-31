@@ -666,29 +666,44 @@ function getDelayedDisplayName(
   characterId: string, 
   participants: Character[]
 ): string {
-  // ✅ SAFETY CHECK: If history is empty or index is out of bounds, fallback immediately
+  // ✅ SAFETY CHECK
   if (!history || history.length === 0 || currentIndex < 0 || currentIndex >= history.length) {
     const index = participants.findIndex(p => p.id === characterId);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
   }
 
-  // Scan backwards from the current index to find the immediate predecessor
-  // We start at currentIndex - 1 because we want to look at PREVIOUS messages
+  const currentMsg = history[currentIndex];
+  
+  // OPTIMIZATION 1: If the current message itself already has the name revealed (e.g., during re-render after save), show it.
+  if (currentMsg?.isNameRevealed) {
+    return currentMsg.character.name;
+  }
+
+  // OPTIMIZATION 2: Global History Check.
+  // Even if this specific character hasn't spoken recently, if THEY EVER revealed their name 
+  // in the existing history, we should show their name now.
+  const hasEverRevealedName = history.some(
+    m => m.character.id === characterId && m.isNameRevealed
+  );
+
+  if (hasEverRevealedName) {
+    const participant = participants.find(p => p.id === characterId);
+    return participant ? participant.name : `Character ${participants.findIndex(p => p.id === characterId) + 1}`;
+  }
+
+  // ORIGINAL LOGIC: Scan backwards for the immediate predecessor by this character
   for (let i = currentIndex - 1; i >= 0; i--) {
     if (history[i].character.id === characterId) {
-      // If the previous message had the name revealed, show the real name now
       if (history[i].isNameRevealed) {
-        // ✅ SAFETY: Ensure current message exists before accessing .character
-        if (history[currentIndex]) {
-          return history[currentIndex].character.name;
-        }
+        const participant = participants.find(p => p.id === characterId);
+        return participant ? participant.name : `Character ${participants.findIndex(p => p.id === characterId) + 1}`;
       }
-      // Otherwise, fall through to show the ID
+      // If we found a previous message by them but it wasn't revealed, stop looking.
       break; 
     }
   }
   
-  // Default: Show the generic ID if no previous reveal was found
+  // Default Fallback
   const index = participants.findIndex(p => p.id === characterId);
   return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
@@ -967,10 +982,6 @@ function App() {
     if (trimIndex === 0 || trimIndex === history.length) return;
     
     // Get the original responders in their exact order
-    const originalResponders = history
-      .slice(trimIndex)
-      .map(m => m.character)
-      .filter((char, i, arr) => arr.findIndex(c => c.id === char.id) === i); // Deduplicate.
     
     const trimmedChatData: ChatData = {
       ...chatData,
@@ -988,38 +999,27 @@ function App() {
     abortControllerRef.current = new AbortController();
 
     try {
-      let regeneratedChatData = trimmedChatData;
-      
-      // Define Stream Handlers (Same as SendMessage)
 
-      // 3. Re-generate each responder sequentially WITH streaming
-      for (const responder of originalResponders) {
-        if (abortControllerRef.current?.signal.aborted) break;
+      const chatDataWithUserMessage = trimmedChatData
 
-        setStreamingCharacter(responder);
-        
-        // 👇 PASS THE CALLBACKS HERE
-        const result = await handleServerResponse(
-          regeneratedChatData, 
-          responder, 
-          abortControllerRef.current, 
-          setStreamingText // Use the generic updater
-        );
-        
-        if (!result) break; 
-        regeneratedChatData = result;
-      }
+      console.log(chatDataWithUserMessage)
+
+      const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
+        chatDataWithUserMessage, 
+        abortControllerRef.current,
+        setStreamingCharacter,
+        setStreamingText // Pass the updater down
+      );
       
       if (!abortControllerRef.current?.signal.aborted) {
-        await saveChatData(regeneratedChatData);
-        setChatData(regeneratedChatData);
+        await saveChatData(updatedChatData);
+        setChatData(updatedChatData);
       }
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
-        console.error('Regeneration failed:', error);
+        console.error('AI response failed:', error);
       }
     } finally {
-      // 4. Cleanup State
       setIsLoading(false);
       setGeneratingMessageId(null);
       setStreamingText("");
