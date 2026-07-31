@@ -343,6 +343,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
@@ -356,7 +357,8 @@ function App() {
         }
       });
     }
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatData?.chatMessageHistory.length, editingMessageId]);
 
   const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -397,26 +399,49 @@ function App() {
   };
 
   const onRegenerateLastAI = async () => {
-    if (!chatData || !currentCharacter || isLoading) return;
+    if (!chatData || isLoading) return;
 
     const history = chatData.chatMessageHistory;
+    
+    // Find the boundary: first AI message in the trailing block
     let trimIndex = history.length;
-    while (trimIndex > 0 && history[trimIndex - 1].character.id !== currentCharacter.id) trimIndex--;
-    if (trimIndex === history.length) return;
+    while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+      trimIndex--;
+    }
+    
+    // Safety: don't regenerate if there are no AI messages or we're already at the end
+    if (trimIndex === 0 || trimIndex === history.length) return;
 
-    const triggerMessage = trimIndex > 0 ? history[trimIndex - 1] : null;
-    if (!triggerMessage) return;
-
+    const triggerMessage = history[trimIndex - 1];
+    
+    // Get the original responders in their exact order
+    const originalResponders = history
+      .slice(trimIndex)
+      .map(m => m.character)
+      .filter((char, i, arr) => arr.findIndex(c => c.id === char.id) === i); // Deduplicate
+    
     const trimmedChatData: ChatData = {
       ...chatData,
       chatMessageHistory: history.slice(0, trimIndex),
       last_updated_timestamp: Date.now(),
     };
+    
     setChatData(trimmedChatData);
     setIsLoading(true);
 
     try {
-      const regeneratedChatData = await handleAllParticipantsResponseExceptTheProtagonist(trimmedChatData, triggerMessage.textContent);
+      let regeneratedChatData = trimmedChatData;
+      
+      // Re-generate each responder sequentially with updated context
+      for (const responder of originalResponders) {
+        // Use the full updated history as context, passing trigger text only for the first responder
+        const userTextForResponse = regeneratedChatData.chatMessageHistory.length === trimIndex 
+          ? triggerMessage.textContent 
+          : ''; // Subsequent responders use the accumulated prompt
+        
+        regeneratedChatData = await handleAIResponse(regeneratedChatData, responder, userTextForResponse);
+      }
+      
       await saveChatData(regeneratedChatData);
       setChatData(regeneratedChatData);
     } catch (error) {
@@ -466,8 +491,11 @@ function App() {
             ? msg.character.name
             : getCharacterPromptId(msg.character, chatData.participants);
           const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
-          const isLastAIMessage = !isProtagonist &&
-            !chatData.chatMessageHistory.slice(index + 1).some(m => m.character.id !== currentCharacter.id);
+          const aiParticipantIds = new Set(
+            chatData.participants.filter(p => p.id !== chatData.protagonist.id).map(p => p.id)
+          );
+          const isLastAIMessage = !isProtagonist && 
+            !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
           const isEditing = editingMessageId === msg.id;
 
           return (
@@ -504,9 +532,7 @@ function App() {
                   </div>
                 ) : (
                   <>
-                    <span className="message-text" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Click to edit">
-                      {msg.textContent}
-                    </span>
+                    <span className="message-text">{msg.textContent}</span>
                     <div className="message-toolbar">
                       <button onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
                       {isLastAIMessage && (
@@ -523,9 +549,10 @@ function App() {
 
         {isLoading && (
           <div className="message-row message-left">
-            <div className="typing-indicator">Characters are responding...</div>
+            <div className="typing-indicator">The characters are responding...</div>
           </div>
         )}
+        <div ref={messagesEndRef} style={{ height: '1px' }} />
       </div>
 
       <div className="input-wrapper">
