@@ -76,28 +76,71 @@
 .message-row {
   display: flex;
   align-items: flex-end;
-  gap: 0.75rem;
-  max-width: 75%;      /* ✅ Slightly more room for long messages */
+  gap: 0.5rem;
+  max-width: 85%;
 }
 .message-left { align-self: flex-start; }
 .message-right { align-self: flex-end; flex-direction: row-reverse; }
 
 /* === Avatar Column === */
-.avatar-column { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; }
-.character-avatar {
-  width: 64px; aspect-ratio: 9 / 16; border-radius: 8px; object-fit: cover;
-  object-position: top center; border: 2px solid var(--border); background: var(--social-bg);
+.avatar-column { 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  gap: 16px; /* Significant gap needed under such a tall image */
+  min-width: 160px; /* Match the new massive width */
+  flex-shrink: 0; /* Crucial: Prevents the avatar from being squashed */
+  margin-right: 1rem; /* Extra space between avatar and bubble */
 }
-.character-avatar.placeholder { opacity: 0.5; }
+
+.message-right .avatar-column {
+  margin-right: 0;
+  margin-left: 1rem;
+}
+
+.character-avatar {
+  width: 160px; /* 👈 HUGE: 2.5x the original size */
+  aspect-ratio: 9 / 16; 
+  border-radius: 20px; /* Large radius for a polished look */
+  object-fit: cover;
+  object-position: top center; 
+  border: 4px solid var(--border); /* Thicker border to frame the giant image */
+  background: var(--social-bg);
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.2); /* Deep shadow for separation */
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.character-avatar:hover {
+  transform: scale(1.03) translateY(-2px);
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
+  border-color: var(--accent); /* Highlight border on hover */
+}
+
+.character-avatar.placeholder { 
+  opacity: 0.5; 
+  width: 160px;
+  aspect-ratio: 9 / 16;
+}
+
 .avatar-name {
-  font-size: 0.65rem; color: var(--text-h); text-align: center;
-  word-break: break-word; line-height: 1.1; max-width: 72px;
+  font-size: 0.8rem; /* Slightly larger font to match the scale of the image */
+  color: var(--text-h); 
+  text-align: center;
+  word-break: break-word; 
+  line-height: 1.3; 
+  max-width: 128px; /* Ensure name stays within image bounds */
+  font-weight: bold;
+  letter-spacing: 0.5px;
 }
 
 /* === Message Bubble === */
 .message-bubble {
-  position: relative; padding: 0.75rem 1rem; border-radius: 12px;
-  font-size: 0.95rem; line-height: 1.5; border: 1px solid var(--border);
+  position: relative; 
+  padding: 0.75rem 1rem; 
+  border-radius: 12px;
+  font-size: 0.875rem; /* 👈 CHANGED: Reduced from 0.95rem (approx 14px) */
+  line-height: 1.6;    /* 👈 CHANGED: Increased slightly for better readability at smaller size */
+  border: 1px solid var(--border);
 }
 .bubble-ai { background: var(--social-bg); border-top-left-radius: 2px; }
 .bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 2px; }
@@ -140,7 +183,7 @@
 .edit-textarea {
   width: 100%;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   line-height: 1.5;
   padding: 0.5rem;
   border-radius: 6px;
