@@ -949,7 +949,7 @@ function App() {
       return;
     }
 
-    // Stop generation if it's happening in the range being deleted
+    // Stop generation if it's happening in the range being deleted.
     if (generatingMessageId) {
       onStopGeneration();
     }
@@ -970,7 +970,7 @@ function App() {
     setChatData(updatedChatData);
     await saveChatData(updatedChatData);
     
-    // Reset state
+    // Reset state.
     setMassDeleteStartId(null);
   };
 
