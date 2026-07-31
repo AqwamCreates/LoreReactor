@@ -7,6 +7,7 @@ const userDataPath = `${import.meta.env.BASE_URL}user_data`;
 const characterDataPath = `${userDataPath}/character_data`;
 const characterImagesPath = `${userDataPath}/character_images`;
 const samplerDataPath = `${userDataPath}/sampler_data`;
+const instructionDataPath = `${userDataPath}/instruction_data`;
 const chatDataPath = `${userDataPath}/chat_data`;
 const kvCachesPath = `${userDataPath}/kv_caches`;
 
@@ -41,6 +42,13 @@ interface Sampler {
   maxTokens?: number;
 }
 
+interface Instruction {
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+}
+
 interface Character {
   id: string;
   name: string;
@@ -68,6 +76,7 @@ interface ChatData {
   title: string;
   protagonist: Character;
   participants: Character[];
+  instructions?: Instruction[]; // ← Session-level, applies to all
   chatMessageHistory: ChatMessage[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
@@ -201,6 +210,8 @@ function getCharacterPromptId(character: Character, participants: Character[]): 
 
 function buildPromptFromHistory(chatData: ChatData, character: Character, triggerText: string): string {
   const lines: string[] = [];
+
+  // System context for current speaker
   const characterEverRevealed = chatData.chatMessageHistory.some(
     m => m.character.id === character.id && m.isNameRevealed
   );
@@ -210,16 +221,16 @@ function buildPromptFromHistory(chatData: ChatData, character: Character, trigge
   if (character.systemPrompt) lines.push(`[System: ${character.systemPrompt}]`);
   if (character.description) lines.push(`[${characterLabel} Info: ${character.description}]`);
 
-  const mappings = chatData.participants
-    .map(p => {
-      const id = getCharacterPromptId(p, chatData.participants);
-      const nameRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
-      const appearanceRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isAppearanceRevealed);
-      const namePart = nameRevealed ? p.name : '[name unknown]';
-      const appearancePart = appearanceRevealed ? '[appearance known]' : '[appearance unknown]';
-      return `${id} = ${namePart}, ${appearancePart}`;
-    })
-    .join('; ');
+  // ✅ Session-wide instructions injected ONCE per generation call
+  if (chatData.instructions?.length) {
+    const instructionBlock = chatData.instructions
+      .map(i => `[Instruction: ${i.content}]`)
+      .join('\n');
+    lines.push(instructionBlock);
+  }
+
+  // Identity map, message history, trigger text...
+  const mappings = chatData.participants.map(p => { /* ... */ }).join('; ');
   lines.push(`[Identity Map: ${mappings}]`);
 
   for (const msg of chatData.chatMessageHistory) {

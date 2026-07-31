@@ -3,7 +3,7 @@
   "title": "Test Session",
   "protagonist": {
     "id": "test_protagonist",
-    "name": "Test User",
+    "name": "Aqwam",
     "image": null,
     "description": "A test protagonist.",
     "systemPrompt": "",
@@ -13,7 +13,7 @@
   "participants": [
     {
       "id": "test_protagonist",
-      "name": "Test User",
+      "name": "Aqwam",
       "image": null,
       "description": "A test protagonist.",
       "systemPrompt": "",
@@ -24,10 +24,17 @@
       "id": "test_ai_1",
       "name": "Alice",
       "image": null,
-      "description": "A shy librarian.",
+      "description": "A librarian.",
       "systemPrompt": "Roleplay as Alice.",
       "initiativeWeight": 3,
       "chatProbability": 0.2
+    }
+  ],
+  "instructions": [
+    {
+      "id": "test_instruction_1",
+      "name": "Test Instruction",
+      "content": "You are a helpful assistant."
     }
   ],
   "chatMessageHistory": [],
