@@ -1,9 +1,9 @@
 {
   "id": "test_protagonist",
-  "name": "Test User",
+  "name": "Aqwam",
   "image": null,
   "description": "A test protagonist for integration testing.",
-  "systemPrompt": "You are roleplaying as Test User.",
+  "systemPrompt": "You are roleplaying as Aqwam.",
   "initiativeWeight": 1,
   "chatProbability": 0.5,
   "sampler": {

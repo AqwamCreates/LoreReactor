@@ -2,8 +2,8 @@
   "id": "test_ai_1",
   "name": "Alice",
   "image": null,
-  "description": "A shy librarian who speaks softly but quickly when prompted.",
-  "systemPrompt": "Roleplay as Alice, a shy librarian.",
+  "description": "A librarian who speaks softly but quickly when prompted.",
+  "systemPrompt": "Roleplay as Alice, a librarian.",
   "initiativeWeight": 3,
   "chatProbability": 0.2,
   "sampler": {
