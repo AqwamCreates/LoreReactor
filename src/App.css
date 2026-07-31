@@ -161,6 +161,105 @@
 .edit-btn-cancel { background: transparent; color: var(--text-h); }
 .edit-btn:hover { opacity: 0.85; }
 
+/* === Mass Delete States === */
+
+/* Fade out messages that are in the deletion range */
+.message-fading-out {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+/* Visual border cue for bubbles marked for deletion */
+.bubble-marked-for-delete {
+  border-color: var(--accent-border);
+  border-style: dashed;
+  background: rgba(255, 0, 0, 0.03); /* Very subtle red tint using accent logic */
+}
+
+/* Label shown on messages that will be deleted */
+.deleted-preview-label {
+  font-size: 0.7rem;
+  color: var(--text-h);
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  padding: 0 4px;
+}
+
+/* === Mass Delete Confirmation Bar === */
+/* Replaces the toolbar when a message is selected as the start point */
+.mass-delete-confirm-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--social-bg);
+  border: 1px solid var(--accent-border);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--text-h);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10; /* Ensure it sits above other elements */
+}
+
+.mass-delete-confirm-bar span {
+  white-space: nowrap;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+/* Buttons inside the confirmation bar inherit toolbar styles but need specific colors */
+.mass-delete-confirm-bar .toolbar-btn {
+  width: auto;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: var(--bg);
+  transition: opacity 0.2s;
+}
+
+.mass-delete-confirm-bar .toolbar-btn:hover {
+  opacity: 0.8;
+}
+
+/* Specific color overrides for Confirm/Cancel within the bar */
+.mass-delete-confirm-bar .btn-confirm {
+  background: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.mass-delete-confirm-bar .btn-cancel {
+  background: var(--border);
+  color: var(--text-h);
+  border: 1px solid transparent;
+}
+
+/* === Mass Delete Trigger Button (The 🗑️↓ icon) === */
+/* Uses the standard toolbar-btn base, just adds a hover state */
+.toolbar-btn.mass-delete-trigger:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* Optional: Animation for when the list shrinks */
+@keyframes fadeOutUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.message-row.removing {
+  animation: fadeOutUp 0.3s forwards;
+}
+
 /* === Input Area === */
 .input-area {
   display: flex;

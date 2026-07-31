@@ -21,27 +21,28 @@ const NAME_REVEAL_PATTERNS_LOWERCASE = [
   new RegExp(`my name's ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
   new RegExp(`call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
   new RegExp(`${NAME_CAPTURE} is my name`, 'i'),
-  new RegExp(`they call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`people call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
-  new RegExp(`you may call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
 ];
 
 const NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE = [
-  // 1. Explicit Name Questions.
-  /\b(?:what|may\s+i\s+have)\s+(?:is|'s|be)?\s*(?:your|thy)\s+name\b/i,
-  
-  // 2. Identity Questions.
-  /\bwho\s+(?:are|is)\s+(?:you|thy|thee)\b/i,
-  
-  // 3. "How to call/address" Generalization (Your original request).
-  /\b(?:how|what).*?\b(?:call|address|refer\s+to)\s+(?:you|thy|thee)\b/i,
-  
-  // 4. THE MISSING PIECE: Reciprocal/Elliptical Questions.
-  // Matches: "And you?", "And you are?", "And yourself?", "What about you?".
-  /\b(?:and|so)\s+(?:you|yourself|what\s+about\s+you)\b/i,
-  
-  // 5. Direct "You are?" (Often used after a pause or as a prompt).
-  /\b(?:you\s+are\??|and\s+who\s+are\s+you)\b/i
+  // 1. ... name(s)?
+  // Must end with "name?" or "names?"
+  /\bnames?\?/i,
+
+  // 2. ... call/address/refer you/thy?
+  // Must contain the verb phrase AND end with a question mark
+  /\b(?:call|address|refer\s+to)\s+(?:you|thy|thee).*?\?/i,
+
+  // 3. ... about you?
+  // Must contain "about you" AND end with a question mark
+  /\babout\s+you.*?\?/i,
+
+  // 4. ... are you?
+  // Must contain "are you" AND end with a question mark
+  /\bare\s+you.*?\?/i,
+
+  // 5. ... you are?
+  // Must contain "you are" AND end with a question mark
+  /\byou\s+are.*?\?/i,
 ];
 
 const NAME_PERMISSION_QUESTION_PATTERNS = [
@@ -441,7 +442,12 @@ async function getImageBase64(imageUrl: string): Promise<string | null> {
   }
 }
 
-async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abortController?: AbortController): Promise<ChatData | null> {
+async function handleAIResponse(
+  chatData: ChatData, 
+  aiCharacter: Character, 
+  abortController?: AbortController,
+  onStreamUpdate?: (text: string) => void // Callback to update UI in real-time
+): Promise<ChatData | null> {
   const sampler = aiCharacter.sampler;
   const params = sampler?.parameters ?? {};
 
@@ -457,25 +463,14 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
     ...(sampler?.stopPattern?.patterns ?? []),
   ];
 
-  // ✅ PREPARE IMAGE DATA FOR LLAMA.CPP (mmproj)
+  // ... [Image Data Logic remains exactly the same as your original code] ...
   let imageData: any = undefined;
-
   if (aiCharacter.image) {
     const imageUrl = `${characterImagesPath}/${aiCharacter.image}`;
-    
     try {
-      // ✅ FIX: Added 'await' here to wait for the file reading to complete
       const imageBase64Data = await getImageBase64(imageUrl);
-      
       if (imageBase64Data) {
-        // llama.cpp server expects an array of objects with 'data' (base64 string)
-        // Some versions also accept 'id' to cache the image, but 'data' is essential.
-        imageData = [
-          {
-            data: imageBase64Data, 
-            id: 12 // Optional: ID for caching if supported by your server version
-          }
-        ];
+        imageData = [{ data: imageBase64Data, id: 12 }];
       }
     } catch (err) {
       console.error("Failed to load image for multimodal input:", err);
@@ -484,13 +479,12 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
 
   const prompt = buildPromptFromHistory(chatData, aiCharacter);
 
-  console.log(`${prompt}\n`);
-
   try {
     const requestBody: any = {
       prompt,
       n_predict: sampler?.maxTokens ?? 512,
       stop: stopSequences,
+      stream: true, // ⚠️ CRITICAL: Tell the backend to stream
       ...params,
     };
 
@@ -507,19 +501,58 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
 
     if (!response.ok) {
       if (abortController?.signal.aborted) return null;
-      const errorText = await response.text();
-      console.error("LLM API Error:", errorText);
       throw new Error(`API Error: ${response.status}`);
     }
 
-    const result = await response.json();
+    // ⚠️ CRITICAL: Handle Streaming Response
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder("utf-8");
     
-    const content = result.content || result.choices?.[0]?.text || "";
-    
-    const displayText = convertIdsToDisplayNames(content.trim(), chatData);
+    let fullContent = "";
+    let done = false;
+
+    while (!done && reader) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      
+      if (value) {
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Parse the chunk (Assuming standard SSE format: "data: {...}\n\n")
+        // If your backend sends raw JSON lines, adjust parsing logic here.
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            if (jsonStr.trim() === '[DONE]') break;
+            
+            try {
+              const json = JSON.parse(jsonStr);
+              // Adjust based on your backend's specific response structure
+              const token = json.content || json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || "";
+              
+              if (token) {
+                fullContent += token;
+                
+                // 🔥 Update the UI immediately with the accumulated text
+                if (onStreamUpdate) {
+                  onStreamUpdate(fullContent);
+                }
+              }
+            } catch (e) {
+              console.warn("Error parsing stream chunk", e);
+            }
+          }
+        }
+      }
+    }
+
+    // Final cleanup and state creation
+    const displayText = convertIdsToDisplayNames(fullContent.trim(), chatData);
     const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
 
-    return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: result.kv_cache_path });
+    return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: undefined }); // KV Cache usually not returned in streaming unless supported
+    
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
       console.log('Generation stopped by user');
@@ -532,24 +565,20 @@ async function handleAIResponse(chatData: ChatData, aiCharacter: Character, abor
 
 async function handleAllParticipantsResponseExceptTheProtagonist(
   chatData: ChatData, 
-  abortController: AbortController
+  abortController: AbortController,
+  onSetSpeaker?: (character: Character | null) => void ,
+  onStreamUpdate?: (text: string) => void // Add this argument
 ): Promise<ChatData> {
+  
   let updatedChatData = chatData;
   
-  // 1. Get eligible characters (not protagonist, has >0 chatProbability)
   const eligible = updatedChatData.participants.filter(
     p => p.id !== updatedChatData.protagonist.id && (p.chatProbability ?? 0.5) > 0
   );
 
   if (eligible.length === 0) return updatedChatData;
 
-  // 2. Determine HOW MANY characters should speak this turn.
-  // We iterate through eligible characters and roll against their chatProbability.
-  // This allows multiple people to speak, or just one, randomly.
   const potentialSpeakers = eligible.filter(p => Math.random() < (p.chatProbability ?? 0.5));
-
-  // Fallback: If RNG says no one speaks, force the single highest-probability character to speak
-  // so the chat doesn't stall.
   const speakersToProcess = potentialSpeakers.length === 0
     ? [eligible.reduce((best, p) =>
         (p.chatProbability ?? 0.5) > (best.chatProbability ?? 0.5) ? p : best
@@ -560,19 +589,13 @@ async function handleAllParticipantsResponseExceptTheProtagonist(
   const orderedResponders: Character[] = [];
 
   while (queue.length > 0) {
-    // Calculate total weight of everyone currently in the queue
     const totalWeight = queue.reduce((sum, p) => sum + (p.initiativeWeight ?? 1), 0);
-    
-    // Pick a random number between 0 and totalWeight
     let randomPoint = Math.random() * totalWeight;
     
-    // Find which character corresponds to that random point
     for (const character of queue) {
       const weight = character.initiativeWeight ?? 1;
       if (randomPoint < weight) {
-        // This character is selected!
         orderedResponders.push(character);
-        // Remove them from the queue so they don't get picked again this turn
         queue.splice(queue.indexOf(character), 1);
         break;
       }
@@ -580,11 +603,15 @@ async function handleAllParticipantsResponseExceptTheProtagonist(
     }
   }
 
-  // 4. Execute generation in the newly calculated weighted order
   for (const responder of orderedResponders) {
     if (abortController.signal.aborted) break; 
+
+    if (onStreamUpdate && onSetSpeaker) {
+      onSetSpeaker(responder);
+    }
     
-    const result = await handleAIResponse(updatedChatData, responder, abortController);
+    // Pass the callback here
+    const result = await handleAIResponse(updatedChatData, responder, abortController, onStreamUpdate);
     
     if (!result) break; 
     
@@ -634,12 +661,22 @@ function getDelayedDisplayName(
   characterId: string, 
   participants: Character[]
 ): string {
+  // ✅ SAFETY CHECK: If history is empty or index is out of bounds, fallback immediately
+  if (!history || history.length === 0 || currentIndex < 0 || currentIndex >= history.length) {
+    const index = participants.findIndex(p => p.id === characterId);
+    return index !== -1 ? `Character ${index + 1}` : 'Unknown';
+  }
+
   // Scan backwards from the current index to find the immediate predecessor
+  // We start at currentIndex - 1 because we want to look at PREVIOUS messages
   for (let i = currentIndex - 1; i >= 0; i--) {
     if (history[i].character.id === characterId) {
       // If the previous message had the name revealed, show the real name now
       if (history[i].isNameRevealed) {
-        return history[currentIndex].character.name;
+        // ✅ SAFETY: Ensure current message exists before accessing .character
+        if (history[currentIndex]) {
+          return history[currentIndex].character.name;
+        }
       }
       // Otherwise, fall through to show the ID
       break; 
@@ -660,9 +697,12 @@ function App() {
   const [generatingMessageId, setGeneratingMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [massDeleteStartId, setMassDeleteStartId] = useState<string | null>(null);
   const fileInputReference = React.useRef<HTMLInputElement>(null);
-  const messagesEndReference = React.useRef<HTMLDivElement>(null);
+  const messageEndReference = React.useRef<HTMLDivElement>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
+  const [streamingText, setStreamingText] = useState<string>("");
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
@@ -676,8 +716,15 @@ function App() {
         }
       });
     }
-    messagesEndReference.current?.scrollIntoView({ behavior: 'smooth' });
+    messageEndReference.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatData?.chatMessageHistory.length, editingMessageId]);
+
+  React.useEffect(() => {
+    // Only scroll if we are actively streaming text
+    if (isLoading && streamingText && messageEndReference.current) {
+      messageEndReference.current.scrollIntoView({ behavior: 'auto' }); // 'auto' is instant/snappy for typing
+    }
+  }, [streamingText, isLoading]);
 
   const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -708,9 +755,9 @@ function App() {
   const onProtagonistSendMessage = async () => {
     if (!inputText.trim() || !currentCharacter || !chatData || isLoading) return;
 
-    // ✅ Initialize new AbortController
     abortControllerRef.current = new AbortController();
     
+    // 1. Create User Message
     const protagonistChatMessage = createChatMessage(chatData, chatData.protagonist, inputText);
     const chatDataWithUserMessage = addMessageToChatData(chatData, protagonistChatMessage);
     
@@ -718,22 +765,32 @@ function App() {
     setInputText('');
     setPendingFiles([]);
     setIsLoading(true);
-    setGeneratingMessageId(null); // Reset until AI starts
+    setGeneratingMessageId(null);
+    setStreamingText(""); // Reset streaming buffer
 
     try {
+      // 2. Define how to update the UI when a chunk arrives
+      const handleStreamChunk = (currentText: string) => {
+        setStreamingText(currentText);
+      };
+
+      const handleSetSpeaker = (character: Character) => {
+        setStreamingCharacter(character);
+      };
+
+      // 3. Run generation with the callback
+      // Note: We don't await the full result immediately for UI updates, 
+      // but we still await the function to manage the loading state correctly.
       const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
         chatDataWithUserMessage, 
-        abortControllerRef.current
+        abortControllerRef.current,
+        handleSetSpeaker,
+        handleStreamChunk // Pass the updater down
       );
       
-      // Only save and update if not aborted (updatedChatData might be partial or same as input if aborted immediately).
       if (!abortControllerRef.current?.signal.aborted) {
         await saveChatData(updatedChatData);
         setChatData(updatedChatData);
-      } else {
-        // If aborted, we might want to keep the partial state or revert depending on preference.
-        // Here we just ensure the UI reflects the stop.
-        setChatData(prev => prev ? { ...prev, last_updated_timestamp: Date.now() } : null);
       }
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
@@ -742,6 +799,8 @@ function App() {
     } finally {
       setIsLoading(false);
       setGeneratingMessageId(null);
+      setStreamingText("");
+      setStreamingCharacter(null);
       abortControllerRef.current = null;
     }
   };
@@ -845,6 +904,57 @@ function App() {
     await saveChatData(updatedChatData);
   };
 
+  const onStartMassDelete = (messageId: string) => {
+    if (isLoading) return;
+    // If clicking the same message again, cancel the operation
+    if (massDeleteStartId === messageId) {
+      setMassDeleteStartId(null);
+    } else {
+      setMassDeleteStartId(messageId);
+    }
+  };
+
+  const onConfirmMassDelete = async () => {
+    if (!chatData || !massDeleteStartId || isLoading) return;
+
+    const startIndex = chatData.chatMessageHistory.findIndex(
+      m => m.id === massDeleteStartId
+    );
+
+    if (startIndex === -1) {
+      setMassDeleteStartId(null);
+      return;
+    }
+
+    // Stop generation if it's happening in the range being deleted
+    if (generatingMessageId) {
+      onStopGeneration();
+    }
+
+    // Keep messages FROM index 0 UP TO (but not including) startIndex? 
+    // OR keep UP TO AND INCLUDING startIndex?
+    // Usually "Delete from X to end" means X is also deleted.
+    // So we keep 0 to startIndex.
+    
+    const updatedHistory = chatData.chatMessageHistory.slice(0, startIndex);
+
+    const updatedChatData: ChatData = {
+      ...chatData,
+      chatMessageHistory: updatedHistory,
+      last_updated_timestamp: Date.now(),
+    };
+
+    setChatData(updatedChatData);
+    await saveChatData(updatedChatData);
+    
+    // Reset state
+    setMassDeleteStartId(null);
+  };
+
+  const onCancelMassDelete = () => {
+    setMassDeleteStartId(null);
+  };
+
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
     const branchedChatData = branchChatAtMessage(chatData, messageId);
@@ -860,43 +970,50 @@ function App() {
     <div className="chat-container">
       <div className="chat-history">
         {chatData.chatMessageHistory.map((msg, index) => {
-          const currentCharacterId = currentCharacter.id
+          const currentCharacterId = currentCharacter.id;
           const isProtagonist = msg.character.id === currentCharacterId;
+
+          // ❌ REMOVED: No more merging streaming text here. 
+          // We rely on the separate row below for the live view.
+          const displayText = msg.textContent;
 
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
           
-          // Image logic: Always attempt to get the URL if the character has one.
+          // Image logic
           const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
           
           const aiParticipantIds = new Set(
             chatData.participants.filter(p => p.id !== chatData.protagonist.id).map(p => p.id)
           );
+          
           const isLastAIMessage = !isProtagonist && 
             !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
+            
           const isEditing = editingMessageId === msg.id;
+
+          const isMassDeleteActive = massDeleteStartId !== null;
+          const isMassDeleteStart = msg.id === massDeleteStartId;
+          const msgIndex = index; 
+          const startIndex = isMassDeleteActive 
+            ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteStartId) 
+            : -1;
+          const isInDeletionRange = isMassDeleteActive && startIndex !== -1 && msgIndex >= startIndex;
 
           return (
             <div key={msg.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'}`}>
-              {/* ✅ ALWAYS SHOW AVATAR COLUMN FOR NON-PROTAGONISTS IF IMAGE EXISTS */}
-              {!isProtagonist && avatarUrl && (
+              {/* Avatar Column */}
+              {!isProtagonist && (
                 <div className="avatar-column">
-                  <img 
-                    src={avatarUrl} 
-                    alt={displayName} 
-                    className="character-avatar" 
-                    onError={(e) => {
-                      // Optional: Handle broken image links gracefully.
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  <span className="avatar-name">{displayName}</span>
-                </div>
-              )}
-              
-              {/* Fallback if no image exists but you still want the column layout (Optional) */}
-              {!isProtagonist && !avatarUrl && (
-                <div className="avatar-column">
-                  <div className="character-avatar placeholder" /> 
+                  {avatarUrl ? (
+                    <img 
+                      src={avatarUrl} 
+                      alt={displayName} 
+                      className="character-avatar" 
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="character-avatar placeholder" /> 
+                  )}
                   <span className="avatar-name">{displayName}</span>
                 </div>
               )}
@@ -913,7 +1030,6 @@ function App() {
                       }}
                       className="edit-textarea"
                       rows={Math.max(3, editDraft.split('\n').length)}
-
                     />
                     <div className="edit-actions">
                       <button type="button" onClick={onCancelEdit} className="edit-btn edit-btn-cancel">Cancel</button>
@@ -922,22 +1038,50 @@ function App() {
                   </div>
                 ) : (
                   <>
-                    <span className="message-text">{msg.textContent}</span>
+                    <span className="message-text">{displayText}</span>
+                    
                     <div className="message-toolbar">
-                      <button type="button" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
-                      {isLastAIMessage && (
-                        <button type="button" onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
+                      {/* Hide standard tools if we are in mass delete mode to avoid confusion, or keep them */}
+                      {!isMassDeleteActive ? (
+                        <>
+                          <button type="button" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
+                          {isLastAIMessage && (
+                            <button type="button" onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
+                          )}
+                          <button type="button" onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
+
+                          <button 
+                            type="button"
+                            onClick={() => onDeleteMessage(msg.id)} 
+                            title="Delete only this message" 
+                            className="toolbar-btn delete-btn"
+                            style={{ color: '#ff4444' }}
+                          >
+                            🗑
+                          </button>
+                          
+                          <button 
+                            type="button"
+                            onClick={() => onStartMassDelete(msg.id)} 
+                            title="Delete this and all following messages" 
+                            className="toolbar-btn mass-delete-btn"
+                            style={{ color: '#ff9900' }} // Orange to distinguish from single delete
+                          >
+                            🗑️↓
+                          </button>
+
+                        </>
+                      ) : (
+                        isMassDeleteStart ? (
+                          <div className="mass-delete-confirm-bar">
+                            <span style={{fontSize: '0.8em', marginRight: '5px'}}>Delete from here to end?</span>
+                            <button type="button" onClick={onConfirmMassDelete} className="toolbar-btn" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
+                            <button type="button" onClick={onCancelMassDelete} className="toolbar-btn" style={{backgroundColor: '#ccc'}}>Cancel</button>
+                          </div>
+                        ) : isInDeletionRange ? (
+                          <span className="deleted-preview-label">Will be deleted</span>
+                        ) : null
                       )}
-                      <button type="button" onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
-                      <button 
-                        type="button"
-                        onClick={() => onDeleteMessage(msg.id)} 
-                        title="Delete" 
-                        className="toolbar-btn delete-btn"
-                        style={{ color: '#ff4444' }}
-                      >
-                        🗑
-                      </button>
                     </div>
                   </>
                 )}
@@ -946,12 +1090,43 @@ function App() {
           );
         })}
 
-        {isLoading && (
+        {isLoading && streamingCharacter && streamingText && (
           <div className="message-row message-left">
-            <div className="typing-indicator">The characters are responding...</div>
+            <div className="avatar-column">
+              {streamingCharacter.image ? (
+                <img 
+                  src={`${characterImagesPath}/${streamingCharacter.image}`} 
+                  alt={streamingCharacter.name} 
+                  className="character-avatar" 
+                />
+              ) : (
+                <div className="character-avatar placeholder" /> 
+              )}
+              
+              {/* 🔥 FIX: Calculate name safely */}
+              <span className="avatar-name">
+                {(() => {
+                  // Try to get the delayed name based on history
+                  // We pass history.length - 1 because the streaming message isn't in history yet
+                  const safeIndex = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory.length - 1 : 0;
+                  
+                  return getDelayedDisplayName(
+                    chatData.chatMessageHistory, 
+                    safeIndex, 
+                    streamingCharacter.id, 
+                    chatData.participants
+                  );
+                })()}
+              </span>
+            </div>
+            
+            <div className="message-bubble bubble-ai">
+              <span className="message-text">{streamingText}</span>
+              <span className="cursor-blink">▋</span>
+            </div>
           </div>
         )}
-        <div ref={messagesEndReference} style={{ height: '1px' }} />
+        <div ref={messageEndReference} style={{ height: '1px' }} />
       </div>
 
       <div className="input-wrapper">
