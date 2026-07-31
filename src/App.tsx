@@ -728,7 +728,10 @@ function App() {
 
   const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
-    setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    const files = e.target.files;
+    if (files) {
+      setPendingFiles(prev => [...prev, ...Array.from(files)]);
+    }
     // Reset so the same file can be re-selected
     e.target.value = '';
   };
