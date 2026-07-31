@@ -338,7 +338,7 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  padding: 0 1rem 1rem;
+  padding: 0 1rem;
 }
 
 .attachment-strip {
@@ -393,7 +393,7 @@
 
 .attach-button {
   flex-shrink: 0;
-  width: 36px !important;
+  width: 24px !important;
   height: auto !important;
   min-height: 100%;
   font-size: 16px !important;
