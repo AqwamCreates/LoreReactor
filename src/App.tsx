@@ -59,11 +59,11 @@ const NAME_AFFIRMATION_PATTERNS = [
 
 // Patterns indicating the user is proceeding to say their name regardless of context.
 const NAME_REVEAL_INTENT_PATTERNS = [
-  /\b(?:i'll|I will|I shall|let me|I'm gonna|I am going to)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
+  /\b(?:i'll|i will|i shall|let me|i'm gonna|i am going to)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
   /\b(?:anyway|regardless|either way|in any case|fine|alright|ok),?\s*(?:i'm|i am|my name is|call me)\b/i,
   /\b(?:here(?:'s| is)|it is|that is)\s+(?:my|the)\s+name\b/i,
   /\b(?:never mind|doesn't matter),?\s*(?:i'm|i am|my name is)\b/i,
-  /\b(?:just)\s+(?:know|call me|remember)\s+(?:that)?\s*I['']?m\b/i,
+  /\b(?:just)\s+(?:know|call me|remember)\s+(?:that)?\s*i['']?m\b/i,
   /\b(?:by the way|btw),?\s*(?:i'm|i am|my name is)\b/i
 ];
 
@@ -243,15 +243,39 @@ function detectNamePermissionSequence(
 }
 
 function detectIntentToReveal(text: string, characterName: string): boolean {
+  const characterNameLower = characterName.toLowerCase();
   
-  // Check if any intent pattern exists in the text.
+  // 1. Check if any intent pattern exists in the text
   const hasIntent = NAME_REVEAL_INTENT_PATTERNS.some(pattern => pattern.test(text));
   
   if (!hasIntent) return false;
 
-  // If intent exists, verify there is actually a name-like word following it or in the sentence.
-  // We reuse the existing strict name capture logic but apply it to the whole sentence.
-  return detectNameReveal(text, characterName); 
+  // 2. Try strict detection first ("I'm Aqwam", "My name is Aqwam")
+  if (detectNameReveal(text, characterName)) {
+    return true;
+  }
+
+  // 3. FALLBACK: If intent is present but strict regex failed (e.g., "Fine. Aqwam")
+  // Assume the last significant word(s) are the name.
+  const cleanText = text.replace(/[.,!?;]/g, '').trim();
+  const words = cleanText.split(/\s+/);
+  
+  // Get the last 1 or 2 words as potential name candidates
+  const potentialCandidates = [];
+  if (words.length > 0) potentialCandidates.push(words[words.length - 1]);
+  if (words.length > 1) potentialCandidates.push(words.slice(words.length - 2).join(' '));
+
+  for (const candidate of potentialCandidates) {
+    const candidateLower = candidate.toLowerCase();
+    // Check for inclusion or exact match
+    if (candidateLower === characterNameLower || 
+        characterNameLower.includes(candidateLower) || 
+        candidateLower.includes(characterNameLower)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function findPreviousChatMessage(chatMessageHistory: ChatMessage[], characterId: string): ChatMessage | null {
