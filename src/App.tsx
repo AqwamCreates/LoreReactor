@@ -227,8 +227,7 @@ function detectNamePermissionSequence(
   
   // 2. Check if the last message (AI) is an affirmation
   // Ensure the last message is NOT from the current character (it must be the AI responding to the user)
-  const isAiAffirmation = lastMessage.character.id !== currentCharacterId && 
-                          NAME_AFFIRMATION_PATTERNS.some(p => p.test(lastMessage.textContent));
+  const isAiAffirmation = lastMessage.character.id !== currentCharacterId && NAME_AFFIRMATION_PATTERNS.some(p => p.test(lastMessage.textContent));
 
   if (hasPermissionQuestion && isAiAffirmation) {
     // 3. Check if current text is likely the name
@@ -801,7 +800,83 @@ function App() {
     }
   };
 
-  const onRegenerateLastAI = async () => {
+  const onRegenerateLastAIMessage = async () => {
+    if (!chatData || isLoading) return;
+
+    const history = chatData.chatMessageHistory;
+    
+    // Find the boundary: first AI message in the trailing block
+    let trimIndex = history.length;
+    while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+      trimIndex--;
+    }
+    
+    // Safety: don't regenerate if there are no AI messages or we're already at the end.
+    if (trimIndex === 0 || trimIndex === history.length) return;
+    
+    // Get the original responders in their exact order
+    const originalResponders = history
+      .slice(trimIndex)
+      .map(m => m.character)
+      .filter((char, i, arr) => arr.findIndex(c => c.id === char.id) === i); // Deduplicate.
+    
+    const trimmedChatData: ChatData = {
+      ...chatData,
+      chatMessageHistory: history.slice(0, trimIndex),
+      last_updated_timestamp: Date.now(),
+    };
+    
+    // 1. Prepare State for Streaming
+    setChatData(trimmedChatData);
+    setIsLoading(true);
+    setStreamingText(""); 
+    setStreamingCharacter(null); // Will be set by the first responder
+    
+    // 2. Create Abort Controller
+    abortControllerRef.current = new AbortController();
+
+    try {
+      let regeneratedChatData = trimmedChatData;
+      
+      // Define Stream Handlers (Same as SendMessage)
+
+      // 3. Re-generate each responder sequentially WITH streaming
+      for (const responder of originalResponders) {
+        if (abortControllerRef.current?.signal.aborted) break;
+
+        setStreamingCharacter(responder);
+        
+        // 👇 PASS THE CALLBACKS HERE
+        const result = await handleAIResponse(
+          regeneratedChatData, 
+          responder, 
+          abortControllerRef.current, 
+          setStreamingText // Use the generic updater
+        );
+        
+        if (!result) break; 
+        regeneratedChatData = result;
+      }
+      
+      if (!abortControllerRef.current?.signal.aborted) {
+        await saveChatData(regeneratedChatData);
+        setChatData(regeneratedChatData);
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Regeneration failed:', error);
+      }
+    } finally {
+      // 4. Cleanup State
+      setIsLoading(false);
+      setGeneratingMessageId(null);
+      setStreamingText("");
+      setStreamingCharacter(null);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const onRegenerateLastProtagonistMessage = async () => {
     if (!chatData || isLoading) return;
 
     const history = chatData.chatMessageHistory;
@@ -1009,6 +1084,8 @@ function App() {
           
           const isLastAIMessage = !isProtagonist && 
             !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
+
+          const isLastProtagonistMessage = isProtagonist 
             
           const isEditing = editingMessageId === msg.id;
 
@@ -1067,8 +1144,12 @@ function App() {
                         <>
                           <button type="button" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
                           {isLastAIMessage && (
-                            <button type="button" onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
-                          )}
+                            <button type="button" onClick={onRegenerateLastAIMessage} title="Regenerate" className="toolbar-btn">↻</button>
+                          ) || isLastProtagonistMessage && (
+                            <button type="button" onClick={onRegenerateLastProtagonistMessage} title="Regenerate" className="toolbar-btn">↻</button>
+                          )
+                          
+                          }
                           <button type="button" onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
 
                           <button 
