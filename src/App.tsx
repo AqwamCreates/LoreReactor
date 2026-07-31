@@ -705,6 +705,7 @@ function App() {
   const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
 
   const processProtagonistImageSilently = async (currentChatData: ChatData, character: Character) => {
+
     if (!character.image) {
       setIsInitialImageProcessed(true);
       return;
