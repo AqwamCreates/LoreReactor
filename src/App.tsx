@@ -133,7 +133,7 @@ async function handleServerResponse(
   onStreamUpdate?: (text: string) => void // Callback to update UI in real-time
 ): Promise<ChatData | null> {
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? {};
+  const params = sampler?.parameters ?? {temperature: 0.8};
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -338,26 +338,29 @@ function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: str
   };
 }
 
-function getDelayedDisplayName(chatMessageHistory: ChatMessage[], currentIndex: number, characterId: string, participants: Character[]): string {
+function getDelayedDisplayName(chatMessageHistory: ChatMessage[], chatMessageHistoryIndex: number, characterId: string, participants: Character[]): string {
 
-  if (!chatMessageHistory || chatMessageHistory.length === 0 || currentIndex < 0 || currentIndex >= chatMessageHistory.length) {
+  const chatMessageHistoryLength = chatMessageHistory.length
+
+  if (!chatMessageHistory || chatMessageHistoryLength === 0 || chatMessageHistoryIndex < 0 || chatMessageHistoryIndex >= chatMessageHistoryLength) {
     const index = participants.findIndex(p => p.id === characterId);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
   }
 
   // Scan backwards from the current index to find the immediate predecessor.
   // We start at currentIndex - 1 because we want to look at PREVIOUS messages.
-  for (let i = currentIndex - 1; i >= 0; i--) {
+
+  const targetChatMessage = chatMessageHistory[chatMessageHistoryIndex]
+
+  for (let i = chatMessageHistoryIndex - 1; i >= 0; i--) {
 
     const chatMessage = chatMessageHistory[i]
 
     const character = chatMessage.character
 
     if (character.id === characterId) {
-      if (chatMessage.isNameRevealed) {
-        // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
-        if (chatMessageHistory[currentIndex]) {return character.name}
-      }
+       // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
+      if (chatMessage.isNameRevealed && targetChatMessage) {return character.name}
       break; 
     }
   }
