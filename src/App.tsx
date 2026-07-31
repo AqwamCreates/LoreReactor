@@ -372,23 +372,17 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
   const systemPrompt = character.systemPrompt
   const description = character.description
 
-  // System context for current speaker
-  const characterEverRevealed = chatData.chatMessageHistory.some(
-    m => m.character.id === character.id && m.isNameRevealed
-  );
-  const characterId = getCharacterPromptId(character, chatData.participants);
-  const characterLabel = characterEverRevealed ? name : characterId;
-
-  if (!characterEverRevealed) lines.push(`[${characterLabel} Identity: ${name}]`);
-  if (systemPrompt) lines.push(`[${characterLabel} System Prompt: ${systemPrompt}]`);
-  if (description) lines.push(`[${characterLabel} Description: ${description}]`);
-
   if (chatData.instructions?.length) {
     const instructionBlock = chatData.instructions
       .map(i => `[Instruction: ${i.content}]`)
       .join('\n');
     lines.push(instructionBlock);
   }
+
+  if (systemPrompt) lines.push(`[${name} System Prompt: ${systemPrompt}]`);
+  if (description) lines.push(`[${name} Description: ${description}]`);
+
+  const characterId = getCharacterPromptId(character, chatData.participants);
 
   const mappings = chatData.participants
     .map(p => {
