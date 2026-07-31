@@ -770,13 +770,6 @@ function App() {
 
     try {
       // 2. Define how to update the UI when a chunk arrives
-      const handleStreamChunk = (currentText: string) => {
-        setStreamingText(currentText);
-      };
-
-      const handleSetSpeaker = (character: Character) => {
-        setStreamingCharacter(character);
-      };
 
       // 3. Run generation with the callback
       // Note: We don't await the full result immediately for UI updates, 
@@ -784,8 +777,8 @@ function App() {
       const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
         chatDataWithUserMessage, 
         abortControllerRef.current,
-        handleSetSpeaker,
-        handleStreamChunk // Pass the updater down
+        setStreamingCharacter,
+        setStreamingText // Pass the updater down
       );
       
       if (!abortControllerRef.current?.signal.aborted) {
@@ -831,26 +824,53 @@ function App() {
       last_updated_timestamp: Date.now(),
     };
     
+    // 1. Prepare State for Streaming
     setChatData(trimmedChatData);
     setIsLoading(true);
+    setStreamingText(""); 
+    setStreamingCharacter(null); // Will be set by the first responder
+    
+    // 2. Create Abort Controller
+    abortControllerRef.current = new AbortController();
 
     try {
       let regeneratedChatData = trimmedChatData;
       
-      // Re-generate each responder sequentially with updated context.
+      // Define Stream Handlers (Same as SendMessage)
+
+      // 3. Re-generate each responder sequentially WITH streaming
       for (const responder of originalResponders) {
         if (abortControllerRef.current?.signal.aborted) break;
-        const result = await handleAIResponse(regeneratedChatData, responder);
-        if (!result) break;
+
+        setStreamingCharacter(responder);
+        
+        // 👇 PASS THE CALLBACKS HERE
+        const result = await handleAIResponse(
+          regeneratedChatData, 
+          responder, 
+          abortControllerRef.current, 
+          setStreamingText // Use the generic updater
+        );
+        
+        if (!result) break; 
         regeneratedChatData = result;
       }
       
-      await saveChatData(regeneratedChatData);
-      setChatData(regeneratedChatData);
+      if (!abortControllerRef.current?.signal.aborted) {
+        await saveChatData(regeneratedChatData);
+        setChatData(regeneratedChatData);
+      }
     } catch (error) {
-      console.error('Regeneration failed:', error);
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Regeneration failed:', error);
+      }
     } finally {
+      // 4. Cleanup State
       setIsLoading(false);
+      setGeneratingMessageId(null);
+      setStreamingText("");
+      setStreamingCharacter(null);
+      abortControllerRef.current = null;
     }
   };
 
