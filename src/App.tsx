@@ -21,6 +21,7 @@ const NAME_REVEAL_PATTERNS_LOWERCASE = [
   new RegExp(`my name's ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
   new RegExp(`call me ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
   new RegExp(`${NAME_CAPTURE} is my name`, 'i'),
+  new RegExp(`s+go\\s+by\\s+${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),
 ];
 
 const NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE = [
@@ -34,22 +35,27 @@ const NAME_REVEAL_QUESTION_PATTERNS_LOWERCASE = [
 
   // 3. ... about you?
   // Must contain "about you" AND end with a question mark
-  /\babout\s+you.*?\?/i,
+  /\babout\s+(?:you|thy|thee).*?\?/i,
 
   // 4. ... are you?
   // Must contain "are you" AND end with a question mark
-  /\bare\s+you.*?\?/i,
+  /\bare\s+(?:you|thy|thee).*?\?/i,
 
   // 5. ... you are?
   // Must contain "you are" AND end with a question mark
-  /\byou\s+are.*?\?/i,
+  /\b(?:you|thy|thee)\s+are.*?\?/i,
+
+  // 6. ... you are?
+  // Must contain "you are" AND end with a question mark
+  /\b(?:you|thy|thee)\s+go\s+by\b.*?\?/i,
 ];
 
 const NAME_PERMISSION_QUESTION_PATTERNS = [
   /\b(?:do|would|should|can|may)\s+(?:you|u)\s+(?:want|like|wish)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
   /\b(?:want|would\s+you\s+like)\s+(?:to\s+)?(?:know|hear)\s+(?:my|our)\s+name\b/i,
   /\b(?:shall|i\s+should)\s+(?:tell|say)\s+(?:you|u)\s+(?:my|our)\s+name\b/i,
-  /\b(?:ready\s+for\s+my\s+name|should\s+i\s+introduce\s+myself)\b/i
+  /\b(?:ready\s+for\s+my\s+name|should\s+i\s+introduce\s+myself)\b/i,
+  /\bi\s+go\s+by\b.*?\?/i,
 ];
 
 // Patterns that affirm/accept the offer (Short positive responses).
