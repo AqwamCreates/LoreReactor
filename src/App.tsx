@@ -718,7 +718,7 @@ function App() {
     const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
     
     // Invalidate KV caches for all subsequent messages since context changed
-    const finalHistory = updatedHistory.map((msg, idx) => {
+    const finalHistory = updatedHistory.map((msg) => {
       const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === msg.id);
       // If this message originally came after the deleted one, clear its cache
       if (originalIndex > chatData.chatMessageHistory.findIndex(m => m.id === messageId)) {
@@ -753,10 +753,15 @@ function App() {
       <div className="chat-history">
         {chatData.chatMessageHistory.map((msg, index) => {
           const isProtagonist = msg.character.id === currentCharacter.id;
+          
+          // Name logic remains: Show ID if name not revealed, else Show Name
           const displayName = msg.isNameRevealed
             ? msg.character.name
             : getCharacterPromptId(msg.character, chatData.participants);
+          
+          // Image logic: Always attempt to get the URL if the character has one
           const avatarUrl = !isProtagonist ? getCharacterAvatarUrl(msg.character) : null;
+          
           const aiParticipantIds = new Set(
             chatData.participants.filter(p => p.id !== chatData.protagonist.id).map(p => p.id)
           );
@@ -766,13 +771,26 @@ function App() {
 
           return (
             <div key={msg.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'}`}>
-              {!isProtagonist && (
+              {/* ✅ ALWAYS SHOW AVATAR COLUMN FOR NON-PROTAGONISTS IF IMAGE EXISTS */}
+              {!isProtagonist && avatarUrl && (
                 <div className="avatar-column">
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt={displayName} className="character-avatar" />
-                  ) : (
-                    <div className="character-avatar placeholder" />
-                  )}
+                  <img 
+                    src={avatarUrl} 
+                    alt={displayName} 
+                    className="character-avatar" 
+                    onError={(e) => {
+                      // Optional: Handle broken image links gracefully
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                  <span className="avatar-name">{displayName}</span>
+                </div>
+              )}
+              
+              {/* Fallback if no image exists but you still want the column layout (Optional) */}
+              {!isProtagonist && !avatarUrl && (
+                <div className="avatar-column">
+                  <div className="character-avatar placeholder" /> 
                   <span className="avatar-name">{displayName}</span>
                 </div>
               )}
@@ -789,28 +807,28 @@ function App() {
                       }}
                       className="edit-textarea"
                       rows={Math.max(3, editDraft.split('\n').length)}
-                      autoFocus
+
                     />
                     <div className="edit-actions">
-                      <button onClick={onCancelEdit} className="edit-btn edit-btn-cancel">Cancel</button>
-                      <button onClick={onSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                      <button type="button" onClick={onCancelEdit} className="edit-btn edit-btn-cancel">Cancel</button>
+                      <button type="button" onClick={onSaveEdit} className="edit-btn edit-btn-save">Save</button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <span className="message-text">{msg.textContent}</span>
                     <div className="message-toolbar">
-                      <button onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
+                      <button type="button" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
                       {isLastAIMessage && (
-                        <button onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
+                        <button type="button" onClick={onRegenerateLastAI} title="Regenerate" className="toolbar-btn">↻</button>
                       )}
-                      <button onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
-                      {/* ✅ NEW: Delete Button */}
+                      <button type="button" onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
                       <button 
+                        type="button"
                         onClick={() => onDeleteMessage(msg.id)} 
                         title="Delete" 
                         className="toolbar-btn delete-btn"
-                        style={{ color: '#ff4444' }} // Optional inline style for red color
+                        style={{ color: '#ff4444' }}
                       >
                         🗑
                       </button>
@@ -841,6 +859,7 @@ function App() {
                 </span>
                 <span className="attachment-size">{formatFileSize(file.size)}</span>
                 <button
+                  type="button"
                   onClick={() => removePendingFile(idx)}
                   className="attachment-remove"
                   title="Remove"
