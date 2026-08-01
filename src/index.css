@@ -50,22 +50,33 @@
   }
 }
 
+/* === FIXED: Viewport height handling === */
+html, body {
+  height: 100%; /* ← Base for proper stacking */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* ← Prevents scrolling */
+  background: var(--bg);
+}
+
 #root {
+  height: 100vh; /* ← Fallback for older browsers */
+  height: 100dvh; /* ← Modern browsers (dynamic) */
+  height: -webkit-fill-available; /* ← iOS Safari */
+  min-height: 100vh; /* ← Fallback */
+  min-height: 100dvh; /* ← Modern */
   width: 1126px;
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
   border-inline: 1px solid var(--border);
-  min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  overflow: hidden; /* ← Prevents internal scrolling on root */
 }
 
-body {
-  margin: 0;
-}
-
+/* Rest of your styles stay the same */
 h1,
 h2 {
   font-family: var(--heading);
