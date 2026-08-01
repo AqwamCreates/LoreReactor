@@ -1,4 +1,3 @@
-// src/App.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
 import { useChatSession } from './useChatSession';
@@ -39,7 +38,8 @@ function App() {
     stopGeneration,
     regenerateLastAI,
     regenerateLastProtagonist,
-    messageEndRef
+    messageEndRef,
+    branchChatMessageIds
   } = useChatSession();
 
   const [inputText, setInputText] = useState('');
@@ -69,7 +69,14 @@ function App() {
     try {
       const updated = await deleteMessage(chatData, id);
       setChatData(updated);
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        // Show specific error if it's a branch point
+        if ((err as Error).message.includes("branch")) {
+            alert((err as Error).message);
+        } else {
+            console.error(err); 
+        }
+    }
   };
 
   const handleMassDeleteConfirm = async () => {
@@ -80,7 +87,13 @@ function App() {
       const updated = await massDeleteMessages(chatData, idx);
       setChatData(updated);
       setMassDeleteId(null);
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        if ((err as Error).message.includes("branch")) {
+            alert((err as Error).message);
+        } else {
+            console.error(err); 
+        }
+    }
   };
 
   const handleBranch = async (id: string) => {
@@ -106,6 +119,14 @@ function App() {
   return (
     <div className="chat-container">
       <div className="chat-history">
+        
+        {/* ✅ 2. Render "Branched From" Header if this chat is a branch */}
+        {chatData.parentChatId && (
+          <div className="branch-origin-header">
+            <span>↩️ Viewing a branch started from message ID: {chatData.branchPointMessageId?.substring(0, 8)}...</span>
+          </div>
+        )}
+
         {chatData.chatMessageHistory.map((message, index) => {
           const isProtagonist = message.character.id === currentCharacter.id;
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, message.character.id, chatData.participants);
@@ -120,6 +141,9 @@ function App() {
           const isEditing = editingId === message.id;
           const isMassStart = message.id === massDeleteId;
           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
+          
+          // ✅ 3. Check if this specific message is a branch point
+          const isBranchPoint = branchChatMessageIds.has(message.id);
 
           return (
             <div key={message.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
@@ -163,8 +187,29 @@ function App() {
                             <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>
                           )}
                           <button type="button" onClick={() => handleBranch(message.id)} title="Branch" className="toolbar-btn">⑂</button>
-                          <button type="button" onClick={() => handleDelete(message.id)} title="Delete only this message" className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
-                          <button type="button" onClick={() => setMassDeleteId(message.id)} title="Delete this and all following" className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                          
+                          {/* ✅ 4. Disable Delete if it's a branch point */}
+                          <button 
+                            type="button" 
+                            onClick={() => handleDelete(message.id)} 
+                            title={isBranchPoint ? "Cannot delete: Other chats branch from here" : "Delete only this message"} 
+                            className="toolbar-btn delete-btn" 
+                            style={{ color: isBranchPoint ? '#ccc' : '#ff4444', cursor: isBranchPoint ? 'not-allowed' : 'pointer' }}
+                            disabled={isBranchPoint}
+                          >
+                            🗑
+                          </button>
+
+                          <button 
+                            type="button" 
+                            onClick={() => setMassDeleteId(message.id)} 
+                            title="Delete this and all following" 
+                            className="toolbar-btn mass-delete-btn" 
+                            style={{ color: isBranchPoint ? '#ccc' : '#ff9900', cursor: isBranchPoint ? 'not-allowed' : 'pointer' }}
+                            disabled={isBranchPoint}
+                          >
+                            🗑️↓
+                          </button>
                         </>
                       ) : isMassStart ? (
                         <div className="mass-delete-confirm-bar">
@@ -179,6 +224,14 @@ function App() {
                   </>
                 )}
               </div>
+              
+              {/* ✅ 5. Render Branch Indicator BELOW the message if it's a branch point */}
+              {isBranchPoint && (
+                <div className="branch-indicator">
+                  <span className="branch-icon">🌿</span>
+                  <span className="branch-text">Branch exists from here</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -196,7 +249,6 @@ function App() {
               </span>
             </div>
             <div className="message-bubble bubble-ai">
-              {/* ✅ FIX: Force inline layout for streaming text and cursor */}
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                 <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
                 <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>

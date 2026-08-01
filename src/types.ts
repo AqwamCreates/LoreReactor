@@ -72,7 +72,7 @@ export interface ChatMessage {
   isNameRevealed?: boolean;
   kvCachePath?: string;
   timestamp: number;
-  parentMessageId?: string | null;
+  parentChatMessageId?: string | null;
 }
 
 export interface RawChatMessage {
@@ -82,7 +82,7 @@ export interface RawChatMessage {
   isNameRevealed?: boolean;
   kvCachePath?: string;
   timestamp: number;
-  parentMessageId?: string | null;
+  parentChatMessageId?: string | null;
 }
 
 export interface ChatData {
@@ -94,6 +94,8 @@ export interface ChatData {
   chatMessageHistory: ChatMessage[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
+  parentChatDataId?: string | null;
+  parentChatMessageId?: string | null;
 }
 
 export interface RawChatData {
@@ -104,4 +106,6 @@ export interface RawChatData {
   chatMessageIdHistory: string[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
+  parentChatDataId?: string | null;
+  parentChatMessageId?: string | null;
 }

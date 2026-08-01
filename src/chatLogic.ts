@@ -92,7 +92,7 @@ export function createChatMessage(chatData: ChatData, character: Character, text
         remainingChatStamina: remainingChatStamina,
         isNameRevealed: isRevealed,
         timestamp: Date.now(),
-        parentMessageId: lastMessageId,
+        parentChatMessageId: lastMessageId,
     };
 }
 
