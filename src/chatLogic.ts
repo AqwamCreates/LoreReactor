@@ -136,8 +136,21 @@ export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMes
   };
 }
 
+export function editChatMessageInChatData(chatData: ChatData, messageId: string, newText: string): ChatData {
+    const { chatMessageHistory } = chatData;
+    const index = chatMessageHistory.findIndex(m => m.id === messageId);
+    if (index === -1) return chatData;
+    return {
+        ...chatData,
+        chatMessageHistory: chatMessageHistory.map((message, idx) => {
+            if (idx === index) return { ...message, textContent: newText, kvCachePath: undefined };
+            if (idx > index) return { ...message, kvCachePath: undefined };
+            return message;
+        })
+    };
+}
 
-export function deleteChatMessageFromChatMessageHistory(chatMessageHistory: ChatMessage[], messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
+export function deleteChatMessage(chatMessageHistory: ChatMessage[], messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
     const targetIndex = chatMessageHistory.findIndex(m => m.id === messageId);
     if (targetIndex === -1) return { newHistory: chatMessageHistory, invalidatedIds: [] };
 
@@ -150,7 +163,7 @@ export function deleteChatMessageFromChatMessageHistory(chatMessageHistory: Chat
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
 }
 
-export function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
+export function branchChatAtChatMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
   const branchIndex = sourceChatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
   if (branchIndex === -1) throw new Error('Branch point message not found');
 
@@ -164,18 +177,4 @@ export function branchChatAtMessage(sourceChatData: ChatData, branchPointMessage
     first_created_timestamp: currentTimestamp,
     last_updated_timestamp: currentTimestamp,
   };
-}
-
-export function editChatMessageInChatData(chatData: ChatData, messageId: string, newText: string): ChatData {
-    const { chatMessageHistory } = chatData;
-    const index = chatMessageHistory.findIndex(m => m.id === messageId);
-    if (index === -1) return chatData;
-    return {
-        ...chatData,
-        chatMessageHistory: chatMessageHistory.map((message, idx) => {
-            if (idx === index) return { ...message, textContent: newText, kvCachePath: undefined };
-            if (idx > index) return { ...message, kvCachePath: undefined };
-            return message;
-        })
-    };
 }
