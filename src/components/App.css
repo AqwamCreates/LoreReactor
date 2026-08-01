@@ -215,8 +215,8 @@
   box-sizing: border-box;
 }
 
-.bubble-ai { background: var(--social-bg); border-top-left-radius: 2px; }
-.bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 2px; }
+.bubble-ai { background: var(--social-bg); border-top-left-radius: 10px; }
+.bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 10px; }
 .bubble-editing { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); }
 
 /* === Read Mode Text === */
