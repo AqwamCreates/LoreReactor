@@ -42,6 +42,8 @@ export const DefaultInstruction: Instruction = {
 
 }
 
+const WRITE_API_URL = 'http://localhost:3001'; 
+
 // --- Configuration ---
 const BASE_URL = import.meta.env.BASE_URL;
 const USER_DATA_PATH = `${BASE_URL}user_data`;
@@ -64,36 +66,57 @@ const MANIFEST_FILE = 'manifest.json';
 // --- Generic Helpers ---
 
 async function fetchJson<T>(url: string): Promise<T | null> {
+  // Keep GET requests pointing to wherever the app is hosted (Vite or Node)
+  // If url is relative, it goes to Vite. If you want Node to serve files too, 
+  // you might need to proxy or change this logic later.
   try {
     const response = await fetch(url);
+    
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      if (response.status === 404 || response.status === 200) { 
+        return null; 
+      }
+    }
+
     if (!response.ok) {
-      if (response.status === 404) return null;
-      console.warn(`Fetch failed for ${url}: ${response.statusText}`);
       return null;
     }
+
     return await response.json();
   } catch (error) {
-    console.error(`Network error fetching ${url}:`, error);
+    console.warn(`Failed to parse JSON from ${url}.`, error);
     return null;
   }
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
-  const response = await fetch(url, {
+  // 🚨 REDIRECT WRITES TO NODE SERVER
+  // If the url starts with '/', prepend the Write API URL
+  const targetUrl = url.startsWith('/') 
+    ? `${WRITE_API_URL}${url}` 
+    : url.replace('http://localhost:5173', WRITE_API_URL);
+
+  const response = await fetch(targetUrl, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to save data to ${url}: HTTP ${response.status}`);
+    throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
   }
 }
 
 async function deleteResource(url: string): Promise<void> {
-  const response = await fetch(url, { method: 'DELETE' });
+  // 🚨 REDIRECT DELETES TO NODE SERVER
+  const targetUrl = url.startsWith('/') 
+    ? `${WRITE_API_URL}${url}` 
+    : url.replace('http://localhost:5173', WRITE_API_URL);
+
+  const response = await fetch(targetUrl, { method: 'DELETE' });
   if (!response.ok && response.status !== 404) {
-    throw new Error(`Failed to delete resource at ${url}: HTTP ${response.status}`);
+    throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
   }
 }
 
