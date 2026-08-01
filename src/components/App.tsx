@@ -1,11 +1,11 @@
 // src/App.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { useChatSession } from './useChatSession';
-import type { ChatData } from './types';
-import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
-import { deleteRawChatData, loadAllRawChatData } from './storage';
-import { getCharacterImageUrl } from './storage';
-import { getDelayedDisplayName } from './immersionLogic';
+import { useChatSession } from '../useChatSession';
+import type { ChatData } from '../types';
+import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../messageLogic';
+import { deleteRawChatData, loadAllRawChatData } from '../storage';
+import { getCharacterImageUrl } from '../storage';
+import { getDelayedDisplayName } from '../immersionLogic';
 import './App.css';
 
 function App() {
