@@ -5,21 +5,21 @@ import { findPreviousChatMessage } from './chatLogic';
 type TurnExecutor = (data: ChatData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<ChatData | null>
 
 export async function runTurnSequence(
-    currentChatData: ChatData,
+    chatData: ChatData,
     executor: TurnExecutor,
     abortController: AbortController,
     onSpeakerChange?: (char: Character | null) => void,
     onTokenStream?: (text: string) => void
     ): Promise<ChatData> {
     
-    let workingData = { ...currentChatData, chatMessageHistory: [...currentChatData.chatMessageHistory] };
+    let workingData = { ...chatData, chatMessageHistory: [...chatData.chatMessageHistory] };
     let hasActivity = true;
 
     // Track stamina locally to avoid mutating history during calculation
     const staminaMap = new Map<string, number>();
     for (const p of workingData.participants) {
         if (p.id === workingData.protagonist.id) continue;
-        const prev = findPreviousChatMessage(workingData.chatMessageHistory, p.id);
+        const prev = findPreviousChatMessage(workingData, p.id);
         staminaMap.set(p.id, prev?.remainingChatStamina ?? (p.maximumChatStamina ?? Number.POSITIVE_INFINITY));
     }
 
