@@ -46,7 +46,7 @@
     {
       "id": "test_instruction_1",
       "name": "Test Instruction",
-      "content": "This is a conversation between a group of people."
+      "content": "This is a conversation between a group of people. You must only give a maximum of two sentences and a minimum of one sentence per response. You must not break character."
     }
   ],
   "chatMessageHistory": [],
