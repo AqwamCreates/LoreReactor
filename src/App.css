@@ -142,12 +142,11 @@
   line-height: 1.6;
   border: 1px solid var(--border);
   
-  /* ✅ FIX: Flex column with full width children */
   display: flex;
   flex-direction: column;
-  gap: 0.5rem; /* Equal space between label and text */
-  width: 100%; /* Ensures bubble fills its container */
-  box-sizing: border-box; /* Includes padding in width calculation */
+  gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Hover logic for toolbar */
@@ -181,8 +180,8 @@
 /* ✅ FIX: Full width, centered, no wrapping, no cramping */
 .message-fading-out .deleted-preview-label {
   display: block;
-  width: 100%; /* Takes full width of bubble */
-  text-align: center; /* Centers text */
+  width: 100%;
+  text-align: center;
   font-size: 0.65rem;
   color: var(--accent);
   opacity: 1 !important;
@@ -191,10 +190,10 @@
   letter-spacing: 0.5px;
   line-height: 1.2;
   pointer-events: none;
-  flex-shrink: 0; /* Prevents squashing */
-  white-space: nowrap; /* Prevents wrapping */
+  flex-shrink: 0;
+  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis; /* Adds ... if too wide */
+  text-overflow: ellipsis;
   box-sizing: border-box;
 }
 
@@ -202,7 +201,7 @@
 .message-fading-out .message-text {
   display: block;
   word-break: break-word;
-  width: 100%; /* Takes full width */
+  width: 100%;
   min-height: 1em;
   box-sizing: border-box;
 }
@@ -217,7 +216,7 @@
   white-space: pre-wrap;
   user-select: text;
   display: block;
-  width: 100%; /* Ensures text uses full available width */
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -270,15 +269,12 @@
 .edit-btn:hover { opacity: 0.85; }
 
 /* === Mass Delete States === */
-
-/* Visual border cue for bubbles marked for deletion */
 .bubble-marked-for-delete {
   border-color: var(--accent-border);
   border-style: dashed;
   background: rgba(255, 0, 0, 0.03);
 }
 
-/* Label shown on messages that will be deleted (Fallback) */
 .deleted-preview-label {
   font-size: 0.7rem;
   color: var(--text-h);
@@ -450,6 +446,8 @@
 .attach-button:hover { background: var(--social-bg) !important; }
 .attach-button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* === BRANCHING & STEM LOGIC STYLES === */
+
 .branch-origin-header {
   text-align: center;
   padding: 10px;
@@ -459,8 +457,82 @@
   font-size: 0.8rem;
   opacity: 0.8;
   margin-bottom: 1rem;
+  border-radius: 8px;
 }
 
+/* The Long Separator Line */
+.branch-separator-line {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2.5rem 0;
+  position: relative;
+}
+
+.branch-separator-line::before,
+.branch-separator-line::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0,
+    var(--accent) 10px,
+    transparent 10px,
+    transparent 20px
+  );
+  opacity: 0.6;
+  max-width: 40%;
+}
+
+.branch-separator-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 20px;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  border: 1px solid var(--accent-border);
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  z-index: 2;
+}
+
+.branch-separator-icon {
+  font-size: 1.1rem;
+}
+
+/* Stem Message (Locked) Styles */
+.bubble-stem {
+  opacity: 0.85;
+  border-style: dashed;
+  border-color: var(--border);
+  background: rgba(0,0,0,0.02);
+}
+
+.toolbar-lock {
+  font-size: 0.7rem;
+  color: var(--text-h);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: bold;
+  text-transform: uppercase;
+  cursor: not-allowed;
+  padding: 4px 8px;
+  background: var(--social-bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Branch Indicator (Small leaf under message) */
 .branch-indicator {
   display: flex;
   align-items: center;
