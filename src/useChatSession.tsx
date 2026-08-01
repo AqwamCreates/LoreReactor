@@ -13,7 +13,6 @@ export function useChatSession() {
     const [chatData, setChatData] = useState<ChatData | null>(null);
     const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
     
-    // UI State
     const [isLoading, setIsLoading] = useState(false);
     const [streamingText, setStreamingText] = useState("");
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
@@ -22,21 +21,19 @@ export function useChatSession() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
 
-    // --- Helpers ---
-
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
         } catch (error) {
-        console.error(`Failed to convert image: ${url}`, error);
-        return null;
+            console.error(`Failed to convert image: ${url}`, error);
+            return null;
         }
     };
 
@@ -48,91 +45,94 @@ export function useChatSession() {
     ): Promise<ChatData | null> => {
         let imageData: string | null = null;
         if (character.image) {
-        const url = getCharacterImageUrl(character.image);
-        if (url) imageData = await getImageBase64(url);
+            const url = getCharacterImageUrl(character.image);
+            if (url) imageData = await getImageBase64(url);
         }
 
         const requestBody = prepareRequestBody(data, character, imageData);
 
         try {
-        const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
-            onToken: (fullText) => onToken?.(fullText)
-        });
-        
-        const displayText = convertIdsToDisplayNames(rawText, data);
-        const aiMessage = createChatMessage(data, character, displayText);
-        return addMessageToChatData(data, aiMessage);
+            const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
+                onToken: (fullText) => onToken?.(fullText)
+            });
+            
+            if (!rawText) return null;
+
+            const displayText = convertIdsToDisplayNames(rawText, data);
+            const aiMessage = createChatMessage(data, character, displayText);
+            return addMessageToChatData(data, aiMessage);
         } catch (error) {
-        if ((error as Error).name === 'AbortError') return null;
-        console.error("Inference failed:", error);
-        return null;
+            // ✅ FIX: Only log if it's NOT an AbortError (which is expected)
+            if ((error as Error).name !== 'AbortError') {
+                console.error("Inference failed:", error);
+            }
+            return null;
         }
     }, []);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
-        setIsInitialImageProcessed(true);
-        return;
+            setIsInitialImageProcessed(true);
+            return;
         }
 
         const sampler = character.sampler;
         const silentCharacter: Character = {
-        ...character,
-        sampler: {
-            ...sampler,
-            id: sampler?.id || uuidv4(),
-            name: sampler?.name || 'silent',
-            maximumNumberOfTokens: 0,
-            parameters: { ...sampler?.parameters, n_predict: 0 },
-            stopPatterns: [],
-        }
+            ...character,
+            sampler: {
+                ...sampler,
+                id: sampler?.id || uuidv4(),
+                name: sampler?.name || 'silent',
+                maximumNumberOfTokens: 0,
+                parameters: { ...sampler?.parameters, n_predict: 0 },
+                stopPatterns: [],
+            }
         };
 
         try {
-        const controller = new AbortController();
-        await handleServerResponse(data, silentCharacter, controller.signal, undefined);
-        setIsInitialImageProcessed(true);
+            const controller = new AbortController();
+            await handleServerResponse(data, silentCharacter, controller.signal, undefined);
+            setIsInitialImageProcessed(true);
         } catch (error) {
-        console.warn("Silent image processing failed:", error);
-        setIsInitialImageProcessed(true);
+            if ((error as Error).name !== 'AbortError') {
+                console.warn("Silent image processing failed:", error);
+            }
+            setIsInitialImageProcessed(true);
         }
     }, [handleServerResponse]);
 
-    // --- Initialization ---
-
     useEffect(() => {
         const init = async () => {
-        if (!chatData) {
-            const arr = await loadAllRawChatData();
-            if (arr.length > 0 && arr[0]) {
-            const data = arr[0];
-            setChatData(data);
-            setCurrentCharacter(data.protagonist);
-            } else {
-            setIsInitialImageProcessed(true);
+            if (!chatData) {
+                const arr = await loadAllRawChatData();
+                if (arr.length > 0 && arr[0]) {
+                    const data = arr[0];
+                    setChatData(data);
+                    setCurrentCharacter(data.protagonist);
+                } else {
+                    setIsInitialImageProcessed(true);
+                }
+            } else if (currentCharacter && !isInitialImageProcessed) {
+                await processProtagonistImageSilently(chatData, currentCharacter);
             }
-        } else if (currentCharacter && !isInitialImageProcessed) {
-            await processProtagonistImageSilently(chatData, currentCharacter);
-        }
         };
         init();
     }, [chatData, currentCharacter, isInitialImageProcessed, processProtagonistImageSilently]);
 
-    // Auto-scroll
     useEffect(() => {
         if (isLoading && streamingText && messageEndRef.current) {
-        messageEndRef.current.scrollIntoView({ behavior: 'auto' });
+            messageEndRef.current.scrollIntoView({ behavior: 'auto' });
         } else if (messageEndRef.current) {
-        messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
 
-    // --- Actions ---
-
     const stopGeneration = useCallback(() => {
         if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+            abortControllerRef.current.abort();
+            // We do NOT set to null here immediately if we want the finally block to check it,
+            // but usually setting to null is fine if we capture the reference locally.
+            abortControllerRef.current = null; 
         }
         setIsLoading(false);
         setStreamingCharacter(null);
@@ -142,37 +142,47 @@ export function useChatSession() {
     const sendMessage = useCallback(async (text: string) => {
         if (!chatData || !currentCharacter || !text.trim() || isLoading) return;
 
-        abortControllerRef.current = new AbortController();
+        // ✅ FIX: Capture the controller in a local constant so it survives even if ref is nulled
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        
         setIsLoading(true);
         setStreamingText("");
 
         try {
-        const userMsg = createChatMessage(chatData, currentCharacter, text);
-        const tempData = addMessageToChatData(chatData, userMsg);
-        setChatData(tempData);
+            const userMsg = createChatMessage(chatData, currentCharacter, text);
+            const tempData = addMessageToChatData(chatData, userMsg);
+            setChatData(tempData);
 
-        const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-            handleServerResponse(data, char, signal, onToken);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
+                handleServerResponse(data, char, signal, onToken);
 
-        const updatedData = await runTurnSequence(
-            tempData, 
-            executor, 
-            abortControllerRef.current, 
-            setStreamingCharacter, 
-            setStreamingText
-        );
+            const updatedData = await runTurnSequence(
+                tempData, 
+                executor, 
+                controller, // Pass the local constant
+                setStreamingCharacter, 
+                setStreamingText,
+                setChatData 
+            );
 
-        if (!abortControllerRef.current.signal.aborted && updatedData) {
-            await saveRawChatData(updatedData);
-            setChatData(updatedData);
-        }
+            // ✅ FIX: Check the local constant, not the ref
+            if (!controller.signal.aborted && updatedData) {
+                // Optional final sync
+                setChatData(updatedData);
+            }
         } catch (err) {
-        console.error("Send failed:", err);
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Send failed:", err);
+            }
         } finally {
-        setIsLoading(false);
-        setStreamingText("");
-        setStreamingCharacter(null);
-        abortControllerRef.current = null;
+            // ✅ FIX: Only clear ref if it's still the same controller we started with
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
@@ -182,13 +192,13 @@ export function useChatSession() {
         
         let trimIndex = history.length;
         while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
-        trimIndex--;
+            trimIndex--;
         }
         if (trimIndex === 0 || trimIndex === history.length) return;
 
         const oldMessages = history.slice(trimIndex);
         try {
-        await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
         } catch (err) { console.error("Delete failed:", err); }
 
         const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
@@ -197,31 +207,35 @@ export function useChatSession() {
         setStreamingText("");
         setStreamingCharacter(null);
 
-        abortControllerRef.current = new AbortController();
-        const originalResponders = oldMessages.map(m => m.character).filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         try {
-        let currentData = trimmedData;
-        for (const responder of originalResponders) {
-            if (abortControllerRef.current?.signal.aborted) break;
-            setStreamingCharacter(responder);
-            
-            const result = await handleServerResponse(currentData, responder, abortControllerRef.current.signal, setStreamingText);
-            if (!result) break;
-            currentData = result;
-        }
+            let currentData = trimmedData;
+            for (const responder of oldMessages.map(m => m.character).filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)) {
+                if (controller.signal.aborted) break;
+                setStreamingCharacter(responder);
+                
+                const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText);
+                if (!result) break;
+                currentData = result;
+            }
 
-        if (!abortControllerRef.current.signal.aborted) {
-            await saveRawChatData(currentData);
-            setChatData(currentData);
-        }
+            if (!controller.signal.aborted) {
+                await saveRawChatData(currentData);
+                setChatData(currentData);
+            }
         } catch (err) {
-        console.error("Regen failed:", err);
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Regen failed:", err);
+            }
         } finally {
-        setIsLoading(false);
-        setStreamingText("");
-        setStreamingCharacter(null);
-        abortControllerRef.current = null;
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
         }
     }, [chatData, isLoading, handleServerResponse]);
 
@@ -231,13 +245,13 @@ export function useChatSession() {
         
         let trimIndex = history.length;
         while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
-        trimIndex--;
+            trimIndex--;
         }
         if (trimIndex === 0 || trimIndex === history.length) return;
 
         const oldMessages = history.slice(trimIndex);
         try {
-        await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
         } catch (err) { console.error("Delete failed:", err); }
 
         const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
@@ -246,31 +260,36 @@ export function useChatSession() {
         setStreamingText("");
         setStreamingCharacter(null);
 
-        abortControllerRef.current = new AbortController();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         try {
-        const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-            handleServerResponse(data, char, signal, onToken);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
+                handleServerResponse(data, char, signal, onToken);
 
-        const updatedData = await runTurnSequence(
-            trimmedData, 
-            executor, 
-            abortControllerRef.current, 
-            setStreamingCharacter, 
-            setStreamingText
-        );
+            const updatedData = await runTurnSequence(
+                trimmedData, 
+                executor, 
+                controller, 
+                setStreamingCharacter, 
+                setStreamingText,
+                setChatData
+            );
 
-        if (!abortControllerRef.current.signal.aborted && updatedData) {
-            await saveRawChatData(updatedData);
-            setChatData(updatedData);
-        }
+            if (!controller.signal.aborted && updatedData) {
+                setChatData(updatedData);
+            }
         } catch (err) {
-        console.error("Regen failed:", err);
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Regen failed:", err);
+            }
         } finally {
-        setIsLoading(false);
-        setStreamingText("");
-        setStreamingCharacter(null);
-        abortControllerRef.current = null;
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
         }
     }, [chatData, isLoading, handleServerResponse]);
 
