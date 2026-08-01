@@ -2,7 +2,7 @@ export interface StreamCallbacks {
   onToken: (currentChunk: string) => void;
 }
 
-export class LLMInferenceEngine {
+export class LargeLanguageModelInferenceEngine {
   
   async generateStream(
     requestBody: any, 
