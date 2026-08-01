@@ -1,29 +1,12 @@
 // src/App.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from './useChatSession';
-import type { Character, ChatMessage } from './types';
+import type { ChatData } from './types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
 import { deleteRawChatData, loadAllRawChatData } from './storage';
 import { getCharacterImageUrl } from './storage';
+import { getDelayedDisplayName } from './immersionLogic';
 import './App.css';
-
-function getDelayedDisplayName(chatMessageHistory: ChatMessage[], index: number, characterId: string, participants: Character[]): string {
-  const len = chatMessageHistory.length;
-  if (!len || index < 0 || index >= len) {
-    const idx = participants.findIndex(p => p.id === characterId);
-    return idx !== -1 ? `Character ${idx + 1}` : 'Unknown';
-  }
-  const target = chatMessageHistory[index];
-  for (let i = index - 1; i >= 0; i--) {
-    const msg = chatMessageHistory[i];
-    if (msg.character.id === characterId) {
-      if (msg.isNameRevealed && target) return msg.character.name;
-      break;
-    }
-  }
-  const idx = participants.findIndex(p => p.id === characterId);
-  return idx !== -1 ? `Character ${idx + 1}` : 'Unknown';
-}
 
 function App() {
   const { 
@@ -187,7 +170,7 @@ function App() {
       <div className="chat-history">
         {chatData.chatMessageHistory.map((message, index) => {
           const isProtagonist = message.character.id === currentCharacter.id;
-          const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, message.character.id, chatData.participants);
+          const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
           const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
           
           const aiParticipantIds = new Set(
@@ -266,8 +249,8 @@ function App() {
         {isLoading && streamingCharacter && (
           <div className="message-row message-left">
             <div className="avatar-column">
-              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
-              <span className="avatar-name">{streamingCharacter.name}</span>
+              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length - 1, streamingCharacter.id, chatData.participants)} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
+              <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length - 1, streamingCharacter.id, chatData.participants)}</span>
             </div>
             <div className="message-bubble bubble-ai">
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
