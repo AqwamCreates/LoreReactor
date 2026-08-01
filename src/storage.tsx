@@ -49,16 +49,14 @@ const BASE_URL = import.meta.env.BASE_URL;
 const USER_DATA_PATH = `${BASE_URL}user_data`;
 
 const PATHS = {
-  characters: `${USER_DATA_PATH}/character_data`,
-  characterImages: `${USER_DATA_PATH}/character_images`,
-  samplers: `${USER_DATA_PATH}/sampler_data`,
-  instructions: `${USER_DATA_PATH}/instruction_data`,
-  stopPatterns: `${USER_DATA_PATH}/stop_patterns_data`,
-  // Assuming individual messages might be stored separately if you go full normalized, 
-  // but usually ChatData contains the history. Keeping this for potential future use or large blobs.
-  chatMessages: `${USER_DATA_PATH}/chat_messages`, 
-  chatData: `${USER_DATA_PATH}/chat_data`,
-  kvCaches: `${USER_DATA_PATH}/kv_caches`,
+  characters: "/user_data/character_data",
+  characterImages: "/user_data/character_images",
+  samplers: "/user_data/sampler_data",
+  instructions: "/user_data/instruction_data",
+  stopPatterns: "/user_data/stop_patterns_data",
+  chatMessages: "/user_data/chat_messages", 
+  chatData: "/user_data/chat_data",
+  kvCaches: "/user_data/kv_caches",
 };
 
 const MANIFEST_FILE = 'manifest.json';
@@ -66,9 +64,6 @@ const MANIFEST_FILE = 'manifest.json';
 // --- Generic Helpers ---
 
 async function fetchJson<T>(url: string): Promise<T | null> {
-  // Keep GET requests pointing to wherever the app is hosted (Vite or Node)
-  // If url is relative, it goes to Vite. If you want Node to serve files too, 
-  // you might need to proxy or change this logic later.
   try {
     const response = await fetch(url);
     
@@ -91,11 +86,11 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
-  // 🚨 REDIRECT WRITES TO NODE SERVER
-  // If the url starts with '/', prepend the Write API URL
-  const targetUrl = url.startsWith('/') 
-    ? `${WRITE_API_URL}${url}` 
-    : url.replace('http://localhost:5173', WRITE_API_URL);
+  // Ensure the url starts with / for consistent handling
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  
+  // Construct the full target URL for the Write Server
+  const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
 
   const response = await fetch(targetUrl, {
     method: 'PUT',
@@ -109,10 +104,11 @@ async function putJson<T>(url: string, data: T): Promise<void> {
 }
 
 async function deleteResource(url: string): Promise<void> {
-  // 🚨 REDIRECT DELETES TO NODE SERVER
-  const targetUrl = url.startsWith('/') 
-    ? `${WRITE_API_URL}${url}` 
-    : url.replace('http://localhost:5173', WRITE_API_URL);
+  // Ensure the url starts with /
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  
+  // Construct the full target URL for the Write Server
+  const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
 
   const response = await fetch(targetUrl, { method: 'DELETE' });
   if (!response.ok && response.status !== 404) {
@@ -320,6 +316,14 @@ export async function deleteInstruction(id: string): Promise<void> {
   await updateManifest(PATHS.instructions, id, 'remove');
 }
 
+// --- Chat Message Repository ---
+export async function deleteChatMessage(id: string): Promise<void> {
+  console.log(`🗑️ Deleting message file: ${id}`);
+  await deleteResource(`${PATHS.chatMessages}/${id}.json`);
+  // Note: We do NOT remove it from any manifest because messages don't have a global manifest.
+  // They are only referenced by ChatData files.
+}
+
 // --- Chat Data Repository ---
 // Note: In your normalized model, ChatData holds the message HISTORY (objects) 
 // but references Characters/Instructions by ID.
@@ -498,8 +502,11 @@ export const storage = {
   loadSampler,
   saveSampler,
   deleteSampler,
+
+  // Chat Messages
+  deleteChatMessage,
   
-  // Chats
+  // Chat Data
   loadChatManifest,
   loadChatData,
   loadAllChatData,
