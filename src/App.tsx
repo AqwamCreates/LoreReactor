@@ -120,8 +120,8 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
     if (fatigueInstruction) {lines.push(fatigueInstruction);}
   }
 
-  //lines.push(`[Continue the conversation as ${characterId}.]`);
-  
+  lines.push(`[Continue the conversation as ${characterId} / ${name}.]`);
+
   const mappings = chatData.participants
     .map(p => {
       const id = getCharacterPromptId(p, chatData.participants);
