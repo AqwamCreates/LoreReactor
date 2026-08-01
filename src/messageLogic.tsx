@@ -1,10 +1,10 @@
 import { deleteRawChatMessage, saveRawChatData } from './storage';
-import { deleteChatMessage as calculateDelete, editChatMessageInChatData, branchChatMessage } from './chatLogic';
+import { deleteChatMessage, editChatMessageInChatData, branchChatMessage } from './chatLogic';
 import type { ChatData } from './types';
 
 export async function deleteMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
     await deleteRawChatMessage(messageId);
-    const { newHistory } = calculateDelete(currentChat, messageId);
+    const { newHistory } = deleteChatMessage(currentChat, messageId);
     
     return {
         ...currentChat,
