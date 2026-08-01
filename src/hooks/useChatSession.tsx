@@ -1,10 +1,10 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData } from './types';
+import type { Character, ChatData } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, prepareRequestBody } from './chatLogic';
-import { runTurnSequence } from './objects/ChatOrchestrator';
-import { LargeLanguageModelInferenceEngine } from './objects/LargeLanguageModelInferenceEngine';
+import { runTurnSequence } from '../objects/ChatOrchestrator';
+import { LargeLanguageModelInferenceEngine } from '../objects/LargeLanguageModelInferenceEngine';
 import { v4 as uuidv4 } from 'uuid';
 
 const engine = new LargeLanguageModelInferenceEngine();

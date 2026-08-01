@@ -1,6 +1,6 @@
 // src/services/chatLogic.ts
 import { v4 as uuidv4 } from 'uuid';
-import type { Character, ChatData, ChatMessage, StopPattern } from './types';
+import type { Character, ChatData, ChatMessage, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
 export function getCharacterPromptId(character: Character, participants: Character[]): string {
