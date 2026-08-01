@@ -49,12 +49,29 @@ function getCharacterPromptId(character: Character, participants: Character[]): 
   return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
+function getFatigueInstruction(character: Character, currentChatStamina: number, maximumChatStamina: number): string {
+  if (maxStamina === Number.POSITIVE_INFINITY) return ""; // Gods don't get tired
+
+  const ratio = currentChatStamina / maximumChatStamina;
+
+  if (ratio > 0.7) {
+    return ""; // Full energy, no instruction needed
+  }if (ratio > 0.4) {
+    return "[System Note: You are starting to feel slightly winded. Keep your responses concise and focused. Don't ramble.]";
+  }if (ratio > 0.1) {
+    return "[System Note: You are quite exhausted. Your speech should be halting, brief, or you might suggest someone else take over. Avoid long monologues.]";
+  }
+    // Critical fatigue (0-10%)
+  return "[System Note: You are completely drained. You barely have the energy to speak. If you must reply, make it a whisper, a grunt, or defer entirely to another character. Do not initiate new topics.]";
+}
+
 function buildPromptFromHistory(chatData: ChatData, character: Character): string {
   const lines: string[] = [];
 
   const name = character.name
   const systemPrompt = character.systemPrompt
   const description = character.description
+  const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
 
   if (chatData.instructions?.length) {
     const instructionBlock = chatData.instructions
@@ -88,7 +105,15 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
     lines.push(`${promptId}: ${msg.textContent}`);
   }
 
-  lines.push(`${characterId}:`);
+  const previousMessage = findPreviousChatMessage(chatData.chatMessageHistory, characterId);
+  const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
+
+  if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
+    const fatigueInstruction = getFatigueInstruction(character, currentChatStamina, maximumChatStamina);
+    if (fatigueInstruction) {lines.push(fatigueInstruction);}
+  }
+
+  lines.push(`${characterId}: `);
   return lines.join('\n');
 }
 
