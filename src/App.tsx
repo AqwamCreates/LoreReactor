@@ -2,11 +2,11 @@ import React from 'react'
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid';
 import type {Character, ChatMessage, ChatData} from "./types"
-import {saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
+import {saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl} from "./storage"
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage, branchChatMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, branchChatMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
@@ -154,7 +154,7 @@ function App() {
 
   React.useEffect(() => {
     if (!chatData || !currentCharacter) {
-      loadAllChatData().then(async (chatDataArray) => {
+      loadAllRawChatData().then(async (chatDataArray) => {
         if (chatDataArray.length > 0) {
           const chatData = chatDataArray[0];
           if (chatData) {
@@ -176,7 +176,7 @@ function App() {
         return;
       }
       if (!chatData || !currentCharacter) {
-        const chatDataArray = await loadAllChatData();
+        const chatDataArray = await loadAllRawChatData();
         if (chatDataArray.length > 0) {
           const chatData = chatDataArray[0];
           if (chatData) {
@@ -260,7 +260,7 @@ function App() {
       );
       
       if (!abortControllerRef.current?.signal.aborted) {
-        await saveChatData(updatedChatData);
+        await saveRawChatData(updatedChatData);
         setChatData(updatedChatData);
       }
     } catch (error) {
@@ -294,7 +294,7 @@ function App() {
 
     // 2. Delete Old Files First 🗑️
     try {
-      await Promise.all(oldMessages.map(message => deleteChatMessage(chatData, message.id)));
+      await Promise.all(oldMessages.map(message => deleteRawChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -341,7 +341,7 @@ function App() {
       }
       
       if (!abortControllerRef.current?.signal.aborted) {
-        await saveChatData(regeneratedChatData);
+        await saveRawChatData(regeneratedChatData);
         setChatData(regeneratedChatData);
       }
     } catch (error) {
@@ -375,7 +375,7 @@ function App() {
     const oldMessages = history.slice(trimIndex);
 
     try {
-      await Promise.all(oldMessages.map(message => deleteChatMessage(chatData, message.id)));
+      await Promise.all(oldMessages.map(message => deleteRawChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -416,7 +416,7 @@ function App() {
       );
       
       if (!abortControllerRef.current?.signal.aborted) {
-        await saveChatData(updatedChatData);
+        await saveRawChatData(updatedChatData);
         setChatData(updatedChatData);
       }
     } catch (error) {
@@ -442,7 +442,7 @@ function App() {
     if (!chatData || !editingMessageId) return;
     const updatedChatData = editChatMessageInChatData(chatData, editingMessageId, editDraft);
     setChatData(updatedChatData);
-    await saveChatData(updatedChatData);
+    await saveRawChatData(updatedChatData);
     setEditingMessageId(null);
     setEditDraft('');
   };
@@ -461,7 +461,7 @@ function App() {
     }
 
     try {
-      await deleteChatMessage(chatData, messageId);
+      await deleteRawChatMessage(messageId);
     } catch (err) {
       console.error("Failed to delete message file:", err);
     }
@@ -487,7 +487,7 @@ function App() {
     };
 
     setChatData(updatedChatData);
-    await saveChatData(updatedChatData);
+    await saveRawChatData(updatedChatData);
   };
 
   const onStartMassDelete = (messageId: string) => {
@@ -521,7 +521,7 @@ function App() {
 
     // 2. Delete Files in Parallel 🗑️🗑️🗑️
     try {
-      await Promise.all(messagesToDelete.map(msg => deleteChatMessage(chatData, msg.id)));
+      await Promise.all(messagesToDelete.map(message => deleteRawChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to bulk delete message files:", err);
     }
@@ -535,7 +535,7 @@ function App() {
     };
 
     setChatData(updatedChatData);
-    await saveChatData(updatedChatData);
+    await saveRawChatData(updatedChatData);
     
     // Reset state.
     setMassDeleteStartId(null);
@@ -548,7 +548,7 @@ function App() {
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
     const branchedChatData = branchChatMessage(chatData, messageId);
-    await saveChatData(branchedChatData);
+    await saveRawChatData(branchedChatData);
     window.open(window.location.href, '_blank');
   };
 
