@@ -2,7 +2,6 @@ import React from 'react'
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid';
 import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData} from "./types"
-import {detectName} from "./nameDetection"
 import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "./storage"
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
@@ -518,6 +517,8 @@ function App() {
       }
       return message;
     });
+
+    
 
     const updatedChatData: ChatData = {
       ...chatData,
