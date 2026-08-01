@@ -17,21 +17,20 @@ function createChatMessage(chatData: ChatData, character: Character, textContent
   const characterId = character.id;
   const characterName = character.name;
   const chatMessageHistory = chatData.chatMessageHistory;
-  
   const previousMessage = findPreviousChatMessage(chatMessageHistory, characterId);
-  const isAppearancePreviouslyRevealed = previousMessage ? previousMessage.isAppearanceRevealed : false;
   const isNamePreviouslyRevealed = previousMessage ? previousMessage.isNameRevealed : false;
   const isNameRevealed = isNamePreviouslyRevealed || detectName(chatMessageHistory, characterId, characterName, textContent)
-  const isAppearanceRevealed = isAppearancePreviouslyRevealed || !!previousMessage;
   const hasChatData = chatMessageHistory.length > 0;
   const parentMessageId = hasChatData ? chatMessageHistory[chatMessageHistory.length - 1].id : null;
+
+  const remainingChatStamina = previousMessage?.remainingChatStamina || character.maximumChatStamina || Number.POSITIVE_INFINITY
 
   return {
     id: uuidv4(),
     character: { ...character },
     textContent,
-    isAppearanceRevealed,
-    isNameRevealed, 
+    remainingChatStamina,
+    isNameRevealed,
     timestamp: Date.now(),
     parentMessageId,
   };
@@ -78,14 +77,8 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
       const nameRevealed = chatData.chatMessageHistory.some(
         m => m.character.id === p.id && m.isNameRevealed
       );
-      const appearanceRevealed = chatData.chatMessageHistory.some(
-        m => m.character.id === p.id && m.isAppearanceRevealed
-      );
       const namePart = nameRevealed || isCurrentParticipant ? p.name : '[name unknown]';
-      const appearancePart = appearanceRevealed || isCurrentParticipant
-        ? '[appearance known]' 
-        : '[appearance unknown]';
-      return `${id} = ${namePart}, ${appearancePart}`;
+      return `${id} = ${namePart}`;
     })
     .join('; ');
   lines.push(`[Identity Map: ${mappings}]`);
@@ -147,7 +140,6 @@ async function handleServerResponse(
     ...(sampler?.stopPattern?.patterns ?? []),
   ];
 
-  // ... [Image Data Logic remains exactly the same as your original code] ...
   let imageData: any = undefined;
   const aiCharacterImage = aiCharacter.image;
   if (aiCharacterImage) {
@@ -251,62 +243,261 @@ async function handleServerResponse(
   }
 }
 
-async function handleAllParticipantsResponseExceptTheProtagonist(
+async function respondToMessages(
+  chatData: ChatData, 
+  aiCharacter: Character, 
+  abortController?: AbortController,
+  onStreamUpdate?: (text: string) => void
+): Promise<ChatData | null> {
+  // This function remains purely responsible for hitting the API and returning ONE new message appended to ChatData.
+  const sampler = aiCharacter.sampler;
+  const params = sampler?.parameters ?? { temperature: 0.8 };
+
+  const stopPatterns = chatData.participants.flatMap(p => {
+    const id = getCharacterPromptId(p, chatData.participants);
+    return [`\n${id}:`, `\n${p.name}:`];
+  });
+
+  const stopSequences = [
+    '<|end_of_turn|>',
+    '<|start_of_turn|>',
+    ...stopPatterns,
+    ...(sampler?.stopPattern?.patterns ?? []),
+  ];
+
+  let imageData: any = undefined;
+  if (aiCharacter.image) {
+    const imageUrl = getCharacterImageUrl(aiCharacter.image);
+    if (imageUrl) {
+      try {
+        const imageBase64Data = await getImageBase64(imageUrl);
+        if (imageBase64Data) imageData = [{ data: imageBase64Data, id: 12 }];
+      } catch (err) {
+        console.error("Failed to load image:", err);
+      }
+    }
+  }
+
+  const prompt = buildPromptFromHistory(chatData, aiCharacter);
+
+  try {
+    const requestBody: any = {
+      prompt,
+      n_predict: sampler?.maxTokens ?? 512,
+      stop: stopSequences,
+      stream: true,
+      ...params,
+    };
+    if (imageData) requestBody.image_data = imageData;
+
+    const response = await fetch('/api/completion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: abortController?.signal,
+    });
+
+    if (!response.ok) {
+      if (abortController?.signal.aborted) return null;
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let fullContent = "";
+    let done = false;
+
+    while (!done && reader) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            if (jsonStr.trim() === '[DONE]') break;
+            try {
+              const json = JSON.parse(jsonStr);
+              const token = json.content || json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || "";
+              if (token) {
+                fullContent += token;
+                if (onStreamUpdate) onStreamUpdate(fullContent);
+              }
+            } catch (e) {
+              console.warn("Parse error", e);
+            }
+          }
+        }
+      }
+    }
+
+    const displayText = convertIdsToDisplayNames(fullContent.trim(), chatData);
+    const newMessage = createChatMessage(chatData, aiCharacter, displayText);
+    
+    // RETURN NEW CHATDATA WITH ONE MESSAGE APPENDED
+    return addMessageToChatData(chatData, { ...newMessage, kvCachePath: undefined });
+
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') return null;
+    console.error("Response generation failed:", error);
+    throw error;
+  }
+}
+
+async function startRecursiveAIChat(
   chatData: ChatData, 
   abortController: AbortController,
-  onSetSpeaker?: (character: Character | null) => void ,
-  onStreamUpdate?: (text: string) => void // Add this argument
+  onSetSpeaker?: (character: Character | null) => void,
+  onStreamUpdate?: (text: string) => void
 ): Promise<ChatData> {
   
-  let updatedChatData = chatData;
+  const protagonist = chatData.protagonist;
+  const participants = chatData.participants;
+  const chatMessageHistory = chatData.chatMessageHistory;
+
+  // 1. Calculate Current Stamina
+  const remainingChatStaminaArray: Record<string, number> = {};
   
-  const eligible = updatedChatData.participants.filter(
-    p => p.id !== updatedChatData.protagonist.id && (p.chatProbability ?? 0.5) > 0
+  for (const participant of participants) {
+    if (participant.id === protagonist.id) continue;
+
+    const characterId = participant.id;
+    const previousChatMessage = findPreviousChatMessage(chatMessageHistory, characterId);
+    
+    // Safe fallback if maximumChatStamina is undefined
+    const maxStamina = participant.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    const remainingChatStamina = previousChatMessage?.remainingChatStamina ?? maxStamina;
+    
+    remainingChatStaminaArray[characterId] = remainingChatStamina;
+  }
+
+  // 2. Filter Eligible
+  const eligibleParticipants = participants.filter(participant => 
+    participant.id !== protagonist.id && 
+    remainingChatStaminaArray[participant.id] > 0
   );
 
-  if (eligible.length === 0) return updatedChatData;
-
-  const potentialSpeakers = eligible.filter(p => Math.random() < (p.chatProbability ?? 0.5));
-  const speakersToProcess = potentialSpeakers.length === 0
-    ? [eligible.reduce((best, p) =>
-        (p.chatProbability ?? 0.5) > (best.chatProbability ?? 0.5) ? p : best
-      )]
-    : potentialSpeakers;
-
-  const queue = [...speakersToProcess];
-  const orderedResponders: Character[] = [];
-
-  while (queue.length > 0) {
-    const totalWeight = queue.reduce((sum, p) => sum + (p.initiativeWeight ?? 1), 0);
-    let randomPoint = Math.random() * totalWeight;
-    
-    for (const character of queue) {
-      const weight = character.initiativeWeight ?? 1;
-      if (randomPoint < weight) {
-        orderedResponders.push(character);
-        queue.splice(queue.indexOf(character), 1);
-        break;
-      }
-      randomPoint -= weight;
-    }
+  if (eligibleParticipants.length === 0) {
+    return chatData;
   }
 
-  for (const responder of orderedResponders) {
-    if (abortController.signal.aborted) break; 
+  // 3. Sort by Initiative
+  const sortedParticipants = [...eligibleParticipants].sort((a, b) => {
+    const characterIdA = a.id;
+    const characterIdB = b.id;
 
-    if (onStreamUpdate && onSetSpeaker) {
-      onSetSpeaker(responder);
+    // 1. Get Base Weights
+    const baseWeightA = a.initiativeWeight ?? 1;
+    const baseWeightB = b.initiativeWeight ?? 1;
+
+    // 2. Get Stamina Stats
+    const currentStaminaA = remainingChatStaminaArray[characterIdA];
+    const maxStaminaA = a.maximumChatStamina ?? currentStaminaA; // Fallback if undefined
+    
+    const currentStaminaB = remainingChatStaminaArray[characterIdB];
+    const maxStaminaB = b.maximumChatStamina ?? currentStaminaB;
+
+    // 3. Calculate FATIGUE FACTOR (0.0 to 1.0)
+    // If maxStamina is Infinity, factor is 1.0 (never gets tired)
+    const fatigueFactorA = maxStaminaA === Number.POSITIVE_INFINITY ? 1 : Math.max(0, currentStaminaA / maxStaminaA);
+    const fatigueFactorB = maxStaminaB === Number.POSITIVE_INFINITY ? 1 : Math.max(0, currentStaminaB / maxStaminaB);
+
+    // 4. Calculate EFFECTIVE WEIGHT
+    const effectiveWeightA = baseWeightA * fatigueFactorA;
+    const effectiveWeightB = baseWeightB * fatigueFactorB;
+
+    // 5. Sort Descending (Highest Effective Weight first)
+    return effectiveWeightB - effectiveWeightA;
+  });
+
+  let hasAParticipantTalked = false;
+  
+  // We will build the NEW history array incrementally.
+  let currentHistory = [...chatMessageHistory]; 
+
+  for (const participant of sortedParticipants) {
+    if (abortController.signal.aborted) break;
+
+    const characterId = participant.id;
+    const maximumChatStamina = participant.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    const currentStamina = remainingChatStaminaArray[characterId];
+
+    // Check Stamina
+    if (currentStamina <= 0) {
+      remainingChatStaminaArray[characterId] = Math.min(maximumChatStamina, currentStamina + 1);
+      continue;
     }
+
+    // Probability Check
+    const randomValue = Math.random();
+    const chatProbability = participant.chatProbability ?? 0.5;
+
+    if (randomValue >= chatProbability) {
+      remainingChatStaminaArray[characterId] = Math.min(maximumChatStamina, currentStamina + 1);
+      continue;
+    }
+
+    // --- GENERATE RESPONSE ---
+    if (onSetSpeaker) onSetSpeaker(participant);
+
+    // Create a temporary chatData object with the CURRENT history for the API call
+    const tempChatDataForCall: ChatData = {
+      ...chatData,
+      chatMessageHistory: currentHistory,
+      participants: participants // Ensure participants are passed correctly
+    };
+
+    const resultChatData = await respondToMessages(
+      tempChatDataForCall, 
+      participant, 
+      abortController, 
+      onStreamUpdate
+    );
+
+    if (!resultChatData) break;
+
+    // Extract the NEW message from the result
+    // resultChatData contains the old history + 1 new message
+    const newMessage = resultChatData.chatMessageHistory[resultChatData.chatMessageHistory.length - 1];
     
-    // Pass the callback here
-    const result = await handleServerResponse(updatedChatData, responder, abortController, onStreamUpdate);
+    // Update Stamina
+    const newStamina = currentStamina - 1;
+    remainingChatStaminaArray[characterId] = newStamina;
+
+    // Attach stamina to the message
+    const messageWithStamina: ChatMessage = {
+      ...newMessage,
+      remainingChatStamina: newStamina
+    };
+
+    // UPDATE HISTORY IMMUTABLY
+    currentHistory = [...currentHistory, messageWithStamina];
     
-    if (!result) break; 
-    
-    updatedChatData = result;
+    hasAParticipantTalked = true;
+
+    // BREAK after one speaker to recurse
+    break; 
   }
 
-  return updatedChatData;
+  if (hasAParticipantTalked && !abortController.signal.aborted) {
+    // Construct the FULL updated ChatData for the next recursion
+    const nextIterationChatData: ChatData = {
+      ...chatData,
+      chatMessageHistory: currentHistory,
+      last_updated_timestamp: Date.now()
+    };
+    
+    // RECURSE
+    return startRecursiveAIChat(nextIterationChatData, abortController, onSetSpeaker, onStreamUpdate);
+  }
+
+  // Return final state
+  return {
+    ...chatData,
+    chatMessageHistory: currentHistory,
+    last_updated_timestamp: Date.now()
+  };
 }
 
 function editChatMessage(chatData: ChatData, messageId: string, newText: string): ChatData {
@@ -517,7 +708,7 @@ function App() {
 
     try {
 
-      const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
+      const updatedChatData = await startRecursiveAIChat(
         chatDataWithUserMessage, 
         abortControllerRef.current,
         setStreamingCharacter,
@@ -653,7 +844,7 @@ function App() {
 
       const chatDataWithUserMessage = trimmedChatData
 
-      const updatedChatData = await handleAllParticipantsResponseExceptTheProtagonist(
+      const updatedChatData = await startRecursiveAIChat(
         chatDataWithUserMessage, 
         abortControllerRef.current,
         setStreamingCharacter,
