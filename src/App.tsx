@@ -234,7 +234,6 @@ async function handleServerResponse(
 
     if (!response.ok) {
       if (abortController?.signal.aborted) return null;
-      throw new Error(`API Error: ${response.status}`);
     }
 
     // ⚠️ CRITICAL: Handle Streaming Response
@@ -291,7 +290,6 @@ async function handleServerResponse(
       return null;
     }
     console.error("Error in handleAIResponse:", error);
-    throw error;
   }
 }
 
@@ -351,7 +349,6 @@ async function respondToMessages(
 
     if (!response.ok) {
       if (abortController?.signal.aborted) return null;
-      throw new Error(`API Error: ${response.status}`);
     }
 
     const reader = response.body?.getReader();
@@ -393,7 +390,6 @@ async function respondToMessages(
   } catch (error) {
     if ((error as Error).name === 'AbortError') return null;
     console.error("Response generation failed:", error);
-    throw error;
   }
 }
 
@@ -646,7 +642,7 @@ function App() {
         id: sampler?.id || uuidv4(),
         name: sampler?.name || 'silent',
         maxTokens: 0,
-        parameters: { ...sampler?.parameters, n_predict: 0 }
+        parameters: { ...samplerParameters, n_predict: 0 }
       }
     };
 
