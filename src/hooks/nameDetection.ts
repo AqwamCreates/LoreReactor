@@ -1,4 +1,4 @@
-import type { ChatMessage } from './types'; 
+import type { ChatMessage } from '../types'; 
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
 const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;

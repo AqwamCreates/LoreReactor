@@ -1,18 +1,18 @@
 import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
 import { deleteChatMessage as calculateDelete, editChatMessageInChatData, branchChatMessage } from './chatLogic';
-import type { ChatData } from './types';
+import type { ChatData } from '../types';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
     const allChats = await loadAllRawChatData();
     const points = new Set<string>();
     
-    allChats.forEach(c => {
+    for (const c of allChats) {
         // If another chat branches FROM this chatId AT a specific message
         if (c && c.parentChatDataId === chatId && c.parentChatMessageId) {
             points.add(c.parentChatMessageId);
         }
-    });
+    }
     return points;
 }
 

@@ -12,7 +12,7 @@ import type {
   RawChatMessage,
   ChatData,
   RawChatData,
-} from './types';
+} from '../types';
 
 export const DefaultSampler: Sampler = {
   id: "0",
@@ -30,15 +30,6 @@ export const DefaultSampler: Sampler = {
   stopPatterns: [], 
   maximumNumberOfTokens: 512
 };
-
-export const DefaultInstruction: Instruction = {
-
-  id: "0",
-  name: "Default",
-  description: undefined,
-  content: "This is a conversation between a group of people."
-
-}
 
 const WRITE_API_URL = 'http://localhost:3001'; 
 

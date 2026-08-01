@@ -1,4 +1,4 @@
-import type {Character, ChatData } from "./types";
+import type {Character, ChatData } from "../types";
 
 export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryIndex: number, characterId: string, participants: Character[]): string {
 
