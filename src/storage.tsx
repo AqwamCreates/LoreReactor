@@ -318,7 +318,6 @@ export async function deleteInstruction(id: string): Promise<void> {
 
 // --- Chat Message Repository ---
 export async function deleteChatMessage(id: string): Promise<void> {
-  console.log(`🗑️ Deleting message file: ${id}`);
   await deleteResource(`${PATHS.chatMessages}/${id}.json`);
   // Note: We do NOT remove it from any manifest because messages don't have a global manifest.
   // They are only referenced by ChatData files.
