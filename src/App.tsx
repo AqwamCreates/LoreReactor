@@ -260,7 +260,6 @@ async function handleServerResponse(
     
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
-      console.log('Generation stopped by user');
       return null;
     }
     console.error("Error in handleAIResponse:", error);
@@ -276,7 +275,7 @@ async function respondToMessages(
 ): Promise<ChatData | null> {
   // This function remains purely responsible for hitting the API and returning ONE new message appended to ChatData.
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? { temperature: 0.8 };
+  const params = sampler?.parameters ?? { temperature: 0.7 };
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -794,10 +793,6 @@ function App() {
 
     try {
       let regeneratedChatData = trimmedChatData;
-      
-      // Define Stream Handlers (Same as SendMessage)
-
-      console.log(originalResponders)
 
       // 3. Re-generate each responder sequentially WITH streaming
       for (const responder of originalResponders) {
