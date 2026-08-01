@@ -426,6 +426,22 @@ async function startRecursiveAIChat(
     remainingChatStaminaArray[participant.id] > 0
   );
 
+  const nonEligibleParticipants = participants.filter(participant => 
+    participant.id !== protagonist.id && 
+    remainingChatStaminaArray[participant.id] <= 0
+  );
+
+  for (const participant of nonEligibleParticipants) {
+    const characterId = participant.id;
+    const remainingStamina = remainingChatStaminaArray[characterId];
+    const maximumChatStamina = participant.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    remainingChatStaminaArray[characterId] = Math.min(maximumChatStamina, remainingStamina + 1);
+    const previousChatMessage = findPreviousChatMessage(chatMessageHistory, characterId);
+    if (previousChatMessage) {
+      previousChatMessage.remainingChatStamina = remainingChatStaminaArray[characterId];
+    }
+  }
+
   if (eligibleParticipants.length === 0) {
     return chatData;
   }
