@@ -199,7 +199,7 @@ function App() {
               {/* ✅ FIX: Force inline layout for streaming text and cursor */}
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                 <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                <span className="cursor-blink" style={{ display: 'inline' }}>▋</span>
+                <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
               </div>
             </div>
           </div>
