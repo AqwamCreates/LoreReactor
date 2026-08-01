@@ -1,6 +1,4 @@
 
-// src/repositories/DataRepository.ts
-
 import type { 
   StopPattern, 
   RawStopPattern,
@@ -45,8 +43,6 @@ export const DefaultInstruction: Instruction = {
 const WRITE_API_URL = 'http://localhost:3001'; 
 
 // --- Configuration ---
-const BASE_URL = import.meta.env.BASE_URL;
-const USER_DATA_PATH = `${BASE_URL}user_data`;
 
 const PATHS = {
   characters: "/user_data/character_data",
@@ -141,11 +137,11 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
 
 // --- Stop Pattern Repository ---
 
-export async function loadStopPatternManifest(): Promise<string[]> {
+export async function loadRawStopPatternManifest(): Promise<string[]> {
   return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || [];
 }
 
-export async function loadStopPattern(id: string): Promise<StopPattern | null> {
+export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
   const rawPattern = await fetchJson<RawStopPattern>(`${PATHS.stopPatterns}/${id}.json`);
 
   if (!rawPattern) return null;
@@ -162,7 +158,7 @@ export async function loadStopPattern(id: string): Promise<StopPattern | null> {
   return pattern;
 }
 
-export async function saveStopPattern(pattern: StopPattern): Promise<void> {
+export async function saveRawStopPattern(pattern: StopPattern): Promise<void> {
   // Strip the ID before saving to ensure the file content is "Raw"
   const { id, ...rawPattern } = pattern; 
   
@@ -170,25 +166,25 @@ export async function saveStopPattern(pattern: StopPattern): Promise<void> {
   await updateManifest(PATHS.stopPatterns, id, 'add');
 }
 
-export async function deleteStopPattern(id: string): Promise<void> {
+export async function deleteRawStopPattern(id: string): Promise<void> {
   await deleteResource(`${PATHS.stopPatterns}/${id}.json`);
   await updateManifest(PATHS.stopPatterns, id, 'remove');
 }
 
 // --- Sampler Repository ---
 
-export async function loadSamplerManifest(): Promise<string[]> {
+export async function loadRawSamplerManifest(): Promise<string[]> {
   return await fetchJson<string[]>(`${PATHS.samplers}/${MANIFEST_FILE}`) || [];
 }
 
-export async function loadSampler(id: string): Promise<Sampler | null> {
+export async function loadRawSampler(id: string): Promise<Sampler | null> {
   const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
   if (!rawSampler) return null;
 
   // Hydrate Stop Patterns from IDs
   const stopPatternIds = rawSampler.stopPatternIds || [];
   const stopPatterns = (await Promise.all(
-    stopPatternIds.map(sid => loadStopPattern(sid))
+    stopPatternIds.map(sid => loadRawStopPattern(sid))
   )).filter((p): p is StopPattern => p !== null);
 
   return {
@@ -201,13 +197,13 @@ export async function loadSampler(id: string): Promise<Sampler | null> {
   };
 }
 
-export async function loadAllSamplers(): Promise<Sampler[]> {
-  const ids = await loadSamplerManifest();
-  const results = await Promise.all(ids.map(id => loadSampler(id)));
+export async function loadAllRawSamplers(): Promise<Sampler[]> {
+  const ids = await loadRawSamplerManifest();
+  const results = await Promise.all(ids.map(id => loadRawSampler(id)));
   return results.filter((s): s is Sampler => s !== null);
 }
 
-export async function saveSampler(sampler: Sampler): Promise<void> {
+export async function saveRawSampler(sampler: Sampler): Promise<void> {
   // Strip 'id' and the hydrated 'stopPatterns' array
   const { id, stopPatterns, ...rawSampler } = sampler; 
   
@@ -220,24 +216,24 @@ export async function saveSampler(sampler: Sampler): Promise<void> {
   await updateManifest(PATHS.samplers, id, 'add');
 }
 
-export async function deleteSampler(id: string): Promise<void> {
+export async function deleteRawSampler(id: string): Promise<void> {
   await deleteResource(`${PATHS.samplers}/${id}.json`);
   await updateManifest(PATHS.samplers, id, 'remove');
 }
 
 // --- Character Repository ---
 
-export async function loadCharacterManifest(): Promise<string[]> {
+export async function loadRawCharacterManifest(): Promise<string[]> {
   
   return await fetchJson<string[]>(`${PATHS.characters}/${MANIFEST_FILE}`) || [];
 }
 
-export async function loadCharacter(id: string): Promise<Character | null> {
+export async function loadRawCharacter(id: string): Promise<Character | null> {
   const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
   if (!rawCharacter) return null;
 
   const samplerId = rawCharacter.samplerId;
-  const sampler = samplerId ? (await loadSampler(samplerId) || DefaultSampler) : DefaultSampler;
+  const sampler = samplerId ? (await loadRawSampler(samplerId) || DefaultSampler) : DefaultSampler;
 
   return {
     id,
@@ -252,13 +248,13 @@ export async function loadCharacter(id: string): Promise<Character | null> {
   };
 }
 
-export async function loadAllCharacters(): Promise<Character[]> {
-  const ids = await loadCharacterManifest();
-  const results = await Promise.all(ids.map(id => loadCharacter(id)));
+export async function loadAllRawCharacters(): Promise<Character[]> {
+  const ids = await loadRawCharacterManifest();
+  const results = await Promise.all(ids.map(id => loadRawCharacter(id)));
   return results.filter((c): c is Character => c !== null);
 }
 
-export async function saveCharacter(character: Character): Promise<void> {
+export async function saveRawCharacter(character: Character): Promise<void> {
   const { id, sampler, ...rawCharacter } = character; 
   
   const payload: RawCharacter = {
@@ -270,7 +266,7 @@ export async function saveCharacter(character: Character): Promise<void> {
   await updateManifest(PATHS.characters, id, 'add');
 }
 
-export async function deleteCharacter(id: string): Promise<void> {
+export async function deleteRawCharacter(id: string): Promise<void> {
   await deleteResource(`${PATHS.characters}/${id}.json`);
   await updateManifest(PATHS.characters, id, 'remove');
   // Note: You may also want to delete associated images or KV caches here
@@ -278,11 +274,11 @@ export async function deleteCharacter(id: string): Promise<void> {
 
 // --- Instruction Repository ---
 
-export async function loadInstructionManifest(): Promise<string[]> {
+export async function loadRawInstructionManifest(): Promise<string[]> {
   return await fetchJson<string[]>(`${PATHS.instructions}/${MANIFEST_FILE}`) || [];
 }
 
-export async function loadInstruction(id: string): Promise<Instruction | null> {
+export async function loadRawInstruction(id: string): Promise<Instruction | null> {
   const rawInstruction = await fetchJson<RawInstruction>(`${PATHS.instructions}/${id}.json`);
 
   if (!rawInstruction) return null;
@@ -297,13 +293,13 @@ export async function loadInstruction(id: string): Promise<Instruction | null> {
   return instruction;
 }
 
-export async function loadAllInstructions(): Promise<Instruction[]> {
-  const ids = await loadInstructionManifest();
-  const results = await Promise.all(ids.map(id => loadInstruction(id)));
+export async function loadAllRawInstructions(): Promise<Instruction[]> {
+  const ids = await loadRawInstructionManifest();
+  const results = await Promise.all(ids.map(id => loadRawInstruction(id)));
   return results.filter((i): i is Instruction => i !== null);
 }
 
-export async function saveInstruction(instruction: Instruction): Promise<void> {
+export async function saveRawInstruction(instruction: Instruction): Promise<void> {
   // Strip the ID before saving to ensure the file content is "Raw"
   const { id, ...rawInstruction } = instruction; 
   
@@ -311,13 +307,13 @@ export async function saveInstruction(instruction: Instruction): Promise<void> {
   await updateManifest(PATHS.instructions, id, 'add');
 }
 
-export async function deleteInstruction(id: string): Promise<void> {
+export async function deleteRawInstruction(id: string): Promise<void> {
   await deleteResource(`${PATHS.instructions}/${id}.json`);
   await updateManifest(PATHS.instructions, id, 'remove');
 }
 
 // --- Chat Message Repository ---
-export async function deleteChatMessage(id: string): Promise<void> {
+export async function deleteRawChatMessage(id: string): Promise<void> {
   await deleteResource(`${PATHS.chatMessages}/${id}.json`);
   // Note: We do NOT remove it from any manifest because messages don't have a global manifest.
   // They are only referenced by ChatData files.
@@ -327,17 +323,17 @@ export async function deleteChatMessage(id: string): Promise<void> {
 // Note: In your normalized model, ChatData holds the message HISTORY (objects) 
 // but references Characters/Instructions by ID.
 
-export async function loadChatManifest(): Promise<string[]> {
+export async function loadRawChatManifest(): Promise<string[]> {
   return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || [];
 }
 
-export async function loadChatData(id: string): Promise<ChatData | null> {
+export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
 
   const [allCharacters, allInstructions] = await Promise.all([
-    loadAllCharacters(),
-    loadAllInstructions()
+    loadAllRawCharacters(),
+    loadAllRawInstructions()
   ]);
 
   const charMap = new Map(allCharacters.map(c => [c.id, c]));
@@ -397,12 +393,12 @@ export async function loadChatData(id: string): Promise<ChatData | null> {
   return chatData;
 }
 
-export async function loadAllChatData(): Promise<(ChatData | null)[]> {
-  const ids = await loadChatManifest();
-  return await Promise.all(ids.map(id => loadChatData(id)));
+export async function loadAllRawChatData(): Promise<(ChatData | null)[]> {
+  const ids = await loadRawChatManifest();
+  return await Promise.all(ids.map(id => loadRawChatData(id)));
 }
 
-export async function saveChatData(chatData: ChatData): Promise<void> {
+export async function saveRawChatData(chatData: ChatData): Promise<void> {
   const saveMessagePromises = chatData.chatMessageHistory.map(msg => {
     const { id, character, ...rawMsg } = msg; // Strip ID and hydrated Character
     
@@ -430,8 +426,8 @@ export async function saveChatData(chatData: ChatData): Promise<void> {
   await updateManifest(PATHS.chatData, id, 'add');
 }
 
-export async function branchChatData(sourceChatId: string, branchPointMessageId: string): Promise<string> {
-  const sourceChat = await loadChatData(sourceChatId);
+export async function branchRawChatData(sourceChatId: string, branchPointMessageId: string): Promise<string> {
+  const sourceChat = await loadRawChatData(sourceChatId);
   if (!sourceChat) throw new Error("Source chat not found");
 
   const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
@@ -457,7 +453,7 @@ export async function branchChatData(sourceChatId: string, branchPointMessageId:
   return newChatId;
 }
 
-export async function deleteChatData(id: string): Promise<void> {
+export async function deleteRawChatData(id: string): Promise<void> {
   // Optional: Clean up associated KV Caches
   try {
     await deleteResource(`${PATHS.kvCaches}/${id}`); // Assuming folder or specific file logic needed here
@@ -490,27 +486,27 @@ export async function saveKVCache(chatId: string, cacheData: any): Promise<void>
 
 export const storage = {
   // Characters
-  loadCharacterManifest,
-  loadCharacter,
-  loadAllCharacters,
-  saveCharacter,
-  deleteCharacter,
+  loadRawCharacterManifest,
+  loadRawCharacter,
+  loadAllRawCharacters,
+  saveRawCharacter,
+  deleteRawCharacter,
   
   // Samplers
-  loadSamplerManifest,
-  loadSampler,
-  saveSampler,
-  deleteSampler,
+  loadRawSamplerManifest,
+  loadRawSampler,
+  saveRawSampler,
+  deleteRawSampler,
 
   // Chat Messages
-  deleteChatMessage,
+  deleteRawChatMessage,
   
   // Chat Data
-  loadChatManifest,
-  loadChatData,
-  loadAllChatData,
-  saveChatData,
-  deleteChatData,
+  loadRawChatManifest,
+  loadRawChatData,
+  loadAllRawChatData,
+  saveRawChatData,
+  deleteRawChatData,
   
   // Helpers
   getCharacterImageUrl,
