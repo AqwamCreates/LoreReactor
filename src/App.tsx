@@ -1,5 +1,6 @@
 // src/App.tsx
-import React, { useState, useRef } from 'react';
+import type React from 'react';
+import { useState, useRef } from 'react';
 import { useChatSession } from './useChatSession';
 import type { Character, ChatMessage } from './types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
@@ -37,7 +38,7 @@ function App() {
     regenerateLastAI,
     regenerateLastProtagonist,
     messageEndRef,
-    parentChatMessageIds // ✅ Received from hook
+    parentChatMessageIds // ✅ Updated to match hook
   } = useChatSession();
 
   const [inputText, setInputText] = useState('');

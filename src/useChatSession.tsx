@@ -1,3 +1,4 @@
+// src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData } from './types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
@@ -18,7 +19,7 @@ export function useChatSession() {
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     
     // ✅ Tracks message IDs in the CURRENT chat that have other chats branching from them
-    const [parentChatMessageIds, setBranchPointIds] = useState<Set<string>>(new Set());
+    const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -124,12 +125,13 @@ export function useChatSession() {
                 const points = new Set<string>();
                 
                 allChats.forEach(c => {
+                    // If another chat lists THIS chat as parent, record the message ID
                     if (c && c.parentChatDataId === chatData.id && c.parentChatMessageId) {
                         points.add(c.parentChatMessageId);
                     }
                 });
                 
-                setBranchPointIds(points);
+                setParentChatMessageIds(points);
             }
         };
         init();
@@ -316,6 +318,6 @@ export function useChatSession() {
         regenerateLastAI,
         regenerateLastProtagonist,
         messageEndRef,
-        parentChatMessageIds // ✅ Returned for UI to use
+        parentChatMessageIds // ✅ Returned with the NEW name
     };
 }
