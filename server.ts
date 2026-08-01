@@ -1,10 +1,8 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = 3001;
 
@@ -18,7 +16,7 @@ app.use(express.json());
 app.use('/user_data', (req, res) => {
   // Reconstruct the full path relative to root
   // req.url here will be whatever comes AFTER '/user_data' (e.g., /chat_messages/file.json)
-  const relativePath = req.url!.startsWith('/') ? req.url!.slice(1) : req.url;
+  const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
   const dir = path.dirname(filePath);
 
@@ -68,6 +66,6 @@ app.listen(PORT, () => {
   console.log("-----------------------------------------");
   console.log(`✅ Storage API Running on http://localhost:${PORT}`);
   console.log(`📂 Root Directory: ${ROOT_DIR}`);
-  console.log(`📝 Handling all /user_data/* requests`);
+  console.log("📝 Handling all /user_data/* requests");
   console.log("-----------------------------------------");
 });
