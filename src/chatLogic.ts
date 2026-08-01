@@ -3,8 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, StopPattern } from './types';
 import { detectName } from './nameDetection';
 
-// --- Helpers ---
-
 export function getCharacterPromptId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
@@ -26,8 +24,6 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     }
     return null;
 }
-
-// --- Core Logic Functions ---
 
 export function buildPromptFromHistory(chatData: ChatData, character: Character): string {
     const lines: string[] = [];
@@ -103,24 +99,38 @@ export function createChatMessage(chatData: ChatData, character: Character, text
 export function prepareRequestBody(chatData: ChatData, character: Character, imageBase64?: string | null): any {
     const sampler = character.sampler;
     const participants = chatData.participants;
-    const stopPatterns = participants.flatMap(p => {
+    
+    // 1. Calculate dynamic roleplay stops.
+    const roleplayStops = participants.flatMap(p => {
         const id = getCharacterPromptId(p, participants);
         return [`\n${id}:`, `\n${p.name}:`];
     });
 
-    const stopSequences = [
+    // 2. Get custom stops from parameters (if any exist there).
+    // We extract 'stop' from parameters so we don't lose user-defined custom stops.
+    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
+    
+    // 3. Merge them safely.
+    // Priority: Roleplay Stops (essential) + Custom Param Stops (optional).
+    const finalStops = [
         '<|end_of_turn|>',
         '<|start_of_turn|>',
-        ...stopPatterns,
+        ...roleplayStops,
+        ...(Array.isArray(paramStops) ? paramStops : []), // Add any extra stops from params
         ...(sampler?.stopPatterns?.map((sp: StopPattern) => sp.pattern) ?? []),
     ];
 
+    // Remove duplicates just in case
+    const uniqueStops = Array.from(new Set(finalStops));
+
+    // 4. Construct Body
     const body: any = {
+        // Spread the CLEANED parameters (without 'stop')
+        ...otherParams, 
         prompt: buildPromptFromHistory(chatData, character),
         n_predict: sampler?.maximumNumberOfTokens ?? 512,
-        stop: stopSequences,
         stream: true,
-        ...sampler?.parameters,
+        stop: uniqueStops,
     };
 
     if (imageBase64) {
