@@ -1,6 +1,5 @@
 // src/App.tsx
-import type React from 'react';
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useChatSession } from './useChatSession';
 import type { Character, ChatMessage } from './types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
