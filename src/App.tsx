@@ -6,7 +6,8 @@ import {saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterI
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, branchChatMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData } from './chatLogic';
+import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
@@ -440,11 +441,14 @@ function App() {
 
   const onSaveEdit = async () => {
     if (!chatData || !editingMessageId) return;
-    const updatedChatData = editChatMessageInChatData(chatData, editingMessageId, editDraft);
-    setChatData(updatedChatData);
-    await saveRawChatData(updatedChatData);
-    setEditingMessageId(null);
-    setEditDraft('');
+    try {
+      const updatedChat = await editMessage(chatData, editingMessageId, editDraft);
+      setChatData(updatedChat);
+      setEditingMessageId(null);
+      setEditDraft('');
+    } catch (err) {
+      console.error("Edit failed:", err);
+    }
   };
 
   const onCancelEdit = () => {
@@ -454,40 +458,14 @@ function App() {
 
   const onDeleteMessage = async (messageId: string) => {
     if (!chatData || isLoading) return;
-    
-    // Prevent deleting while generating if it's the current message being written.
-    if (generatingMessageId === messageId) {
-      onStopGeneration();
-    }
+    if (generatingMessageId === messageId) onStopGeneration();
 
     try {
-      await deleteRawChatMessage(messageId);
+      const updatedChat = await deleteMessage(chatData, messageId);
+      setChatData(updatedChat);
     } catch (err) {
-      console.error("Failed to delete message file:", err);
+      console.error("Failed to delete message:", err);
     }
-
-    const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
-    
-    // Invalidate KV caches for all subsequent messages since context changed.
-    const finalHistory = updatedHistory.map((message) => {
-      const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === message.id);
-      // If this message originally came after the deleted one, clear its cache.
-      if (originalIndex > chatData.chatMessageHistory.findIndex(m => m.id === messageId)) {
-        return { ...message, kvCachePath: undefined };
-      }
-      return message;
-    });
-
-    
-
-    const updatedChatData: ChatData = {
-      ...chatData,
-      chatMessageHistory: finalHistory,
-      last_updated_timestamp: Date.now(),
-    };
-
-    setChatData(updatedChatData);
-    await saveRawChatData(updatedChatData);
   };
 
   const onStartMassDelete = (messageId: string) => {
@@ -502,43 +480,16 @@ function App() {
 
   const onConfirmMassDelete = async () => {
     if (!chatData || !massDeleteStartId || isLoading) return;
+    const startIndex = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteStartId);
+    if (startIndex === -1) return;
 
-    const startIndex = chatData.chatMessageHistory.findIndex(
-      m => m.id === massDeleteStartId
-    );
-
-    if (startIndex === -1) {
-      setMassDeleteStartId(null);
-      return;
-    }
-
-    // Stop generation if it's happening in the range being deleted.
-    if (generatingMessageId) {
-      onStopGeneration();
-    }
-
-    const messagesToDelete = chatData.chatMessageHistory.slice(startIndex);
-
-    // 2. Delete Files in Parallel 🗑️🗑️🗑️
     try {
-      await Promise.all(messagesToDelete.map(message => deleteRawChatMessage(message.id)));
+      const updatedChat = await massDeleteMessages(chatData, startIndex);
+      setChatData(updatedChat);
+      setMassDeleteStartId(null);
     } catch (err) {
-      console.error("Failed to bulk delete message files:", err);
+      console.error("Mass delete failed:", err);
     }
-    
-    const updatedHistory = chatData.chatMessageHistory.slice(0, startIndex);
-
-    const updatedChatData: ChatData = {
-      ...chatData,
-      chatMessageHistory: updatedHistory,
-      last_updated_timestamp: Date.now(),
-    };
-
-    setChatData(updatedChatData);
-    await saveRawChatData(updatedChatData);
-    
-    // Reset state.
-    setMassDeleteStartId(null);
   };
 
   const onCancelMassDelete = () => {
@@ -547,9 +498,14 @@ function App() {
 
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
-    const branchedChatData = branchChatMessage(chatData, messageId);
-    await saveRawChatData(branchedChatData);
-    window.open(window.location.href, '_blank');
+    try {
+      const branchedChat = await branchMessage(chatData, messageId);
+      // Optional: Switch to the new branch or just open it
+      await saveRawChatData(branchedChat); // Already saved inside service, but if you need to do something else...
+      window.open(window.location.href, '_blank'); 
+    } catch (err) {
+      console.error("Branching failed:", err);
+    }
   };
 
   if (!chatData || !currentCharacter) {
