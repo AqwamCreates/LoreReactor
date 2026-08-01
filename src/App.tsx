@@ -1,12 +1,12 @@
 import React from 'react'
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid';
-import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData} from "./types"
-import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "./storage"
+import type {Character, ChatMessage, ChatData} from "./types"
+import {saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage, branchChatAtChatMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage, branchChatMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
@@ -114,7 +114,7 @@ function App() {
   const [streamingText, setStreamingText] = useState<string>("");
   const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
 
-  const processProtagonistImageSilently = async (currentChatData: ChatData, character: Character) => {
+  const processProtagonistImageSilently = async (chatData: ChatData, character: Character) => {
 
     if (!character.image) {
       setIsInitialImageProcessed(true);
@@ -139,7 +139,7 @@ function App() {
       const silentController = new AbortController();
       
       await handleServerResponse(
-        currentChatData, 
+        chatData, 
         silentCharacter, 
         silentController, 
         undefined // onStreamUpdate: undefined ensures no text appears in UI
@@ -294,7 +294,7 @@ function App() {
 
     // 2. Delete Old Files First 🗑️
     try {
-      await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
+      await Promise.all(oldMessages.map(message => deleteChatMessage(chatData, message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -375,7 +375,7 @@ function App() {
     const oldMessages = history.slice(trimIndex);
 
     try {
-      await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
+      await Promise.all(oldMessages.map(message => deleteChatMessage(chatData, message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -461,7 +461,7 @@ function App() {
     }
 
     try {
-      await import("./storage").then(({ deleteChatMessage }) => deleteChatMessage(messageId));
+      await deleteChatMessage(chatData, messageId);
     } catch (err) {
       console.error("Failed to delete message file:", err);
     }
@@ -521,7 +521,7 @@ function App() {
 
     // 2. Delete Files in Parallel 🗑️🗑️🗑️
     try {
-      await Promise.all(messagesToDelete.map(msg => deleteChatMessage(msg.id)));
+      await Promise.all(messagesToDelete.map(msg => deleteChatMessage(chatData, msg.id)));
     } catch (err) {
       console.error("Failed to bulk delete message files:", err);
     }
@@ -547,7 +547,7 @@ function App() {
 
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
-    const branchedChatData = branchChatAtChatMessage(chatData, messageId);
+    const branchedChatData = branchChatMessage(chatData, messageId);
     await saveChatData(branchedChatData);
     window.open(window.location.href, '_blank');
   };
