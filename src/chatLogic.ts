@@ -40,7 +40,7 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
-    lines.push(`[Continue the conversation as ${charId} / ${name}. Stay in character at all costs and at all times. Keep your name hidden unless explicitly revealed. Your response must be in character and adhere strictly to all formatting rules. Continue the conversation now.]`);
+    lines.push(`[Complete the reply as ${charId} / ${name}. Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueInstruction(currentChatStamina, maximumChatStamina);
