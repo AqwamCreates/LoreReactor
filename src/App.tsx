@@ -121,7 +121,6 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
   }
 
   lines.push(`[Continue the conversation as ${characterId} / ${name}. Stay in character at all costs and at all times.]`);
-  lines.push("You must use <|end_of_turn|> when you finish your turn.")
 
   const mappings = chatData.participants
     .map(p => {
