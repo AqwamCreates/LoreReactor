@@ -10,4 +10,5 @@
     --cache-reuse 256 ^
     --no-chat-template ^
     --chat-template-kwargs "{\"enable_thinking\": false}"
+    --reasoning off
     -fa on
