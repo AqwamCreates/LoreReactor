@@ -18,7 +18,8 @@
       "description": "A test protagonist.",
       "systemPrompt": null,
       "initiativeWeight": 1,
-      "chatProbability": 0.5
+      "chatProbability": 0.5,
+      "maximumChatStamina": 10
     },
     {
       "id": "Alice",
@@ -26,8 +27,9 @@
       "image": "Alice.webp",
       "description": "A librarian.",
       "systemPrompt": null,
-      "initiativeWeight": 3,
-      "chatProbability": 0.9
+      "initiativeWeight": 2,
+      "chatProbability": 0.7,
+      "maximumChatStamina": 2
     },
     {
       "id": "Velina",
@@ -36,7 +38,8 @@
       "description": "A politician.",
       "systemPrompt": null,
       "initiativeWeight": 3,
-      "chatProbability": 0.9
+      "chatProbability": 0.5,
+      "maximumChatStamina": 10
     }
   ],
   "instructions": [

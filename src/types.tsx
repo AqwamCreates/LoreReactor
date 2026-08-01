@@ -29,6 +29,7 @@ export interface Character {
   systemPrompt?: string;
   initiativeWeight?: number | undefined;
   chatProbability?: number | undefined;
+  maximumChatStamina?: number | undefined;
   sampler?: Sampler | undefined;
 }
 
@@ -36,7 +37,7 @@ export interface ChatMessage {
   id: string;
   character: Character;
   textContent: string;
-  isAppearanceRevealed?: boolean;
+  remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
   kvCachePath?: string;
   timestamp: number;
