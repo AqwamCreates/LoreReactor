@@ -440,7 +440,7 @@
   border: 1px solid var(--border);
   color: var(--text-h);
   padding: 0 clamp(8px, 1vw, 12px);
-  height: 36px;
+  height: clamp(28px, 4vw, 36px);
   border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
