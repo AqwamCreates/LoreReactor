@@ -141,20 +141,20 @@ export function deleteChatMessageFromChatMessageHistory(chatMessageHistory: Chat
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
 }
 
-export function branchChatMessageHistory(sourceData: ChatData, branchPointMessageId: string): ChatData {
-    const index = sourceData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
-    if (index === -1) throw new Error('Branch point not found');
+export function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
+  const branchIndex = sourceChatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
+  if (branchIndex === -1) throw new Error('Branch point message not found');
 
-    return {
-        id: uuidv4(),
-        title: `${sourceData.title} (Branch #${index + 1})`,
-        protagonist: sourceData.protagonist,
-        participants: sourceData.participants,
-        instructions: sourceData.instructions,
-        chatMessageHistory: sourceData.chatMessageHistory.slice(0, index + 1),
-        first_created_timestamp: Date.now(),
-        last_updated_timestamp: Date.now(),
-    };
+  const currentTimestamp = Date.now();
+  return {
+    id: uuidv4(),
+    title: `${sourceChatData.title} [#${branchIndex + 1}]`,
+    protagonist: sourceChatData.protagonist,
+    participants: sourceChatData.participants,
+    chatMessageHistory: sourceChatData.chatMessageHistory.slice(0, branchIndex + 1),
+    first_created_timestamp: currentTimestamp,
+    last_updated_timestamp: currentTimestamp,
+  };
 }
 
 export function editChatMessageInChatData(chatData: ChatData, messageId: string, newText: string): ChatData {

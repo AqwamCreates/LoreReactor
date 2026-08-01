@@ -6,7 +6,7 @@ import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, editChatMessageInChatData } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, editChatMessageInChatData, branchChatAtMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
@@ -87,21 +87,7 @@ async function handleServerResponse(
   }
 }
 
-function branchChatAtMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
-  const branchIndex = sourceChatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
-  if (branchIndex === -1) throw new Error('Branch point message not found');
 
-  const currentTimestamp = Date.now();
-  return {
-    id: uuidv4(),
-    title: `${sourceChatData.title} [#${branchIndex + 1}]`,
-    protagonist: sourceChatData.protagonist,
-    participants: sourceChatData.participants,
-    chatMessageHistory: sourceChatData.chatMessageHistory.slice(0, branchIndex + 1),
-    first_created_timestamp: currentTimestamp,
-    last_updated_timestamp: currentTimestamp,
-  };
-}
 
 function getDelayedDisplayName(chatMessageHistory: ChatMessage[], chatMessageHistoryIndex: number, characterId: string, participants: Character[]): string {
 
