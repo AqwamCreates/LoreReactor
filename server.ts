@@ -1,7 +1,7 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -10,7 +10,7 @@ const PORT = 3001; // Use a different port for writes
 app.use(express.json());
 
 // Handle PUT requests to save files
-app.put('/user_data/*', (req, res) => {
+app.put('/user_data/', (req, res) => {
   const filePath = path.join(__dirname, 'public', req.path);
   const dir = path.dirname(filePath);
 
@@ -29,7 +29,7 @@ app.put('/user_data/*', (req, res) => {
 });
 
 // Handle DELETE requests
-app.delete('/user_data/*', (req, res) => {
+app.delete('/user_data/', (req, res) => {
   const filePath = path.join(__dirname, 'public', req.path);
   fs.unlink(filePath, (err) => {
     if (err && err.code !== 'ENOENT') {
