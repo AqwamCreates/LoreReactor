@@ -17,6 +17,9 @@ export function useChatSession() {
     const [streamingText, setStreamingText] = useState("");
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
+    
+    // ✅ State to track which messages in the current chat have branches
+    const [branchChatMessageIds, setBranchChatMessageIds] = useState<Set<string>>(new Set());
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -62,7 +65,6 @@ export function useChatSession() {
             const aiMessage = createChatMessage(data, character, displayText);
             return addMessageToChatData(data, aiMessage);
         } catch (error) {
-            // ✅ FIX: Only log if it's NOT an AbortError (which is expected)
             if ((error as Error).name !== 'AbortError') {
                 console.error("Inference failed:", error);
             }
@@ -115,6 +117,17 @@ export function useChatSession() {
             } else if (currentCharacter && !isInitialImageProcessed) {
                 await processProtagonistImageSilently(chatData, currentCharacter);
             }
+            if (chatData) {
+                const allChats = await loadAllRawChatData();
+                const points = new Set<string>();
+                for (const c of allChats) {
+                    if (c && c.parentChatDataId === chatData.id && c.parentChatMessageId) {
+                        points.add(c.parentChatMessageId || "");
+                    }
+                }
+                
+                setBranchChatMessageIds(points);
+            }
         };
         init();
     }, [chatData, currentCharacter, isInitialImageProcessed, processProtagonistImageSilently]);
@@ -130,8 +143,6 @@ export function useChatSession() {
     const stopGeneration = useCallback(() => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
-            // We do NOT set to null here immediately if we want the finally block to check it,
-            // but usually setting to null is fine if we capture the reference locally.
             abortControllerRef.current = null; 
         }
         setIsLoading(false);
@@ -142,7 +153,6 @@ export function useChatSession() {
     const sendMessage = useCallback(async (text: string) => {
         if (!chatData || !currentCharacter || !text.trim() || isLoading) return;
 
-        // ✅ FIX: Capture the controller in a local constant so it survives even if ref is nulled
         const controller = new AbortController();
         abortControllerRef.current = controller;
         
@@ -160,15 +170,13 @@ export function useChatSession() {
             const updatedData = await runTurnSequence(
                 tempData, 
                 executor, 
-                controller, // Pass the local constant
+                controller, 
                 setStreamingCharacter, 
                 setStreamingText,
                 setChatData 
             );
 
-            // ✅ FIX: Check the local constant, not the ref
             if (!controller.signal.aborted && updatedData) {
-                // Optional final sync
                 setChatData(updatedData);
             }
         } catch (err) {
@@ -176,7 +184,6 @@ export function useChatSession() {
                 console.error("Send failed:", err);
             }
         } finally {
-            // ✅ FIX: Only clear ref if it's still the same controller we started with
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
             }
@@ -305,6 +312,7 @@ export function useChatSession() {
         stopGeneration,
         regenerateLastAI,
         regenerateLastProtagonist,
-        messageEndRef
+        messageEndRef,
+        branchChatMessageIds // ✅ Don't forget to return this!
     };
 }
