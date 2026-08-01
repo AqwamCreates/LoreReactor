@@ -3,33 +3,14 @@ import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid';
 import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData} from "./types"
 import {detectName} from "./nameDetection"
-import {loadChatData, saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
+import {loadChatData, saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "./storage"
 import './App.css'
 
-const samplerParameters = { // https://github.com/AqwamCreates/Aqwam-Sampler-Configurations/blob/main/Universal-Character-Cognition-Sampler.md 
+const sampler = loadSampler("UniversalCharacterCognition") as Sampler;
 
-  "temperature": 0.6,
-  "top_k": 50,
-  "top_p": 0.9,
-  "min_p": 0.1,
-    
-  "mirostat": 2,
-  "mirostat_tau": 3.0,
-  "mirostat_eta": 0.2,
-    
-  "typical_p": 0.95,
-    
-  "top_n_sigma": 4.5,
-    
-  "dry_multiplier": 0.35,
-  "dry_base": 1.35,
-  "dry_allowed_length": 2,
-  "dry_penalty_last_n": 4096,
-    
-  "repetition_penalty": 1.1,
-  "repetition_penalty_range": 4096,
+function convertSamplerForAPI(sampler: Sampler): any {
 
-  "samplers": ["temperature", "top_k", "top_p", "mirostat", "typical_p", "min_p", "top_n_sigma", "dry", "repetition_penalty"]
+
 
 }
 
@@ -179,7 +160,7 @@ async function handleServerResponse(
   onStreamUpdate?: (text: string) => void // Callback to update UI in real-time
 ): Promise<ChatData | null | undefined> {
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? samplerParameters;
+  const params = sampler?.parameters ?? sampler?.parameters;
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -190,7 +171,7 @@ async function handleServerResponse(
     '<|end_of_turn|>',
     '<|start_of_turn|>',
     ...stopPatterns,
-    ...(sampler?.stopPattern?.patterns ?? []),
+    ...(sampler?.stopPatterns?.map((sp: StopPattern) => sp.pattern) ?? []),
   ];
 
   let imageData: any = undefined;
@@ -301,7 +282,7 @@ async function respondToMessages(
 ): Promise<ChatData | null | undefined> {
   // This function remains purely responsible for hitting the API and returning ONE new message appended to ChatData.
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? samplerParameters;
+  const params = sampler?.parameters ?? sampler?.parameters;
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -312,7 +293,7 @@ async function respondToMessages(
     '<|end_of_turn|>',
     '<|start_of_turn|>',
     ...stopPatterns,
-    ...(sampler?.stopPattern?.patterns ?? []),
+    ...(sampler?.stopPatterns?.map((sp: StopPattern) => sp.pattern) ?? []),
   ];
 
   let imageData: any = undefined;
@@ -656,8 +637,9 @@ function App() {
         ...sampler,
         id: sampler?.id || uuidv4(),
         name: sampler?.name || 'silent',
-        maxTokens: 0,
-        parameters: { ...samplerParameters, n_predict: 0 }
+        maximumNumberOfTokens: 0,
+        parameters: { ...sampler?.parameters, n_predict: 0 },
+        stopPatterns: [],
       }
     };
 
@@ -808,6 +790,16 @@ function App() {
     
     // Safety: don't regenerate if there are no AI messages or we're already at the end.
     if (trimIndex === 0 || trimIndex === history.length) return;
+
+    const oldMessages = history.slice(trimIndex);
+
+    // 2. Delete Old Files First 🗑️
+    try {
+      const { deleteChatMessage } = await import("./storage");
+      await Promise.all(oldMessages.map(msg => deleteChatMessage(msg.id)));
+    } catch (err) {
+      console.error("Failed to delete old regeneration files:", err);
+    }
     
     // Get the original responders in their exact order
     const originalResponders = history
@@ -881,6 +873,15 @@ function App() {
     
     // Safety: don't regenerate if there are no AI messages or we're already at the end.
     if (trimIndex === 0 || trimIndex === history.length) return;
+
+    const oldMessages = history.slice(trimIndex);
+
+    try {
+      const { deleteChatMessage } = await import("./storage");
+      await Promise.all(oldMessages.map(msg => deleteChatMessage(msg.id)));
+    } catch (err) {
+      console.error("Failed to delete old regeneration files:", err);
+    }
     
     // Get the original responders in their exact order
     
@@ -953,6 +954,12 @@ function App() {
     // Prevent deleting while generating if it's the current message being written.
     if (generatingMessageId === messageId) {
       onStopGeneration();
+    }
+
+    try {
+      await import("./storage").then(({ deleteChatMessage }) => deleteChatMessage(messageId));
+    } catch (err) {
+      console.error("Failed to delete message file:", err);
     }
 
     const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
