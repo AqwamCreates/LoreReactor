@@ -28,7 +28,7 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 * Per-character sampler profiles (dictionary format) override generation parameters independently.
 
-* Each character has independent ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
+* Each character has independent ```maximumChatStamina``` (determines the maximum number of turns they could speak), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
 
 ### Sampler-Related
 
