@@ -639,7 +639,6 @@ function App() {
                     <span className="message-text">{displayText}</span>
                     
                     <div className="message-toolbar">
-                      {/* Hide standard tools if we are in mass delete mode to avoid confusion, or keep them */}
                       {!isMassDeleteActive ? (
                         <>
                           <button type="button" onClick={() => onStartEdit(message.id, message.textContent)} title="Edit" className="toolbar-btn">✎</button>
