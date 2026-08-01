@@ -150,7 +150,10 @@ export function editChatMessageInChatData(chatData: ChatData, messageId: string,
     };
 }
 
-export function deleteChatMessage(chatMessageHistory: ChatMessage[], messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
+export function deleteChatMessage(chatData: ChatData, messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
+    
+    const chatMessageHistory = chatData.chatMessageHistory;
+    
     const targetIndex = chatMessageHistory.findIndex(m => m.id === messageId);
     if (targetIndex === -1) return { newHistory: chatMessageHistory, invalidatedIds: [] };
 
@@ -163,7 +166,7 @@ export function deleteChatMessage(chatMessageHistory: ChatMessage[], messageId: 
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
 }
 
-export function branchChatAtChatMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
+export function branchChatMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
   const branchIndex = sourceChatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
   if (branchIndex === -1) throw new Error('Branch point message not found');
 
