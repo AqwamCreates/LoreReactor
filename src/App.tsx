@@ -6,7 +6,7 @@ import {saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage, branchChatMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
