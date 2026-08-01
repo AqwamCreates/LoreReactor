@@ -6,17 +6,9 @@ import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, editChatMessageInChatData, branchChatAtMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, branchChatAtMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
-
-function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {
-  return {
-    ...chatData,
-    chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-    last_updated_timestamp: Date.now(),
-  };
-}
 
 async function getImageBase64(imageUrl: string): Promise<string | null> {
   try {
@@ -72,11 +64,7 @@ async function handleServerResponse(
     const displayText = convertIdsToDisplayNames(rawText, chatData);
     const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
 
-    return {
-      ...chatData,
-      chatMessageHistory: [...chatData.chatMessageHistory, aiMessage],
-      last_updated_timestamp: Date.now(),
-    };
+    return addMessageToChatData(chatData, aiMessage);
 
   } catch (error) {
     if ((error as Error).name === 'AbortError') return null;
@@ -84,8 +72,6 @@ async function handleServerResponse(
     return null;
   }
 }
-
-
 
 function getDelayedDisplayName(chatMessageHistory: ChatMessage[], chatMessageHistoryIndex: number, characterId: string, participants: Character[]): string {
 

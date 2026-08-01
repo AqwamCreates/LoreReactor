@@ -128,6 +128,15 @@ export function prepareRequestBody(chatData: ChatData, character: Character, ima
     return body;
 }
 
+export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {
+  return {
+    ...chatData,
+    chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
+    last_updated_timestamp: Date.now(),
+  };
+}
+
+
 export function deleteChatMessageFromChatMessageHistory(chatMessageHistory: ChatMessage[], messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
     const targetIndex = chatMessageHistory.findIndex(m => m.id === messageId);
     if (targetIndex === -1) return { newHistory: chatMessageHistory, invalidatedIds: [] };
