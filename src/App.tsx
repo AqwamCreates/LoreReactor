@@ -5,9 +5,9 @@ import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData
 import {detectName} from "./nameDetection"
 import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "./storage"
 import './App.css'
-import { LLMInferenceEngine } from './LLMInferenceEngine';
+import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 
-const LLInferenceEngine = new LLMInferenceEngine();
+const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
 const sampler = loadSampler("UniversalCharacterCognition") as Sampler;
 
