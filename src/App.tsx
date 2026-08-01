@@ -196,8 +196,11 @@ function App() {
               </span>
             </div>
             <div className="message-bubble bubble-ai">
-              <span className="message-text">{streamingText}</span>
-              <span className="cursor-blink">▋</span>
+              {/* ✅ FIX: Force inline layout for streaming text and cursor */}
+              <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                <span className="cursor-blink" style={{ display: 'inline' }}>▋</span>
+              </div>
             </div>
           </div>
         )}
