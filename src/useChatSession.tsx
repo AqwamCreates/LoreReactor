@@ -1,4 +1,3 @@
-// src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData } from './types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
@@ -18,8 +17,8 @@ export function useChatSession() {
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     
-    // ✅ State to track which messages in the current chat have branches
-    const [branchChatMessageIds, setBranchChatMessageIds] = useState<Set<string>>(new Set());
+    // ✅ Tracks message IDs in the CURRENT chat that have other chats branching from them
+    const [parentChatMessageIds, setBranchPointIds] = useState<Set<string>>(new Set());
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -103,6 +102,7 @@ export function useChatSession() {
         }
     }, [handleServerResponse]);
 
+    // ✅ Initialization & Branch Detection
     useEffect(() => {
         const init = async () => {
             if (!chatData) {
@@ -117,16 +117,19 @@ export function useChatSession() {
             } else if (currentCharacter && !isInitialImageProcessed) {
                 await processProtagonistImageSilently(chatData, currentCharacter);
             }
+
+            // ✅ Calculate Branch Points: Find any chat that branches FROM this current chat
             if (chatData) {
                 const allChats = await loadAllRawChatData();
                 const points = new Set<string>();
-                for (const c of allChats) {
-                    if (c && c.parentChatDataId === chatData.id && c.parentChatMessageId) {
-                        points.add(c.parentChatMessageId || "");
-                    }
-                }
                 
-                setBranchChatMessageIds(points);
+                allChats.forEach(c => {
+                    if (c && c.parentChatDataId === chatData.id && c.parentChatMessageId) {
+                        points.add(c.parentChatMessageId);
+                    }
+                });
+                
+                setBranchPointIds(points);
             }
         };
         init();
@@ -313,6 +316,6 @@ export function useChatSession() {
         regenerateLastAI,
         regenerateLastProtagonist,
         messageEndRef,
-        branchChatMessageIds // ✅ Don't forget to return this!
+        parentChatMessageIds // ✅ Returned for UI to use
     };
 }

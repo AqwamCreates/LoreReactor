@@ -1,5 +1,5 @@
-import type React from 'react';
-import { useState, useRef } from 'react';
+// src/App.tsx
+import React, { useState, useRef } from 'react';
 import { useChatSession } from './useChatSession';
 import type { Character, ChatMessage } from './types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
@@ -12,7 +12,6 @@ function getDelayedDisplayName(chatMessageHistory: ChatMessage[], index: number,
     const idx = participants.findIndex(p => p.id === characterId);
     return idx !== -1 ? `Character ${idx + 1}` : 'Unknown';
   }
-
   const target = chatMessageHistory[index];
   for (let i = index - 1; i >= 0; i--) {
     const msg = chatMessageHistory[i];
@@ -21,7 +20,6 @@ function getDelayedDisplayName(chatMessageHistory: ChatMessage[], index: number,
       break;
     }
   }
-  
   const idx = participants.findIndex(p => p.id === characterId);
   return idx !== -1 ? `Character ${idx + 1}` : 'Unknown';
 }
@@ -39,7 +37,7 @@ function App() {
     regenerateLastAI,
     regenerateLastProtagonist,
     messageEndRef,
-    branchChatMessageIds
+    parentChatMessageIds // ✅ Received from hook
   } = useChatSession();
 
   const [inputText, setInputText] = useState('');
@@ -61,7 +59,11 @@ function App() {
       setChatData(updated);
       setEditingId(null);
       setEditDraft('');
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
+            alert((err as Error).message);
+        } else { console.error(err); }
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -70,12 +72,9 @@ function App() {
       const updated = await deleteMessage(chatData, id);
       setChatData(updated);
     } catch (err) { 
-        // Show specific error if it's a branch point
-        if ((err as Error).message.includes("branch")) {
+        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
             alert((err as Error).message);
-        } else {
-            console.error(err); 
-        }
+        } else { console.error(err); }
     }
   };
 
@@ -88,11 +87,9 @@ function App() {
       setChatData(updated);
       setMassDeleteId(null);
     } catch (err) { 
-        if ((err as Error).message.includes("branch")) {
+        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
             alert((err as Error).message);
-        } else {
-            console.error(err); 
-        }
+        } else { console.error(err); }
     }
   };
 
@@ -115,15 +112,19 @@ function App() {
 
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
+  
+  // Find index of the message where THIS chat branched off (if applicable)
+  const branchOffIndex = chatData.parentChatMessageId 
+    ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) 
+    : -1;
 
   return (
     <div className="chat-container">
       <div className="chat-history">
         
-        {/* ✅ 2. Render "Branched From" Header if this chat is a branch */}
-        {chatData.parentChatId && (
+        {chatData.parentChatDataId && (
           <div className="branch-origin-header">
-            <span>↩️ Viewing a branch started from message ID: {chatData.branchPointMessageId?.substring(0, 8)}...</span>
+            <span>↩️ Viewing a branch started from message ID: {chatData.parentChatMessageId?.substring(0, 8)}...</span>
           </div>
         )}
 
@@ -142,97 +143,105 @@ function App() {
           const isMassStart = message.id === massDeleteId;
           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
           
-          // ✅ 3. Check if this specific message is a branch point
-          const isBranchPoint = branchChatMessageIds.has(message.id);
+          // ✅ Check if this message has OTHER chats branching from it
+          const isStemMessage = parentChatMessageIds.has(message.id);
+          
+          // ✅ Check if we need to render the separator line AFTER this message
+          const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
           return (
-            <div key={message.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
-              {!isProtagonist && (
-                <div className="avatar-column">
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
-                  ) : (
-                    <div className="character-avatar placeholder" />
-                  )}
-                  <span className="avatar-name">{displayName}</span>
-                </div>
-              )}
-              <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''}`}>
-                {isEditing ? (
-                  <div className="edit-mode">
-                    <textarea
-                      value={editDraft}
-                      onChange={(e) => setEditDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
-                        if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); }
-                      }}
-                      className="edit-textarea"
-                      rows={Math.max(3, editDraft.split('\n').length)}
-                    />
-                    <div className="edit-actions">
-                      <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                      <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
-                    </div>
+            <React.Fragment key={message.id}>
+              <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
+                {!isProtagonist && (
+                  <div className="avatar-column">
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+                    ) : (
+                      <div className="character-avatar placeholder" />
+                    )}
+                    <span className="avatar-name">{displayName}</span>
                   </div>
-                ) : (
-                  <>
-                    <span className="message-text">{message.textContent}</span>
-                    
-                    <div className="message-toolbar">
-                      {!isMassActive ? (
-                        <>
-                          <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} title="Edit" className="toolbar-btn">✎</button>
-                          {(isLastAI || isLastProtag) && (
-                            <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>
-                          )}
-                          <button type="button" onClick={() => handleBranch(message.id)} title="Branch" className="toolbar-btn">⑂</button>
-                          
-                          {/* ✅ 4. Disable Delete if it's a branch point */}
-                          <button 
-                            type="button" 
-                            onClick={() => handleDelete(message.id)} 
-                            title={isBranchPoint ? "Cannot delete: Other chats branch from here" : "Delete only this message"} 
-                            className="toolbar-btn delete-btn" 
-                            style={{ color: isBranchPoint ? '#ccc' : '#ff4444', cursor: isBranchPoint ? 'not-allowed' : 'pointer' }}
-                            disabled={isBranchPoint}
-                          >
-                            🗑
-                          </button>
-
-                          <button 
-                            type="button" 
-                            onClick={() => setMassDeleteId(message.id)} 
-                            title="Delete this and all following" 
-                            className="toolbar-btn mass-delete-btn" 
-                            style={{ color: isBranchPoint ? '#ccc' : '#ff9900', cursor: isBranchPoint ? 'not-allowed' : 'pointer' }}
-                            disabled={isBranchPoint}
-                          >
-                            🗑️↓
-                          </button>
-                        </>
-                      ) : isMassStart ? (
-                        <div className="mass-delete-confirm-bar">
-                          <span style={{fontSize: '0.8em', marginRight: '5px'}}>Delete from here?</span>
-                          <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
-                          <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: '#ccc'}}>Cancel</button>
-                        </div>
-                      ) : isInDeletionRange ? (
-                        <span className="deleted-preview-label">Will be deleted</span>
-                      ) : null}
-                    </div>
-                  </>
                 )}
+                <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStemMessage ? 'bubble-stem' : ''}`}>
+                  {isEditing ? (
+                    <div className="edit-mode">
+                      <textarea
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
+                          if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); }
+                        }}
+                        className="edit-textarea"
+                        rows={Math.max(3, editDraft.split('\n').length)}
+                      />
+                      <div className="edit-actions">
+                        <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                        <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="message-text">{message.textContent}</span>
+                      
+                      <div className="message-toolbar">
+                        {/* ✅ LOCK TOOLBAR IF STEM MESSAGE */}
+                        {isStemMessage ? (
+                          <span className="toolbar-lock" title="Locked: Other chats branch from here">🔒 Locked</span>
+                        ) : !isMassActive ? (
+                          <>
+                            <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} title="Edit" className="toolbar-btn">✎</button>
+                            {(isLastAI || isLastProtag) && (
+                              <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>
+                            )}
+                            <button type="button" onClick={() => handleBranch(message.id)} title="Branch" className="toolbar-btn">⑂</button>
+                            
+                            <button 
+                              type="button" 
+                              onClick={() => handleDelete(message.id)} 
+                              title="Delete only this message" 
+                              className="toolbar-btn delete-btn" 
+                              style={{ color: '#ff4444' }}
+                            >
+                              🗑
+                            </button>
+
+                            <button 
+                              type="button" 
+                              onClick={() => setMassDeleteId(message.id)} 
+                              title="Delete this and all following" 
+                              className="toolbar-btn mass-delete-btn" 
+                              style={{ color: '#ff9900' }}
+                            >
+                              🗑️↓
+                            </button>
+                          </>
+                        ) : isMassStart ? (
+                          <div className="mass-delete-confirm-bar">
+                            <span style={{fontSize: '0.8em', marginRight: '5px'}}>Delete from here?</span>
+                            <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
+                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: '#ccc'}}>Cancel</button>
+                          </div>
+                        ) : isInDeletionRange ? (
+                          <span className="deleted-preview-label">Will be deleted</span>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               
-              {/* ✅ 5. Render Branch Indicator BELOW the message if it's a branch point */}
-              {isBranchPoint && (
-                <div className="branch-indicator">
-                  <span className="branch-icon">🌿</span>
-                  <span className="branch-text">Branch exists from here</span>
+              {/* ✅ RENDER THE LONG SEPARATOR LINE */}
+              {isJustBeforeBranchOff && (
+                <div className="branch-separator-line">
+                  <div className="branch-separator-content">
+                    <span className="branch-separator-icon">🌿</span>
+                    <span className="branch-separator-text">Conversation Branches Here</span>
+                    <span className="branch-separator-icon">🌿</span>
+                  </div>
                 </div>
               )}
-            </div>
+            </React.Fragment>
           );
         })}
 

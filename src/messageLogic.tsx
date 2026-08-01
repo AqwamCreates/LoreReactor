@@ -1,27 +1,31 @@
-import { deleteRawChatMessage, loadAllRawChatData, saveRawChatData } from './storage';
-import { deleteChatMessage, editChatMessageInChatData, branchChatMessage } from './chatLogic';
+import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
+import { deleteChatMessage as calculateDelete, editChatMessageInChatData, branchChatMessage } from './chatLogic';
 import type { ChatData } from './types';
 
-async function isMessageABranchPoint(chatId: string, messageId: string): Promise<boolean> {
+// ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
+async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
     const allChats = await loadAllRawChatData();
-    // Check if any OTHER chat has this chatId as parent AND this messageId as branch point
-    return allChats.some(c => 
-        c !== null && 
-        c.parentChatDataId === chatId && 
-        c.parentChatMessageId === messageId
-    );
+    const points = new Set<string>();
+    
+    allChats.forEach(c => {
+        // If another chat branches FROM this chatId AT a specific message
+        if (c && c.parentChatDataId === chatId && c.parentChatMessageId) {
+            points.add(c.parentChatMessageId);
+        }
+    });
+    return points;
 }
 
 export async function deleteMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
-    // ✅ SAFETY CHECK: Prevent deleting branch points
-    const isBranchPoint = await isMessageABranchPoint(currentChat.id, messageId);
-    if (isBranchPoint) {
-        throw new Error("Cannot delete this message: Other chat sessions branch from here.");
-        // Or optionally: return currentChat without deleting, and show a toast in UI
+    const parentChatMessageIds = await getParentChatMessageIds(currentChat.id);
+    
+    // ✅ Safety: Prevent deleting if this message is a branch point
+    if (parentChatMessageIds.has(messageId)) {
+        throw new Error("Cannot delete: Other chat sessions branch from this message.");
     }
 
     await deleteRawChatMessage(messageId);
-    const { newHistory } = deleteChatMessage(currentChat, messageId);
+    const { newHistory } = calculateDelete(currentChat, messageId);
     
     return {
         ...currentChat,
@@ -30,14 +34,26 @@ export async function deleteMessage(currentChat: ChatData, messageId: string): P
     };
 }
 
-// ... (massDeleteMessages needs similar logic: iterate and check each message)
+export async function editMessage(currentChat: ChatData, messageId: string, newText: string): Promise<ChatData> {
+    const parentChatMessageIds = await getParentChatMessageIds(currentChat.id);
+
+    // ✅ Safety: Prevent editing if this message is a branch point
+    if (parentChatMessageIds.has(messageId)) {
+        throw new Error("Cannot edit: Other chat sessions branch from this message.");
+    }
+
+    const updatedChatData = editChatMessageInChatData(currentChat, messageId, newText);
+    await saveRawChatData(updatedChatData);
+    return updatedChatData;
+}
+
 export async function massDeleteMessages(currentChat: ChatData, startIndex: number): Promise<ChatData> {
     const messagesToDelete = currentChat.chatMessageHistory.slice(startIndex);
-    
-    // ✅ Check ALL messages in range
+    const parentChatMessageIds = await getParentChatMessageIds(currentChat.id);
+
     for (const msg of messagesToDelete) {
-        if (await isMessageABranchPoint(currentChat.id, msg.id)) {
-            throw new Error(`Cannot delete message "${msg.textContent.substring(0, 20)}...": Other chats branch from here.`);
+        if (parentChatMessageIds.has(msg.id)) {
+            throw new Error("Cannot delete: Other chats branch from this message.");
         }
     }
 
@@ -51,19 +67,10 @@ export async function massDeleteMessages(currentChat: ChatData, startIndex: numb
     };
 }
 
-export async function editMessage(currentChat: ChatData, messageId: string, newText: string): Promise<ChatData> {
-    const updatedChatData = editChatMessageInChatData(currentChat, messageId, newText);
-    await saveRawChatData(updatedChatData);
-    return updatedChatData;
-}
-
 export async function branchMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
     const branchedChat = branchChatMessage(currentChat, messageId);
-    
-    // ✅ Set the lineage metadata
     branchedChat.parentChatDataId = currentChat.id;
     branchedChat.parentChatMessageId = messageId;
-    
     await saveRawChatData(branchedChat);
     return branchedChat;
 }
