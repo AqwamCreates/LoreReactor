@@ -1,8 +1,9 @@
 // src/App.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from './useChatSession';
 import type { Character, ChatMessage } from './types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from './messageLogic';
+import { deleteRawChatData, loadAllRawChatData } from './storage';
 import { getCharacterImageUrl } from './storage';
 import './App.css';
 
@@ -37,15 +38,55 @@ function App() {
     regenerateLastAI,
     regenerateLastProtagonist,
     messageEndRef,
-    parentChatMessageIds // ✅ Updated to match hook
+    parentChatMessageIds
   } = useChatSession();
 
+  // --- UI State ---
+  const [isChatListOpen, setIsChatListOpen] = useState(false);
+  const [allChats, setAllChats] = useState<ChatData[]>([]);
+  
+  // Local Form State
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Load Chat List for Modal ---
+  useEffect(() => {
+    if (isChatListOpen) {
+      loadAllRawChatData().then(data => {
+        setAllChats(data.filter((c): c is ChatData => c !== null));
+      });
+    }
+  }, [isChatListOpen]);
+
+  // --- Handlers ---
+  const handleSwitchChat = (id: string) => {
+    const selected = allChats.find(c => c.id === id);
+    if (selected) {
+      setChatData(selected);
+      setIsChatListOpen(false);
+    }
+  };
+
+  const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this entire chat session?")) return;
+    
+    try {
+      await deleteRawChatData(id);
+      const updated = await loadAllRawChatData();
+      setAllChats(updated.filter((c): c is ChatData => c !== null));
+      if (chatData && chatData.id === id) {
+        setChatData(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+      alert("Failed to delete chat.");
+    }
+  };
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
@@ -108,26 +149,42 @@ function App() {
     setPendingFiles([]);
   };
 
-  if (!chatData || !currentCharacter) return <div className="loading-screen">Loading chat session...</div>;
+  // Placeholder handlers
+  const handleManageParticipants = () => alert("Participant management coming soon!");
+  const handleManageInstructions = () => alert("Instruction management coming soon!");
+  const handleSearch = () => alert("Search functionality coming soon!");
+
+  if (!chatData || !currentCharacter) {
+    return (
+      <div className="loading-screen">
+        <h2>No Active Chat</h2>
+        <button onClick={() => setIsChatListOpen(true)} className="send-button counter">Open Chat List</button>
+      </div>
+    );
+  }
 
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
-  
-  // Find index of the message where THIS chat branched off (if applicable)
   const branchOffIndex = chatData.parentChatMessageId 
     ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) 
     : -1;
 
   return (
     <div className="chat-container">
-      <div className="chat-history">
-        
-        {chatData.parentChatDataId && (
-          <div className="branch-origin-header">
-            <span>↩️ Viewing a branch started from message ID: {chatData.parentChatMessageId?.substring(0, 8)}...</span>
-          </div>
-        )}
+      
+      {/* === TOP HEADER NAVIGATION === */}
+      <header className="app-header">
+        <div className="header-title">{chatData.title}</div>
+        <nav className="header-nav">
+          <button className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
+          <button className="nav-btn" disabled>🎭 Characters</button>
+          <button className="nav-btn" disabled>📜 Instructions</button>
+          <button className="nav-btn" disabled>🎚️ Samplers</button>
+          <button className="nav-btn" disabled>🛑 Stop Patterns</button>
+        </nav>
+      </header>
 
+      <div className="chat-history">
         {chatData.chatMessageHistory.map((message, index) => {
           const isProtagonist = message.character.id === currentCharacter.id;
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, message.character.id, chatData.participants);
@@ -142,11 +199,7 @@ function App() {
           const isEditing = editingId === message.id;
           const isMassStart = message.id === massDeleteId;
           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-          
-          // ✅ Check if this message has OTHER chats branching from it
           const isStemMessage = parentChatMessageIds.has(message.id);
-          
-          // ✅ Check if we need to render the separator line AFTER this message
           const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
           return (
@@ -165,16 +218,7 @@ function App() {
                 <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStemMessage ? 'bubble-stem' : ''}`}>
                   {isEditing ? (
                     <div className="edit-mode">
-                      <textarea
-                        value={editDraft}
-                        onChange={(e) => setEditDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
-                          if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); }
-                        }}
-                        className="edit-textarea"
-                        rows={Math.max(3, editDraft.split('\n').length)}
-                      />
+                      <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
                       <div className="edit-actions">
                         <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
                         <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
@@ -183,38 +227,16 @@ function App() {
                   ) : (
                     <>
                       <span className="message-text">{message.textContent}</span>
-                      
                       <div className="message-toolbar">
-                        {/* ✅ LOCK TOOLBAR IF STEM MESSAGE */}
                         {isStemMessage ? (
                           <span className="toolbar-lock" title="Locked: Other chats branch from here">🔒 Locked</span>
                         ) : !isMassActive ? (
                           <>
                             <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} title="Edit" className="toolbar-btn">✎</button>
-                            {(isLastAI || isLastProtag) && (
-                              <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>
-                            )}
+                            {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>)}
                             <button type="button" onClick={() => handleBranch(message.id)} title="Branch" className="toolbar-btn">⑂</button>
-                            
-                            <button 
-                              type="button" 
-                              onClick={() => handleDelete(message.id)} 
-                              title="Delete only this message" 
-                              className="toolbar-btn delete-btn" 
-                              style={{ color: '#ff4444' }}
-                            >
-                              🗑
-                            </button>
-
-                            <button 
-                              type="button" 
-                              onClick={() => setMassDeleteId(message.id)} 
-                              title="Delete this and all following" 
-                              className="toolbar-btn mass-delete-btn" 
-                              style={{ color: '#ff9900' }}
-                            >
-                              🗑️↓
-                            </button>
+                            <button type="button" onClick={() => handleDelete(message.id)} title="Delete" className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                            <button type="button" onClick={() => setMassDeleteId(message.id)} title="Mass Delete" className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
                           </>
                         ) : isMassStart ? (
                           <div className="mass-delete-confirm-bar">
@@ -222,16 +244,12 @@ function App() {
                             <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
                             <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: '#ccc'}}>Cancel</button>
                           </div>
-                        ) : isInDeletionRange ? (
-                          <span className="deleted-preview-label">Will be deleted</span>
-                        ) : null}
+                        ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
                       </div>
                     </>
                   )}
                 </div>
               </div>
-              
-              {/* ✅ RENDER THE LONG SEPARATOR LINE */}
               {isJustBeforeBranchOff && (
                 <div className="branch-separator-line">
                   <div className="branch-separator-content">
@@ -248,14 +266,8 @@ function App() {
         {isLoading && streamingCharacter && (
           <div className="message-row message-left">
             <div className="avatar-column">
-              {streamingCharacter.image ? (
-                <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />
-              ) : (
-                <div className="character-avatar placeholder" />
-              )}
-              <span className="avatar-name">
-                {getDelayedDisplayName(chatData.chatMessageHistory, chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory.length - 1 : 0, streamingCharacter.id, chatData.participants)}
-              </span>
+              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
+              <span className="avatar-name">{streamingCharacter.name}</span>
             </div>
             <div className="message-bubble bubble-ai">
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
@@ -268,6 +280,20 @@ function App() {
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
+      {/* === BOTTOM CONTEXT BAR (Buttons Only) === */}
+      <div className="context-bar">
+        <button className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
+          👥 Participants ({chatData.participants.length})
+        </button>
+        <button className="context-btn" onClick={handleManageInstructions} title="Manage Instructions (Coming Soon)">
+          📜 Instructions ({chatData.instructions?.length || 0})
+        </button>
+        <button className="context-btn" onClick={handleSearch} title="Search Messages (Coming Soon)">
+          🔍 Search
+        </button>
+      </div>
+
+      {/* === INPUT AREA === */}
       <div className="input-wrapper">
         {pendingFiles.length > 0 && (
           <div className="attachment-strip">
@@ -283,31 +309,48 @@ function App() {
         <div className="input-area">
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn" title="Attach file">📎</button>
           <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (!isLoading) handleSend();
-              }
-            }}
-            placeholder={`Message as ${currentCharacter.name}...`}
-            rows={3}
-            className="chat-input"
-            disabled={isLoading}
-          />
-          <button
-            type="button"
-            onClick={isLoading ? stopGeneration : handleSend}
-            disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)}
-            className="send-button counter"
-            title={isLoading ? "Stop Generating" : "Send Message"}
-          >
+          <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading} />
+          <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter" title={isLoading ? "Stop Generating" : "Send Message"}>
             {isLoading ? '⏹ Stop' : 'Send'}
           </button>
         </div>
       </div>
+
+      {/* === CHAT LIST MODAL === */}
+      {isChatListOpen && (
+        <div className="modal-overlay" onClick={() => setIsChatListOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Chat Sessions</h2>
+              <button className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {allChats.length === 0 ? (
+                <p className="empty-state">No chat sessions found.</p>
+              ) : (
+                <ul className="chat-list">
+                  {allChats.map(chat => {
+                    const isCurrent = chatData.id === chat.id;
+                    const isBranch = !!chat.parentChatDataId;
+                    return (
+                      <li key={chat.id} className={`chat-list-item ${isCurrent ? 'active' : ''}`} onClick={() => handleSwitchChat(chat.id)}>
+                        <div className="chat-item-main">
+                          <span className="chat-icon">{isBranch ? '🌿' : '💬'}</span>
+                          <div className="chat-item-info">
+                            <div className="chat-item-title">{chat.title}</div>
+                            {isBranch && <div className="chat-item-sub">Branch of {chat.parentChatDataId.substring(0,8)}...</div>}
+                          </div>
+                        </div>
+                        <button className="delete-chat-btn" onClick={(e) => handleDeleteChat(e, chat.id)} title="Delete Chat">🗑️</button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
