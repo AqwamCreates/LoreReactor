@@ -12,9 +12,9 @@ export function getFatigueInstruction(currentChatStamina: number, maximumChatSta
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
-    if (ratio > 0.4) return "[System Note: You are starting to feel slightly winded. Keep your responses concise and focused. Don't ramble.]";
-    if (ratio > 0.1) return "[System Note: You are quite exhausted. Your speech should be halting, brief, or you might suggest someone else take over. Avoid long monologues.]";
-    return "[System Note: You are completely drained. You barely have the energy to speak. If you must reply, make it a whisper, a grunt, or defer entirely to another character. Do not initiate new topics.]";
+    if (ratio > 0.4) return "[You are starting to feel slightly winded. Keep your responses concise and focused. Don't ramble.]";
+    if (ratio > 0.1) return "[You are quite exhausted. Your speech should be halting, brief, or you might suggest someone else take over. Avoid long monologues.]";
+    return "[You are completely drained. You barely have the energy to speak. If you must reply, make it a whisper, a grunt, or defer entirely to another character. Do not initiate new topics.]";
 }
 
 export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
