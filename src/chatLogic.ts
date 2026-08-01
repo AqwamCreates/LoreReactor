@@ -19,7 +19,8 @@ export function getFatigueInstruction(currentChatStamina: number, maximumChatSta
     return "[System Note: You are completely drained. You barely have the energy to speak. If you must reply, make it a whisper, a grunt, or defer entirely to another character. Do not initiate new topics.]";
 }
 
-export function findPreviousChatMessage(chatMessageHistory: ChatMessage[], characterId: string): ChatMessage | null {
+export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
+    const chatMessageHistory = chatData.chatMessageHistory;
     for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
         if (chatMessageHistory[i].character.id === characterId) return chatMessageHistory[i];
     }
@@ -40,7 +41,7 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
     if (character.systemPrompt) lines.push(`[${name} System Prompt: ${character.systemPrompt}]`);
     if (character.description) lines.push(`[${name} Description: ${character.description}]`);
 
-    const previousMessage = findPreviousChatMessage(chatData.chatMessageHistory, character.id);
+    const previousMessage = findPreviousChatMessage(chatData, character.id);
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
@@ -81,7 +82,7 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
 }
 
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
-    const previousMessage = findPreviousChatMessage(chatData.chatMessageHistory, character.id);
+    const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
@@ -151,9 +152,7 @@ export function editChatMessageInChatData(chatData: ChatData, messageId: string,
 }
 
 export function deleteChatMessage(chatData: ChatData, messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
-    
     const chatMessageHistory = chatData.chatMessageHistory;
-    
     const targetIndex = chatMessageHistory.findIndex(m => m.id === messageId);
     if (targetIndex === -1) return { newHistory: chatMessageHistory, invalidatedIds: [] };
 
@@ -166,18 +165,18 @@ export function deleteChatMessage(chatData: ChatData, messageId: string): { newH
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
 }
 
-export function branchChatMessage(sourceChatData: ChatData, branchPointMessageId: string): ChatData {
-  const branchIndex = sourceChatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
-  if (branchIndex === -1) throw new Error('Branch point message not found');
+export function branchChatMessage(chatData: ChatData, branchPointMessageId: string): ChatData {
+    const branchIndex = chatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
+    if (branchIndex === -1) throw new Error('Branch point message not found');
 
-  const currentTimestamp = Date.now();
-  return {
-    id: uuidv4(),
-    title: `${sourceChatData.title} [#${branchIndex + 1}]`,
-    protagonist: sourceChatData.protagonist,
-    participants: sourceChatData.participants,
-    chatMessageHistory: sourceChatData.chatMessageHistory.slice(0, branchIndex + 1),
-    first_created_timestamp: currentTimestamp,
-    last_updated_timestamp: currentTimestamp,
-  };
+    const currentTimestamp = Date.now();
+    return {
+        id: uuidv4(),
+        title: `${chatData.title} [#${branchIndex + 1}]`,
+        protagonist: chatData.protagonist,
+        participants: chatData.participants,
+        chatMessageHistory: chatData.chatMessageHistory.slice(0, branchIndex + 1),
+        first_created_timestamp: currentTimestamp,
+        last_updated_timestamp: currentTimestamp,
+    };
 }
