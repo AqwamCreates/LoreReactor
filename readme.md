@@ -38,8 +38,6 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session labeled by message position (e.g., [#47]). Original chat remains untouched. Multiple branches can be open simultaneously with independent KV cache slots.
 
-* Appearance-only visual grounding: Character appearance is conveyed exclusively through injected profile images on first speech, so zero text description tokens consumed. The isAppearanceRevealed state flag tracks visual discovery as a narrative event independent of cache validity.
-
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
 
 ## Architecture Notes
