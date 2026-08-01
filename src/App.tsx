@@ -34,7 +34,6 @@ async function handleServerResponse(
   onStreamUpdate?: (text: string) => void
 ): Promise<ChatData | null> {
   
-  // 1. Handle Image (Keep this local as it involves browser File APIs)
   let imageData: string | null = null;
   if (aiCharacter.image) {
     const imageUrl = getCharacterImageUrl(aiCharacter.image);
@@ -47,20 +46,13 @@ async function handleServerResponse(
     }
   }
 
-  // 2. Prepare Request using Orchestrator Logic
   const requestBody = prepareRequestBody(chatData, aiCharacter, imageData);
 
   try {
-    // 3. Call Engine
     const rawText = await LLInferenceEngine.generateStream(requestBody, abortController, {
-      onToken: (fullText) => {
-        // Optional: Convert IDs live during streaming if you want names to appear instantly
-        // Otherwise, just pass raw text and convert at the end
-        if (onStreamUpdate) onStreamUpdate(fullText); 
-      }
+      onToken: (fullText) => {if (onStreamUpdate) onStreamUpdate(fullText)}
     });
 
-    // 4. Post-process and Create Message
     const displayText = convertIdsToDisplayNames(rawText, chatData);
     const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
 
