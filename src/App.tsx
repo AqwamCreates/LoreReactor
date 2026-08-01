@@ -5,6 +5,9 @@ import type {StopPattern, Sampler, Instruction, Character, ChatMessage, ChatData
 import {detectName} from "./nameDetection"
 import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "./storage"
 import './App.css'
+import { LLMInferenceEngine } from './LLMInferenceEngine';
+
+const LLInferenceEngine = new LLMInferenceEngine();
 
 const sampler = loadSampler("UniversalCharacterCognition") as Sampler;
 
@@ -193,75 +196,23 @@ async function handleServerResponse(
 
   const prompt = buildPromptFromHistory(chatData, aiCharacter);
 
+  const requestBody: any = {
+    prompt,
+    n_predict: sampler?.maximumNumberOfTokens ?? 512,
+    stop: stopSequences,
+    stream: true,
+    ...sampler?.parameters,
+  };
+
+  if (imageData) requestBody.image_data = imageData;
+
   try {
-    const requestBody: any = {
-      prompt,
-      n_predict: sampler?.maximumNumberOfTokens ?? 512,
-      stop: stopSequences,
-      stream: true, // ⚠️ CRITICAL: Tell the backend to stream
-      ...params,
-    };
 
-    if (imageData) {
-      requestBody.image_data = imageData;
-    }
-
-    const response = await fetch('/api/completion', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: abortController?.signal,
+    const text = await LLInferenceEngine.generateStream(requestBody, abortController!, {
+      onToken: (fullText) => { if (onStreamUpdate) onStreamUpdate(fullText); }
     });
 
-    if (!response.ok) {
-      if (abortController?.signal.aborted) return null;
-    }
-
-    // ⚠️ CRITICAL: Handle Streaming Response
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder("utf-8");
-    
-    let fullContent = "";
-    let done = false;
-
-    while (!done && reader) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      
-      if (value) {
-        const chunk = decoder.decode(value, { stream: true });
-        
-        // Parse the chunk (Assuming standard SSE format: "data: {...}\n\n")
-        // If your backend sends raw JSON lines, adjust parsing logic here.
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6);
-            if (jsonStr.trim() === '[DONE]') break;
-            
-            try {
-              const json = JSON.parse(jsonStr);
-              // Adjust based on your backend's specific response structure
-              const token = json.content || json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || "";
-              
-              if (token) {
-                fullContent += token;
-                
-                // 🔥 Update the UI immediately with the accumulated text
-                if (onStreamUpdate) {
-                  onStreamUpdate(fullContent);
-                }
-              }
-            } catch (e) {
-              console.warn("Error parsing stream chunk", e);
-            }
-          }
-        }
-      }
-    }
-
-    // Final cleanup and state creation
-    const displayText = convertIdsToDisplayNames(fullContent.trim(), chatData);
+    const displayText = convertIdsToDisplayNames(text, chatData);
     const aiMessage = createChatMessage(chatData, aiCharacter, displayText);
 
     return addMessageToChatData(chatData, { ...aiMessage, kvCachePath: undefined }); // KV Cache usually not returned in streaming unless supported
@@ -1011,10 +962,15 @@ function App() {
       onStopGeneration();
     }
 
-    // Keep messages FROM index 0 UP TO (but not including) startIndex? 
-    // OR keep UP TO AND INCLUDING startIndex?
-    // Usually "Delete from X to end" means X is also deleted.
-    // So we keep 0 to startIndex.
+    const messagesToDelete = chatData.chatMessageHistory.slice(startIndex);
+
+    // 2. Delete Files in Parallel 🗑️🗑️🗑️
+    try {
+      const { deleteChatMessage } = await import("./storage");
+      await Promise.all(messagesToDelete.map(msg => deleteChatMessage(msg.id)));
+    } catch (err) {
+      console.error("Failed to bulk delete message files:", err);
+    }
     
     const updatedHistory = chatData.chatMessageHistory.slice(0, startIndex);
 
