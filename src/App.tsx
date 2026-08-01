@@ -7,7 +7,6 @@ import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '.
 import { getCharacterImageUrl } from './storage';
 import './App.css';
 
-// Helper moved here for simplicity since it's view-specific logic
 function getDelayedDisplayName(chatMessageHistory: ChatMessage[], index: number, characterId: string, participants: Character[]): string {
   const len = chatMessageHistory.length;
   if (!len || index < 0 || index >= len) {

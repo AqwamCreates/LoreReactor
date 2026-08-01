@@ -58,7 +58,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: min(100%, 1200px);  /* ✅ Fluid clamp without media queries */
+  width: min(100%, 1200px);
   margin: 0 auto;
   font-family: monospace;
   overflow: hidden;
@@ -87,10 +87,10 @@
   display: flex; 
   flex-direction: column; 
   align-items: center; 
-  gap: 16px; /* Significant gap needed under such a tall image */
-  min-width: 160px; /* Match the new massive width */
-  flex-shrink: 0; /* Crucial: Prevents the avatar from being squashed */
-  margin-right: 1rem; /* Extra space between avatar and bubble */
+  gap: 16px;
+  min-width: 160px;
+  flex-shrink: 0;
+  margin-right: 1rem;
 }
 
 .message-right .avatar-column {
@@ -99,21 +99,21 @@
 }
 
 .character-avatar {
-  width: 160px; /* 👈 HUGE: 2.5x the original size */
+  width: 160px;
   aspect-ratio: 9 / 16; 
-  border-radius: 20px; /* Large radius for a polished look */
+  border-radius: 20px;
   object-fit: cover;
   object-position: top center; 
-  border: 4px solid var(--border); /* Thicker border to frame the giant image */
+  border: 4px solid var(--border);
   background: var(--social-bg);
-  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.2); /* Deep shadow for separation */
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.2);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .character-avatar:hover {
   transform: scale(1.03) translateY(-2px);
   box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
-  border-color: var(--accent); /* Highlight border on hover */
+  border-color: var(--accent);
 }
 
 .character-avatar.placeholder { 
@@ -123,12 +123,12 @@
 }
 
 .avatar-name {
-  font-size: 0.8rem; /* Slightly larger font to match the scale of the image */
+  font-size: 0.8rem;
   color: var(--text-h); 
   text-align: center;
   word-break: break-word; 
   line-height: 1.3; 
-  max-width: 128px; /* Ensure name stays within image bounds */
+  max-width: 128px;
   font-weight: bold;
   letter-spacing: 0.5px;
 }
@@ -138,10 +138,75 @@
   position: relative; 
   padding: 0.75rem 1rem; 
   border-radius: 12px;
-  font-size: 0.875rem; /* 👈 CHANGED: Reduced from 0.95rem (approx 14px) */
-  line-height: 1.6;    /* 👈 CHANGED: Increased slightly for better readability at smaller size */
+  font-size: 0.875rem;
+  line-height: 1.6;
   border: 1px solid var(--border);
+  
+  /* ✅ FIX: Flex column with full width children */
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* Equal space between label and text */
+  width: 100%; /* Ensures bubble fills its container */
+  box-sizing: border-box; /* Includes padding in width calculation */
 }
+
+/* Hover logic for toolbar */
+.message-bubble:hover .message-toolbar { 
+  opacity: 1; 
+}
+
+/* === FIX: Mass Delete Fading Logic === */
+.message-fading-out .message-text,
+.message-fading-out .avatar-column {
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+/* Force toolbar to be fully visible and interactive */
+.message-fading-out .message-toolbar {
+  opacity: 1 !important;
+  z-index: 50;
+  pointer-events: auto;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Hide standard buttons during mass delete */
+.message-fading-out .message-toolbar .toolbar-btn:not(.btn-confirm):not(.btn-cancel) {
+  display: none;
+}
+
+/* ✅ FIX: Full width, centered, no wrapping, no cramping */
+.message-fading-out .deleted-preview-label {
+  display: block;
+  width: 100%; /* Takes full width of bubble */
+  text-align: center; /* Centers text */
+  font-size: 0.65rem;
+  color: var(--accent);
+  opacity: 1 !important;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+  pointer-events: none;
+  flex-shrink: 0; /* Prevents squashing */
+  white-space: nowrap; /* Prevents wrapping */
+  overflow: hidden;
+  text-overflow: ellipsis; /* Adds ... if too wide */
+  box-sizing: border-box;
+}
+
+/* Ensure the message text respects the layout */
+.message-fading-out .message-text {
+  display: block;
+  word-break: break-word;
+  width: 100%; /* Takes full width */
+  min-height: 1em;
+  box-sizing: border-box;
+}
+
 .bubble-ai { background: var(--social-bg); border-top-left-radius: 2px; }
 .bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 2px; }
 .bubble-editing { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); }
@@ -150,7 +215,10 @@
 .message-text {
   outline: none;
   white-space: pre-wrap;
-  user-select: text; /* Ensures normal text selection still works */
+  user-select: text;
+  display: block;
+  width: 100%; /* Ensures text uses full available width */
+  box-sizing: border-box;
 }
 
 /* === Unified Hover Toolbar === */
@@ -174,8 +242,6 @@
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  /* ✅ Negative margin cancels parent bubble padding, 
-     then own padding restores consistent spacing for both textarea and buttons */
   margin: -0.75rem -1rem;
   padding: 0.75rem 1rem;
 }
@@ -192,7 +258,6 @@
   color: var(--text-h);
   outline: none;
   resize: vertical;
-  /* ✅ Ensure textarea content also has breathing room from its own border */
   box-sizing: border-box;
 }
 .edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
@@ -206,20 +271,14 @@
 
 /* === Mass Delete States === */
 
-/* Fade out messages that are in the deletion range */
-.message-fading-out {
-  opacity: 0.5;
-  transition: opacity 0.2s ease;
-}
-
 /* Visual border cue for bubbles marked for deletion */
 .bubble-marked-for-delete {
   border-color: var(--accent-border);
   border-style: dashed;
-  background: rgba(255, 0, 0, 0.03); /* Very subtle red tint using accent logic */
+  background: rgba(255, 0, 0, 0.03);
 }
 
-/* Label shown on messages that will be deleted */
+/* Label shown on messages that will be deleted (Fallback) */
 .deleted-preview-label {
   font-size: 0.7rem;
   color: var(--text-h);
@@ -231,7 +290,6 @@
 }
 
 /* === Mass Delete Confirmation Bar === */
-/* Replaces the toolbar when a message is selected as the start point */
 .mass-delete-confirm-bar {
   display: flex;
   align-items: center;
@@ -243,7 +301,7 @@
   font-size: 0.75rem;
   color: var(--text-h);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  z-index: 10; /* Ensure it sits above other elements */
+  z-index: 10;
 }
 
 .mass-delete-confirm-bar span {
@@ -252,7 +310,6 @@
   color: var(--accent);
 }
 
-/* Buttons inside the confirmation bar inherit toolbar styles but need specific colors */
 .mass-delete-confirm-bar .toolbar-btn {
   width: auto;
   height: 20px;
@@ -267,7 +324,6 @@
   opacity: 0.8;
 }
 
-/* Specific color overrides for Confirm/Cancel within the bar */
 .mass-delete-confirm-bar .btn-confirm {
   background: var(--accent);
   border: 1px solid var(--accent-border);
@@ -279,24 +335,15 @@
   border: 1px solid transparent;
 }
 
-/* === Mass Delete Trigger Button (The 🗑️↓ icon) === */
-/* Uses the standard toolbar-btn base, just adds a hover state */
 .toolbar-btn.mass-delete-trigger:hover {
   background: var(--accent-bg);
   color: var(--accent);
   transform: translateY(-1px);
 }
 
-/* Optional: Animation for when the list shrinks */
 @keyframes fadeOutUp {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-10px); }
 }
 
 .message-row.removing {
@@ -309,7 +356,7 @@
   gap: 0.5rem;
   padding: 1rem;
   background: var(--bg);
-  align-items: stretch; /* ✅ Replaces center — children match tallest sibling's height */
+  align-items: stretch;
 }
 .chat-input {
   flex: 1; resize: vertical; font-family: inherit; padding: 0.75rem;
@@ -324,9 +371,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 1.5rem;       /* ✅ Only horizontal padding — vertical is handled by stretch */
-  margin-bottom: 0;        /* ✅ Override .counter's 24px margin that breaks stretch */
-  border-radius: 8px;      /* ✅ Match textarea radius instead of .counter's 5px */
+  padding: 0 1.5rem;
+  margin-bottom: 0;
+  border-radius: 8px;
 }
 
 /* === Misc === */
