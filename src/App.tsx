@@ -177,7 +177,7 @@ async function handleServerResponse(
   aiCharacter: Character, 
   abortController?: AbortController,
   onStreamUpdate?: (text: string) => void // Callback to update UI in real-time
-): Promise<ChatData | null> {
+): Promise<ChatData | null | undefined> {
   const sampler = aiCharacter.sampler;
   const params = sampler?.parameters ?? samplerParameters;
 
@@ -215,7 +215,7 @@ async function handleServerResponse(
   try {
     const requestBody: any = {
       prompt,
-      n_predict: sampler?.maxTokens ?? 512,
+      n_predict: sampler?.maximumNumberOfTokens ?? 512,
       stop: stopSequences,
       stream: true, // ⚠️ CRITICAL: Tell the backend to stream
       ...params,
@@ -298,7 +298,7 @@ async function respondToMessages(
   aiCharacter: Character, 
   abortController?: AbortController,
   onStreamUpdate?: (text: string) => void
-): Promise<ChatData | null> {
+): Promise<ChatData | null | undefined> {
   // This function remains purely responsible for hitting the API and returning ONE new message appended to ChatData.
   const sampler = aiCharacter.sampler;
   const params = sampler?.parameters ?? samplerParameters;
@@ -333,7 +333,7 @@ async function respondToMessages(
   try {
     const requestBody: any = {
       prompt,
-      n_predict: sampler?.maxTokens ?? 512,
+      n_predict: sampler?.maximumNumberOfTokens ?? 512,
       stop: stopSequences,
       stream: true,
       ...params,
@@ -384,7 +384,6 @@ async function respondToMessages(
     const displayText = convertIdsToDisplayNames(fullContent.trim(), chatData);
     const newMessage = createChatMessage(chatData, aiCharacter, displayText);
     
-    // RETURN NEW CHATDATA WITH ONE MESSAGE APPENDED
     return addMessageToChatData(chatData, { ...newMessage, kvCachePath: undefined });
 
   } catch (error) {
