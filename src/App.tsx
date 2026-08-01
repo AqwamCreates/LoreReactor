@@ -6,6 +6,33 @@ import {detectName} from "./nameDetection"
 import {loadChatData, saveChatData, getCharacterImageUrl, loadAllChatData} from "./storage"
 import './App.css'
 
+const samplerParameters = { // https://github.com/AqwamCreates/Aqwam-Sampler-Configurations/blob/main/Universal-Character-Cognition-Sampler.md 
+
+  "temperature": 0.6,
+  "top_k": 50,
+  "top_p": 0.9,
+  "min_p": 0.1,
+    
+  "mirostat": 2,
+  "mirostat_tau": 3.0,
+  "mirostat_eta": 0.2,
+    
+  "typical_p": 0.95,
+    
+  "top_n_sigma": 4.5,
+    
+  "dry_multiplier": 0.35,
+  "dry_base": 1.35,
+  "dry_allowed_length": 2,
+  "dry_penalty_last_n": 4096,
+    
+  "repetition_penalty": 1.1,
+  "repetition_penalty_range": 4096,
+
+  "samplers": ["temperature", "top_k", "top_p", "mirostat", "typical_p", "min_p", "top_n_sigma", "dry", "repetition_penalty"]
+
+}
+
 function findPreviousChatMessage(chatMessageHistory: ChatMessage[], characterId: string): ChatMessage | null {
   for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
     if (chatMessageHistory[i].character.id === characterId) return chatMessageHistory[i];
@@ -93,7 +120,8 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
     if (fatigueInstruction) {lines.push(fatigueInstruction);}
   }
 
-  lines.push(`[Continue the conversation as ${characterId}.]`);
+  //lines.push(`[Continue the conversation as ${characterId}.]`);
+  
   const mappings = chatData.participants
     .map(p => {
       const id = getCharacterPromptId(p, chatData.participants);
@@ -151,7 +179,7 @@ async function handleServerResponse(
   onStreamUpdate?: (text: string) => void // Callback to update UI in real-time
 ): Promise<ChatData | null> {
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? {temperature: 0.8};
+  const params = sampler?.parameters ?? samplerParameters;
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
@@ -275,7 +303,7 @@ async function respondToMessages(
 ): Promise<ChatData | null> {
   // This function remains purely responsible for hitting the API and returning ONE new message appended to ChatData.
   const sampler = aiCharacter.sampler;
-  const params = sampler?.parameters ?? { temperature: 0.7 };
+  const params = sampler?.parameters ?? samplerParameters;
 
   const stopPatterns = chatData.participants.flatMap(p => {
     const id = getCharacterPromptId(p, chatData.participants);
