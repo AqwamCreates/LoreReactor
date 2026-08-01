@@ -10,8 +10,6 @@ import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, editCh
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
-const sampler = loadSampler("UniversalCharacterCognition") as Sampler;
-
 function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {
   return {
     ...chatData,
