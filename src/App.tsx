@@ -118,9 +118,9 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
     .join('; ');
   lines.push(`[Identity Map: ${mappings}]`);
 
-  for (const msg of chatData.chatMessageHistory) {
-    const promptId = getCharacterPromptId(msg.character, chatData.participants);
-    lines.push(`${promptId}: ${msg.textContent}`);
+  for (const message of chatData.chatMessageHistory) {
+    const promptId = getCharacterPromptId(message.character, chatData.participants);
+    lines.push(`${promptId}: ${message.textContent}`);
   }
   lines.push(`${characterId}:`);
   return lines.join('\n');
@@ -548,10 +548,10 @@ function editChatMessage(chatData: ChatData, messageId: string, newText: string)
   const editIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
   if (editIndex === -1) return chatData;
 
-  const updatedHistory = chatData.chatMessageHistory.map((msg, idx) => {
-    if (idx === editIndex) return { ...msg, textContent: newText, kvCachePath: undefined };
-    if (idx > editIndex) return { ...msg, kvCachePath: undefined };
-    return msg;
+  const updatedHistory = chatData.chatMessageHistory.map((message, idx) => {
+    if (idx === editIndex) return { ...message, textContent: newText, kvCachePath: undefined };
+    if (idx > editIndex) return { ...message, kvCachePath: undefined };
+    return message;
   });
 
   return { ...chatData, chatMessageHistory: updatedHistory, last_updated_timestamp: Date.now() };
@@ -796,7 +796,7 @@ function App() {
     // 2. Delete Old Files First 🗑️
     try {
       const { deleteChatMessage } = await import("./storage");
-      await Promise.all(oldMessages.map(msg => deleteChatMessage(msg.id)));
+      await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -878,7 +878,7 @@ function App() {
 
     try {
       const { deleteChatMessage } = await import("./storage");
-      await Promise.all(oldMessages.map(msg => deleteChatMessage(msg.id)));
+      await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
     }
@@ -965,13 +965,13 @@ function App() {
     const updatedHistory = chatData.chatMessageHistory.filter(m => m.id !== messageId);
     
     // Invalidate KV caches for all subsequent messages since context changed.
-    const finalHistory = updatedHistory.map((msg) => {
-      const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === msg.id);
+    const finalHistory = updatedHistory.map((message) => {
+      const originalIndex = chatData.chatMessageHistory.findIndex(m => m.id === message.id);
       // If this message originally came after the deleted one, clear its cache.
       if (originalIndex > chatData.chatMessageHistory.findIndex(m => m.id === messageId)) {
-        return { ...msg, kvCachePath: undefined };
+        return { ...message, kvCachePath: undefined };
       }
-      return msg;
+      return message;
     });
 
     const updatedChatData: ChatData = {
@@ -1049,16 +1049,16 @@ function App() {
   return (
     <div className="chat-container">
       <div className="chat-history">
-        {chatData.chatMessageHistory.map((msg, index) => {
+        {chatData.chatMessageHistory.map((message, index) => {
           const currentCharacterId = currentCharacter.id;
-          const isProtagonist = msg.character.id === currentCharacterId;
+          const isProtagonist = message.character.id === currentCharacterId;
           const isNotAProtagonist = !isProtagonist
 
-          const displayText = msg.textContent;
+          const displayText = message.textContent;
 
-          const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
+          const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, message.character.id, chatData.participants);
           
-          const characterImage = isNotAProtagonist ? getCharacterImageUrl(msg.character.image) : null;
+          const characterImage = isNotAProtagonist ? getCharacterImageUrl(message.character.image) : null;
           
           const aiParticipantIds = new Set(
             chatData.participants.filter(p => p.id !== chatData.protagonist.id).map(p => p.id)
@@ -1069,18 +1069,18 @@ function App() {
 
           const isLastProtagonistMessage = isProtagonist 
             
-          const isEditing = editingMessageId === msg.id;
+          const isEditing = editingMessageId === message.id;
 
           const isMassDeleteActive = massDeleteStartId !== null;
-          const isMassDeleteStart = msg.id === massDeleteStartId;
-          const msgIndex = index; 
+          const isMassDeleteStart = message.id === massDeleteStartId;
+          const messageIndex = index; 
           const startIndex = isMassDeleteActive 
             ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteStartId) 
             : -1;
-          const isInDeletionRange = isMassDeleteActive && startIndex !== -1 && msgIndex >= startIndex;
+          const isInDeletionRange = isMassDeleteActive && startIndex !== -1 && messageIndex >= startIndex;
 
           return (
-            <div key={msg.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'}`}>
+            <div key={message.id} className={`message-row ${isProtagonist ? 'message-right' : 'message-left'}`}>
               {/* Avatar Column */}
               {!isProtagonist && (
                 <div className="avatar-column">
@@ -1124,7 +1124,7 @@ function App() {
                       {/* Hide standard tools if we are in mass delete mode to avoid confusion, or keep them */}
                       {!isMassDeleteActive ? (
                         <>
-                          <button type="button" onClick={() => onStartEdit(msg.id, msg.textContent)} title="Edit" className="toolbar-btn">✎</button>
+                          <button type="button" onClick={() => onStartEdit(message.id, message.textContent)} title="Edit" className="toolbar-btn">✎</button>
                           {isLastAIMessage && (
                             <button type="button" onClick={onRegenerateLastAIMessage} title="Regenerate" className="toolbar-btn">↻</button>
                           ) || isLastProtagonistMessage && (
@@ -1132,11 +1132,11 @@ function App() {
                           )
                           
                           }
-                          <button type="button" onClick={() => onBranchAtMessage(msg.id)} title="Branch" className="toolbar-btn">⑂</button>
+                          <button type="button" onClick={() => onBranchAtMessage(message.id)} title="Branch" className="toolbar-btn">⑂</button>
 
                           <button 
                             type="button"
-                            onClick={() => onDeleteMessage(msg.id)} 
+                            onClick={() => onDeleteMessage(message.id)} 
                             title="Delete only this message" 
                             className="toolbar-btn delete-btn"
                             style={{ color: '#ff4444' }}
@@ -1146,7 +1146,7 @@ function App() {
                           
                           <button 
                             type="button"
-                            onClick={() => onStartMassDelete(msg.id)} 
+                            onClick={() => onStartMassDelete(message.id)} 
                             title="Delete this and all following messages" 
                             className="toolbar-btn mass-delete-btn"
                             style={{ color: '#ff9900' }} // Orange to distinguish from single delete
