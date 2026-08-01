@@ -73,6 +73,8 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
   const description = character.description
   const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
 
+  const characterId = getCharacterPromptId(character, chatData.participants);
+
   if (chatData.instructions?.length) {
     const instructionBlock = chatData.instructions
       .map(i => `[Instruction: ${i.content}]`)
@@ -83,8 +85,15 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
   if (systemPrompt) lines.push(`[${name} System Prompt: ${systemPrompt}]`);
   if (description) lines.push(`[${name} Description: ${description}]`);
 
-  const characterId = getCharacterPromptId(character, chatData.participants);
+  const previousMessage = findPreviousChatMessage(chatData.chatMessageHistory, characterId);
+  const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
+  if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
+    const fatigueInstruction = getFatigueInstruction(character, currentChatStamina, maximumChatStamina);
+    if (fatigueInstruction) {lines.push(fatigueInstruction);}
+  }
+
+  lines.push(`[Continue the conversation as ${characterId}.]`);
   const mappings = chatData.participants
     .map(p => {
       const id = getCharacterPromptId(p, chatData.participants);
@@ -104,16 +113,7 @@ function buildPromptFromHistory(chatData: ChatData, character: Character): strin
     const promptId = getCharacterPromptId(msg.character, chatData.participants);
     lines.push(`${promptId}: ${msg.textContent}`);
   }
-
-  const previousMessage = findPreviousChatMessage(chatData.chatMessageHistory, characterId);
-  const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
-
-  if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
-    const fatigueInstruction = getFatigueInstruction(character, currentChatStamina, maximumChatStamina);
-    if (fatigueInstruction) {lines.push(fatigueInstruction);}
-  }
-
-  lines.push(`${characterId}: `);
+  lines.push(`${characterId}:`);
   return lines.join('\n');
 }
 
