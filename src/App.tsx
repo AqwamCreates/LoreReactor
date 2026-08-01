@@ -6,7 +6,7 @@ import {saveChatData, getCharacterImageUrl, loadAllChatData, loadSampler} from "
 import './App.css'
 import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
 import { runTurnSequence } from './ChatOrchestrator';
-import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, branchChatAtMessage } from './chatLogic';
+import { createChatMessage, prepareRequestBody, convertIdsToDisplayNames, addMessageToChatData, editChatMessageInChatData, deleteChatMessage, branchChatAtChatMessage } from './chatLogic';
 
 const LLInferenceEngine = new LargeLanguageModelInferenceEngine();
 
@@ -302,7 +302,6 @@ function App() {
 
     // 2. Delete Old Files First 🗑️
     try {
-      const { deleteChatMessage } = await import("./storage");
       await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
@@ -384,7 +383,6 @@ function App() {
     const oldMessages = history.slice(trimIndex);
 
     try {
-      const { deleteChatMessage } = await import("./storage");
       await Promise.all(oldMessages.map(message => deleteChatMessage(message.id)));
     } catch (err) {
       console.error("Failed to delete old regeneration files:", err);
@@ -531,7 +529,6 @@ function App() {
 
     // 2. Delete Files in Parallel 🗑️🗑️🗑️
     try {
-      const { deleteChatMessage } = await import("./storage");
       await Promise.all(messagesToDelete.map(msg => deleteChatMessage(msg.id)));
     } catch (err) {
       console.error("Failed to bulk delete message files:", err);
@@ -558,7 +555,7 @@ function App() {
 
   const onBranchAtMessage = async (messageId: string) => {
     if (!chatData) return;
-    const branchedChatData = branchChatAtMessage(chatData, messageId);
+    const branchedChatData = branchChatAtChatMessage(chatData, messageId);
     await saveChatData(branchedChatData);
     window.open(window.location.href, '_blank');
   };
