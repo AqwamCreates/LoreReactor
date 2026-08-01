@@ -368,7 +368,7 @@
   justify-content: space-between;
   align-items: center;
   gap: clamp(4px, 1vw, 10px);
-  padding: clamp(4px, 1vw, 10px) clamp(10px, 2vw, 10px) clamp(12px, 3vw, 10px) clamp(10px, 2vw, 10px);
+  padding: clamp(4px, 1vw, 10px) clamp(10px, 2vw, 10px) clamp(12px, 3vw, 20px) clamp(10px, 2vw, 10px);
   /*    ↑ top    ↑ right        ↑ bottom (more on mobile)   ↑ left */
   background: var(--bg);
   border-bottom: 1px solid var(--border);
