@@ -50,7 +50,7 @@ function getCharacterPromptId(character: Character, participants: Character[]): 
 }
 
 function getFatigueInstruction(character: Character, currentChatStamina: number, maximumChatStamina: number): string {
-  if (maxStamina === Number.POSITIVE_INFINITY) return ""; // Gods don't get tired
+  if (maximumChatStamina === Number.POSITIVE_INFINITY) return ""; // Gods don't get tired
 
   const ratio = currentChatStamina / maximumChatStamina;
 
@@ -1016,8 +1016,6 @@ function App() {
           const displayText = msg.textContent;
 
           const displayName = getDelayedDisplayName(chatData.chatMessageHistory, index, msg.character.id, chatData.participants);
-
-          console.log(displayName)
           
           const characterImage = isNotAProtagonist ? getCharacterImageUrl(msg.character.image) : null;
           
