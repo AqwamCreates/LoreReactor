@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Character, Sampler } from '../types';
 import { uploadCharacterImage } from '../hooks/storage';
+import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import './main.css';
 
 interface CharacterEditorModalProps {
@@ -26,14 +28,19 @@ export function CharacterEditorModal({
     const [isHoveringImage, setIsHoveringImage] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
-    const [initiativeWeight, setInitiativeWeight] = useState<number>(1);
-    const [chatProbability, setChatProbability] = useState<number>(0.5);
-    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(5);
+    const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>('-1');
+    const [chatProbabilityStr, setChatProbabilityStr] = useState<string>('-1');
+    const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>('-1');
+
+    const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
+        iw: null, cp: null, ms: null,
+    });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen) {
+            setAutoDetected({ iw: null, cp: null, ms: null });
             if (existingCharacter) {
                 setName(existingCharacter.name || '');
                 setDescription(existingCharacter.description || '');
@@ -46,9 +53,10 @@ export function CharacterEditorModal({
                 }
                 setImageFile(null);
                 setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
-                setInitiativeWeight(existingCharacter.initiativeWeight ?? 1);
-                setChatProbability(existingCharacter.chatProbability ?? 0.5);
-                setMaximumChatStamina(existingCharacter.maximumChatStamina ?? 5);
+                
+                setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
+                setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
+                setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
             } else {
                 setName('');
                 setDescription('');
@@ -57,15 +65,60 @@ export function CharacterEditorModal({
                 setImageFile(null);
                 setImagePreview(null);
                 setSelectedSamplerId(allSamplers[0]?.id || '');
-                setInitiativeWeight(1);
-                setChatProbability(0.5);
-                setMaximumChatStamina(5);
+                
+                setInitiativeWeightStr('-1');
+                setChatProbabilityStr('-1');
+                setMaximumChatStaminaStr('-1');
             }
         }
     }, [isOpen, existingCharacter, allSamplers]);
 
+    const clamp = (value: number, min: number, max: number): number => {
+        return Math.min(Math.max(value, min), max);
+    };
+
+    const normalizeStatValue = (raw: string, fieldMax: number): string => {
+        const val = Number.parseFloat(raw);
+        if (Number.isNaN(val) || val < 0) return '-1';
+        return String(clamp(val, 0, fieldMax));
+    };
+
+    /**
+     * ✅ ONLY detection entry point: called when system prompt loses focus.
+     * Applies chat trait values to any field still at -1.
+     */
+    const handleSystemPromptBlur = () => {
+        const iwIsAuto = Number.parseFloat(initiativeWeightStr) === -1;
+        const cpIsAuto = Number.parseFloat(chatProbabilityStr) === -1;
+        const msIsAuto = Number.parseFloat(maximumChatStaminaStr) === -1;
+
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto) return;
+
+        const combinedText = `${name} ${description} ${systemPrompt}`;
+        
+        const newDetected = { ...autoDetected };
+
+        if (iwIsAuto) {
+            const value = getInitiativeWeightValueFromText(combinedText);
+            setInitiativeWeightStr(String(value));
+            newDetected.iw = value;
+        }
+        if (cpIsAuto) {
+            const value = getChatProbabilityValue(combinedText);
+            setChatProbabilityStr(String(value));
+            newDetected.cp = value;
+        }
+        if (msIsAuto) {
+            const value = getMaximumChatStaminaValueFromText(combinedText);
+            setMaximumChatStaminaStr(String(value));
+            newDetected.ms = value;
+        }
+
+        setAutoDetected(newDetected);
+    };
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
+        if (e.target.files?.[0]) {
             const file = e.target.files[0];
             setImageFile(file);
             setImagePreview(URL.createObjectURL(file));
@@ -100,12 +153,30 @@ export function CharacterEditorModal({
             setIsUploading(false);
         }
 
+        // ✅ Final safety: re-detect any remaining -1 values from current text
+        const rawIW = Number.parseFloat(initiativeWeightStr);
+        const rawCP = Number.parseFloat(chatProbabilityStr);
+        const rawMS = Number.parseFloat(maximumChatStaminaStr);
+
+        let finalIW = Number.isNaN(rawIW) || rawIW < 0 ? -1 : rawIW;
+        let finalCP = Number.isNaN(rawCP) || rawCP < 0 ? -1 : rawCP;
+        let finalMS = Number.isNaN(rawMS) || rawMS < 0 ? -1 : rawMS;
+
+        if (finalIW === -1 || finalCP === -1 || finalMS === -1) {
+            const combinedText = `${name} ${description} ${systemPrompt}`;
+            if (finalIW === -1) finalIW = getInitiativeWeightValueFromText(combinedText);
+            if (finalCP === -1) finalCP = getChatProbabilityValue(combinedText);
+            if (finalMS === -1) finalMS = getMaximumChatStaminaValueFromText(combinedText);
+        }
+
         const newChar: Character = {
             id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
             name, description, systemPrompt,
             image: finalImageFilename,
             sampler: allSamplers.find(s => s.id === selectedSamplerId),
-            initiativeWeight, chatProbability, maximumChatStamina,
+            initiativeWeight: finalIW,
+            chatProbability: finalCP,
+            maximumChatStamina: finalMS,
         };
 
         onSave(newChar);
@@ -136,6 +207,16 @@ export function CharacterEditorModal({
     };
 
     const leftColumnWidth = '220px';
+
+    const renderAutoHint = (field: 'iw' | 'cp' | 'ms') => {
+        const val = autoDetected[field];
+        if (val === null) return null;
+        return (
+            <span style={{ fontSize: '0.6rem', color: 'var(--accent)', opacity: 0.9, marginTop: '2px', display: 'block', textAlign: 'right' }}>
+                ← auto-detected
+            </span>
+        );
+    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -194,7 +275,7 @@ export function CharacterEditorModal({
                                 <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
                             </div>
 
-                            {/* ✅ Name: now uses flex-grow to stretch border lower and push Description down */}
+                            {/* Name */}
                             <textarea 
                                 value={name} onChange={(e) => setName(e.target.value)} 
                                 style={{ 
@@ -212,7 +293,7 @@ export function CharacterEditorModal({
                                 disabled={isUploading} 
                             />
 
-                            {/* Description: pushed lower by Name's expanded flex share */}
+                            {/* Description */}
                             <textarea 
                                 value={description} onChange={(e) => setDescription(e.target.value)} 
                                 style={{ ...inputStyle, flex: '1 1 0', minHeight: '60px' }} 
@@ -235,9 +316,10 @@ export function CharacterEditorModal({
                             gap: '10px',
                             minHeight: 0
                         }}>
-                            {/* System Prompt */}
+                            {/* ✅ System Prompt: ONLY trigger for auto-detection */}
                             <textarea 
                                 value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} 
+                                onBlur={handleSystemPromptBlur}
                                 style={{ ...inputStyle, fontFamily: 'monospace', minHeight: 0, height: '100%' }} 
                                 placeholder="System prompt" disabled={isUploading}
                             />
@@ -261,15 +343,48 @@ export function CharacterEditorModal({
                                 }}>
                                     <div>
                                         <label style={{ ...labelStyle, fontSize: '0.65rem', marginBottom: '1px' }}>Initiative Weight</label>
-                                        <input type="number" min="0" step="0.1" value={initiativeWeight} onChange={(e) => setInitiativeWeight(parseFloat(e.target.value) || 0)} style={compactInputStyle} disabled={isUploading} />
+                                        <input 
+                                            type="number" step="0.1" 
+                                            value={initiativeWeightStr} 
+                                            onChange={(e) => { setInitiativeWeightStr(e.target.value); setAutoDetected(prev => ({ ...prev, iw: null })); }}
+                                            onBlur={() => {
+                                                // ✅ ONLY normalize — NO detection here
+                                                setInitiativeWeightStr(normalizeStatValue(initiativeWeightStr, Number.POSITIVE_INFINITY));
+                                            }}
+                                            style={compactInputStyle} 
+                                            disabled={isUploading} 
+                                        />
+                                        {renderAutoHint('iw')}
                                     </div>
                                     <div>
                                         <label style={{ ...labelStyle, fontSize: '0.65rem', marginBottom: '1px' }}>Chat Probability</label>
-                                        <input type="number" min="0" max="1" step="0.05" value={chatProbability} onChange={(e) => setChatProbability(parseFloat(e.target.value) || 0)} style={compactInputStyle} disabled={isUploading} />
+                                        <input 
+                                            type="number" step="0.05" 
+                                            value={chatProbabilityStr} 
+                                            onChange={(e) => { setChatProbabilityStr(e.target.value); setAutoDetected(prev => ({ ...prev, cp: null })); }}
+                                            onBlur={() => {
+                                                // ✅ ONLY normalize — NO detection here
+                                                setChatProbabilityStr(normalizeStatValue(chatProbabilityStr, 1));
+                                            }}
+                                            style={compactInputStyle} 
+                                            disabled={isUploading} 
+                                        />
+                                        {renderAutoHint('cp')}
                                     </div>
                                     <div>
                                         <label style={{ ...labelStyle, fontSize: '0.65rem', marginBottom: '1px' }}>Maximum Chat Stamina</label>
-                                        <input type="number" min="1" step="1" value={maximumChatStamina} onChange={(e) => setMaximumChatStamina(parseInt(e.target.value) || 1)} style={compactInputStyle} disabled={isUploading} />
+                                        <input 
+                                            type="number" step="1" 
+                                            value={maximumChatStaminaStr} 
+                                            onChange={(e) => { setMaximumChatStaminaStr(e.target.value); setAutoDetected(prev => ({ ...prev, ms: null })); }}
+                                            onBlur={() => {
+                                                // ✅ ONLY normalize — NO detection here
+                                                setMaximumChatStaminaStr(normalizeStatValue(maximumChatStaminaStr, Number.POSITIVE_INFINITY));
+                                            }}
+                                            style={compactInputStyle} 
+                                            disabled={isUploading} 
+                                        />
+                                        {renderAutoHint('ms')}
                                     </div>
                                 </div>
                             </div>
