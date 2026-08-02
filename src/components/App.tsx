@@ -5,7 +5,7 @@ import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '.
 import { 
   deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, 
   loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
-  loadAllRawModels, saveRawModel, deleteRawModel
+  loadAllRawModels, saveRawModel, deleteRawModel, saveRawInstruction, deleteRawInstruction
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -14,6 +14,7 @@ import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
+import { InstructionEditorModal } from './InstructionEditorModal';
 import './main.css';
 
 function App() {
@@ -38,9 +39,11 @@ function App() {
   const [isCharEditorOpen, setIsCharEditorOpen] = useState(false);
   const [isModelEditorOpen, setIsModelEditorOpen] = useState(false);
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
+  const [isInstructionEditorOpen, setIsInstructionEditorOpen] = useState(false);
   const [characterToEdit, setCharacterToEdit] = useState<Character | null>(null);
   const [modelToEdit, setModelToEdit] = useState<LanguageModel | null>(null);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
+  const [instructionToEdit, setInstructionToEdit] = useState<Instruction | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultInstructionIds, setDefaultInstructionIds] = useState<string[]>([]);
 
@@ -88,7 +91,7 @@ function App() {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      if (isInstListOpen || isInstManageMode) {
+      if (isInstListOpen || isInstManageMode || isInstructionEditorOpen) {
         const insts = await loadAllRawInstructions();
         setAllInstructions(insts);
       }
@@ -110,14 +113,15 @@ function App() {
       isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
       isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
       isModelListOpen || isCharEditorOpen || isModelEditorOpen || isSamplerEditorOpen ||
-      allSamplers.length === 0
+      isInstructionEditorOpen || allSamplers.length === 0
     ) {
       loadData();
     }
   }, [
     isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
     isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, 
-    isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, allSamplers.length
+    isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, isInstructionEditorOpen,
+    allSamplers.length
   ]);
 
   // --- Handlers ---
@@ -224,6 +228,54 @@ function App() {
   };
 
   // Instruction Handlers
+  const handleOpenInstructionEditor = (instruction?: Instruction) => {
+    setInstructionToEdit(instruction || null);
+    setIsInstructionEditorOpen(true);
+    setIsInstListOpen(false);
+    setIsInstManageMode(false);
+  };
+
+  const handleSaveInstruction = async (instruction: Instruction) => {
+    try {
+      await saveRawInstruction(instruction);
+      const freshInstructions = await loadAllRawInstructions();
+      setAllInstructions(freshInstructions);
+      
+      // Update current chat if it uses this instruction
+      if (chatData?.instructions?.some(i => i.id === instruction.id)) {
+        const updatedInstructions = chatData.instructions.map(i => 
+          i.id === instruction.id ? instruction : i
+        );
+        const updatedChat = { ...chatData, instructions: updatedInstructions };
+        await saveRawChatData(updatedChat);
+        setChatData(updatedChat);
+      }
+    } catch (err) {
+      console.error("Failed to save instruction:", err);
+      alert("Failed to save instruction.");
+    }
+  };
+
+  const handleDeleteInstruction = async (id: string) => {
+    if (!window.confirm("Delete permanently?")) return;
+    try {
+      await deleteRawInstruction(id);
+      const freshInstructions = await loadAllRawInstructions();
+      setAllInstructions(freshInstructions);
+      
+      // Remove from current chat if present
+      if (chatData?.instructions?.some(i => i.id === id)) {
+        const updatedInstructions = chatData.instructions.filter(i => i.id !== id);
+        const updatedChat = { ...chatData, instructions: updatedInstructions };
+        await saveRawChatData(updatedChat);
+        setChatData(updatedChat);
+      }
+    } catch (err) {
+      console.error("Failed to delete instruction:", err);
+      alert("Failed to delete instruction.");
+    }
+  };
+
   const handleOpenDefaultInstructions = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
   const handleToggleDefaultInstruction = (instId: string) => {
     let newIds = defaultInstructionIds.includes(instId) ? defaultInstructionIds.filter(id => id !== instId) : [...defaultInstructionIds, instId];
@@ -239,11 +291,6 @@ function App() {
     const updatedChat = { ...chatData, instructions: newInstructions };
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
-  };
-  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
-  const handleDeleteInstruction = async (id: string) => {
-    if (!window.confirm("Delete permanently?")) return;
-    setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
   // Extension Handlers
@@ -688,15 +735,33 @@ function App() {
           items={allInstructions} 
           isOpen={isInstListOpen || isInstManageMode}
           onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
-          onSelect={undefined} 
-          onDelete={undefined} 
-          onCreateNew={handleCreateInstruction}
-          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`} 
+          onSelect={(instruction) => handleOpenInstructionEditor(instruction)} 
+          onDelete={handleDeleteInstruction} 
+          onCreateNew={() => handleOpenInstructionEditor()} 
+          renderSubtext={(i) => {
+            const contentPreview = i.content?.substring(0, 50) || '';
+            const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌';
+            return `${hasRegex} ${contentPreview}...`;
+          }} 
           emptyMessage="No instructions found." 
           actionLabel="Delete"
           orderedListMode={true} 
           currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
           onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
+        />
+      )}
+
+      {/* Instruction Editor Modal */}
+      {isInstructionEditorOpen && (
+        <InstructionEditorModal
+          isOpen={isInstructionEditorOpen}
+          onClose={() => {
+            setIsInstructionEditorOpen(false);
+            setInstructionToEdit(null);
+          }}
+          onSave={handleSaveInstruction}
+          onDelete={handleDeleteInstruction}
+          existingInstruction={instructionToEdit}
         />
       )}
 

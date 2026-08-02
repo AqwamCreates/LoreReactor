@@ -157,25 +157,39 @@ export async function deleteRawCharacter(id: string): Promise<void> {
 }
 
 // --- Instruction Repository ---
-export async function loadRawInstructionManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.instructions}/${MANIFEST_FILE}`) || []; }
+export async function loadRawInstructionManifest(): Promise<string[]> { 
+    return await fetchJson<string[]>(`${PATHS.instructions}/${MANIFEST_FILE}`) || []; 
+}
+
 export async function loadRawInstruction(id: string): Promise<Instruction | null> {
-  const rawInstruction = await fetchJson<RawInstruction>(`${PATHS.instructions}/${id}.json`);
-  if (!rawInstruction) return null;
-  return { id, name: rawInstruction.name, description: rawInstruction.description, content: rawInstruction.content };
+    const rawInstruction = await fetchJson<RawInstruction>(`${PATHS.instructions}/${id}.json`);
+    if (!rawInstruction) return null;
+    return { 
+        id, 
+        name: rawInstruction.name, 
+        description: rawInstruction.description,
+        content: rawInstruction.content,
+        regularExpressionTrigger: rawInstruction.regularExpressionTrigger,
+        regularExpressionContext: rawInstruction.regularExpressionContext,
+        regularExpressionTarget: rawInstruction.regularExpressionTarget,
+    };
 }
+
 export async function loadAllRawInstructions(): Promise<Instruction[]> {
-  const ids = await loadRawInstructionManifest();
-  const results = await Promise.all(ids.map(id => loadRawInstruction(id)));
-  return results.filter((i): i is Instruction => i !== null);
+    const ids = await loadRawInstructionManifest();
+    const results = await Promise.all(ids.map(id => loadRawInstruction(id)));
+    return results.filter((i): i is Instruction => i !== null);
 }
+
 export async function saveRawInstruction(instruction: Instruction): Promise<void> {
-  const { id, ...rawInstruction } = instruction; 
-  await putJson(`${PATHS.instructions}/${id}.json`, rawInstruction);
-  await updateManifest(PATHS.instructions, id, 'add');
+    const { id, ...rawInstruction } = instruction; 
+    await putJson(`${PATHS.instructions}/${id}.json`, rawInstruction);
+    await updateManifest(PATHS.instructions, id, 'add');
 }
+
 export async function deleteRawInstruction(id: string): Promise<void> {
-  await deleteResource(`${PATHS.instructions}/${id}.json`);
-  await updateManifest(PATHS.instructions, id, 'remove');
+    await deleteResource(`${PATHS.instructions}/${id}.json`);
+    await updateManifest(PATHS.instructions, id, 'remove');
 }
 
 // --- Language Model Repository ---

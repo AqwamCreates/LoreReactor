@@ -1,6 +1,6 @@
 // src/services/chatLogic.ts
 import { v4 as uuidv4 } from 'uuid';
-import type { Character, ChatData, ChatMessage, StopPattern } from '../types';
+import type { Character, ChatData, ChatMessage, Instruction, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
 export function getCharacterPromptId(character: Character, participants: Character[]): string {
@@ -25,14 +25,129 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     return null;
 }
 
+
+function buildContext(
+    chatData: ChatData, 
+    character: Character, 
+    contextType: 'global' | 'local' | 'previous'
+): string {
+    const messages = chatData.chatMessageHistory;
+    
+    switch (contextType) {
+        case 'global':
+            // Use the whole conversation
+            return messages.map(msg => `${msg.character.name}: ${msg.textContent}`).join('\n');
+            
+        case 'local': {
+            // Use messages between the character's previous chat and their current talk
+            const selfMessages = messages.filter(msg => msg.character.id === character.id);
+            if (selfMessages.length === 0) return '';
+            
+            const lastSelfMessage = selfMessages[selfMessages.length - 1];
+            const lastSelfIndex = messages.indexOf(lastSelfMessage);
+            const previousSelfIndex = selfMessages.length > 1 
+                ? messages.indexOf(selfMessages[selfMessages.length - 2]) 
+                : -1;
+            
+            // Get messages since the previous self message (or from the beginning)
+            const startIndex = previousSelfIndex !== -1 ? previousSelfIndex + 1 : 0;
+            return messages
+                .slice(startIndex, lastSelfIndex + 1)
+                .map(msg => `${msg.character.name}: ${msg.textContent}`)
+                .join('\n');
+        }
+            
+        case 'previous': {
+            // Only take the previous turn
+            if (messages.length === 0) return '';
+            const lastMessage = messages[messages.length - 1];
+            return `${lastMessage.character.name}: ${lastMessage.textContent}`;
+        }
+            
+        default:
+            return '';
+    }
+}
+
+function getTargetText(
+    chatData: ChatData, 
+    character: Character,
+    targetType: 'everyone' | 'responder' | 'self'
+): string {
+    const messages = chatData.chatMessageHistory;
+    
+    switch (targetType) {
+        case 'everyone':
+            // Use all messages
+            return messages.map(msg => `${msg.character.name}: ${msg.textContent}`).join('\n');
+            
+        case 'responder':
+            // Only use the responder's messages (current character)
+            return messages
+                .filter(msg => msg.character.id === character.id)
+                .map(msg => `${msg.character.name}: ${msg.textContent}`)
+                .join('\n');
+            
+        case 'self':
+            // Use messages that reference the character (by name)
+            { const name = character.name;
+            return messages
+                .filter(msg => msg.textContent.includes(name))
+                .map(msg => `${msg.character.name}: ${msg.textContent}`)
+                .join('\n'); }
+            
+        default:
+            return '';
+    }
+}
+
+function getActiveInstructions(
+    instructions: Instruction[], 
+    chatData: ChatData, 
+    character: Character
+): Instruction[] {
+    return instructions.filter(instruction => {
+        // If no regex trigger, always include
+        if (!instruction.regularExpressionTrigger) {
+            return true;
+        }
+        
+        try {
+            const regex = new RegExp(instruction.regularExpressionTrigger);
+            
+            // Build context based on the instruction's context type
+            const contextType = instruction.regularExpressionContext || 'global';
+            const context = buildContext(chatData, character, contextType);
+            
+            // If context is empty, skip this instruction
+            if (!context) return false;
+            
+            // Get target text based on the instruction's target type
+            const targetType = instruction.regularExpressionTarget || 'everyone';
+            const targetText = getTargetText(chatData, character, targetType);
+            
+            // Test the regex against the target text
+            return regex.test(targetText);
+        } catch (error) {
+            // If regex is invalid, include the instruction (fallback to safe behavior)
+            console.warn(`Invalid regex pattern for instruction "${instruction.name}":`, error);
+            return true;
+        }
+    });
+}
+
 export function buildPromptFromHistory(chatData: ChatData, character: Character): string {
     const lines: string[] = [];
     const name = character.name;
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const charId = getCharacterPromptId(character, chatData.participants);
 
-    if (chatData.instructions?.length) {
-        lines.push(chatData.instructions.map(i => `[Instruction: ${i.content}]`).join('\n'));
+    const lastChatMessage = chatData.chatMessageHistory
+
+    const activeInstructions = chatData.instructions?.length ? getActiveInstructions(chatData.instructions, conversationContext) : [];
+
+    if (activeInstructions.length > 0) {
+        lines.push(activeInstructions.map(i => `[Instruction: ${i.content}]`).join('\n'));
     }
     if (character.systemPrompt) lines.push(`[${name} System Prompt: ${character.systemPrompt}]`);
     if (character.description) lines.push(`[${name} Description: ${character.description}]`);
