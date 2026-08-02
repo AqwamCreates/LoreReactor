@@ -41,6 +41,16 @@ export interface RawInstruction {
   content: string;
 }
 
+export interface LanguageModel {
+  id: string;
+  name: string;
+  description: string;
+  contextLength: number;
+  model: string;
+  mmproj: string;
+  parameters: string;
+}
+
 export interface Character {
   id: string;
   name: string;
