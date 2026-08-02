@@ -208,7 +208,7 @@ export function CharacterEditorModal({
         const newChar: Character = {
             id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
             name, description, systemPrompt,
-            image: finalImageFilename,
+            image: finalImageFilename ?? undefined,
             sampler: allSamplers.find(s => s.id === selectedSamplerId),
             initiativeWeight: finalIW,
             chatProbability: finalCP,
@@ -249,7 +249,7 @@ export function CharacterEditorModal({
         if (val === null) return null;
         return (
             <span style={{ fontSize: '0.6rem', color: 'var(--accent)', opacity: 0.9, marginTop: '2px', display: 'block', textAlign: 'right' }}>
-                ← auto-detected
+                ← Auto-Detected
             </span>
         );
     };
@@ -384,7 +384,6 @@ export function CharacterEditorModal({
                                             value={initiativeWeightStr} 
                                             onChange={(e) => { setInitiativeWeightStr(e.target.value); setAutoDetected(prev => ({ ...prev, iw: null })); }}
                                             onBlur={() => {
-                                                // ✅ ONLY normalize — NO detection here
                                                 setInitiativeWeightStr(normalizeStatValue(initiativeWeightStr, Number.POSITIVE_INFINITY));
                                             }}
                                             style={compactInputStyle} 
@@ -399,7 +398,6 @@ export function CharacterEditorModal({
                                             value={chatProbabilityStr} 
                                             onChange={(e) => { setChatProbabilityStr(e.target.value); setAutoDetected(prev => ({ ...prev, cp: null })); }}
                                             onBlur={() => {
-                                                // ✅ ONLY normalize — NO detection here
                                                 setChatProbabilityStr(normalizeStatValue(chatProbabilityStr, 1));
                                             }}
                                             style={compactInputStyle} 
@@ -414,7 +412,6 @@ export function CharacterEditorModal({
                                             value={maximumChatStaminaStr} 
                                             onChange={(e) => { setMaximumChatStaminaStr(e.target.value); setAutoDetected(prev => ({ ...prev, ms: null })); }}
                                             onBlur={() => {
-                                                // ✅ ONLY normalize — NO detection here
                                                 setMaximumChatStaminaStr(normalizeStatValue(maximumChatStaminaStr, Number.POSITIVE_INFINITY));
                                             }}
                                             style={compactInputStyle} 

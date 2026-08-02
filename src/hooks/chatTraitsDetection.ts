@@ -1,5 +1,9 @@
 // --- Modifier System ---
 
+const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
+const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
+const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
+
 interface Modifier {
     keywords: string[];
     type: 'intensifier' | 'diminisher';
@@ -175,13 +179,13 @@ function detectValue(
 }
 
 export function getInitiativeWeightValueFromText(text: string) {
-    return detectValue(text, INITIATIVE_WEIGHT_RULES, 1.2, false);
+    return detectValue(text, INITIATIVE_WEIGHT_RULES, DEFAULT_INITIATIVE_WEIGHT_VALUE, false);
 }
 
 export function getChatProbabilityValue(text: string) {
-    return detectValue(text, CHAT_PROBABILITY_RULES, 0.5, false);
+    return detectValue(text, CHAT_PROBABILITY_RULES, DEFAULT_CHAT_PROBABILITY_VALUE, false);
 }
 
 export function getMaximumChatStaminaValueFromText(text: string) {
-    return detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, 4, false);
+    return detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE, false);
 }
