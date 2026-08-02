@@ -3,12 +3,16 @@ export interface StopPattern {
   name: string;
   description?: string;
   pattern: string;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface RawStopPattern {
   name: string;
   description?: string;
   pattern: string;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface Sampler {
@@ -18,6 +22,8 @@ export interface Sampler {
   parameters?: Record<string, unknown>;
   stopPatterns: StopPattern[];
   maximumNumberOfTokens?: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface RawSampler {
@@ -26,6 +32,8 @@ export interface RawSampler {
   parameters?: Record<string, unknown>;
   stopPatternIds: string[];
   maximumNumberOfTokens?: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface Context {
@@ -37,6 +45,8 @@ export interface Context {
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface RawContext {
@@ -47,6 +57,8 @@ export interface RawContext {
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface LanguageModel {
@@ -58,6 +70,8 @@ export interface LanguageModel {
   model: string;
   mmproj?: string;
   parameters?: Record<string, unknown>;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 export interface Character {
   id: string;
@@ -69,6 +83,8 @@ export interface Character {
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   sampler?: Sampler | undefined;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface RawCharacter {
@@ -80,6 +96,8 @@ export interface RawCharacter {
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   samplerId?: string | undefined; // Store only the sampler ID here
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }
 
 export interface ChatMessage {
@@ -89,7 +107,8 @@ export interface ChatMessage {
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
   kvCachePath?: string;
-  timestamp: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
   parentChatMessageId?: string | null;
 }
 
@@ -99,7 +118,8 @@ export interface RawChatMessage {
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
   kvCachePath?: string;
-  timestamp: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
   parentChatMessageId?: string | null;
 }
 
@@ -110,8 +130,8 @@ export interface ChatData {
   participants: Character[];
   contexts?: Context[]; // Changed from instructions
   chatMessageHistory: ChatMessage[];
-  first_created_timestamp: number;
-  last_updated_timestamp: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
 }
@@ -122,8 +142,8 @@ export interface RawChatData {
   participantIds: string[];
   contextIds: string[]; // Changed from instructionIds
   chatMessageIdHistory: string[];
-  first_created_timestamp: number;
-  last_updated_timestamp: number;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
 }
@@ -135,4 +155,6 @@ export interface Extension {
   name: string;
   description: string;
   extensionType: ExtensionType;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
 }

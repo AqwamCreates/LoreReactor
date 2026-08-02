@@ -88,13 +88,14 @@ function getTargetText(
                 .map(msg => `${msg.character.name}: ${msg.textContent}`)
                 .join('\n');
             
-        case 'self':
+        case 'self': {
             // Use messages that reference the character (by name)
-            { const name = character.name;
+            const name = character.name;
             return messages
                 .filter(msg => msg.textContent.includes(name))
                 .map(msg => `${msg.character.name}: ${msg.textContent}`)
-                .join('\n'); }
+                .join('\n');
+        }
             
         default:
             return '';
@@ -117,10 +118,10 @@ function getActiveContexts(
             
             // Build context based on the context's context type
             const contextType = context.regularExpressionContext || 'global';
-            const context = buildContext(chatData, character, contextType);
+            const contextText = buildContext(chatData, character, contextType);
             
             // If context is empty, skip this context
-            if (!context) return false;
+            if (!contextText) return false;
             
             // Get target text based on the context's target type
             const targetType = context.regularExpressionTarget || 'everyone';
@@ -141,14 +142,26 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
     const name = character.name;
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const charId = getCharacterPromptId(character, chatData.participants);
+    const activeContextImages = []
 
-    const lastChatMessage = chatData.chatMessageHistory
+    // Get active contexts
+    const activeContexts = chatData.contexts?.length 
+        ? getActiveContexts(chatData.contexts, chatData, character) 
+        : [];
 
-    const activeContexts = chatData.contexts?.length ? getActiveContexts(chatData.contexts, conversationContext) : [];
-
+    // Add active contexts to prompt
     if (activeContexts.length > 0) {
-        lines.push(activeContexts.map(i => `[Context: ${i.content}]`).join('\n'));
+        lines.push(activeContexts.map(i => {
+            // Use the context text if available, otherwise indicate it has images
+            if (i.text) {
+                return `[Context: ${i.text}]`;
+            }if (i.images && i.images.length > 0) {
+                return "[Context: Images available]";
+            }
+            return `[Context: ${i.name}]`; // Just in case if either one is missing.
+        }).join('\n'));
     }
+    
     if (character.systemPrompt) lines.push(`[${name} System Prompt: ${character.systemPrompt}]`);
     if (character.description) lines.push(`[${name} Description: ${character.description}]`);
 
@@ -177,7 +190,7 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
         lines.push(`${pid}: ${message.textContent}`);
     }
     lines.push(`${charId}:`);
-    return lines.join('\n');
+    return lines.join('\n'), activeContextImages;
 }
 
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {

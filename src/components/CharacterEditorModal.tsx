@@ -193,6 +193,7 @@ export function CharacterEditorModal({
             }
         }
 
+        const now = Date.now();
         const newChar: Character = {
             id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
             name, description, systemPrompt,
@@ -201,6 +202,8 @@ export function CharacterEditorModal({
             initiativeWeight: finalIW,
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
+            firstCreatedTimestamp: existingCharacter?.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: now,
         };
 
         onSave(newChar);
@@ -216,7 +219,6 @@ export function CharacterEditorModal({
         resize: 'vertical', textOverflow: 'unset', whiteSpace: 'normal'
     };
 
-    // ✅ Fixed: Proper dropdown styling that matches the theme
     const selectStyle: React.CSSProperties = {
         ...inputStyle,
         appearance: 'auto',

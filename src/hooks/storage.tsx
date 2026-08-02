@@ -6,7 +6,9 @@ import type {
 export const DefaultSampler: Sampler = {
   id: "0", name: "Default", description: undefined,
   parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
-  stopPatterns: [], maximumNumberOfTokens: 512
+  stopPatterns: [], maximumNumberOfTokens: 512,
+  firstCreatedTimestamp: Date.now(),
+  lastUpdatedTimestamp: Date.now(),
 };
 
 const WRITE_API_URL = 'http://localhost:3001'; 
@@ -57,13 +59,12 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
   await putJson(manifestUrl, newIds);
 }
 
-// ✅ NEW: Image Upload Helper
+// Image Upload Helper
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Strip the data URL prefix (e.g., "data:image/png;base64,")
       const base64 = result.split(',')[1];
       resolve(base64);
     };
@@ -73,72 +74,130 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 // --- Stop Pattern Repository ---
-export async function loadRawStopPatternManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; }
+export async function loadRawStopPatternManifest(): Promise<string[]> { 
+  return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; 
+}
+
 export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
   const rawPattern = await fetchJson<RawStopPattern>(`${PATHS.stopPatterns}/${id}.json`);
   if (!rawPattern) return null;
-  return { id, name: rawPattern.name, description: rawPattern.description, pattern: rawPattern.pattern };
+  return { 
+    id, 
+    name: rawPattern.name, 
+    description: rawPattern.description, 
+    pattern: rawPattern.pattern,
+    firstCreatedTimestamp: rawPattern.firstCreatedTimestamp,
+    lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp,
+  };
 }
+
 export async function loadAllRawStopPatterns(): Promise<StopPattern[]> {
   const ids = await loadRawStopPatternManifest();
   const results = await Promise.all(ids.map(id => loadRawStopPattern(id)));
   return results.filter((p): p is StopPattern => p !== null);
 }
+
 export async function saveRawStopPattern(pattern: StopPattern): Promise<void> {
   const { id, ...rawPattern } = pattern; 
-  await putJson(`${PATHS.stopPatterns}/${id}.json`, rawPattern);
+  const payload = {
+    ...rawPattern,
+    lastUpdatedTimestamp: Date.now(),
+  };
+  await putJson(`${PATHS.stopPatterns}/${id}.json`, payload);
   await updateManifest(PATHS.stopPatterns, id, 'add');
 }
+
 export async function deleteRawStopPattern(id: string): Promise<void> {
   await deleteResource(`${PATHS.stopPatterns}/${id}.json`);
   await updateManifest(PATHS.stopPatterns, id, 'remove');
 }
 
 // --- Sampler Repository ---
-export async function loadRawSamplerManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.samplers}/${MANIFEST_FILE}`) || []; }
+export async function loadRawSamplerManifest(): Promise<string[]> { 
+  return await fetchJson<string[]>(`${PATHS.samplers}/${MANIFEST_FILE}`) || []; 
+}
+
 export async function loadRawSampler(id: string): Promise<Sampler | null> {
   const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
   if (!rawSampler) return null;
   const stopPatternIds = rawSampler.stopPatternIds || [];
   const stopPatterns = (await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)))).filter((p): p is StopPattern => p !== null);
-  return { id, name: rawSampler.name, description: rawSampler.description, parameters: rawSampler.parameters || {}, maximumNumberOfTokens: rawSampler.maximumNumberOfTokens, stopPatterns };
+  return { 
+    id, 
+    name: rawSampler.name, 
+    description: rawSampler.description, 
+    parameters: rawSampler.parameters || {}, 
+    maximumNumberOfTokens: rawSampler.maximumNumberOfTokens, 
+    stopPatterns,
+    firstCreatedTimestamp: rawSampler.firstCreatedTimestamp,
+    lastUpdatedTimestamp: rawSampler.lastUpdatedTimestamp,
+  };
 }
+
 export async function loadAllRawSamplers(): Promise<Sampler[]> {
   const ids = await loadRawSamplerManifest();
   const results = await Promise.all(ids.map(id => loadRawSampler(id)));
   return results.filter((s): s is Sampler => s !== null);
 }
+
 export async function saveRawSampler(sampler: Sampler): Promise<void> {
   const { id, stopPatterns, ...rawSampler } = sampler; 
-  const payload: RawSampler = { ...rawSampler, stopPatternIds: stopPatterns.map(sp => sp.id) };
+  const payload: RawSampler = { 
+    ...rawSampler, 
+    stopPatternIds: stopPatterns.map(sp => sp.id),
+    lastUpdatedTimestamp: Date.now(),
+  };
   await putJson(`${PATHS.samplers}/${id}.json`, payload);
   await updateManifest(PATHS.samplers, id, 'add');
 }
+
 export async function deleteRawSampler(id: string): Promise<void> {
   await deleteResource(`${PATHS.samplers}/${id}.json`);
   await updateManifest(PATHS.samplers, id, 'remove');
 }
 
 // --- Character Repository ---
-export async function loadRawCharacterManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.characters}/${MANIFEST_FILE}`) || []; }
+export async function loadRawCharacterManifest(): Promise<string[]> { 
+  return await fetchJson<string[]>(`${PATHS.characters}/${MANIFEST_FILE}`) || []; 
+}
+
 export async function loadRawCharacter(id: string): Promise<Character | null> {
   const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
   if (!rawCharacter) return null;
   const samplerId = rawCharacter.samplerId;
   const sampler = samplerId ? (await loadRawSampler(samplerId) || DefaultSampler) : DefaultSampler;
-  return { id, name: rawCharacter.name, image: rawCharacter.image, description: rawCharacter.description, systemPrompt: rawCharacter.systemPrompt, initiativeWeight: rawCharacter.initiativeWeight, chatProbability: rawCharacter.chatProbability, maximumChatStamina: rawCharacter.maximumChatStamina, sampler };
+  return { 
+    id, 
+    name: rawCharacter.name, 
+    image: rawCharacter.image, 
+    description: rawCharacter.description, 
+    systemPrompt: rawCharacter.systemPrompt, 
+    initiativeWeight: rawCharacter.initiativeWeight, 
+    chatProbability: rawCharacter.chatProbability, 
+    maximumChatStamina: rawCharacter.maximumChatStamina, 
+    sampler,
+    firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
+    lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
+  };
 }
+
 export async function loadAllRawCharacters(): Promise<Character[]> {
   const ids = await loadRawCharacterManifest();
   const results = await Promise.all(ids.map(id => loadRawCharacter(id)));
   return results.filter((c): c is Character => c !== null);
 }
+
 export async function saveRawCharacter(character: Character): Promise<void> {
   const { id, sampler, ...rawCharacter } = character; 
-  const payload: RawCharacter = { ...rawCharacter, samplerId: sampler?.id };
+  const payload: RawCharacter = { 
+    ...rawCharacter, 
+    samplerId: sampler?.id,
+    lastUpdatedTimestamp: Date.now(),
+  };
   await putJson(`${PATHS.characters}/${id}.json`, payload);
   await updateManifest(PATHS.characters, id, 'add');
 }
+
 export async function deleteRawCharacter(id: string): Promise<void> {
   await deleteResource(`${PATHS.characters}/${id}.json`);
   await updateManifest(PATHS.characters, id, 'remove');
@@ -161,6 +220,8 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
+        firstCreatedTimestamp: rawContext.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp,
     };
 }
 
@@ -172,7 +233,11 @@ export async function loadAllRawContexts(): Promise<Context[]> {
 
 export async function saveRawContext(context: Context): Promise<void> {
     const { id, ...rawContext } = context; 
-    await putJson(`${PATHS.contexts}/${id}.json`, rawContext);
+    const payload = {
+        ...rawContext,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.contexts}/${id}.json`, payload);
     await updateManifest(PATHS.contexts, id, 'add');
 }
 
@@ -182,13 +247,18 @@ export async function deleteRawContext(id: string): Promise<void> {
 }
 
 // --- Language Model Repository ---
-
 export async function loadRawModelManifest(): Promise<string[]> {
     return await fetchJson<string[]>(`${PATHS.models}/${MANIFEST_FILE}`) || [];
 }
 
 export async function loadRawModel(id: string): Promise<LanguageModel | null> {
-    return await fetchJson<LanguageModel>(`${PATHS.models}/${id}.json`);
+    const rawModel = await fetchJson<LanguageModel>(`${PATHS.models}/${id}.json`);
+    if (!rawModel) return null;
+    return {
+        ...rawModel,
+        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
+    };
 }
 
 export async function loadAllRawModels(): Promise<LanguageModel[]> {
@@ -199,7 +269,11 @@ export async function loadAllRawModels(): Promise<LanguageModel[]> {
 
 export async function saveRawModel(model: LanguageModel): Promise<void> {
     const { id, ...rawModel } = model;
-    await putJson(`${PATHS.models}/${id}.json`, rawModel);
+    const payload = {
+        ...rawModel,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.models}/${id}.json`, payload);
     await updateManifest(PATHS.models, id, 'add');
 }
 
@@ -209,10 +283,14 @@ export async function deleteRawModel(id: string): Promise<void> {
 }
 
 // --- Chat Message Repository ---
-export async function deleteRawChatMessage(id: string): Promise<void> { await deleteResource(`${PATHS.chatMessages}/${id}.json`); }
+export async function deleteRawChatMessage(id: string): Promise<void> { 
+    await deleteResource(`${PATHS.chatMessages}/${id}.json`); 
+}
 
 // --- Chat Data Repository ---
-export async function loadRawChatManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; }
+export async function loadRawChatManifest(): Promise<string[]> { 
+    return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
+}
 
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
@@ -229,13 +307,24 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
     if (!rawMessage) return null;
     const character = charMap.get(rawMessage.characterId);
     const { characterId, ...messageWithoutCharId } = rawMessage;
-    return { id: messageId, ...messageWithoutCharId, character: character || { id: rawMessage.characterId, name: '[Unknown]', image: undefined } as Character };
+    return { 
+      id: messageId, 
+      ...messageWithoutCharId, 
+      character: character || { id: rawMessage.characterId, name: '[Unknown]', image: undefined } as Character 
+    };
   });
   const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
   return {
-    id, title: rawChatData.title, protagonist, participants, contexts, chatMessageHistory,
-    first_created_timestamp: rawChatData.first_created_timestamp, last_updated_timestamp: rawChatData.last_updated_timestamp,
-    parentChatDataId: rawChatData.parentChatDataId || null, parentChatMessageId: rawChatData.parentChatMessageId || null
+    id, 
+    title: rawChatData.title, 
+    protagonist, 
+    participants, 
+    contexts, 
+    chatMessageHistory,
+    firstCreatedTimestamp: rawChatData.firstCreatedTimestamp, 
+    lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp,
+    parentChatDataId: rawChatData.parentChatDataId || null, 
+    parentChatMessageId: rawChatData.parentChatMessageId || null
   };
 }
 
@@ -248,14 +337,24 @@ export async function loadAllRawChatData(): Promise<ChatData[]> {
 export async function saveRawChatData(chatData: ChatData): Promise<void> {
   const saveMessagePromises = chatData.chatMessageHistory.map(message => {
     const { id, character, ...rawMsg } = message;
-    return putJson(`${PATHS.chatMessages}/${id}.json`, { ...rawMsg, characterId: character.id });
+    const payload = {
+      ...rawMsg,
+      characterId: character.id,
+      lastUpdatedTimestamp: Date.now(),
+    };
+    return putJson(`${PATHS.chatMessages}/${id}.json`, payload);
   });
   await Promise.all(saveMessagePromises);
   const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, ...rawChatData } = chatData;
   const payload: RawChatData = {
-    ...rawChatData, protagonistId: protagonist.id, participantIds: participants.map(p => p.id),
-    contextIds: contexts?.map(i => i.id) || [], chatMessageIdHistory: chatMessageHistory.map(m => m.id),
-    parentChatDataId: parentChatDataId || null, parentChatMessageId: parentChatMessageId || null
+    ...rawChatData, 
+    protagonistId: protagonist.id, 
+    participantIds: participants.map(p => p.id),
+    contextIds: contexts?.map(i => i.id) || [], 
+    chatMessageIdHistory: chatMessageHistory.map(m => m.id),
+    parentChatDataId: parentChatDataId || null, 
+    parentChatMessageId: parentChatMessageId || null,
+    lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.chatData}/${id}.json`, payload);
   await updateManifest(PATHS.chatData, id, 'add');
@@ -268,10 +367,15 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   if (branchIndex === -1) throw new Error("Branch point message not found");
   const newChatId = crypto.randomUUID();
   const newPayload: RawChatData = {
-    title: `${sourceChat.title} (Branch)`, protagonistId: sourceChat.protagonist.id,
-    participantIds: sourceChat.participants.map(p => p.id), contextIds: sourceChat.contexts?.map(i => i.id) || [],
+    title: `${sourceChat.title} (Branch)`, 
+    protagonistId: sourceChat.protagonist.id,
+    participantIds: sourceChat.participants.map(p => p.id), 
+    contextIds: sourceChat.contexts?.map(i => i.id) || [],
     chatMessageIdHistory: sourceChat.chatMessageHistory.slice(0, branchIndex + 1).map(m => m.id),
-    first_created_timestamp: Date.now(), last_updated_timestamp: Date.now(), parentChatDataId, parentChatMessageId
+    firstCreatedTimestamp: Date.now(), 
+    lastUpdatedTimestamp: Date.now(), 
+    parentChatDataId, 
+    parentChatMessageId
   };
   await putJson(`${PATHS.chatData}/${newChatId}.json`, newPayload);
   await updateManifest(PATHS.chatData, newChatId, 'add');
@@ -292,13 +396,9 @@ export function getCharacterImageUrl(imageFilename: string | undefined): string 
 
 export async function uploadCharacterImage(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
-  // Use the original filename to preserve extensions
   const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const imagePath = `${PATHS.characterImages}/${filename}`;
-  
-  // Sends { base64: "..." } which the server intercepts and writes as binary
   await putJson(imagePath, { base64 });
-  
   return filename;
 }
 
@@ -309,12 +409,8 @@ export function getContextImageUrl(imageFilename: string | undefined): string | 
 
 export async function uploadContextImage(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
-  // Use the original filename to preserve extensions
   const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const imagePath = `${PATHS.contexts}/${filename}`;
-  
-  // Sends { base64: "..." } which the server intercepts and writes as binary
   await putJson(imagePath, { base64 });
-  
   return filename;
 }

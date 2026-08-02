@@ -523,6 +523,7 @@ export function SamplerEditorModal({
             paramsWithEnabled[`_enabled_${key}`] = enabledParams[key as keyof EnabledParams];
         });
         
+        const now = Date.now();
         const sampler: Sampler = {
             id: existingSampler?.id || crypto.randomUUID(),
             name: name.trim(),
@@ -530,6 +531,8 @@ export function SamplerEditorModal({
             parameters: paramsWithEnabled,
             stopPatterns,
             maximumNumberOfTokens: maxTokens,
+            firstCreatedTimestamp: existingSampler?.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: now,
         };
 
         onSave(sampler);
@@ -641,13 +644,13 @@ export function SamplerEditorModal({
         transition: 'opacity 0.2s',
         minWidth: '20px',
         flexShrink: 0,
-        marginRight: '8px', // ← Added to push drag handle further left
+        marginRight: '8px',
     };
 
     const parameterItemStyle = (isDragging: boolean, isEnabled: boolean): React.CSSProperties => ({
         display: 'flex',
         alignItems: 'stretch',
-        gap: '2px', // ← Reduced from 6px to 2px
+        gap: '2px',
         padding: '8px',
         borderRadius: '6px',
         background: isDragging ? 'var(--accent-bg)' : 'transparent',

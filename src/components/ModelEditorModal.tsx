@@ -358,6 +358,7 @@ export function ModelEditorModal({
             params.numa = settings.numa;
         }
 
+        const now = Date.now();
         const model: LanguageModel = {
             id: existingModel?.id || crypto.randomUUID(),
             name: name.trim(),
@@ -367,6 +368,8 @@ export function ModelEditorModal({
             model: modelPath.trim(),
             mmproj: mmprojPath.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
+            firstCreatedTimestamp: existingModel?.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: now,
         };
 
         onSave(model);

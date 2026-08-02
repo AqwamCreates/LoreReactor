@@ -11,23 +11,33 @@ const engine = new LargeLanguageModelInferenceEngine();
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-// ✅ Helper: Create a safe default character
-const getDefaultCharacter = (): Character => ({
-    id: 'default-user',
-    name: 'User',
-    description: 'Default user character',
-    systemPrompt: '',
-    initiativeWeight: 1,
-    chatProbability: 0.5,
-    maximumChatStamina: 5,
-    sampler: {
-        id: 'default-sampler',
-        name: 'Default',
-        parameters: { temperature: 0.7, top_p: 0.9 },
-        stopPatterns: [],
-        maximumNumberOfTokens: 256
-    }
-});
+// Helper: Create a safe default character
+function getDefaultCharacter(): Character {
+    const now = Date.now();
+    
+    const character: Character = {
+        id: 'default-user',
+        name: 'User',
+        description: 'Default user character',
+        systemPrompt: '',
+        initiativeWeight: 1,
+        chatProbability: 0.5,
+        maximumChatStamina: 5,
+        sampler: {
+            id: 'default-sampler',
+            name: 'Default',
+            parameters: { temperature: 0.7, top_p: 0.9 },
+            stopPatterns: [],
+            maximumNumberOfTokens: 256,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+
+    return character;
+}
 
 export function useChatSession() {
     const [chatData, setChatData] = useState<ChatData | null>(null);
@@ -111,6 +121,8 @@ export function useChatSession() {
                 maximumNumberOfTokens: 0,
                 parameters: { ...sampler?.parameters, n_predict: 0 },
                 stopPatterns: [],
+                firstCreatedTimestamp: sampler?.firstCreatedTimestamp || Date.now(),
+                lastUpdatedTimestamp: Date.now(),
             }
         };
 
@@ -126,7 +138,7 @@ export function useChatSession() {
         }
     }, [handleServerResponse]);
 
-    // ✅ FIXED INITIALIZATION: Handle missing protagonist gracefully
+    // FIXED INITIALIZATION: Handle missing protagonist gracefully
     useEffect(() => {
         const init = async () => {
             // 1. Load all chats
@@ -137,12 +149,6 @@ export function useChatSession() {
             let chatToLoad: ChatData | null = null;
 
             // 2. Find a valid chat AND a valid protagonist
-            // We skip chats where the protagonist resolution failed (like the 'default-user' error)
-            // Note: If your storage throws an error, we catch it here by filtering beforehand if possible,
-            // or we simply rely on the fact that 'validChats' already resolved them.
-            // IF storage threw an error and returned null/empty for that chat, it won't be in validChats.
-            // IF storage returned the chat but with a broken protagonist reference, we check here:
-            
             if (validChats.length > 0) {
                 // Try to use the first valid chat
                 const firstChat = validChats[0];
@@ -199,7 +205,6 @@ export function useChatSession() {
         init();
     }, [chatData, currentCharacter, isInitialImageProcessed, processProtagonistImageSilently]);
 
-    // ... (Rest of the file: scroll, stop, send, regen remains exactly the same as previous step) ...
     useEffect(() => {
         if (isLoading && streamingText && messageEndRef.current) {
             messageEndRef.current.scrollIntoView({ behavior: 'auto' });
@@ -262,7 +267,11 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
         const oldMessages = history.slice(trimIndex);
         try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
+        const trimmedData = { 
+            ...chatData, 
+            chatMessageHistory: history.slice(0, trimIndex), 
+            lastUpdatedTimestamp: Date.now() 
+        };
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -296,7 +305,11 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
         const oldMessages = history.slice(trimIndex);
         try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
+        const trimmedData = { 
+            ...chatData, 
+            chatMessageHistory: history.slice(0, trimIndex), 
+            lastUpdatedTimestamp: Date.now() 
+        };
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
