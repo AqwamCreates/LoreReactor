@@ -6,7 +6,7 @@ import {
   deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawContexts, 
   loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
   loadAllRawModels, saveRawModel, deleteRawModel, saveRawContext, deleteRawContext,
-  saveRawStopPattern, deleteRawStopPattern, //saveRawBudgetStrategy, deleteRawBudgetStrategy, loadAllRawBudgetStrategies
+  saveRawStopPattern, deleteRawStopPattern, saveRawBudgetStrategy, deleteRawBudgetStrategy, loadAllRawBudgetStrategies
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
