@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel } from '../types';
+import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel, BudgetStrategy } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { 
   deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawContexts, 
   loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
   loadAllRawModels, saveRawModel, deleteRawModel, saveRawContext, deleteRawContext,
-  saveRawStopPattern, deleteRawStopPattern
+  saveRawStopPattern, deleteRawStopPattern, //saveRawBudgetStrategy, deleteRawBudgetStrategy, loadAllRawBudgetStrategies
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -17,6 +17,7 @@ import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
+import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import './main.css';
 
 function App() {
@@ -31,13 +32,16 @@ function App() {
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isParticipantsMode, setIsParticipantsMode] = useState(false);
-  const [isInstListOpen, setIsInstListOpen] = useState(false);
-  const [isInstManageMode, setIsInstManageMode] = useState(false);
+  const [isContextListOpen, setIsContextListOpen] = useState(false);
+  const [isContextManageMode, setIsContextManageMode] = useState(false);
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
   const [isModelListOpen, setIsModelListOpen] = useState(false);
+  const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
+  const [isBudgetStrategyEditorOpen, setIsBudgetStrategyEditorOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
   const [isCharEditorOpen, setIsCharEditorOpen] = useState(false);
   const [isModelEditorOpen, setIsModelEditorOpen] = useState(false);
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
@@ -48,6 +52,7 @@ function App() {
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [contextToEdit, setContextToEdit] = useState<Context | null>(null);
   const [stopPatternToEdit, setStopPatternToEdit] = useState<StopPattern | null>(null);
+  const [budgetStrategyToEdit, setBudgetStrategyToEdit] = useState<BudgetStrategy | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
 
@@ -65,6 +70,7 @@ function App() {
     { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
   ]);
   const [allModels, setAllModels] = useState<LanguageModel[]>([]);
+  const [allBudgetStrategies, setAllBudgetStrategies] = useState<BudgetStrategy[]>([]);
 
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -95,9 +101,9 @@ function App() {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      if (isInstListOpen || isInstManageMode || isContextEditorOpen) {
-        const insts = await loadAllRawContexts();
-        setAllContexts(insts);
+      if (isContextListOpen || isContextManageMode || isContextEditorOpen) {
+        const contexts = await loadAllRawContexts();
+        setAllContexts(contexts);
       }
       if (shouldLoadSamplers) {
         const samps = await loadAllRawSamplers();
@@ -111,21 +117,27 @@ function App() {
         const models = await loadAllRawModels();
         setAllModels(models);
       }
+      if (isBudgetStrategyListOpen || isBudgetStrategyEditorOpen) {
+        const strategies = await loadAllRawBudgetStrategies();
+        setAllBudgetStrategies(strategies);
+      }
     };
 
     if (
-      isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
-      isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
+      isChatListOpen || isCharListOpen || isContextListOpen || isSampListOpen || 
+      isStopListOpen || isParticipantsMode || isContextManageMode || isExtListOpen || 
       isModelListOpen || isCharEditorOpen || isModelEditorOpen || isSamplerEditorOpen ||
-      isContextEditorOpen || isStopPatternEditorOpen || allSamplers.length === 0
+      isContextEditorOpen || isStopPatternEditorOpen || isBudgetStrategyListOpen ||
+      isBudgetStrategyEditorOpen || allSamplers.length === 0
     ) {
       loadData();
     }
   }, [
-    isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
-    isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, 
+    isChatListOpen, isCharListOpen, isContextListOpen, isSampListOpen, isStopListOpen, 
+    isParticipantsMode, isContextManageMode, isExtListOpen, isModelListOpen, 
     isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, isContextEditorOpen,
-    isStopPatternEditorOpen, allSamplers.length
+    isStopPatternEditorOpen, isBudgetStrategyListOpen, isBudgetStrategyEditorOpen,
+    allSamplers.length
   ]);
 
   // --- Handlers ---
@@ -235,8 +247,8 @@ function App() {
   const handleOpenContextEditor = (context?: Context) => {
     setContextToEdit(context || null);
     setIsContextEditorOpen(true);
-    setIsInstListOpen(false);
-    setIsInstManageMode(false);
+    setIsContextListOpen(false);
+    setIsContextManageMode(false);
   };
 
   const handleSaveContext = async (context: Context) => {
@@ -280,17 +292,17 @@ function App() {
     }
   };
 
-  const handleOpenDefaultContexts = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
-  const handleToggleDefaultContext = (instId: string) => {
-    let newIds = defaultContextIds.includes(instId) ? defaultContextIds.filter(id => id !== instId) : [...defaultContextIds, instId];
+  const handleOpenDefaultContexts = () => { setIsContextListOpen(true); setIsContextManageMode(false); };
+  const handleToggleDefaultContext = (contextId: string) => {
+    let newIds = defaultContextIds.includes(contextId) ? defaultContextIds.filter(id => id !== contextId) : [...defaultContextIds, contextId];
     setDefaultContextIds(newIds);
     localStorage.setItem('defaultContextIds', JSON.stringify(newIds));
   };
-  const handleOpenContextsManage = () => { if (!chatData) return; setIsInstManageMode(true); setIsInstListOpen(false); };
-  const handleToggleChatContext = async (instId: string) => {
+  const handleOpenContextsManage = () => { if (!chatData) return; setIsContextManageMode(true); setIsContextListOpen(false); };
+  const handleToggleChatContext = async (contextId: string) => {
     if (!chatData) return;
     const currentIds = chatData.contexts?.map(i => i.id) || [];
-    let newIds = currentIds.includes(instId) ? currentIds.filter(id => id !== instId) : [...currentIds, instId];
+    let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
     const newContexts = allContexts.filter(i => newIds.includes(i.id));
     const updatedChat = { ...chatData, contexts: newContexts };
     await saveRawChatData(updatedChat);
@@ -481,6 +493,53 @@ function App() {
     }
   };
 
+  // Budget Strategy Handlers
+  const handleOpenBudgetStrategyList = () => {
+    setIsBudgetStrategyListOpen(true);
+  };
+
+  const handleOpenBudgetStrategyEditor = (strategy?: BudgetStrategy) => {
+    setBudgetStrategyToEdit(strategy || null);
+    setIsBudgetStrategyEditorOpen(true);
+    setIsBudgetStrategyListOpen(false);
+  };
+
+  const handleSaveBudgetStrategy = async (strategy: BudgetStrategy) => {
+    try {
+      await saveRawBudgetStrategy(strategy);
+      const freshStrategies = await loadAllRawBudgetStrategies();
+      setAllBudgetStrategies(freshStrategies);
+      
+      if (selectedBudgetStrategyId === strategy.id) {
+        setSelectedBudgetStrategyId(strategy.id);
+      }
+    } catch (err) {
+      console.error("Failed to save budget strategy:", err);
+      alert("Failed to save budget strategy.");
+    }
+  };
+
+  const handleDeleteBudgetStrategy = async (id: string) => {
+    if (!window.confirm("Delete this budget strategy permanently?")) return;
+    try {
+      await deleteRawBudgetStrategy(id);
+      const freshStrategies = await loadAllRawBudgetStrategies();
+      setAllBudgetStrategies(freshStrategies);
+      if (selectedBudgetStrategyId === id) {
+        setSelectedBudgetStrategyId(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete budget strategy:", err);
+      alert("Failed to delete budget strategy.");
+    }
+  };
+
+  const handleSelectBudgetStrategy = (strategy: BudgetStrategy) => {
+    setSelectedBudgetStrategyId(strategy.id);
+    alert(`Switched to ${strategy.name}. (Budget strategy active)`);
+    setIsBudgetStrategyListOpen(false);
+  };
+
   // File & Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
@@ -545,6 +604,22 @@ function App() {
     );
   };
 
+  const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => {
+    const isActive = selectedBudgetStrategyId === strategy.id;
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+        {isActive && (
+          <span style={{ fontSize: '0.7rem', background: '#ffd700', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+            Active
+          </span>
+        )}
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>
+          Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}
+        </span>
+      </span>
+    );
+  };
+
   return (
     <div className="chat-container">
       <header className="app-header">
@@ -565,6 +640,7 @@ function App() {
             <button type="button" className="nav-btn" onClick={handleOpenModels}>🤖 Models</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
+            <button type="button" className="nav-btn" onClick={handleOpenBudgetStrategyList}>💰 Budget</button>
           </nav>
         </div>
       </header>
@@ -776,12 +852,12 @@ function App() {
       )}
 
       {/* Contexts Modal */}
-      {(isInstListOpen || isInstManageMode) && (
+      {(isContextListOpen || isContextManageMode) && (
         <ManagerModal 
           title="Contexts" 
           items={allContexts} 
-          isOpen={isInstListOpen || isInstManageMode}
-          onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
+          isOpen={isContextListOpen || isContextManageMode}
+          onClose={() => { setIsContextListOpen(false); setIsContextManageMode(false); }}
           onSelect={(context) => handleOpenContextEditor(context)} 
           onDelete={handleDeleteContext} 
           onCreateNew={() => handleOpenContextEditor()} 
@@ -794,8 +870,8 @@ function App() {
           emptyMessage="No contexts found." 
           actionLabel="Delete"
           orderedListMode={true} 
-          currentOrderIds={isInstManageMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds}
-          onToggleOrder={isInstManageMode ? handleToggleChatContext : handleToggleDefaultContext}
+          currentOrderIds={isContextManageMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds}
+          onToggleOrder={isContextManageMode ? handleToggleChatContext : handleToggleDefaultContext}
         />
       )}
 
@@ -911,6 +987,45 @@ function App() {
           onSave={handleSaveStopPattern}
           onDelete={handleDeleteStopPattern}
           existingStopPattern={stopPatternToEdit}
+        />
+      )}
+
+      {/* Budget Strategies Modal */}
+      {isBudgetStrategyListOpen && (
+        <ManagerModal 
+          title="Budget Strategies" 
+          items={allBudgetStrategies} 
+          isOpen={isBudgetStrategyListOpen} 
+          onClose={() => setIsBudgetStrategyListOpen(false)}
+          onSelect={(strategy) => handleOpenBudgetStrategyEditor(strategy)} 
+          onDelete={handleDeleteBudgetStrategy} 
+          onCreateNew={() => handleOpenBudgetStrategyEditor()} 
+          renderSubtext={renderBudgetStrategySubtext} 
+          emptyMessage="No budget strategies found." 
+          actionLabel="Delete"
+          orderedListMode={false} 
+          activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+          specialActionIcon="✓"
+          onSpecialAction={(id) => {
+            const strategy = allBudgetStrategies.find(s => s.id === id);
+            if (strategy) handleSelectBudgetStrategy(strategy);
+          }} 
+          specialActionTooltip={(s) => `Use ${s.name}`}
+        />
+      )}
+
+      {/* Budget Strategy Editor Modal */}
+      {isBudgetStrategyEditorOpen && (
+        <BudgetStrategyEditorModal
+          isOpen={isBudgetStrategyEditorOpen}
+          onClose={() => {
+            setIsBudgetStrategyEditorOpen(false);
+            setBudgetStrategyToEdit(null);
+          }}
+          onSave={handleSaveBudgetStrategy}
+          onDelete={handleDeleteBudgetStrategy}
+          existingStrategy={budgetStrategyToEdit}
+          allModels={allModels}
         />
       )}
 
