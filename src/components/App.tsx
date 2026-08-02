@@ -42,7 +42,7 @@ function App() {
     { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language', extensionType: 'language_model_api' },
     { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech', extensionType: 'accessibility' },
     { id: 'ext_3', name: 'Scene Illustrator', description: 'Generate images from scene descriptions', extensionType: 'image_generation_api' },
-    { id: 'ext_4', name: 'Dark Mode Toggle', description: 'Force dark mode for this session', extensionType: 'extra' },
+    { id: 'ext_4', name: 'Light Mode Toggle', description: 'Force light mode for this session', extensionType: 'extra' },
     { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
   ]);
   
@@ -271,7 +271,7 @@ function App() {
   };
   const handleSend = () => { if (!inputText.trim()) return; sendMessage(inputText); setInputText(''); setPendingFiles([]); };
 
-  if (!currentCharacter) return <div className="loading-screen">Initializing...</div>;
+  if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
 
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
