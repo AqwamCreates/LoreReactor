@@ -1,6 +1,6 @@
 // src/components/ManagerModal.tsx
 import type React from 'react';
-import './App.css';
+import './main.css';
 
 interface ManagerItem {
     id: string;
