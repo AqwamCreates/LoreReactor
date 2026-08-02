@@ -9,6 +9,11 @@ interface ChatStatisticsBarProps {
     className?: string;
     numberOfCacheInvalidations?: number;
     numberOfRequests?: number;
+    totalCost?: number;
+    costWithoutCacheMisses?: number;
+    cacheHitCostPerMillion?: number;
+    cacheMissCostPerMillion?: number;
+    outputGenerationCostPerMillion?: number;
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
@@ -19,6 +24,11 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     className = '',
     numberOfCacheInvalidations = 0,
     numberOfRequests = 0,
+    totalCost = 0,
+    costWithoutCacheMisses = 0,
+    cacheHitCostPerMillion = 0,
+    cacheMissCostPerMillion = 0,
+    outputGenerationCostPerMillion = 0,
 }) => {
     const [showDetails, setShowDetails] = useState(false);
     const percentage = Math.round((tokenCount / maximumNumberOfTokens) * 100);
@@ -32,6 +42,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 
     const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
     const hasCacheData = numberOfRequests > 0;
+    const costSavings = costWithoutCacheMisses - totalCost;
+    const efficiency = totalCost > 0 ? Math.round((costSavings / costWithoutCacheMisses) * 100) : 0;
+
+    const formatCost = (cost: number) => {
+        return cost.toFixed(4);
+    };
 
     return (
         <div 
@@ -47,7 +63,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </span>
                 </div>
 
-                 {/* Cache Invalidation Count */}
+                {/* Cache Invalidation Count */}
                 <div className="chat-stat-item">
                     <span className="chat-stat-label">🔄</span>
                     <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
@@ -64,10 +80,10 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </span>
                 </div>
 
-                {/* Message Count */}
+                {/* Total Cost */}
                 <div className="chat-stat-item">
-                    <span className="chat-stat-label">💬</span>
-                    <span className="chat-stat-value">{messageCount}</span>
+                    <span className="chat-stat-label">💰</span>
+                    <span className="chat-stat-value">${formatCost(totalCost)}</span>
                 </div>
             </div>
 
@@ -102,6 +118,22 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     <div className="chat-stat-detail-row">
                         <span className="chat-stat-detail-label">Cache Hit Rate:</span>
                         <span className="chat-stat-detail-value">{hasCacheData ? `${100 - invalidationRate}%` : 'N/A'}</span>
+                    </div>
+
+                    {/* Cost Details */}
+                    <div className="chat-stat-detail-row" style={{ marginTop: '4px' }}>
+                        <span className="chat-stat-detail-label">Total Cost:</span>
+                        <span className="chat-stat-detail-value">${formatCost(totalCost)}</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Cost Without Cache Misses:</span>
+                        <span className="chat-stat-detail-value">${formatCost(costWithoutCacheMisses)}</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Cost Savings:</span>
+                        <span className="chat-stat-detail-value" style={{ color: costSavings > 0 ? 'var(--accent)' : '#ff4444' }}>
+                            ${formatCost(costSavings)} ({efficiency}% saved)
+                        </span>
                     </div>
                 </div>
             )}
