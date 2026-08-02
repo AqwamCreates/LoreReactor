@@ -30,7 +30,7 @@ export async function deleteMessage(currentChat: ChatData, messageId: string): P
     return {
         ...currentChat,
         chatMessageHistory: newHistory,
-        last_updated_timestamp: Date.now(),
+        lastUpdatedTimestamp: Date.now(),
     };
 }
 
@@ -63,7 +63,7 @@ export async function massDeleteMessages(currentChat: ChatData, startIndex: numb
     return {
         ...currentChat,
         chatMessageHistory: newHistory,
-        last_updated_timestamp: Date.now(),
+        lastUpdatedTimestamp: Date.now(),
     };
 }
 

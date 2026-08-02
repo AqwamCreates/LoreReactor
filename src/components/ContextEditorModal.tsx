@@ -151,6 +151,7 @@ export function ContextEditorModal({
             setIsUploading(false);
         }
 
+        const now = Date.now();
         const context: Context = {
             id: existingContext?.id || crypto.randomUUID(),
             name: name.trim(),
@@ -160,9 +161,18 @@ export function ContextEditorModal({
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
+            firstCreatedTimestamp: existingContext?.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: now,
         };
 
         onSave(context);
+        onClose();
+    };
+
+    const handleDelete = () => {
+        if (!existingContext) return;
+        if (!window.confirm(`Delete context "${existingContext.name}" permanently?`)) return;
+        onDelete?.(existingContext.id);
         onClose();
     };
 

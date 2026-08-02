@@ -94,5 +94,5 @@ export async function runTurnSequence(
         }
     }
 
-    return { ...workingData, last_updated_timestamp: Date.now() };
+    return { ...workingData, lastUpdatedTimestamp: Date.now() };
 }
