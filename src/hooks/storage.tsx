@@ -1,5 +1,5 @@
 import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Instruction, RawInstruction, LanguageModel ,
+  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel ,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
 } from '../types';
 
@@ -12,7 +12,7 @@ export const DefaultSampler: Sampler = {
 const WRITE_API_URL = 'http://localhost:3001'; 
 const PATHS = {
   characters: "/user_data/character_data", characterImages: "/user_data/character_images",
-  samplers: "/user_data/sampler_data", instructions: "/user_data/instruction_data",
+  samplers: "/user_data/sampler_data", contexts: "/user_data/context_data",
   models: "/user_data/model_data",
   stopPatterns: "/user_data/stop_patterns_data", chatMessages: "/user_data/chat_messages", 
   chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
@@ -156,41 +156,41 @@ export async function deleteRawCharacter(id: string): Promise<void> {
   await updateManifest(PATHS.characters, id, 'remove');
 }
 
-// --- Instruction Repository ---
-export async function loadRawInstructionManifest(): Promise<string[]> { 
-    return await fetchJson<string[]>(`${PATHS.instructions}/${MANIFEST_FILE}`) || []; 
+// --- Context Repository ---
+export async function loadRawContextManifest(): Promise<string[]> { 
+    return await fetchJson<string[]>(`${PATHS.contexts}/${MANIFEST_FILE}`) || []; 
 }
 
-export async function loadRawInstruction(id: string): Promise<Instruction | null> {
-    const rawInstruction = await fetchJson<RawInstruction>(`${PATHS.instructions}/${id}.json`);
-    if (!rawInstruction) return null;
+export async function loadRawContext(id: string): Promise<Context | null> {
+    const rawContext = await fetchJson<RawContext>(`${PATHS.contexts}/${id}.json`);
+    if (!rawContext) return null;
     return { 
         id, 
-        name: rawInstruction.name, 
-        description: rawInstruction.description, 
-        text: rawInstruction.text,
-        images: rawInstruction.images,
-        regularExpressionTrigger: rawInstruction.regularExpressionTrigger,
-        regularExpressionContext: rawInstruction.regularExpressionContext,
-        regularExpressionTarget: rawInstruction.regularExpressionTarget,
+        name: rawContext.name, 
+        description: rawContext.description, 
+        text: rawContext.text,
+        images: rawContext.images,
+        regularExpressionTrigger: rawContext.regularExpressionTrigger,
+        regularExpressionContext: rawContext.regularExpressionContext,
+        regularExpressionTarget: rawContext.regularExpressionTarget,
     };
 }
 
-export async function loadAllRawInstructions(): Promise<Instruction[]> {
-    const ids = await loadRawInstructionManifest();
-    const results = await Promise.all(ids.map(id => loadRawInstruction(id)));
-    return results.filter((i): i is Instruction => i !== null);
+export async function loadAllRawContexts(): Promise<Context[]> {
+    const ids = await loadRawContextManifest();
+    const results = await Promise.all(ids.map(id => loadRawContext(id)));
+    return results.filter((i): i is Context => i !== null);
 }
 
-export async function saveRawInstruction(instruction: Instruction): Promise<void> {
-    const { id, ...rawInstruction } = instruction; 
-    await putJson(`${PATHS.instructions}/${id}.json`, rawInstruction);
-    await updateManifest(PATHS.instructions, id, 'add');
+export async function saveRawContext(context: Context): Promise<void> {
+    const { id, ...rawContext } = context; 
+    await putJson(`${PATHS.contexts}/${id}.json`, rawContext);
+    await updateManifest(PATHS.contexts, id, 'add');
 }
 
-export async function deleteRawInstruction(id: string): Promise<void> {
-    await deleteResource(`${PATHS.instructions}/${id}.json`);
-    await updateManifest(PATHS.instructions, id, 'remove');
+export async function deleteRawContext(id: string): Promise<void> {
+    await deleteResource(`${PATHS.contexts}/${id}.json`);
+    await updateManifest(PATHS.contexts, id, 'remove');
 }
 
 // --- Language Model Repository ---
@@ -228,13 +228,13 @@ export async function loadRawChatManifest(): Promise<string[]> { return await fe
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
-  const [allCharacters, allInstructions] = await Promise.all([ loadAllRawCharacters(), loadAllRawInstructions() ]);
+  const [allCharacters, allContexts] = await Promise.all([ loadAllRawCharacters(), loadAllRawContexts() ]);
   const charMap = new Map(allCharacters.map(c => [c.id, c]));
-  const instMap = new Map(allInstructions.map(i => [i.id, i]));
+  const instMap = new Map(allContexts.map(i => [i.id, i]));
   const protagonist = charMap.get(rawChatData.protagonistId);
   if (!protagonist) return null;
   const participants = rawChatData.participantIds.map(pid => charMap.get(pid)).filter((c): c is Character => c !== undefined);
-  const instructions = rawChatData.instructionIds.map(iid => instMap.get(iid)).filter((i): i is Instruction => i !== undefined);
+  const contexts = rawChatData.contextIds.map(iid => instMap.get(iid)).filter((i): i is Context => i !== undefined);
   const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
     const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
     if (!rawMessage) return null;
@@ -244,7 +244,7 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   });
   const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
   return {
-    id, title: rawChatData.title, protagonist, participants, instructions, chatMessageHistory,
+    id, title: rawChatData.title, protagonist, participants, contexts, chatMessageHistory,
     first_created_timestamp: rawChatData.first_created_timestamp, last_updated_timestamp: rawChatData.last_updated_timestamp,
     parentChatDataId: rawChatData.parentChatDataId || null, parentChatMessageId: rawChatData.parentChatMessageId || null
   };
@@ -260,10 +260,10 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     return putJson(`${PATHS.chatMessages}/${id}.json`, { ...rawMsg, characterId: character.id });
   });
   await Promise.all(saveMessagePromises);
-  const { id, protagonist, participants, instructions, chatMessageHistory, parentChatDataId, parentChatMessageId, ...rawChatData } = chatData;
+  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, protagonistId: protagonist.id, participantIds: participants.map(p => p.id),
-    instructionIds: instructions?.map(i => i.id) || [], chatMessageIdHistory: chatMessageHistory.map(m => m.id),
+    contextIds: contexts?.map(i => i.id) || [], chatMessageIdHistory: chatMessageHistory.map(m => m.id),
     parentChatDataId: parentChatDataId || null, parentChatMessageId: parentChatMessageId || null
   };
   await putJson(`${PATHS.chatData}/${id}.json`, payload);
@@ -277,7 +277,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   const newChatId = crypto.randomUUID();
   const newPayload: RawChatData = {
     title: `${sourceChat.title} (Branch)`, protagonistId: sourceChat.protagonist.id,
-    participantIds: sourceChat.participants.map(p => p.id), instructionIds: sourceChat.instructions?.map(i => i.id) || [],
+    participantIds: sourceChat.participants.map(p => p.id), contextIds: sourceChat.contexts?.map(i => i.id) || [],
     chatMessageIdHistory: sourceChat.chatMessageHistory.slice(0, branchIndex + 1).map(m => m.id),
     first_created_timestamp: Date.now(), last_updated_timestamp: Date.now(), parentChatDataId, parentChatMessageId
   };
@@ -301,7 +301,7 @@ export const storage = {
   loadRawCharacterManifest, loadRawCharacter, loadAllRawCharacters, saveRawCharacter, deleteRawCharacter,
   loadRawSamplerManifest, loadRawSampler, loadAllRawSamplers, saveRawSampler, deleteRawSampler,
   loadRawStopPatternManifest, loadRawStopPattern, loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern,
-  loadRawInstructionManifest, loadRawInstruction, loadAllRawInstructions, saveRawInstruction, deleteRawInstruction,
+  loadRawContextManifest, loadRawContext, loadAllRawContexts, saveRawContext, deleteRawContext,
   deleteRawChatMessage,
   loadRawChatManifest, loadRawChatData, loadAllRawChatData, saveRawChatData, deleteRawChatData, branchRawChatData,
   getCharacterImageUrl, uploadCharacterImage

@@ -28,25 +28,25 @@ export interface RawSampler {
   maximumNumberOfTokens?: number;
 }
 
-export interface Instruction {
+export interface Context {
   id: string;
   name: string;
   description?: string;
   text?: string;
   images?: string[];
-  regularExpressionTrigger?: string // If this is empty, then this always get triggered. You can disable chat-specific instructions in the instruction menu.
-  regularExpressionContext?: 'global' | 'local' | 'previous'  // The global context uses the whole conversation. The local context uses the information between the character's previous chat to the character's current talk. The previous context only takes into account from previous turn. 
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self' // If everyone is the target, then everyone's messages are used. If responder is the target, then that person's messages are used. If self is the target, then only the person themselves are used.
+  regularExpressionTrigger?: string;
+  regularExpressionContext?: 'global' | 'local' | 'previous';
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
 }
 
-export interface RawInstruction {
+export interface RawContext {
   name: string;
   description?: string;
   text?: string;
   images?: string[];
-  regularExpressionTrigger?: string // If this is empty, then this always get triggered. You can disable chat-specific instructions in the instruction menu.
-  regularExpressionContext?: 'global' | 'local' | 'previous'  // The global context uses the whole conversation. The local context uses the information between the character's previous chat to the character's current talk. The previous context only takes into account from previous turn. 
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self' // If everyone is the target, then everyone's messages are used. If responder is the target, then that person's messages are used. If self is the target, then only the person themselves are used.
+  regularExpressionTrigger?: string;
+  regularExpressionContext?: 'global' | 'local' | 'previous';
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
 }
 
 export interface LanguageModel {
@@ -108,7 +108,7 @@ export interface ChatData {
   title: string;
   protagonist: Character;
   participants: Character[];
-  instructions?: Instruction[];
+  contexts?: Context[]; // Changed from instructions
   chatMessageHistory: ChatMessage[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
@@ -120,7 +120,7 @@ export interface RawChatData {
   title: string;
   protagonistId: string;
   participantIds: string[];
-  instructionIds: string[];
+  contextIds: string[]; // Changed from instructionIds
   chatMessageIdHistory: string[];
   first_created_timestamp: number;
   last_updated_timestamp: number;

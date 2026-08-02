@@ -1,24 +1,24 @@
-// src/components/InstructionEditorModal.tsx
+// src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Instruction } from '../types';
+import type { Context } from '../types';
 import './main.css';
 
-interface InstructionEditorModalProps {
+interface ContextEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (instruction: Instruction) => void;
+    onSave: (context: Context) => void;
     onDelete?: (id: string) => void;
-    existingInstruction?: Instruction | null;
+    existingContext?: Context | null;
 }
 
-export function InstructionEditorModal({
+export function ContextEditorModal({
     isOpen,
     onClose,
     onSave,
     onDelete,
-    existingInstruction,
-}: InstructionEditorModalProps) {
+    existingContext,
+}: ContextEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [text, setText] = useState('');
@@ -30,19 +30,19 @@ export function InstructionEditorModal({
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'responder' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen) {
-            if (existingInstruction) {
-                setName(existingInstruction.name || '');
-                setDescription(existingInstruction.description || '');
-                setText(existingInstruction.text || '');
-                setImages(existingInstruction.images || []);
-                setRegexTrigger(existingInstruction.regularExpressionTrigger || '');
-                setRegexContext(existingInstruction.regularExpressionContext || 'global');
-                setRegexTarget(existingInstruction.regularExpressionTarget || 'everyone');
+            if (existingContext) {
+                setName(existingContext.name || '');
+                setDescription(existingContext.description || '');
+                setText(existingContext.text || '');
+                setImages(existingContext.images || []);
+                setRegexTrigger(existingContext.regularExpressionTrigger || '');
+                setRegexContext(existingContext.regularExpressionContext || 'global');
+                setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
             } else {
                 setName('');
                 setDescription('');
@@ -58,17 +58,19 @@ export function InstructionEditorModal({
             setTestText('');
             setTestResult(null);
         }
-    }, [isOpen, existingInstruction]);
+    }, [isOpen, existingContext]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string } = {};
+        const newErrors: { name?: string; text?: string; regex?: string; images?: string } = {};
         
         if (!name.trim()) {
-            newErrors.name = 'Instruction name is required.';
+            newErrors.name = 'Context name is required.';
         }
         
-        if (!text.trim()) {
-            newErrors.text = 'Instruction text is required.';
+        // Validate that either text OR images are provided
+        if (!text.trim() && images.length === 0) {
+            newErrors.text = 'Either text or images are required.';
+            newErrors.images = 'Either text or images are required.';
         }
         
         // Validate regex if provided
@@ -108,10 +110,13 @@ export function InstructionEditorModal({
             const newPreviews = files.map(file => URL.createObjectURL(file));
             setImagePreviews(prev => [...prev, ...newPreviews]);
             
-            // For storage, we'd upload these and store the paths
-            // For now, we just store the filenames
             const newImages = files.map(file => file.name);
             setImages(prev => [...prev, ...newImages]);
+            
+            // Clear image error if it exists
+            if (errors.images) {
+                setErrors(prev => ({ ...prev, images: undefined }));
+            }
         }
         e.target.value = '';
     };
@@ -125,29 +130,34 @@ export function InstructionEditorModal({
     const handleSubmit = () => {
         if (!validate()) return;
 
-        const instruction: Instruction = {
-            id: existingInstruction?.id || crypto.randomUUID(),
+        const context: Context = {
+            id: existingContext?.id || crypto.randomUUID(),
             name: name.trim(),
             description: description.trim() || undefined,
-            text: text.trim(),
+            text: text.trim() || undefined,
             images: images.length > 0 ? images : undefined,
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
         };
 
-        onSave(instruction);
+        onSave(context);
         onClose();
     };
 
     const handleDelete = () => {
-        if (!existingInstruction) return;
-        if (!window.confirm(`Delete instruction "${existingInstruction.name}" permanently?`)) return;
-        onDelete?.(existingInstruction.id);
+        if (!existingContext) return;
+        if (!window.confirm(`Delete context "${existingContext.name}" permanently?`)) return;
+        onDelete?.(existingContext.id);
         onClose();
     };
 
     if (!isOpen) return null;
+
+    const hasText = text.trim().length > 0;
+    const hasImages = images.length > 0;
+    const isTextRequired = !hasImages && !hasText;
+    const isImagesRequired = !hasText && !hasImages;
 
     const inputStyle: React.CSSProperties = {
         width: '100%',
@@ -306,9 +316,9 @@ export function InstructionEditorModal({
                 style={{ maxWidth: '600px', maxHeight: '90vh', overflow: 'hidden' }}
             >
                 <div className="modal-header" style={{ flexShrink: 0 }}>
-                    <h2>{existingInstruction ? 'Edit Instruction' : 'Create New Instruction'}</h2>
+                    <h2>{existingContext ? 'Edit Context' : 'Create New Context'}</h2>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {existingInstruction && onDelete && (
+                        {existingContext && onDelete && (
                             <button
                                 type="button"
                                 className="edit-btn edit-btn-delete"
@@ -346,7 +356,7 @@ export function InstructionEditorModal({
                                 color: '#fff',
                             }}
                         >
-                            {existingInstruction ? 'Update' : 'Create'}
+                            {existingContext ? 'Update' : 'Create'}
                         </button>
                     </div>
                 </div>
@@ -380,7 +390,7 @@ export function InstructionEditorModal({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             style={{ ...inputStyle, minHeight: '40px' }}
-                            placeholder="Brief description of what this instruction covers"
+                            placeholder="Brief description of what this context covers"
                             rows={2}
                         />
                     </div>
@@ -388,7 +398,7 @@ export function InstructionEditorModal({
                     {/* Text */}
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
-                            Text <span style={{ color: '#ff4444' }}>*</span>
+                            Text {isTextRequired && <span style={{ color: '#ff4444' }}>*</span>}
                         </label>
                         <textarea
                             value={text}
@@ -402,7 +412,7 @@ export function InstructionEditorModal({
                                 borderColor: errors.text ? '#ff4444' : 'var(--border)',
                                 fontFamily: 'monospace',
                             }}
-                            placeholder="The instruction text that will be injected into the prompt"
+                            placeholder="The context text that will be injected into the prompt"
                             rows={6}
                         />
                         {errors.text && <div style={errorStyle}>{errors.text}</div>}
@@ -411,7 +421,7 @@ export function InstructionEditorModal({
                     {/* Images */}
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
-                            Images
+                            Images {isImagesRequired && <span style={{ color: '#ff4444' }}>*</span>}
                             <span
                                 style={{
                                     fontSize: '0.65rem',
@@ -420,7 +430,7 @@ export function InstructionEditorModal({
                                     fontWeight: 'normal',
                                 }}
                             >
-                                (Optional - for scene/character references)
+                                Optional
                             </span>
                         </label>
                         <div
@@ -429,7 +439,7 @@ export function InstructionEditorModal({
                                 width: '100%',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '2px dashed var(--border)',
+                                border: `2px dashed ${errors.images ? '#ff4444' : 'var(--border)'}`,
                                 background: 'var(--social-bg)',
                                 cursor: 'pointer',
                                 textAlign: 'center',
@@ -437,8 +447,12 @@ export function InstructionEditorModal({
                                 opacity: 0.6,
                                 transition: 'all 0.2s',
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                            onMouseEnter={(e) => {
+                                if (!errors.images) e.currentTarget.style.borderColor = 'var(--accent)';
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!errors.images) e.currentTarget.style.borderColor = 'var(--border)';
+                            }}
                         >
                             📷 Click to upload images
                         </div>
@@ -450,13 +464,14 @@ export function InstructionEditorModal({
                             onChange={handleImageChange}
                             style={{ display: 'none' }}
                         />
+                        {errors.images && <div style={errorStyle}>{errors.images}</div>}
                         {imagePreviews.length > 0 && (
                             <div style={imageContainerStyle}>
                                 {imagePreviews.map((preview, index) => (
                                     <div key={index} style={imagePreviewStyle}>
                                         <img
                                             src={preview}
-                                            alt={`Instruction image ${index + 1}`}
+                                            alt={`Context image ${index + 1}`}
                                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                         />
                                         <button
@@ -498,7 +513,7 @@ export function InstructionEditorModal({
                                 />
                                 {errors.regex && <div style={errorStyle}>{errors.regex}</div>}
                                 <div style={helperStyle}>
-                                    The instruction will only be injected when this pattern matches the conversation context.
+                                    The context will only be injected when this pattern matches the conversation context.
                                 </div>
                             </div>
                         </div>
