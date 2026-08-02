@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType, LanguageModel } from '../types';
+import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, LanguageModel } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData } from '../hooks/storage';
+import { 
+  deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, 
+  loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler 
+} from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
-import './App.css';
+import { CharacterEditorModal } from './CharacterEditorModal';
+import './main.css';
 
 function App() {
   const { 
@@ -26,22 +30,20 @@ function App() {
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
-  
-  // ✅ Models State
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-
-  // ✅ Global Defaults
+  const [isCharEditorOpen, setIsCharEditorOpen] = useState(false);
+  const [characterToEdit, setCharacterToEdit] = useState<Character | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultInstructionIds, setDefaultInstructionIds] = useState<string[]>([]);
 
+  // --- Data State ---
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
   const [allInstructions, setAllInstructions] = useState<Instruction[]>([]);
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
   
-  // ✅ Typed Mock Extensions
   const [allExtensions, setAllExtensions] = useState<Extension[]>([
     { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language', extensionType: 'language_model_api' },
     { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech', extensionType: 'accessibility' },
@@ -50,7 +52,6 @@ function App() {
     { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
   ]);
 
-  // ✅ Mock Models Data
   const [allModels, setAllModels] = useState<LanguageModel[]>([
     { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, model:"" },
     { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, model:"", mmproj: "Yay" },
@@ -77,11 +78,14 @@ function App() {
         catch (e) { console.error("Failed to parse default instructions", e); }
       }
 
+      // ✅ ALWAYS load samplers on mount or when editor/sampler modal opens
+      const shouldLoadSamplers = isSampListOpen || isCharEditorOpen || allSamplers.length === 0;
+
       if (isChatListOpen) {
         const chats = await loadAllRawChatData();
         setAllChats(chats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
       }
-      if (isCharListOpen || isParticipantsMode) {
+      if (isCharListOpen || isParticipantsMode || isCharEditorOpen) {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
@@ -89,7 +93,7 @@ function App() {
         const insts = await loadAllRawInstructions();
         setAllInstructions(insts);
       }
-      if (isSampListOpen) {
+      if (shouldLoadSamplers) {
         const samps = await loadAllRawSamplers();
         setAllSamplers(samps);
       }
@@ -99,28 +103,32 @@ function App() {
       }
     };
 
-    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || isModelListOpen) {
+    if (
+      isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
+      isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
+      isModelListOpen || isCharEditorOpen || allSamplers.length === 0
+    ) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen]);
+  }, [
+    isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
+    isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, isCharEditorOpen, 
+    allSamplers.length
+  ]);
 
   // --- Handlers ---
-
-  // 1. Chat Handlers
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) { setChatData(selected); setCurrentCharacter(selected.protagonist); setIsChatListOpen(false); }
   };
+
   const handleNewChat = () => {
     let charToUse = currentCharacter;
-    if (!charToUse && defaultCharacterId) {
-        charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
-    }
-    if (!charToUse && allChats.length > 0) {
-        charToUse = allChats[0].protagonist;
-    }
+    if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
+    if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
     if (charToUse) { startNewChat(charToUse); setIsChatListOpen(false); }
   };
+
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!window.confirm("Delete this session?")) return;
@@ -130,19 +138,44 @@ function App() {
     if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
-  // 2. Character Handlers
   const handleSelectCharacter = (char: Character) => {
-    if (!isParticipantsMode) {
-        if (chatData) {
-          const updatedChat = { ...chatData, protagonist: char };
-          if (!updatedChat.participants.find(p => p.id === char.id)) updatedChat.participants = [...updatedChat.participants, char];
-          setChatData(updatedChat);
-          setCurrentCharacter(char);
-        } else { setCurrentCharacter(char); startNewChat(char); }
-        setIsCharListOpen(false);
+    if (!isParticipantsMode && !isCharEditorOpen) {
+      if (chatData) {
+        const updatedChat = { ...chatData, protagonist: char };
+        if (!updatedChat.participants.find(p => p.id === char.id)) updatedChat.participants = [...updatedChat.participants, char];
+        setChatData(updatedChat);
+        setCurrentCharacter(char);
+      } else { setCurrentCharacter(char); startNewChat(char); }
+      setIsCharListOpen(false);
     }
   };
-  const handleCreateCharacter = () => alert("Create Character Modal coming soon!");
+
+  const handleOpenCharacterEditor = (char?: Character) => {
+    setCharacterToEdit(char || null);
+    setIsCharEditorOpen(true);
+    setIsCharListOpen(false);
+    setIsParticipantsMode(false);
+  };
+
+  const handleSaveCharacter = async (char: Character) => {
+    try {
+      await saveRawCharacter(char);
+      const updatedChars = await loadAllRawCharacters();
+      setAllCharacters(updatedChars);
+      
+      // ✅ Refresh samplers if character uses one
+      if (char.sampler) {
+        const freshSamplers = await loadAllRawSamplers();
+        setAllSamplers(freshSamplers);
+      }
+
+      if (currentCharacter?.id === char.id) setCurrentCharacter(char);
+    } catch (err) {
+      console.error("Failed to save character:", err);
+      alert("Failed to save character.");
+    }
+  };
+
   const handleDeleteCharacter = async (id: string) => {
     if (!window.confirm("Delete permanently?")) return;
     setAllCharacters(prev => prev.filter(c => c.id !== id));
@@ -152,16 +185,12 @@ function App() {
     setDefaultCharacterId(charId);
     localStorage.setItem('defaultCharacterId', charId);
     if (!isParticipantsMode) {
-        const char = allCharacters.find(c => c.id === charId);
-        if (char) setCurrentCharacter(char);
+      const char = allCharacters.find(c => c.id === charId);
+      if (char) setCurrentCharacter(char);
     }
   };
 
-  // 3. Participant Handlers
-  const handleOpenParticipants = () => {
-    if (!chatData) return;
-    setIsParticipantsMode(true);
-  };
+  const handleOpenParticipants = () => { if (!chatData) return; setIsParticipantsMode(true); };
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
@@ -187,7 +216,6 @@ function App() {
     setCurrentCharacter(char);
   };
 
-  // 4. Instruction Handlers
   const handleOpenDefaultInstructions = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
   const handleToggleDefaultInstruction = (instId: string) => {
     let newIds = defaultInstructionIds.includes(instId) ? defaultInstructionIds.filter(id => id !== instId) : [...defaultInstructionIds, instId];
@@ -210,7 +238,6 @@ function App() {
     setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
-  // ✅ 5. Extension Handlers
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
@@ -227,11 +254,9 @@ function App() {
     setAllExtensions(prev => prev.filter(e => e.id !== id));
   };
 
-  // ✅ 6. Model Handlers
   const handleOpenModels = () => { setIsModelListOpen(true); };
-  const handleSelectModel = (model: Model) => {
+  const handleSelectModel = (model: LanguageModel) => {
     setSelectedModelId(model.id);
-    // TODO: Connect to backend to actually switch the model
     alert(`Switched to ${model.name}. (Backend integration required)`);
     setIsModelListOpen(false);
   };
@@ -241,25 +266,57 @@ function App() {
     setAllModels(prev => prev.filter(m => m.id !== id));
   };
 
-  // 7. Sampler Handlers
-  const handleSelectSampler = (samp: Sampler) => {
+  // ✅ Persistent Sampler Selection
+  const handleSelectSampler = async (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
       setCurrentCharacter(updatedChar);
+      
+      try {
+        await saveRawCharacter(updatedChar);
+        const updatedChars = await loadAllRawCharacters();
+        setAllCharacters(updatedChars);
+      } catch (err) {
+        console.error("Failed to persist sampler selection:", err);
+      }
+
       if (chatData) {
         const updatedParticipants = chatData.participants.map(p => p.id === updatedChar.id ? updatedChar : p);
-        setChatData({ ...chatData, protagonist: updatedChar.id === chatData.protagonist.id ? updatedChar : chatData.protagonist, participants: updatedParticipants });
+        const updatedChat = {
+          ...chatData,
+          protagonist: updatedChar.id === chatData.protagonist.id ? updatedChar : chatData.protagonist,
+          participants: updatedParticipants
+        };
+        await saveRawChatData(updatedChat);
+        setChatData(updatedChat);
       }
     }
     setIsSampListOpen(false);
   };
+
   const handleCreateSampler = () => alert("Create Sampler Modal coming soon!");
+
+  // ✅ Safe Sampler Deletion with Character Refresh
   const handleDeleteSampler = async (id: string) => {
-    if (!window.confirm("Delete?")) return;
-    setAllSamplers(prev => prev.filter(s => s.id !== id));
+    if (!window.confirm("Delete this sampler? Characters using it will revert to Default.")) return;
+    try {
+      await deleteRawSampler(id);
+      const freshSamplers = await loadAllRawSamplers();
+      setAllSamplers(freshSamplers);
+      
+      const freshChars = await loadAllRawCharacters();
+      setAllCharacters(freshChars);
+      
+      if (currentCharacter?.sampler?.id === id) {
+        const updatedCurrent = freshChars.find(c => c.id === currentCharacter.id);
+        if (updatedCurrent) setCurrentCharacter(updatedCurrent);
+      }
+    } catch (err) {
+      console.error("Failed to delete sampler:", err);
+      alert("Failed to delete sampler.");
+    }
   };
 
-  // 8. Stop Pattern Handlers
   const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
@@ -267,7 +324,6 @@ function App() {
     setAllStopPatterns(prev => prev.filter(s => s.id !== id));
   };
 
-  // Standard Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     e.target.value = '';
@@ -301,7 +357,6 @@ function App() {
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
   const branchOffIndex = chatData.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
 
-  // ✅ Helper to format Type Badge
   const renderExtensionSubtext = (ext: Extension) => (
     <span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}>
       <span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>
@@ -311,34 +366,16 @@ function App() {
     </span>
   );
 
-  // ✅ Helper to format Model Subtext
   const renderModelSubtext = (languageModel: LanguageModel) => {
-    // Detect multi-modal based on the presence of mmproj path
-    // You might need to add `mmproj?: string;` to your Model interface if not already there
     const isMultiModal = !!languageModel.mmproj; 
-
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-        {/* ✅ Show Multi-Modal Badge if applicable */}
         {isMultiModal && (
-          <span style={{ 
-            fontSize: '0.7rem', 
-            background: '#8b5cf6', // Purple for vision
-            color: '#fff', 
-            padding: '2px 6px', 
-            borderRadius: '4px', 
-            fontWeight: 'bold',
-            textTransform: 'uppercase'
-          }}>
+          <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>
             Multi-Modal
           </span>
         )}
-        
-        {/* Context Size is still useful info */}
-        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>
-          Context: {(languageModel.contextLength / 1024).toFixed(0)}k
-        </span>
-        
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(languageModel.contextLength / 1024).toFixed(0)}k</span>
         <span>{languageModel.description}</span>
       </span>
     );
@@ -356,7 +393,6 @@ function App() {
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
             <button type="button" className="nav-btn" onClick={handleOpenDefaultInstructions}>📜 Instructions</button>
-            {/* ✅ NEW MODELS BUTTON */}
             <button type="button" className="nav-btn" onClick={handleOpenModels}>🤖 Models</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
@@ -428,9 +464,7 @@ function App() {
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
         <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
-        <button type="button" className="context-btn" onClick={handleOpenExtensions}>
-          🧩 Extensions ({(chatData as any)?.extensions?.length || 0})
-        </button>
+        <button type="button" className="context-btn" onClick={handleOpenExtensions}>🧩 Extensions ({(chatData as any)?.extensions?.length || 0})</button>
       </div>
 
       <div className="input-wrapper">
@@ -444,96 +478,64 @@ function App() {
       </div>
 
       {/* === MODALS === */}
-      
-      {/* Chat List */}
       {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
 
-      {/* Characters */}
       {(isCharListOpen || isParticipantsMode) && (
         <ManagerModal
-          title="Characters"
-          items={allCharacters}
-          isOpen={isCharListOpen || isParticipantsMode}
+          title="Characters" items={allCharacters} isOpen={isCharListOpen || isParticipantsMode}
           onClose={() => { setIsCharListOpen(false); setIsParticipantsMode(false); }}
-          onSelect={isParticipantsMode ? undefined : handleSelectCharacter}
+          onSelect={(char) => handleOpenCharacterEditor(char)} 
           onDelete={isParticipantsMode ? undefined : handleDeleteCharacter}
-          onCreateNew={handleCreateCharacter}
-          renderSubtext={(c) => c.description || "No description"}
-          emptyMessage="No characters found."
-          actionLabel="Delete"
-          orderedListMode={isParticipantsMode}
-          currentOrderIds={chatData?.participants.map(p => p.id) || []}
-          onToggleOrder={handleToggleParticipant}
-          specialActionIcon="★"
-          onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
+          onCreateNew={() => handleOpenCharacterEditor()} 
+          renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete"
+          orderedListMode={isParticipantsMode} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant}
+          specialActionIcon="★" onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
           specialActionTooltip={(c) => isParticipantsMode ? `set ${c.name} as the protagonist` : `set ${c.name} as the default for new chats`}
           activeSpecialActionId={isParticipantsMode ? chatData?.protagonist.id : defaultCharacterId || undefined}
         />
       )}
 
-      {/* Instructions */}
+      {/* ✅ Character Editor with Loading State */}
+      {isCharEditorOpen && (
+        <CharacterEditorModal
+          isOpen={isCharEditorOpen}
+          onClose={() => setIsCharEditorOpen(false)}
+          onSave={handleSaveCharacter}
+          existingCharacter={characterToEdit}
+          allSamplers={allSamplers}
+          isLoadingSamplers={allSamplers.length === 0}
+        />
+      )}
+
       {(isInstListOpen || isInstManageMode) && (
-        <ManagerModal
-          title="Instructions"
-          items={allInstructions}
-          isOpen={isInstListOpen || isInstManageMode}
+        <ManagerModal title="Instructions" items={allInstructions} isOpen={isInstListOpen || isInstManageMode}
           onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
-          onSelect={undefined}
-          onDelete={undefined}
-          onCreateNew={handleCreateInstruction}
-          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`}
-          emptyMessage="No instructions found."
-          actionLabel="Delete"
-          orderedListMode={true}
-          currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
+          onSelect={undefined} onDelete={undefined} onCreateNew={handleCreateInstruction}
+          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`} emptyMessage="No instructions found." actionLabel="Delete"
+          orderedListMode={true} currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
           onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
         />
       )}
 
-      {/* ✅ Models Modal */}
       {isModelListOpen && (
-        <ManagerModal
-          title="Models"
-          items={allModels}
-          isOpen={isModelListOpen}
-          onClose={() => setIsModelListOpen(false)}
-          onSelect={handleSelectModel}
-          onDelete={handleDeleteModel}
-          onCreateNew={handleCreateModel}
-          renderSubtext={renderModelSubtext}
-          emptyMessage="No models available."
-          actionLabel="Remove"
-          orderedListMode={false}
-          activeSpecialActionId={selectedModelId || undefined}
-          specialActionIcon="✓"
-          onSpecialAction={handleSelectModel}
-          specialActionTooltip={(m) => `Use ${m.name}`}
+        <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)}
+          onSelect={handleSelectModel} onDelete={handleDeleteModel} onCreateNew={handleCreateModel}
+          renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Remove"
+          orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓"
+          onSpecialAction={handleSelectModel} specialActionTooltip={(m) => `Use ${m.name}`}
         />
       )}
 
-      {/* Extensions */}
       {isExtListOpen && (
-        <ManagerModal
-          title="Extensions"
-          items={allExtensions}
-          isOpen={isExtListOpen}
-          onClose={() => setIsExtListOpen(false)}
-          onSelect={undefined}
-          onDelete={handleDeleteExtension}
-          onCreateNew={handleCreateExtension}
-          renderSubtext={renderExtensionSubtext}
-          emptyMessage="No extensions available."
-          actionLabel="Delete"
-          orderedListMode={true}
-          currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []}
-          onToggleOrder={handleToggleExtension}
+        <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)}
+          onSelect={undefined} onDelete={handleDeleteExtension} onCreateNew={handleCreateExtension}
+          renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete"
+          orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension}
         />
       )}
 
-      {/* Samplers */}
       {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={handleSelectSampler} onDelete={handleDeleteSampler} onCreateNew={handleCreateSampler} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`} emptyMessage="No samplers found." />)}
 
-      {/* Stop Patterns */}
       {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={handleSelectStopPattern} onDelete={handleDeleteStopPattern} onCreateNew={handleCreateStopPattern} renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} emptyMessage="No stop patterns found." />)}
     </div>
   );
