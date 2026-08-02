@@ -514,7 +514,7 @@ function App() {
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
-            <button type="button" className="nav-btn" onClick={handleOpenDefaultContexts}>📜 Contexts</button>
+            <button type="button" className="nav-btn" onClick={handleOpenDefaultContexts}>🌍 Contexts</button>
             <button type="button" className="nav-btn" onClick={handleOpenModels}>🤖 Models</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
@@ -637,7 +637,7 @@ function App() {
 
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
-        <button type="button" className="context-btn" onClick={handleOpenContextsManage}>📜 Contexts ({chatData?.contexts?.length || 0})</button>
+        <button type="button" className="context-btn" onClick={handleOpenContextsManage}>🌍 Contexts ({chatData?.contexts?.length || 0})</button>
         <button type="button" className="context-btn" onClick={handleOpenExtensions}>🧩 Extensions ({(chatData as any)?.extensions?.length || 0})</button>
       </div>
 

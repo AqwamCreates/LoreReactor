@@ -225,16 +225,17 @@ export async function deleteRawChatMessage(id: string): Promise<void> { await de
 
 // --- Chat Data Repository ---
 export async function loadRawChatManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; }
+
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
   const [allCharacters, allContexts] = await Promise.all([ loadAllRawCharacters(), loadAllRawContexts() ]);
   const charMap = new Map(allCharacters.map(c => [c.id, c]));
-  const instMap = new Map(allContexts.map(i => [i.id, i]));
+  const contextMap = new Map(allContexts.map(i => [i.id, i]));
   const protagonist = charMap.get(rawChatData.protagonistId);
   if (!protagonist) return null;
   const participants = rawChatData.participantIds.map(pid => charMap.get(pid)).filter((c): c is Character => c !== undefined);
-  const contexts = rawChatData.contextIds.map(iid => instMap.get(iid)).filter((i): i is Context => i !== undefined);
+  const contexts = rawChatData.contextIds.map(iid => contextMap.get(iid)).filter((i): i is Context => i !== undefined);
   const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
     const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
     if (!rawMessage) return null;
@@ -249,11 +250,13 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
     parentChatDataId: rawChatData.parentChatDataId || null, parentChatMessageId: rawChatData.parentChatMessageId || null
   };
 }
+
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   const results = await Promise.all(ids.map(id => loadRawChatData(id)));
   return results.filter((c): c is ChatData => c !== null);
 }
+
 export async function saveRawChatData(chatData: ChatData): Promise<void> {
   const saveMessagePromises = chatData.chatMessageHistory.map(message => {
     const { id, character, ...rawMsg } = message;
@@ -269,6 +272,7 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
   await putJson(`${PATHS.chatData}/${id}.json`, payload);
   await updateManifest(PATHS.chatData, id, 'add');
 }
+
 export async function branchRawChatData(parentChatDataId: string, parentChatMessageId: string): Promise<string> {
   const sourceChat = await loadRawChatData(parentChatDataId);
   if (!sourceChat) throw new Error("Source chat not found");
@@ -285,6 +289,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   await updateManifest(PATHS.chatData, newChatId, 'add');
   return newChatId;
 }
+
 export async function deleteRawChatData(id: string): Promise<void> {
   try { await deleteResource(`${PATHS.kvCaches}/${id}`); } catch (e) { console.warn("KV cache cleanup failed", e); }
   await deleteResource(`${PATHS.chatData}/${id}.json`);
@@ -297,6 +302,7 @@ export function getCharacterImageUrl(imageFilename: string | undefined): string 
   return `${PATHS.characterImages}/${imageFilename}`;
 }
 
+// --- Storage Export ---
 export const storage = {
   loadRawCharacterManifest, loadRawCharacter, loadAllRawCharacters, saveRawCharacter, deleteRawCharacter,
   loadRawSamplerManifest, loadRawSampler, loadAllRawSamplers, saveRawSampler, deleteRawSampler,
