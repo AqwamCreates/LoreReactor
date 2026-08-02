@@ -1,11 +1,12 @@
-import type React from 'react';
+// src/components/ManagerModal.tsx
+import React from 'react';
 import './App.css';
 
 interface ManagerItem {
-  id: string;
-  name: string;
-  description?: string;
-  last_updated_timestamp?: number;
+    id: string;
+    name: string;
+    description?: string;
+    last_updated_timestamp?: number;
 }
 
 interface ManagerModalProps<T extends ManagerItem> {
@@ -13,25 +14,24 @@ interface ManagerModalProps<T extends ManagerItem> {
     items: T[];
     isOpen: boolean;
     onClose: () => void;
-    onSelect?: (item: T) => void;
-    onDelete?: (id: string) => void;
     onCreateNew: () => void;
+    
+    // Core Logic
+    onSelect?: (item: T) => void;       // For simple clicks (Chat List, Samplers)
+    onDelete?: (id: string) => void;    // For global lists (Characters, Instructions)
     renderSubtext?: (item: T) => React.ReactNode;
     emptyMessage?: string;
-    actionLabel?: string;
-    
-    // Multi-Selection Props
-    selectionMode?: boolean;
-    selectedIds?: string[];
-    onToggleSelect?: (id: string) => void;
-    onConfirmSelection?: () => void;
-    confirmButtonText?: string;
 
-    // ✅ New Special Action Props (e.g., Set Protagonist)
+    // Ordered List Logic (Participants & Instructions)
+    orderedListMode?: boolean;
+    currentOrderIds?: string[];
+    onToggleOrder?: (id: string) => void;
+    
+    // Special Action (Star Icon for Protagonist/Default)
     specialActionIcon?: React.ReactNode;
     onSpecialAction?: (id: string) => void;
     specialActionTooltip?: (item: T) => string;
-  activeSpecialActionId?: string; // To highlight the current selection
+    activeSpecialActionId?: string;
 }
 
 export function ManagerModal<T extends ManagerItem>({
@@ -39,22 +39,19 @@ export function ManagerModal<T extends ManagerItem>({
     items,
     isOpen,
     onClose,
+    onCreateNew,
     onSelect,
     onDelete,
-    onCreateNew,
     renderSubtext,
     emptyMessage = `No ${title.toLowerCase()} found.`,
-    actionLabel = "Delete",
-    selectionMode = false,
-    selectedIds = [],
-    onToggleSelect,
-    onConfirmSelection,
-    confirmButtonText = "Confirm Selection",
+    orderedListMode = false,
+    currentOrderIds = [],
+    onToggleOrder,
     specialActionIcon,
     onSpecialAction,
     specialActionTooltip,
     activeSpecialActionId
-    }: ManagerModalProps<T>) {
+}: ManagerModalProps<T>) {
     if (!isOpen) return null;
 
     const sortedItems = [...items].sort((a, b) => {
@@ -70,32 +67,13 @@ export function ManagerModal<T extends ManagerItem>({
             <div className="modal-header">
             <h2>{title}</h2>
             <div className="modal-header-actions">
-                {!selectionMode && (
+                {/* Always show Create button if provided */}
                 <button type="button" className="new-chat-btn" onClick={onCreateNew} title={`Create New ${title.slice(0, -1)}`}>
-                    ➕ New {title.slice(0, -1)}
+                ➕ New {title.slice(0, -1)}
                 </button>
-                )}
                 <button type="button" className="close-btn" onClick={onClose}>×</button>
             </div>
             </div>
-            
-            {/* Confirmation Bar */}
-            {selectionMode && onConfirmSelection && (
-            <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-h)' }}>
-                {selectedIds.length} selected
-                </span>
-                <button 
-                type="button" 
-                className="send-button counter" 
-                onClick={onConfirmSelection}
-                disabled={selectedIds.length === 0}
-                style={{ opacity: selectedIds.length === 0 ? 0.5 : 1 }}
-                >
-                {confirmButtonText}
-                </button>
-            </div>
-            )}
 
             <div className="modal-body">
             {sortedItems.length === 0 ? (
@@ -103,18 +81,25 @@ export function ManagerModal<T extends ManagerItem>({
             ) : (
                 <ul className="chat-list">
                 {sortedItems.map((item) => {
-                    const selectedIndex = selectedIds.indexOf(item.id);
-                    const isSelected = selectedIndex !== -1;
+                    const currentIndex = currentOrderIds.indexOf(item.id);
+                    const isInList = currentIndex !== -1;
                     const isSpecialActive = activeSpecialActionId === item.id;
                     
                     return (
                     <li 
                         key={item.id} 
-                        className={`chat-list-item ${isSelected ? 'selected-item' : ''} ${isSpecialActive ? 'special-active-item' : ''}`} 
-                        onClick={() => selectionMode && onToggleSelect ? onToggleSelect(item.id) : onSelect?.(item)}
+                        className={`chat-list-item ${isInList ? 'selected-item' : ''} ${isSpecialActive ? 'special-active-item' : ''}`} 
+                        onClick={() => {
+                        // If ordered mode is on, toggle order. Otherwise, simple select.
+                        if (orderedListMode && onToggleOrder) {
+                            onToggleOrder(item.id);
+                        } else {
+                            onSelect?.(item);
+                        }
+                        }}
                         style={{ cursor: 'pointer', justifyContent: 'space-between', alignItems: 'center' }}
                     >
-                        {/* Left Content (Text Only) */}
+                        {/* Left Content */}
                         <div className="chat-item-main" style={{ flex: 1, minWidth: 0 }}>
                         <div className="chat-item-info" style={{ width: '100%', textAlign: 'left' }}>
                             <div className="chat-item-title" style={{ textAlign: 'left' }}>{item.name}</div>
@@ -126,10 +111,10 @@ export function ManagerModal<T extends ManagerItem>({
                         </div>
                         </div>
                         
-                        {/* Right Actions Container */}
+                        {/* Right Actions */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '15px', flexShrink: 0 }}>
                         
-                        {/* ✅ Special Action Icon (e.g., Star for Protagonist) */}
+                        {/* Special Action (Star) */}
                         {specialActionIcon && onSpecialAction && (
                             <button
                             type="button"
@@ -140,7 +125,7 @@ export function ManagerModal<T extends ManagerItem>({
                                 border: 'none',
                                 cursor: 'pointer',
                                 fontSize: '1.2rem',
-                                color: isSpecialActive ? '#ffd700' : 'var(--border)', // Gold if active
+                                color: isSpecialActive ? '#ffd700' : 'var(--border)',
                                 transition: 'color 0.2s',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -153,29 +138,29 @@ export function ManagerModal<T extends ManagerItem>({
                             </button>
                         )}
 
-                        {/* Selection Number or Delete Button */}
-                        {selectionMode ? (
+                        {/* Number Badge (Ordered Mode) OR Delete Button (Standard Mode) */}
+                        {orderedListMode ? (
                             <div style={{ 
                             width: '24px', 
                             height: '24px', 
                             borderRadius: '50%', 
-                            background: isSelected ? 'var(--accent)' : 'transparent',
-                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                            color: isSelected ? '#fff' : 'var(--text-h)',
+                            background: isInList ? 'var(--accent)' : 'transparent',
+                            border: `1px solid ${isInList ? 'var(--accent)' : 'var(--border)'}`,
+                            color: isInList ? '#fff' : 'var(--text-h)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: '0.8rem',
                             fontWeight: 'bold'
                             }}>
-                            {isSelected ? selectedIndex + 1 : '+'}
+                            {isInList ? currentIndex + 1 : '+'}
                             </div>
                         ) : onDelete ? (
                             <button 
                             type="button" 
                             className="delete-chat-btn" 
                             onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
-                            title={`${actionLabel} ${item.name}`}
+                            title="Delete"
                             >
                             🗑️
                             </button>
