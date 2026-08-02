@@ -35,7 +35,7 @@ const INITIATIVE_WEIGHT_RULES: TraitRule[] = [
 const CHAT_PROBABILITY_RULES: TraitRule[] = [
     { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'extroverted', 'social', 'voluble'], value: 0.95 },
     { keywords: ['friendly', 'open', 'communicative', 'expressive', 'warm', 'sociable', 'engaging', 'gregarious'], value: 0.78 },
-    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.55 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.5 }, // Changed to 0.5
     { keywords: ['quiet', 'reserved', 'taciturn', 'brief', 'laconic', 'reticent', 'understated'], value: 0.38 },
     { keywords: ['shy', 'anxious', 'nervous', 'reluctant', 'hesitant', 'insecure', 'fearful', 'apprehensive'], value: 0.22 },
     { keywords: ['silent', 'mute', 'nonverbal', 'unresponsive', 'withdrawn', 'aloof', 'distant'], value: 0.08 },
@@ -175,19 +175,13 @@ function detectValue(
 }
 
 export function getInitiativeWeightValueFromText(text: string) {
-
     return detectValue(text, INITIATIVE_WEIGHT_RULES, 1.2, false);
-
 }
 
 export function getChatProbabilityValue(text: string) {
-
-    return detectValue(text, CHAT_PROBABILITY_RULES, 1.2, false);
-
+    return detectValue(text, CHAT_PROBABILITY_RULES, 0.5, false);
 }
 
 export function getMaximumChatStaminaValueFromText(text: string) {
-
-    return detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, 1.2, false);
-
+    return detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, 4, false);
 }
