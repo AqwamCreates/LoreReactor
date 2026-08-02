@@ -299,7 +299,7 @@ export function StopPatternEditorModal({
                                 ...inputStyle,
                                 borderColor: errors.name ? '#ff4444' : 'var(--border)',
                             }}
-                            placeholder="End of Turn, Character Stop, Paragraph Stop"
+                            placeholder="End Of Turn, Character Stop, Paragraph Stop"
                         />
                         {errors.name && <div style={errorStyle}>{errors.name}</div>}
                     </div>
