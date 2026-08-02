@@ -53,8 +53,8 @@ function App() {
   // ✅ Mock Models Data
   const [allModels, setAllModels] = useState<LanguageModel[]>([
     { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, model:"" },
-    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, model:"", mmproj: "" },
-    { id: 'mdl_3', name: 'Gemma-E4B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, model:"", mmproj: "" },
+    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, model:"", mmproj: "Yay" },
+    { id: 'mdl_3', name: 'Gemma-E4B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, model:"", mmproj: "Yay" },
     { id: 'mdl_4', name: 'Command R+', description: 'Optimized for tool use and RAG', contextLength: 128000, model:"" },
   ]);
   
