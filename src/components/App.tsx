@@ -410,7 +410,7 @@ function App() {
             <div className="message-bubble bubble-ai"><div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{streamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div></div>
           </div>
         )}
-        {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation with {currentCharacter.name}...</p></div>)}
+        {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}...</p></div>)}
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
