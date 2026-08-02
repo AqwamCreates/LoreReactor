@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType } from '../types'; // ✅ Import Extension types
+import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
@@ -8,6 +8,15 @@ import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import './App.css';
+
+// ✅ Mock Model Interface
+interface Model {
+  id: string;
+  name: string;
+  description: string;
+  contextLength: number;
+  parameters: string;
+}
 
 function App() {
   const { 
@@ -26,6 +35,10 @@ function App() {
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
+  
+  // ✅ Models State
+  const [isModelListOpen, setIsModelListOpen] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   // ✅ Global Defaults
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
@@ -44,6 +57,14 @@ function App() {
     { id: 'ext_3', name: 'Scene Illustrator', description: 'Generate images from scene descriptions', extensionType: 'image_generation_api' },
     { id: 'ext_4', name: 'Light Mode Toggle', description: 'Force light mode for this session', extensionType: 'extra' },
     { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
+  ]);
+
+  // ✅ Mock Models Data
+  const [allModels, setAllModels] = useState<Model[]>([
+    { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, parameters: '70B' },
+    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, parameters: 'Unknown' },
+    { id: 'mdl_3', name: 'Gemma-7B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, parameters: '7B' },
+    { id: 'mdl_4', name: 'Command R+', description: 'Optimized for tool use and RAG', contextLength: 128000, parameters: '104B' },
   ]);
   
   const [inputText, setInputText] = useState('');
@@ -87,10 +108,10 @@ function App() {
       }
     };
 
-    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen) {
+    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || isModelListOpen) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode, isExtListOpen]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen]);
 
   // --- Handlers ---
 
@@ -200,7 +221,6 @@ function App() {
 
   // ✅ 5. Extension Handlers
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
-
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
     const currentIds = (chatData as any).extensions?.map((e: any) => e.id) || [];
@@ -210,14 +230,27 @@ function App() {
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
   };
-
   const handleCreateExtension = () => alert("Create Extension Modal coming soon!");
   const handleDeleteExtension = async (id: string) => {
     if (!window.confirm("Delete extension permanently?")) return;
     setAllExtensions(prev => prev.filter(e => e.id !== id));
   };
 
-  // 6. Sampler Handlers
+  // ✅ 6. Model Handlers
+  const handleOpenModels = () => { setIsModelListOpen(true); };
+  const handleSelectModel = (model: Model) => {
+    setSelectedModelId(model.id);
+    // TODO: Connect to backend to actually switch the model
+    alert(`Switched to ${model.name}. (Backend integration required)`);
+    setIsModelListOpen(false);
+  };
+  const handleCreateModel = () => alert("Add Model Endpoint coming soon!");
+  const handleDeleteModel = async (id: string) => {
+    if (!window.confirm("Remove model from list?")) return;
+    setAllModels(prev => prev.filter(m => m.id !== id));
+  };
+
+  // 7. Sampler Handlers
   const handleSelectSampler = (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
@@ -235,7 +268,7 @@ function App() {
     setAllSamplers(prev => prev.filter(s => s.id !== id));
   };
 
-  // 7. Stop Pattern Handlers
+  // 8. Stop Pattern Handlers
   const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
@@ -281,10 +314,22 @@ function App() {
   const renderExtensionSubtext = (ext: Extension) => (
     <span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}>
       <span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>
-        {/* ✅ Use Regex with 'g' flag to replace ALL underscores */}
         {ext.extensionType.replace(/_/g, ' ')}
       </span>
       <span>{ext.description}</span>
+    </span>
+  );
+
+  // ✅ Helper to format Model Subtext
+  const renderModelSubtext = (model: Model) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+      <span style={{ fontSize: '0.7rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+        {model.parameters}
+      </span>
+      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>
+        Context: {(model.contextLength / 1024).toFixed(0)}k
+      </span>
+      <span>{model.description}</span>
     </span>
   );
 
@@ -300,6 +345,8 @@ function App() {
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
             <button type="button" className="nav-btn" onClick={handleOpenDefaultInstructions}>📜 Instructions</button>
+            {/* ✅ NEW MODELS BUTTON */}
+            <button type="button" className="nav-btn" onClick={handleOpenModels}>🤖 Models</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
           </nav>
@@ -432,7 +479,28 @@ function App() {
         />
       )}
 
-      {/* ✅ Extensions Modal with Type Badges */}
+      {/* ✅ Models Modal */}
+      {isModelListOpen && (
+        <ManagerModal
+          title="Models"
+          items={allModels}
+          isOpen={isModelListOpen}
+          onClose={() => setIsModelListOpen(false)}
+          onSelect={handleSelectModel}
+          onDelete={handleDeleteModel}
+          onCreateNew={handleCreateModel}
+          renderSubtext={renderModelSubtext}
+          emptyMessage="No models available."
+          actionLabel="Remove"
+          orderedListMode={false}
+          activeSpecialActionId={selectedModelId || undefined}
+          specialActionIcon="✓"
+          onSpecialAction={handleSelectModel}
+          specialActionTooltip={(m) => `Use ${m.name}`}
+        />
+      )}
+
+      {/* Extensions */}
       {isExtListOpen && (
         <ManagerModal
           title="Extensions"
