@@ -30,6 +30,10 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of turns they could speak), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
 
+### Chat-Related
+
+* A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
+
 ### Sampler-Related
 
 * Multiple samplers can use the same stop pattern configuration.
