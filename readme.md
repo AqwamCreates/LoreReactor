@@ -46,9 +46,9 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 At ≤10B Q4, individual KV cache files are 50–150MB. Disk I/O is faster than GPU re-prefill for these sizes. Trading trivial storage cost for instant resume eliminates the primary friction point of local roleplay.
 
-### Why Separate initiativeWeight and chatProbability?
+### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
 
-"Should this character speak?" and "when should they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
+"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
 
 ### Why Internal IDs Instead of Names?
 
