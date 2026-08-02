@@ -1,3 +1,4 @@
+// src/hooks/storage.ts
 
 import type { 
   StopPattern, 
@@ -73,10 +74,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
-  // Ensure the url starts with / for consistent handling
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  
-  // Construct the full target URL for the Write Server
   const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
 
   const response = await fetch(targetUrl, {
@@ -91,10 +89,7 @@ async function putJson<T>(url: string, data: T): Promise<void> {
 }
 
 async function deleteResource(url: string): Promise<void> {
-  // Ensure the url starts with /
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  
-  // Construct the full target URL for the Write Server
   const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
 
   const response = await fetch(targetUrl, { method: 'DELETE' });
@@ -103,15 +98,13 @@ async function deleteResource(url: string): Promise<void> {
   }
 }
 
-// Helper to update manifests (add/remove IDs)
 async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   
-  // Fetch existing IDs. If it returns null (due to HTML error or 404), start fresh.
   let currentIds = await fetchJson<string[]>(manifestUrl);
   
   if (!currentIds) {
-    currentIds = []; // File didn't exist or was invalid, start new list
+    currentIds = []; 
   }
   
   let newIds: string[];
@@ -122,7 +115,6 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
     newIds = currentIds.filter(existingId => existingId !== id);
   }
 
-  // This PUT request will create the file if it doesn't exist
   await putJson(manifestUrl, newIds);
 }
 
@@ -134,25 +126,18 @@ export async function loadRawStopPatternManifest(): Promise<string[]> {
 
 export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
   const rawPattern = await fetchJson<RawStopPattern>(`${PATHS.stopPatterns}/${id}.json`);
-
   if (!rawPattern) return null;
 
-  // Perform any necessary conversions or validations here
-  const pattern: StopPattern = {
+  return {
     id,
     name: rawPattern.name,
     description: rawPattern.description,
-    pattern: rawPattern.pattern, // Assuming pattern is a string; adjust if it's an array or other type
-    // Add other properties as needed
+    pattern: rawPattern.pattern,
   };
-
-  return pattern;
 }
 
 export async function saveRawStopPattern(pattern: StopPattern): Promise<void> {
-  // Strip the ID before saving to ensure the file content is "Raw"
   const { id, ...rawPattern } = pattern; 
-  
   await putJson(`${PATHS.stopPatterns}/${id}.json`, rawPattern);
   await updateManifest(PATHS.stopPatterns, id, 'add');
 }
@@ -172,7 +157,6 @@ export async function loadRawSampler(id: string): Promise<Sampler | null> {
   const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
   if (!rawSampler) return null;
 
-  // Hydrate Stop Patterns from IDs
   const stopPatternIds = rawSampler.stopPatternIds || [];
   const stopPatterns = (await Promise.all(
     stopPatternIds.map(sid => loadRawStopPattern(sid))
@@ -184,7 +168,7 @@ export async function loadRawSampler(id: string): Promise<Sampler | null> {
     description: rawSampler.description,
     parameters: rawSampler.parameters || {},
     maximumNumberOfTokens: rawSampler.maximumNumberOfTokens,
-    stopPatterns, // Now contains full objects, not just IDs
+    stopPatterns,
   };
 }
 
@@ -195,7 +179,6 @@ export async function loadAllRawSamplers(): Promise<Sampler[]> {
 }
 
 export async function saveRawSampler(sampler: Sampler): Promise<void> {
-  // Strip 'id' and the hydrated 'stopPatterns' array
   const { id, stopPatterns, ...rawSampler } = sampler; 
   
   const payload: RawSampler = {
@@ -215,7 +198,6 @@ export async function deleteRawSampler(id: string): Promise<void> {
 // --- Character Repository ---
 
 export async function loadRawCharacterManifest(): Promise<string[]> {
-  
   return await fetchJson<string[]>(`${PATHS.characters}/${MANIFEST_FILE}`) || [];
 }
 
@@ -250,7 +232,7 @@ export async function saveRawCharacter(character: Character): Promise<void> {
   
   const payload: RawCharacter = {
     ...rawCharacter,
-    samplerId: sampler?.id, // Only save the ID
+    samplerId: sampler?.id,
   };
 
   await putJson(`${PATHS.characters}/${id}.json`, payload);
@@ -260,7 +242,6 @@ export async function saveRawCharacter(character: Character): Promise<void> {
 export async function deleteRawCharacter(id: string): Promise<void> {
   await deleteResource(`${PATHS.characters}/${id}.json`);
   await updateManifest(PATHS.characters, id, 'remove');
-  // Note: You may also want to delete associated images or KV caches here
 }
 
 // --- Instruction Repository ---
@@ -271,17 +252,14 @@ export async function loadRawInstructionManifest(): Promise<string[]> {
 
 export async function loadRawInstruction(id: string): Promise<Instruction | null> {
   const rawInstruction = await fetchJson<RawInstruction>(`${PATHS.instructions}/${id}.json`);
-
   if (!rawInstruction) return null;
 
-  const instruction: Instruction = {
+  return {
     id,
     name: rawInstruction.name,
     description: rawInstruction.description,
     content: rawInstruction.content,
   };
-
-  return instruction;
 }
 
 export async function loadAllRawInstructions(): Promise<Instruction[]> {
@@ -291,9 +269,7 @@ export async function loadAllRawInstructions(): Promise<Instruction[]> {
 }
 
 export async function saveRawInstruction(instruction: Instruction): Promise<void> {
-  // Strip the ID before saving to ensure the file content is "Raw"
   const { id, ...rawInstruction } = instruction; 
-  
   await putJson(`${PATHS.instructions}/${id}.json`, rawInstruction);
   await updateManifest(PATHS.instructions, id, 'add');
 }
@@ -306,13 +282,9 @@ export async function deleteRawInstruction(id: string): Promise<void> {
 // --- Chat Message Repository ---
 export async function deleteRawChatMessage(id: string): Promise<void> {
   await deleteResource(`${PATHS.chatMessages}/${id}.json`);
-  // Note: We do NOT remove it from any manifest because messages don't have a global manifest.
-  // They are only referenced by ChatData files.
 }
 
 // --- Chat Data Repository ---
-// Note: In your normalized model, ChatData holds the message HISTORY (objects) 
-// but references Characters/Instructions by ID.
 
 export async function loadRawChatManifest(): Promise<string[]> {
   return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || [];
@@ -331,8 +303,12 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const instMap = new Map(allInstructions.map(i => [i.id, i]));
 
   const protagonist = charMap.get(rawChatData.protagonistId);
+  
+  // ✅ FIX: If protagonist is missing (e.g., 'default-user'), return null silently.
+  // This prevents the error loop and allows the app to skip this broken chat.
   if (!protagonist) {
-    console.error(`Protagonist ${rawChatData.protagonistId} not found for chat ${id}`);
+    // Optional: Uncomment to see which files are being skipped in console
+    // console.warn(`Skipping chat ${id}: Protagonist '${rawChatData.protagonistId}' not found.`);
     return null;
   }
 
@@ -344,21 +320,17 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
     .map(iid => instMap.get(iid))
     .filter((i): i is Instruction => i !== undefined);
 
-  // 4. Resolve Message History
-  // Load each message file by ID, then attach the full Character object to it
-  const messagePromises = rawChatData.chatMessageIdHistory.map(async (msgId) => {
-    const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${msgId}.json`);
+  const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
+    const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
     if (!rawMessage) return null;
 
     const character = charMap.get(rawMessage.characterId);
     
-    // Re-attach ID and Character object to create the Runtime ChatMessage
-    const { characterId, ...msgWithoutCharId } = rawMessage;
+    const { characterId, ...messageWithoutCharId } = rawMessage;
     return {
-      id: msgId, // Filename becomes ID
-      ...msgWithoutCharId,
+      id: messageId,
+      ...messageWithoutCharId,
       character: character || { 
-        // Fallback if character was deleted but message remains
         id: rawMessage.characterId, 
         name: '[Unknown Character]', 
         image: undefined 
@@ -379,19 +351,23 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
     chatMessageHistory,
     first_created_timestamp: rawChatData.first_created_timestamp,
     last_updated_timestamp: rawChatData.last_updated_timestamp,
+    parentChatDataId: rawChatData.parentChatDataId || null, // Ensure mapping if your Raw type differs
+    parentChatMessageId: rawChatData.parentChatMessageId || null
   };
 
   return chatData;
 }
 
-export async function loadAllRawChatData(): Promise<(ChatData | null)[]> {
+export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
-  return await Promise.all(ids.map(id => loadRawChatData(id)));
+  const results = await Promise.all(ids.map(id => loadRawChatData(id)));
+  // ✅ Filter out nulls (the broken chats) here so the rest of the app only sees valid data
+  return results.filter((c): c is ChatData => c !== null);
 }
 
 export async function saveRawChatData(chatData: ChatData): Promise<void> {
-  const saveMessagePromises = chatData.chatMessageHistory.map(msg => {
-    const { id, character, ...rawMsg } = msg; // Strip ID and hydrated Character
+  const saveMessagePromises = chatData.chatMessageHistory.map(message => {
+    const { id, character, ...rawMsg } = message;
     
     const payload: RawChatMessage = {
       ...rawMsg,
@@ -403,39 +379,41 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
 
   await Promise.all(saveMessagePromises);
 
-  const { id, protagonist, participants, instructions, chatMessageHistory, ...rawChatData } = chatData;
+  const { id, protagonist, participants, instructions, chatMessageHistory, parentChatDataId, branchPointMessageId, ...rawChatData } = chatData;
 
   const payload: RawChatData = {
     ...rawChatData,
     protagonistId: protagonist.id,
     participantIds: participants.map(p => p.id),
     instructionIds: instructions?.map(i => i.id) || [],
-    chatMessageIdHistory: chatMessageHistory.map(m => m.id), // Store only the IDs (Filenames)
+    chatMessageIdHistory: chatMessageHistory.map(m => m.id),
+    parentChatDataId: parentChatDataId || null,
+    parentChatMessageId: branchPointMessageId || null
   };
 
   await putJson(`${PATHS.chatData}/${id}.json`, payload);
   await updateManifest(PATHS.chatData, id, 'add');
 }
 
-export async function branchRawChatData(sourceChatId: string, branchPointMessageId: string): Promise<string> {
-  const sourceChat = await loadRawChatData(sourceChatId);
+export async function branchRawChatData(parentChatDataId: string, parentChatMessageId: string): Promise<string> {
+  const sourceChat = await loadRawChatData(parentChatDataId);
   if (!sourceChat) throw new Error("Source chat not found");
 
-  const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
+  const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === parentChatMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
 
-  const newChatId = crypto.randomUUID(); // or use uuidv4()
+  const newChatId = crypto.randomUUID();
 
-  // Create new metadata pointing to EXISTING message files (no copy)
   const newPayload: RawChatData = {
     title: `${sourceChat.title} (Branch)`,
     protagonistId: sourceChat.protagonist.id,
     participantIds: sourceChat.participants.map(p => p.id),
     instructionIds: sourceChat.instructions?.map(i => i.id) || [],
-    // Slice the history IDs up to the branch point
     chatMessageIdHistory: sourceChat.chatMessageHistory.slice(0, branchIndex + 1).map(m => m.id),
     first_created_timestamp: Date.now(),
     last_updated_timestamp: Date.now(),
+    parentChatDataId,
+    parentChatMessageId
   };
 
   await putJson(`${PATHS.chatData}/${newChatId}.json`, newPayload);
@@ -445,9 +423,8 @@ export async function branchRawChatData(sourceChatId: string, branchPointMessage
 }
 
 export async function deleteRawChatData(id: string): Promise<void> {
-  // Optional: Clean up associated KV Caches
   try {
-    await deleteResource(`${PATHS.kvCaches}/${id}`); // Assuming folder or specific file logic needed here
+    await deleteResource(`${PATHS.kvCaches}/${id}`);
   } catch (e) {
     console.warn("Could not clean up KV caches for deleted chat", e);
   }
@@ -464,8 +441,6 @@ export function getCharacterImageUrl(imageFilename: string | undefined): string 
 }
 
 export async function loadKVCache(chatId: string, messageId?: string): Promise<any> {
-  // Implementation depends on how you store KV caches (single file per chat? per message?)
-  // Example assuming per-chat cache:
   const url = `${PATHS.kvCaches}/${chatId}.json`;
   return await fetchJson<any>(url);
 }
@@ -476,30 +451,21 @@ export async function saveKVCache(chatId: string, cacheData: any): Promise<void>
 }
 
 export const storage = {
-  // Characters
   loadRawCharacterManifest,
   loadRawCharacter,
   loadAllRawCharacters,
   saveRawCharacter,
   deleteRawCharacter,
-  
-  // Samplers
   loadRawSamplerManifest,
   loadRawSampler,
   saveRawSampler,
   deleteRawSampler,
-
-  // Chat Messages
   deleteRawChatMessage,
-  
-  // Chat Data
   loadRawChatManifest,
   loadRawChatData,
   loadAllRawChatData,
   saveRawChatData,
   deleteRawChatData,
-  
-  // Helpers
   getCharacterImageUrl,
   loadKVCache,
   saveKVCache,

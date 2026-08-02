@@ -1,38 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData } from '../types';
+import type { ChatData, Character, Instruction, Sampler, StopPattern } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { deleteRawChatData, loadAllRawChatData, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
+import { ManagerModal } from './ManagerModal';
 import './App.css';
 
 function App() {
   const { 
-    chatData, 
-    setChatData, 
-    currentCharacter, 
-    setCurrentCharacter,
-    isLoading, 
-    streamingText, 
-    streamingCharacter, 
-    sendMessage, 
-    stopGeneration,
-    regenerateLastAI,
-    regenerateLastProtagonist,
-    messageEndRef,
-    parentChatMessageIds,
-    generationSpeed,
-    messageCount,
-    tokenCount,
-    maximumNumberOfTokens,
-    startNewChat
+    chatData, setChatData, currentCharacter, setCurrentCharacter,
+    isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
+    regenerateLastAI, regenerateLastProtagonist, messageEndRef, parentChatMessageIds,
+    generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat
   } = useChatSession();
 
+  // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
+  const [isCharListOpen, setIsCharListOpen] = useState(false);
+  const [isInstListOpen, setIsInstListOpen] = useState(false);
+  const [isSampListOpen, setIsSampListOpen] = useState(false);
+  const [isStopListOpen, setIsStopListOpen] = useState(false);
+
   const [allChats, setAllChats] = useState<ChatData[]>([]);
+  const [allCharacters, setAllCharacters] = useState<Character[]>([]);
+  const [allInstructions, setAllInstructions] = useState<Instruction[]>([]);
+  const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
+  const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
   
+  // Local Form State
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,21 +38,45 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- Load Data for Modals ---
   useEffect(() => {
-    if (isChatListOpen) {
-      loadAllRawChatData().then(data => {
-        const validChats = data.filter((c): c is ChatData => c !== null);
-        
-        // ✅ Sort by last_updated_timestamp (Highest/Newest first)
-        const sortedChats = validChats.sort((a, b) => {
-          return b.last_updated_timestamp - a.last_updated_timestamp;
+    const loadData = async () => {
+      // 1. Load Chats
+      const chats = await loadAllRawChatData();
+      const validChats = chats.filter((c): c is ChatData => c !== null);
+      setAllChats(validChats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
+
+      // 2. Load Characters (Placeholder: In real app, call loadAllCharacters())
+      // For now, we ensure at least the current character is in the list
+      if (currentCharacter) {
+        setAllCharacters(prev => {
+          const exists = prev.find(c => c.id === currentCharacter.id);
+          return exists ? prev : [currentCharacter, ...prev];
         });
+      }
 
-        setAllChats(sortedChats);
-      });
+      // 3. Load Instructions (From current chat or global store)
+      setAllInstructions(chatData?.instructions || []);
+
+      // 4. Load Samplers (From current character)
+      if (currentCharacter?.sampler) {
+        setAllSamplers([currentCharacter.sampler]);
+      }
+
+      // 5. Load Stop Patterns (From current sampler)
+      if (currentCharacter?.sampler?.stopPatterns) {
+        setAllStopPatterns(currentCharacter.sampler.stopPatterns);
+      }
+    };
+
+    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen) {
+      loadData();
     }
-  }, [isChatListOpen]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, currentCharacter, chatData]);
 
+  // --- Handlers ---
+
+  // 1. Chat Handlers
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) {
@@ -63,40 +85,90 @@ function App() {
       setIsChatListOpen(false);
     }
   };
-
-  const handleNewChat = async () => {
+  const handleNewChat = () => {
     const charToUse = currentCharacter || (allChats.length > 0 ? allChats[0].protagonist : null);
-    if (!charToUse) {
-        alert("No character available.");
-        return;
-    }
-    startNewChat(charToUse);
-    setIsChatListOpen(false);
+    if (charToUse) { startNewChat(charToUse); setIsChatListOpen(false); }
   };
-
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!window.confirm("Delete this session?")) return;
-    try {
-      await deleteRawChatData(id);
-      const updated = await loadAllRawChatData();
-      setAllChats(updated.filter((c): c is ChatData => c !== null));
-      if (chatData && chatData.id === id) {
-        // If deleting current, start a fresh draft immediately so UI doesn't break
-        const nextChar = currentCharacter || (updated.length > 0 ? updated[0].protagonist : null);
-        if(nextChar) startNewChat(nextChar);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to delete.");
-    }
+    await deleteRawChatData(id);
+    const updated = await loadAllRawChatData();
+    setAllChats(updated.filter((c): c is ChatData => c !== null).sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
+    if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
+  // 2. Character Handlers
+  const handleSelectCharacter = (char: Character) => {
+    if (chatData) {
+      const updatedChat = { ...chatData, protagonist: char };
+      if (!updatedChat.participants.find(p => p.id === char.id)) {
+        updatedChat.participants = [...updatedChat.participants, char];
+      }
+      setChatData(updatedChat);
+      setCurrentCharacter(char);
+    } else {
+      setCurrentCharacter(char);
+      startNewChat(char);
+    }
+    setIsCharListOpen(false);
+  };
+  const handleCreateCharacter = () => alert("Create Character Modal coming soon!");
+  const handleDeleteCharacter = async (id: string) => {
+    if (!window.confirm("Delete this character?")) return;
+    // await deleteCharacter(id); // Implement in storage
+    setAllCharacters(prev => prev.filter(c => c.id !== id));
+  };
+
+  // 3. Instruction Handlers
+  const handleSelectInstruction = (inst: Instruction) => {
+     alert(`Selected Instruction: ${inst.name}. Logic to toggle active status coming soon!`);
+     setIsInstListOpen(false);
+  };
+  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
+  const handleDeleteInstruction = async (id: string) => {
+    if (!window.confirm("Delete this instruction?")) return;
+    setAllInstructions(prev => prev.filter(i => i.id !== id));
+  };
+
+  // 4. Sampler Handlers
+  const handleSelectSampler = (samp: Sampler) => {
+    if (currentCharacter) {
+      const updatedChar = { ...currentCharacter, sampler: samp };
+      setCurrentCharacter(updatedChar);
+      if (chatData) {
+        const updatedParticipants = chatData.participants.map(p => p.id === updatedChar.id ? updatedChar : p);
+        setChatData({ 
+          ...chatData, 
+          protagonist: updatedChar.id === chatData.protagonist.id ? updatedChar : chatData.protagonist, 
+          participants: updatedParticipants 
+        });
+      }
+    }
+    setIsSampListOpen(false);
+  };
+  const handleCreateSampler = () => alert("Create Sampler Modal coming soon!");
+  const handleDeleteSampler = async (id: string) => {
+    if (!window.confirm("Delete this sampler?")) return;
+    setAllSamplers(prev => prev.filter(s => s.id !== id));
+  };
+
+  // 5. Stop Pattern Handlers
+  const handleSelectStopPattern = (stop: StopPattern) => {
+    alert(`Selected Stop Pattern: ${stop.pattern}`);
+    setIsStopListOpen(false);
+  };
+  const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
+  const handleDeleteStopPattern = async (id: string) => {
+    if (!window.confirm("Delete this stop pattern?")) return;
+    setAllStopPatterns(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Standard Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     e.target.value = '';
   };
-
   const handleSaveEdit = async () => {
     if (!chatData || !editingId) return;
     try {
@@ -110,7 +182,6 @@ function App() {
         } else { console.error(err); }
     }
   };
-
   const handleDelete = async (id: string) => {
     if (!chatData) return;
     try {
@@ -122,7 +193,6 @@ function App() {
         } else { console.error(err); }
     }
   };
-
   const handleMassDeleteConfirm = async () => {
     if (!chatData || !massDeleteId) return;
     const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId);
@@ -137,7 +207,6 @@ function App() {
         } else { console.error(err); }
     }
   };
-
   const handleBranch = async (id: string) => {
     if (!chatData) return;
     try {
@@ -145,7 +214,6 @@ function App() {
       window.open(window.location.href, '_blank');
     } catch (err) { console.error(err); }
   };
-
   const handleSend = () => {
     if (!inputText.trim()) return;
     sendMessage(inputText);
@@ -153,21 +221,11 @@ function App() {
     setPendingFiles([]);
   };
 
-  const handleManageParticipants = () => alert("Participant management coming soon!");
-  const handleManageInstructions = () => alert("Instruction management coming soon!");
-  const handleSearch = () => alert("Search functionality coming soon!");
-
-  // ✅ ALWAYS RENDER UI
-  if (!currentCharacter) {
-      // Only show loading if we don't even have a character selected yet
-      return <div className="loading-screen">Initializing...</div>;
-  }
+  if (!currentCharacter) return <div className="loading-screen">Initializing...</div>;
 
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
-  const branchOffIndex = chatData.parentChatMessageId 
-    ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) 
-    : -1;
+  const branchOffIndex = chatData.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
 
   return (
     <div className="chat-container">
@@ -175,51 +233,38 @@ function App() {
         <div className="header-content">
           <div className="header-top">
             <div className="header-title">{chatData?.title || "New Chat Draft"}</div>
-            <ChatStatisticsBar 
-              generationSpeed={generationSpeed}
-              messageCount={messageCount}
-              tokenCount={tokenCount}
-              maximumNumberOfTokens={maximumNumberOfTokens}
-            />
+            <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} />
           </div>
           <nav className="header-nav">
-            <button type="button" className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
-            <button type="button" className="nav-btn" disabled>🎭 Characters</button>
-            <button type="button" className="nav-btn" disabled>📜 Instructions</button>
-            <button type="button" className="nav-btn" disabled>🎚️ Samplers</button>
-            <button type="button" className="nav-btn" disabled>🛑 Stop Patterns</button>
+            <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
+            <button type="button" className="nav-btn" onClick={() => setIsCharListOpen(true)}>🎭 Characters</button>
+            <button type="button" className="nav-btn" onClick={() => setIsInstListOpen(true)}>📜 Instructions</button>
+            <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
+            <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
           </nav>
         </div>
       </header>
 
       <div className="chat-history">
-        {chatData?.chatMessageHistory.map((message, index) => {
-          const isProtagonist = message.character.id === currentCharacter.id;
-          const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
-          const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
-          
-          const aiParticipantIds = new Set(
-            chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id)
-          );
-          const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
-          const isLastProtag = isProtagonist;
-          
-          const isEditing = editingId === message.id;
-          const isMassStart = message.id === massDeleteId;
-          const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-          const isStemMessage = parentChatMessageIds.has(message.id);
-          const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
+        {chatData && chatData.chatMessageHistory.map((message, index) => {
+           const isProtagonist = message.character.id === currentCharacter.id;
+           const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
+           const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
+           const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
+           const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
+           const isLastProtag = isProtagonist;
+           const isEditing = editingId === message.id;
+           const isMassStart = message.id === massDeleteId;
+           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
+           const isStemMessage = parentChatMessageIds.has(message.id);
+           const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
-          return (
+           return (
             <React.Fragment key={message.id}>
               <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
                 {!isProtagonist && (
                   <div className="avatar-column">
-                    {avatarSrc ? (
-                      <img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
-                    ) : (
-                      <div className="character-avatar placeholder" />
-                    )}
+                    {avatarSrc ? (<img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />) : (<div className="character-avatar placeholder" />)}
                     <span className="avatar-name">{displayName}</span>
                   </div>
                 )}
@@ -227,162 +272,125 @@ function App() {
                   {isEditing ? (
                     <div className="edit-mode">
                       <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
-                      <div className="edit-actions">
-                        <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                        <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
-                      </div>
+                      <div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div>
                     </div>
                   ) : (
                     <>
                       <span className="message-text">{message.textContent}</span>
                       <div className="message-toolbar">
-                        {isStemMessage ? (
-                          <span className="toolbar-lock" title="Locked: Other chats branch from here">🔒 Locked</span>
-                        ) : !isMassActive ? (
+                        {isStemMessage ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                           <>
-                            <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} title="Edit" className="toolbar-btn">✎</button>
-                            {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} title="Regenerate" className="toolbar-btn">↻</button>)}
-                            <button type="button" onClick={() => handleBranch(message.id)} title="Branch" className="toolbar-btn">⑂</button>
-                            <button type="button" onClick={() => handleDelete(message.id)} title="Delete" className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
-                            <button type="button" onClick={() => setMassDeleteId(message.id)} title="Mass Delete" className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                            <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
+                            {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
+                            <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
+                            <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                            <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
                           </>
-                        ) : isMassStart ? (
-                          <div className="mass-delete-confirm-bar">
-                            <span style={{fontSize: '0.8em', marginRight: '5px'}}>Delete from here?</span>
-                            <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
-                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: 'var(--border)', color: 'var(--text-h)', border: '1px solid var(--border)'}}>Cancel</button>
-                          </div>
-                        ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
+                        ) : isMassStart ? (<div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div>) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
                       </div>
                     </>
                   )}
                 </div>
               </div>
-              {isJustBeforeBranchOff && (
-                <div className="branch-separator-line">
-                  <div className="branch-separator-content">
-                    <span className="branch-separator-icon">🌿</span>
-                    <span className="branch-separator-text">Conversation Branches Here</span>
-                    <span className="branch-separator-icon">🌿</span>
-                  </div>
-                </div>
-              )}
+              {isJustBeforeBranchOff && (<div className="branch-separator-line"><div className="branch-separator-content"><span className="branch-separator-icon">🌿</span><span className="branch-separator-text">Conversation Branches Here</span><span className="branch-separator-icon">🌿</span></div></div>)}
             </React.Fragment>
           );
         })}
-
         {isLoading && streamingCharacter && (
           <div className="message-row message-left">
-            <div className="avatar-column">
-              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData!, chatData!.chatMessageHistory.length - 1, streamingCharacter.id, chatData!.participants)} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
-              <span className="avatar-name">{getDelayedDisplayName(chatData!, chatData!.chatMessageHistory.length - 1, streamingCharacter.id, chatData!.participants)}</span>
-            </div>
-            <div className="message-bubble bubble-ai">
-              <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
-              </div>
-            </div>
+            <div className="avatar-column">{streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}<span className="avatar-name">{streamingCharacter.name}</span></div>
+            <div className="message-bubble bubble-ai"><div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{streamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div></div>
           </div>
         )}
-        
-        {/* Empty State Hint inside chat history if no messages */}
-        {chatData && chatData.chatMessageHistory.length === 0 && (
-            <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}>
-                <p>Start the conversation as {currentCharacter.name}...</p>
-                <p style={{fontSize: '0.8em'}}>Messages will be saved automatically after the first response.</p>
-            </div>
-        )}
-
+        {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation with {currentCharacter.name}...</p></div>)}
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
       <div className="context-bar">
-        <button type="button" className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
-          👥 Participants ({chatData?.participants.length || 0})
-        </button>
-        <button type="button" className="context-btn" onClick={handleManageInstructions} title="Manage Instructions (Coming Soon)">
-          📜 Instructions ({chatData?.instructions?.length || 0})
-        </button>
-        <button type="button" className="context-btn" onClick={handleSearch} title="Search Messages (Coming Soon)">
-          🔍 Search
-        </button>
+        <button type="button" className="context-btn" onClick={() => setIsCharListOpen(true)}>👥 Participants ({chatData?.participants.length || 0})</button>
+        <button type="button" className="context-btn" onClick={() => setIsInstListOpen(true)}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
+        <button type="button" className="context-btn" onClick={() => alert("Search coming soon!")}>🔍 Search</button>
       </div>
 
       <div className="input-wrapper">
-        {pendingFiles.length > 0 && (
-          <div className="attachment-strip">
-            {pendingFiles.map((file, idx) => (
-              <div key={`${file.name}-${idx}`} className="attachment-chip">
-                <span className="attachment-name" title={file.name}>{file.name}</span>
-                <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
-                <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
-              </div>
-            ))}
-          </div>
-        )}
+        {pendingFiles.length > 0 && (<div className="attachment-strip">{pendingFiles.map((file, idx) => (<div key={`${file.name}-${idx}`} className="attachment-chip"><span className="attachment-name">{file.name}</span><span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button></div>))}</div>)}
         <div className="input-area">
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn" title="Attach file">📎</button>
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
           <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-          <textarea 
-            value={inputText} 
-            onChange={(e) => setInputText(e.target.value)} 
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
-            placeholder={`Message as ${currentCharacter.name}...`} 
-            rows={3} 
-            className="chat-input" 
-            disabled={isLoading || !chatData} 
-          />
-          <button 
-            type="button" 
-            onClick={isLoading ? stopGeneration : handleSend} 
-            disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} 
-            className="send-button counter" 
-            title={isLoading ? "Stop Generating" : "Send Message"}
-          >
-            {isLoading ? '⏹ Stop' : 'Send'}
-          </button>
+          <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
+          <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
         </div>
       </div>
 
+      {/* === MODALS === */}
       {isChatListOpen && (
-        <div className="modal-overlay" onClick={() => setIsChatListOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Chat Sessions</h2>
-              <div className="modal-header-actions">
-                <button type="button" className="new-chat-btn" onClick={handleNewChat} title="Create New Chat">
-                  ➕ New Chat
-                </button>
-                <button type="button" className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
-              </div>
-            </div>
-            <div className="modal-body">
-              {allChats.length === 0 ? (
-                <p className="empty-state">No saved chat sessions found.</p>
-              ) : (
-                <ul className="chat-list">
-                  {allChats.map(chat => {
-                    const isCurrent = chatData && chatData.id === chat.id;
-                    const isBranch = !!chat.parentChatDataId;
-                    return (
-                      <li key={chat.id} className={`chat-list-item ${isCurrent ? 'active' : ''}`} onClick={() => handleSwitchChat(chat.id)}>
-                        <div className="chat-item-main">
-                          <span className="chat-icon">{isBranch ? '🌿' : '💬'}</span>
-                          <div className="chat-item-info">
-                            <div className="chat-item-title">{chat.title}</div>
-                            {isBranch && chat.parentChatDataId && <div className="chat-item-sub">Branch of {chat.parentChatDataId.substring(0,8)}...</div>}
-                          </div>
-                        </div>
-                        <button type="button" className="delete-chat-btn" onClick={(e) => handleDeleteChat(e, chat.id)} title="Delete Chat">🗑️</button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
+        <ManagerModal
+          title="Chat Sessions"
+          items={allChats}
+          isOpen={isChatListOpen}
+          onClose={() => setIsChatListOpen(false)}
+          onSelect={(c) => handleSwitchChat(c.id)}
+          onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)}
+          onCreateNew={handleNewChat}
+          renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`}
+          emptyMessage="No saved chat sessions found."
+        />
+      )}
+
+      {isCharListOpen && (
+        <ManagerModal
+          title="Characters"
+          items={allCharacters}
+          isOpen={isCharListOpen}
+          onClose={() => setIsCharListOpen(false)}
+          onSelect={handleSelectCharacter}
+          onDelete={handleDeleteCharacter}
+          onCreateNew={handleCreateCharacter}
+          renderSubtext={(c) => c.description || "No description"}
+          emptyMessage="No characters found."
+        />
+      )}
+
+      {isInstListOpen && (
+        <ManagerModal
+          title="Instructions"
+          items={allInstructions}
+          isOpen={isInstListOpen}
+          onClose={() => setIsInstListOpen(false)}
+          onSelect={handleSelectInstruction}
+          onDelete={handleDeleteInstruction}
+          onCreateNew={handleCreateInstruction}
+          renderSubtext={(i) => i.content?.substring(0, 50) + "..."}
+          emptyMessage="No instructions found."
+        />
+      )}
+
+      {isSampListOpen && (
+        <ManagerModal
+          title="Samplers"
+          items={allSamplers}
+          isOpen={isSampListOpen}
+          onClose={() => setIsSampListOpen(false)}
+          onSelect={handleSelectSampler}
+          onDelete={handleDeleteSampler}
+          onCreateNew={handleCreateSampler}
+          renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`}
+          emptyMessage="No samplers found."
+        />
+      )}
+
+      {isStopListOpen && (
+        <ManagerModal
+          title="Stop Patterns"
+          items={allStopPatterns}
+          isOpen={isStopListOpen}
+          onClose={() => setIsStopListOpen(false)}
+          onSelect={handleSelectStopPattern}
+          onDelete={handleDeleteStopPattern}
+          onCreateNew={handleCreateStopPattern}
+          renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`}
+          emptyMessage="No stop patterns found."
+        />
       )}
     </div>
   );
