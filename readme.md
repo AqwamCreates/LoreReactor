@@ -30,6 +30,10 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of turns they could speak), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
 
+### Chat-Related
+
+* A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
+
 ### Sampler-Related
 
 * Multiple samplers can use the same stop pattern configuration.
@@ -46,11 +50,11 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 At ≤10B Q4, individual KV cache files are 50–150MB. Disk I/O is faster than GPU re-prefill for these sizes. Trading trivial storage cost for instant resume eliminates the primary friction point of local roleplay.
 
-### Why Separate initiativeWeight and chatProbability?
+### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
 
-"Should this character speak?" and "when should they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
+"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
 
-### Why Internal IDs Instead of Names?
+### Why IDs Instead Of Names For Internal Prompt Creation?
 
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
