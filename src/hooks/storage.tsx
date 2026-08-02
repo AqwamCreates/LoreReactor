@@ -1,5 +1,5 @@
 import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Instruction, RawInstruction, 
+  StopPattern, RawStopPattern, Sampler, RawSampler, Instruction, RawInstruction, LanguageModel ,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
 } from '../types';
 
@@ -13,6 +13,7 @@ const WRITE_API_URL = 'http://localhost:3001';
 const PATHS = {
   characters: "/user_data/character_data", characterImages: "/user_data/character_images",
   samplers: "/user_data/sampler_data", instructions: "/user_data/instruction_data",
+  models: "/user_data/model_data",
   stopPatterns: "/user_data/stop_patterns_data", chatMessages: "/user_data/chat_messages", 
   chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
 };
@@ -175,6 +176,33 @@ export async function saveRawInstruction(instruction: Instruction): Promise<void
 export async function deleteRawInstruction(id: string): Promise<void> {
   await deleteResource(`${PATHS.instructions}/${id}.json`);
   await updateManifest(PATHS.instructions, id, 'remove');
+}
+
+// --- Language Model Repository ---
+
+export async function loadRawModelManifest(): Promise<string[]> {
+    return await fetchJson<string[]>(`${PATHS.models}/${MANIFEST_FILE}`) || [];
+}
+
+export async function loadRawModel(id: string): Promise<LanguageModel | null> {
+    return await fetchJson<LanguageModel>(`${PATHS.models}/${id}.json`);
+}
+
+export async function loadAllRawModels(): Promise<LanguageModel[]> {
+    const ids = await loadRawModelManifest();
+    const results = await Promise.all(ids.map(id => loadRawModel(id)));
+    return results.filter((m): m is LanguageModel => m !== null);
+}
+
+export async function saveRawModel(model: LanguageModel): Promise<void> {
+    const { id, ...rawModel } = model;
+    await putJson(`${PATHS.models}/${id}.json`, rawModel);
+    await updateManifest(PATHS.models, id, 'add');
+}
+
+export async function deleteRawModel(id: string): Promise<void> {
+    await deleteResource(`${PATHS.models}/${id}.json`);
+    await updateManifest(PATHS.models, id, 'remove');
 }
 
 // --- Chat Message Repository ---

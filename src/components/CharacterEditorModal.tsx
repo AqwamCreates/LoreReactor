@@ -87,10 +87,6 @@ export function CharacterEditorModal({
         return String(clamp(val, 0, fieldMax));
     };
 
-    /**
-     * ✅ ONLY detection entry point: called when system prompt loses focus.
-     * Applies chat trait values to any field still at -1.
-     */
     const handleSystemPromptBlur = () => {
         const iwIsAuto = Number.parseFloat(initiativeWeightStr) === -1;
         const cpIsAuto = Number.parseFloat(chatProbabilityStr) === -1;
@@ -157,7 +153,6 @@ export function CharacterEditorModal({
             setIsUploading(false);
         }
 
-        // Parse the current values
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
@@ -166,18 +161,15 @@ export function CharacterEditorModal({
         let finalCP: number;
         let finalMS: number;
 
-        // Check if values are valid (not NaN and not -1)
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
 
         if (existingCharacter) {
-            // For existing characters: revert to previous values if invalid or -1
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
             finalMS = msValid ? rawMS : (existingCharacter.maximumChatStamina ?? -1);
 
-            // If all values are still -1, try auto-detection as a last resort
             if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
                 const combinedText = `${name} ${description} ${systemPrompt}`;
                 finalIW = getInitiativeWeightValueFromText(combinedText);
@@ -185,20 +177,16 @@ export function CharacterEditorModal({
                 finalMS = getMaximumChatStaminaValueFromText(combinedText);
             }
         } else {
-            // For new characters: use defaults if invalid or -1
-
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT_VALUE;
             finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY_VALUE;
             finalMS = msValid ? rawMS : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
 
-            // If all values are still defaults, try auto-detection
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
                 const combinedText = `${name} ${description} ${systemPrompt}`;
                 const detectedIW = getInitiativeWeightValueFromText(combinedText);
                 const detectedCP = getChatProbabilityValue(combinedText);
                 const detectedMS = getMaximumChatStaminaValueFromText(combinedText);
                 
-                // Only use detected values if they're reasonable (not -1)
                 if (detectedIW >= 0) finalIW = detectedIW;
                 if (detectedCP >= 0) finalCP = detectedCP;
                 if (detectedMS >= 0) finalMS = detectedMS;
@@ -228,9 +216,23 @@ export function CharacterEditorModal({
         resize: 'vertical', textOverflow: 'unset', whiteSpace: 'normal'
     };
 
+    // ✅ Fixed: Proper dropdown styling that matches the theme
+    const selectStyle: React.CSSProperties = {
+        ...inputStyle,
+        appearance: 'auto',
+        WebkitAppearance: 'auto',
+        backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23666\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 12px center',
+        paddingRight: '32px',
+        backgroundColor: 'var(--social-bg)',
+        color: 'var(--text-h)',
+        cursor: 'pointer',
+    };
+
     const labelStyle: React.CSSProperties = {
         fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)', display: 'block',
-        marginBottom: '6px', letterSpacing: '0.5px', opacity: 0.8
+        marginBottom: '4px', letterSpacing: '0.5px', opacity: 0.8
     };
 
     const buttonStyle: React.CSSProperties = {
@@ -249,7 +251,7 @@ export function CharacterEditorModal({
         if (val === null) return null;
         return (
             <span style={{ fontSize: '0.6rem', color: 'var(--accent)', opacity: 0.9, marginTop: '2px', display: 'block', textAlign: 'right' }}>
-                ← Auto-Detected
+                ← auto-detected
             </span>
         );
     };
@@ -352,7 +354,7 @@ export function CharacterEditorModal({
                             gap: '10px',
                             minHeight: 0
                         }}>
-                            {/* ✅ System Prompt: ONLY trigger for auto-detection */}
+                            {/* System Prompt */}
                             <textarea 
                                 value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} 
                                 onBlur={handleSystemPromptBlur}
@@ -363,8 +365,14 @@ export function CharacterEditorModal({
                             {/* Sampler + Stats */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <select 
-                                    value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)}
-                                    style={{ ...inputStyle, flexShrink: 0, opacity: isLoadingSamplers || isUploading ? 0.6 : 1, cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' }}
+                                    value={selectedSamplerId} 
+                                    onChange={(e) => setSelectedSamplerId(e.target.value)}
+                                    style={{ 
+                                        ...selectStyle, 
+                                        flexShrink: 0, 
+                                        opacity: isLoadingSamplers || isUploading ? 0.6 : 1, 
+                                        cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' 
+                                    }}
                                     disabled={isLoadingSamplers || isUploading}
                                 >
                                     {isLoadingSamplers && <option>Loading samplers...</option>}
