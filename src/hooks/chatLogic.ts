@@ -77,6 +77,22 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
     return result;
 }
 
+export function createNewChatData(character: Character): ChatData {
+    const now = Date.now();
+    return {
+        id: uuidv4(),
+        title: "New Chat",
+        protagonist: character,
+        participants: [character],
+        instructions: [],
+        chatMessageHistory: [],
+        first_created_timestamp: now,
+        last_updated_timestamp: now,
+        parentChatDataId: null,
+        parentChatMessageId: null,
+    };
+}
+
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;

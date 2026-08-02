@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import type { ChatData } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { deleteRawChatData, loadAllRawChatData } from '../hooks/storage';
+import { deleteRawChatData, loadAllRawChatData, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -13,6 +13,7 @@ function App() {
     chatData, 
     setChatData, 
     currentCharacter, 
+    setCurrentCharacter,
     isLoading, 
     streamingText, 
     streamingCharacter, 
@@ -25,14 +26,13 @@ function App() {
     generationSpeed,
     messageCount,
     tokenCount,
-    maximumNumberOfTokens
+    maximumNumberOfTokens,
+    startNewChat
   } = useChatSession();
 
-  // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   
-  // Local Form State
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,38 +40,55 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Load Chat List for Modal ---
   useEffect(() => {
     if (isChatListOpen) {
       loadAllRawChatData().then(data => {
-        setAllChats(data.filter((c): c is ChatData => c !== null));
+        const validChats = data.filter((c): c is ChatData => c !== null);
+        
+        // ✅ Sort by last_updated_timestamp (Highest/Newest first)
+        const sortedChats = validChats.sort((a, b) => {
+          return b.last_updated_timestamp - a.last_updated_timestamp;
+        });
+
+        setAllChats(sortedChats);
       });
     }
   }, [isChatListOpen]);
 
-  // --- Handlers ---
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) {
       setChatData(selected);
+      setCurrentCharacter(selected.protagonist);
       setIsChatListOpen(false);
     }
   };
 
+  const handleNewChat = async () => {
+    const charToUse = currentCharacter || (allChats.length > 0 ? allChats[0].protagonist : null);
+    if (!charToUse) {
+        alert("No character available.");
+        return;
+    }
+    startNewChat(charToUse);
+    setIsChatListOpen(false);
+  };
+
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!window.confirm("Are you sure you want to delete this entire chat session?")) return;
-    
+    if (!window.confirm("Delete this session?")) return;
     try {
       await deleteRawChatData(id);
       const updated = await loadAllRawChatData();
       setAllChats(updated.filter((c): c is ChatData => c !== null));
       if (chatData && chatData.id === id) {
-        setChatData(null);
+        // If deleting current, start a fresh draft immediately so UI doesn't break
+        const nextChar = currentCharacter || (updated.length > 0 ? updated[0].protagonist : null);
+        if(nextChar) startNewChat(nextChar);
       }
     } catch (err) {
-      console.error("Failed to delete chat:", err);
-      alert("Failed to delete chat.");
+      console.error(err);
+      alert("Failed to delete.");
     }
   };
 
@@ -136,18 +153,14 @@ function App() {
     setPendingFiles([]);
   };
 
-  // Placeholder handlers
   const handleManageParticipants = () => alert("Participant management coming soon!");
   const handleManageInstructions = () => alert("Instruction management coming soon!");
   const handleSearch = () => alert("Search functionality coming soon!");
 
-  if (!chatData || !currentCharacter) {
-    return (
-      <div className="loading-screen">
-        <h2>No Active Chat</h2>
-        <button type="button" onClick={() => setIsChatListOpen(true)} className="send-button counter">Open Chat List</button>
-      </div>
-    );
+  // ✅ ALWAYS RENDER UI
+  if (!currentCharacter) {
+      // Only show loading if we don't even have a character selected yet
+      return <div className="loading-screen">Initializing...</div>;
   }
 
   const isMassActive = massDeleteId !== null;
@@ -158,14 +171,10 @@ function App() {
 
   return (
     <div className="chat-container">
-      
-      {/* === TOP HEADER === */}
       <header className="app-header">
         <div className="header-content">
-          
-          {/* Top Row: Title + Stats (Side by Side on Mobile) */}
           <div className="header-top">
-            <div className="header-title">{chatData.title}</div>
+            <div className="header-title">{chatData?.title || "New Chat Draft"}</div>
             <ChatStatisticsBar 
               generationSpeed={generationSpeed}
               messageCount={messageCount}
@@ -173,8 +182,6 @@ function App() {
               maximumNumberOfTokens={maximumNumberOfTokens}
             />
           </div>
-          
-          {/* Bottom Row: Navigation (Full Width Below) */}
           <nav className="header-nav">
             <button type="button" className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" disabled>🎭 Characters</button>
@@ -186,7 +193,7 @@ function App() {
       </header>
 
       <div className="chat-history">
-        {chatData.chatMessageHistory.map((message, index) => {
+        {chatData?.chatMessageHistory.map((message, index) => {
           const isProtagonist = message.character.id === currentCharacter.id;
           const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
           const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
@@ -267,8 +274,8 @@ function App() {
         {isLoading && streamingCharacter && (
           <div className="message-row message-left">
             <div className="avatar-column">
-              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length - 1, streamingCharacter.id, chatData.participants)} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
-              <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length - 1, streamingCharacter.id, chatData.participants)}</span>
+              {streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData!, chatData!.chatMessageHistory.length - 1, streamingCharacter.id, chatData!.participants)} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}
+              <span className="avatar-name">{getDelayedDisplayName(chatData!, chatData!.chatMessageHistory.length - 1, streamingCharacter.id, chatData!.participants)}</span>
             </div>
             <div className="message-bubble bubble-ai">
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
@@ -278,23 +285,30 @@ function App() {
             </div>
           </div>
         )}
+        
+        {/* Empty State Hint inside chat history if no messages */}
+        {chatData && chatData.chatMessageHistory.length === 0 && (
+            <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}>
+                <p>Start the conversation as {currentCharacter.name}...</p>
+                <p style={{fontSize: '0.8em'}}>Messages will be saved automatically after the first response.</p>
+            </div>
+        )}
+
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
-      {/* === BOTTOM CONTEXT BAR === */}
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
-          👥 Participants ({chatData.participants.length})
+          👥 Participants ({chatData?.participants.length || 0})
         </button>
         <button type="button" className="context-btn" onClick={handleManageInstructions} title="Manage Instructions (Coming Soon)">
-          📜 Instructions ({chatData.instructions?.length || 0})
+          📜 Instructions ({chatData?.instructions?.length || 0})
         </button>
         <button type="button" className="context-btn" onClick={handleSearch} title="Search Messages (Coming Soon)">
           🔍 Search
         </button>
       </div>
 
-      {/* === INPUT AREA === */}
       <div className="input-wrapper">
         {pendingFiles.length > 0 && (
           <div className="attachment-strip">
@@ -310,28 +324,46 @@ function App() {
         <div className="input-area">
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn" title="Attach file">📎</button>
           <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-          <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading} />
-          <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter" title={isLoading ? "Stop Generating" : "Send Message"}>
+          <textarea 
+            value={inputText} 
+            onChange={(e) => setInputText(e.target.value)} 
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+            placeholder={`Message as ${currentCharacter.name}...`} 
+            rows={3} 
+            className="chat-input" 
+            disabled={isLoading || !chatData} 
+          />
+          <button 
+            type="button" 
+            onClick={isLoading ? stopGeneration : handleSend} 
+            disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} 
+            className="send-button counter" 
+            title={isLoading ? "Stop Generating" : "Send Message"}
+          >
             {isLoading ? '⏹ Stop' : 'Send'}
           </button>
         </div>
       </div>
 
-      {/* === CHAT LIST MODAL === */}
       {isChatListOpen && (
         <div className="modal-overlay" onClick={() => setIsChatListOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Chat Sessions</h2>
-              <button type="button" className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
+              <div className="modal-header-actions">
+                <button type="button" className="new-chat-btn" onClick={handleNewChat} title="Create New Chat">
+                  ➕ New Chat
+                </button>
+                <button type="button" className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
+              </div>
             </div>
             <div className="modal-body">
               {allChats.length === 0 ? (
-                <p className="empty-state">No chat sessions found.</p>
+                <p className="empty-state">No saved chat sessions found.</p>
               ) : (
                 <ul className="chat-list">
                   {allChats.map(chat => {
-                    const isCurrent = chatData.id === chat.id;
+                    const isCurrent = chatData && chatData.id === chat.id;
                     const isBranch = !!chat.parentChatDataId;
                     return (
                       <li key={chat.id} className={`chat-list-item ${isCurrent ? 'active' : ''}`} onClick={() => handleSwitchChat(chat.id)}>

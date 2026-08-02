@@ -2,15 +2,32 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, prepareRequestBody } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, prepareRequestBody, createNewChatData } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { v4 as uuidv4 } from 'uuid';
 
 const engine = new LargeLanguageModelInferenceEngine();
 
-// Helper: Estimate tokens (approx 4 chars = 1 token)
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+
+// ✅ Helper: Create a safe default character if none exists
+const getDefaultCharacter = (): Character => ({
+  id: 'default-user',
+  name: 'User',
+  description: 'Default user character',
+  systemPrompt: '',
+  initiativeWeight: 1,
+  chatProbability: 0.5,
+  maximumChatStamina: 5,
+  sampler: {
+    id: 'default-sampler',
+    name: 'Default',
+    parameters: { temperature: 0.7, top_p: 0.9 },
+    stopPatterns: [],
+    maximumNumberOfTokens: 256
+  }
+});
 
 export function useChatSession() {
     const [chatData, setChatData] = useState<ChatData | null>(null);
@@ -21,7 +38,6 @@ export function useChatSession() {
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     
-    // Stats State
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
@@ -59,7 +75,6 @@ export function useChatSession() {
         const requestBody = prepareRequestBody(data, character, imageData);
 
         try {
-            // Pass a wrapper to capture speed stats AND forward text
             const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
                 onToken: (stats) => {
                     setGenerationSpeed(stats.msPerToken);
@@ -111,29 +126,58 @@ export function useChatSession() {
         }
     }, [handleServerResponse]);
 
+    // ✅ FIXED INITIALIZATION
     useEffect(() => {
         const init = async () => {
-            if (!chatData) {
-                const arr = await loadAllRawChatData();
-                if (arr.length > 0 && arr[0]) {
-                    const data = arr[0];
-                    setChatData(data);
-                    setCurrentCharacter(data.protagonist);
-                } else {
-                    setIsInitialImageProcessed(true);
-                }
-            } else if (currentCharacter && !isInitialImageProcessed) {
-                await processProtagonistImageSilently(chatData, currentCharacter);
+            // 1. Load all chats to check for existing data or default character
+            const arr = await loadAllRawChatData();
+            
+            let charToUse: Character | null = null;
+
+            // Strategy: 
+            // A. If we already have a currentCharacter in state, keep it.
+            // B. Else, if there are old chats, use the protagonist of the first one.
+            // C. Else, create a Default Character so the UI doesn't break.
+            
+            if (currentCharacter) {
+                charToUse = currentCharacter;
+            } else if (arr.length > 0 && arr[0]) {
+                charToUse = arr[0].protagonist;
+            } else {
+                charToUse = getDefaultCharacter();
             }
 
+            // Ensure state is set
+            if (!currentCharacter && charToUse) {
+                setCurrentCharacter(charToUse);
+            }
+
+            // 2. Create a Fresh Draft Chat if none exists
+            if (!chatData && charToUse) {
+                const newDraft = createNewChatData(charToUse);
+                setChatData(newDraft);
+                // Do NOT save yet. Wait for user input.
+            }
+
+            // 3. Process Image if needed
+            if (chatData && currentCharacter && !isInitialImageProcessed) {
+                await processProtagonistImageSilently(chatData, currentCharacter);
+            } else if (!chatData && charToUse) {
+                // If we just created a draft, process its image
+                // We need a temporary data object to pass to processor
+                const tempData = createNewChatData(charToUse);
+                await processProtagonistImageSilently(tempData, charToUse);
+            }
+
+            // 4. Calculate Branch Points
             if (chatData) {
                 const allChats = await loadAllRawChatData();
                 const points = new Set<string>();
-                allChats.forEach(c => {
+                for (const c of allChats) {
                     if (c && c.parentChatDataId === chatData.id && c.parentChatMessageId) {
                         points.add(c.parentChatMessageId);
                     }
-                });
+                }
                 setParentChatMessageIds(points);
             }
         };
@@ -159,6 +203,13 @@ export function useChatSession() {
         setGenerationSpeed(0);
     }, []);
 
+    const startNewChat = useCallback((character: Character) => {
+        const newChat = createNewChatData(character);
+        setChatData(newChat);
+        setCurrentCharacter(character);
+        setIsInitialImageProcessed(false);
+    }, []);
+
     const sendMessage = useCallback(async (text: string) => {
         if (!chatData || !currentCharacter || !text.trim() || isLoading) return;
 
@@ -166,7 +217,7 @@ export function useChatSession() {
         abortControllerRef.current = controller;
         
         setIsLoading(true);
-        setStreamingText(""); // ✅ Clear immediately
+        setStreamingText("");
         setGenerationSpeed(0);
 
         try {
@@ -182,11 +233,12 @@ export function useChatSession() {
                 executor, 
                 controller, 
                 setStreamingCharacter, 
-                setStreamingText, // Pass the setter directly
+                setStreamingText,
                 setChatData 
             );
 
-            if (!controller.signal.aborted && updatedData) {
+            if (updatedData) {
+                await saveRawChatData(updatedData);
                 setChatData(updatedData);
             }
         } catch (err) {
@@ -203,12 +255,9 @@ export function useChatSession() {
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
-    // ✅ FIXED REGENERATE LAST AI
     const regenerateLastAI = useCallback(async () => {
-        if (!chatData || isLoading) return;
+        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
         const history = chatData.chatMessageHistory;
-        
-        // Find the start of the AI block to regenerate
         let trimIndex = history.length;
         while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
             trimIndex--;
@@ -216,19 +265,9 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
 
         const oldMessages = history.slice(trimIndex);
-        
-        // 1. Delete old files
-        try {
-            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
-        } catch (err) { console.error("Delete failed:", err); }
+        try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
 
-        // 2. Create trimmed state (up to the user message)
-        const trimmedData = { 
-            ...chatData, 
-            chatMessageHistory: history.slice(0, trimIndex), 
-            last_updated_timestamp: Date.now() 
-        };
-        
+        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -240,55 +279,31 @@ export function useChatSession() {
 
         try {
             let currentData = trimmedData;
-            
-            // 3. Identify unique responders in order
-            const responders = oldMessages
-                .map(m => m.character)
-                .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
-
-            // 4. Loop and generate
+            const responders = oldMessages.map(m => m.character).filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
             for (const responder of responders) {
                 if (controller.signal.aborted) break;
-                
                 setStreamingCharacter(responder);
-                
-                // ✅ CRITICAL FIX: Pass the UPDATED currentData into the handler
-                // This ensures the prompt includes the previously regenerated messages in this loop
                 const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText);
-                
                 if (!result) break;
-                
-                // Update currentData for the NEXT iteration
                 currentData = result;
-                
-                // Optional: Small delay to prevent UI stuttering if generations are instant
-                // await new Promise(r => setTimeout(r, 50)); 
             }
-
-            // 5. Final Save
-            if (!controller.signal.aborted) {
+            if (!controller.signal.aborted && currentData) {
                 await saveRawChatData(currentData);
                 setChatData(currentData);
             }
         } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-                console.error("Regen failed:", err);
-            }
+            if ((err as Error).name !== 'AbortError') console.error(err);
         } finally {
-            if (abortControllerRef.current === controller) {
-                abortControllerRef.current = null;
-            }
+            if (abortControllerRef.current === controller) abortControllerRef.current = null;
             setIsLoading(false);
             setStreamingText("");
             setStreamingCharacter(null);
         }
     }, [chatData, isLoading, handleServerResponse]);
 
-    // ✅ FIXED REGENERATE LAST PROTAGONIST
     const regenerateLastProtagonist = useCallback(async () => {
-        if (!chatData || isLoading) return;
+        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
         const history = chatData.chatMessageHistory;
-        
         let trimIndex = history.length;
         while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
             trimIndex--;
@@ -296,9 +311,7 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
 
         const oldMessages = history.slice(trimIndex);
-        try {
-            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
-        } catch (err) { console.error("Delete failed:", err); }
+        try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
 
         const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
         setChatData(trimmedData);
@@ -313,39 +326,23 @@ export function useChatSession() {
         try {
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
                 handleServerResponse(data, char, signal, onToken);
-
-            const updatedData = await runTurnSequence(
-                trimmedData, 
-                executor, 
-                controller, 
-                setStreamingCharacter, 
-                setStreamingText,
-                setChatData
-            );
-
+            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             if (!controller.signal.aborted && updatedData) {
+                await saveRawChatData(updatedData);
                 setChatData(updatedData);
             }
         } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-                console.error("Regen failed:", err);
-            }
+            if ((err as Error).name !== 'AbortError') console.error(err);
         } finally {
-            if (abortControllerRef.current === controller) {
-                abortControllerRef.current = null;
-            }
+            if (abortControllerRef.current === controller) abortControllerRef.current = null;
             setIsLoading(false);
             setStreamingText("");
             setStreamingCharacter(null);
         }
     }, [chatData, isLoading, handleServerResponse]);
 
-    // Calculate Stats
-    const currentTokenCount = chatData 
-        ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0)
-        : 0;
-    
-    const maximumNumberOfTokens = 4096; 
+    const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
+    const maxContextTokens = 4096; 
 
     return {
         chatData,
@@ -364,6 +361,7 @@ export function useChatSession() {
         generationSpeed,
         messageCount: chatData?.chatMessageHistory.length || 0,
         tokenCount: currentTokenCount,
-        maximumNumberOfTokens
+        maximumNumberOfTokens: maxContextTokens,
+        startNewChat
     };
 }
