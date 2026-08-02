@@ -3,6 +3,9 @@ export interface StopPattern {
   name: string;
   description?: string;
   pattern: string;
+  regularExpressionTrigger?: string;
+  regularExpressionContext?: 'global' | 'local' | 'previous';
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
@@ -11,6 +14,9 @@ export interface RawStopPattern {
   name: string;
   description?: string;
   pattern: string;
+  regularExpressionTrigger?: string;
+  regularExpressionContext?: 'global' | 'local' | 'previous';
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
