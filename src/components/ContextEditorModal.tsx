@@ -2,6 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context } from '../types';
+import { uploadContextImage } from '../hooks/storage';
 import './main.css';
 
 interface ContextEditorModalProps {
@@ -22,9 +23,9 @@ export function ContextEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [text, setText] = useState('');
-    const [images, setImages] = useState<string[]>([]);
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
     const [regexTrigger, setRegexTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'responder' | 'self'>('everyone');
@@ -39,7 +40,12 @@ export function ContextEditorModal({
                 setName(existingContext.name || '');
                 setDescription(existingContext.description || '');
                 setText(existingContext.text || '');
-                setImages(existingContext.images || []);
+                if (existingContext.images && existingContext.images.length > 0) {
+                    setImagePreviews(existingContext.images.map(img => `/user_data/contexts/${img}`));
+                } else {
+                    setImagePreviews([]);
+                }
+                setImageFiles([]);
                 setRegexTrigger(existingContext.regularExpressionTrigger || '');
                 setRegexContext(existingContext.regularExpressionContext || 'global');
                 setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
@@ -47,7 +53,6 @@ export function ContextEditorModal({
                 setName('');
                 setDescription('');
                 setText('');
-                setImages([]);
                 setImageFiles([]);
                 setImagePreviews([]);
                 setRegexTrigger('');
@@ -68,7 +73,7 @@ export function ContextEditorModal({
         }
         
         // Validate that either text OR images are provided
-        if (!text.trim() && images.length === 0) {
+        if (!text.trim() && imagePreviews.length === 0 && imageFiles.length === 0) {
             newErrors.text = 'Either text or images are required.';
             newErrors.images = 'Either text or images are required.';
         }
@@ -103,15 +108,11 @@ export function ContextEditorModal({
     };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
+        if (e.target.files?.[0]) {
             const files = Array.from(e.target.files);
             setImageFiles(prev => [...prev, ...files]);
-            
             const newPreviews = files.map(file => URL.createObjectURL(file));
             setImagePreviews(prev => [...prev, ...newPreviews]);
-            
-            const newImages = files.map(file => file.name);
-            setImages(prev => [...prev, ...newImages]);
             
             // Clear image error if it exists
             if (errors.images) {
@@ -122,20 +123,40 @@ export function ContextEditorModal({
     };
 
     const handleRemoveImage = (index: number) => {
-        setImages(prev => prev.filter((_, i) => i !== index));
         setImageFiles(prev => prev.filter((_, i) => i !== index));
+        // Revoke object URL to free memory
+        URL.revokeObjectURL(imagePreviews[index]);
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validate()) return;
+
+        let finalImageFilenames: string[] | undefined = existingContext?.images || [];
+
+        if (imageFiles.length > 0) {
+            setIsUploading(true);
+            try {
+                const uploadPromises = imageFiles.map(file => uploadContextImage(file));
+                const uploadedFilenames = await Promise.all(uploadPromises);
+                // Combine existing images with newly uploaded ones
+                const existingImages = existingContext?.images || [];
+                finalImageFilenames = [...existingImages, ...uploadedFilenames];
+            } catch (err) {
+                console.error("Failed to upload images:", err);
+                alert("Failed to upload images. Context not saved.");
+                setIsUploading(false);
+                return;
+            }
+            setIsUploading(false);
+        }
 
         const context: Context = {
             id: existingContext?.id || crypto.randomUUID(),
             name: name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,
-            images: images.length > 0 ? images : undefined,
+            images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
@@ -145,19 +166,15 @@ export function ContextEditorModal({
         onClose();
     };
 
-    const handleDelete = () => {
-        if (!existingContext) return;
-        if (!window.confirm(`Delete context "${existingContext.name}" permanently?`)) return;
-        onDelete?.(existingContext.id);
-        onClose();
-    };
-
     if (!isOpen) return null;
 
     const hasText = text.trim().length > 0;
-    const hasImages = images.length > 0;
-    const isTextRequired = !hasImages && !hasText;
-    const isImagesRequired = !hasText && !hasImages;
+    const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+    
+    // Text gets asterisk if text is empty
+    const textRequiresAsterisk = !hasImages;
+    // Images gets asterisk if images is empty
+    const imagesRequiresAsterisk = !hasText;
 
     const inputStyle: React.CSSProperties = {
         width: '100%',
@@ -227,14 +244,6 @@ export function ContextEditorModal({
         marginTop: '8px',
     };
 
-    const helperStyle: React.CSSProperties = {
-        fontSize: '0.65rem',
-        color: 'var(--text-h)',
-        opacity: 0.6,
-        marginTop: '4px',
-        fontStyle: 'italic',
-    };
-
     const sectionStyle: React.CSSProperties = {
         border: '1px solid var(--border)',
         borderRadius: '8px',
@@ -275,37 +284,54 @@ export function ContextEditorModal({
         justifyContent: 'center',
     };
 
-    const imageContainerStyle: React.CSSProperties = {
-        display: 'flex',
+    const imageGridStyle: React.CSSProperties = {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
         gap: '8px',
-        flexWrap: 'wrap',
         marginTop: '8px',
     };
 
-    const imagePreviewStyle: React.CSSProperties = {
+    const imageSquareStyle: React.CSSProperties = {
         position: 'relative',
-        width: '80px',
-        height: '80px',
-        borderRadius: '6px',
+        aspectRatio: '1/1',
+        borderRadius: '8px',
         overflow: 'hidden',
-        border: '1px solid var(--border)',
+        border: `2px solid var(--border)`,
+        backgroundColor: 'var(--social-bg)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    };
+
+    const imageSquareActiveStyle: React.CSSProperties = {
+        ...imageSquareStyle,
+        border: '2px solid var(--accent)',
+    };
+
+    const uploadSquareStyle: React.CSSProperties = {
+        ...imageSquareStyle,
+        border: `2px dashed ${errors.images ? '#ff4444' : 'var(--border)'}`,
+        cursor: isUploading ? 'wait' : 'pointer',
+        transition: 'border-color 0.2s',
+        opacity: isUploading ? 0.6 : 1,
     };
 
     const imageRemoveButtonStyle: React.CSSProperties = {
         position: 'absolute',
-        top: '2px',
-        right: '2px',
+        top: '4px',
+        right: '4px',
         background: 'rgba(0,0,0,0.7)',
         border: 'none',
         color: '#fff',
         borderRadius: '50%',
-        width: '20px',
-        height: '20px',
+        width: '24px',
+        height: '24px',
         cursor: 'pointer',
-        fontSize: '12px',
+        fontSize: '14px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 2,
     };
 
     return (
@@ -318,21 +344,6 @@ export function ContextEditorModal({
                 <div className="modal-header" style={{ flexShrink: 0 }}>
                     <h2>{existingContext ? 'Edit Context' : 'Create New Context'}</h2>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {existingContext && onDelete && (
-                            <button
-                                type="button"
-                                className="edit-btn edit-btn-delete"
-                                onClick={handleDelete}
-                                style={{
-                                    ...buttonStyle,
-                                    background: 'transparent',
-                                    color: '#ff4444',
-                                    border: '1px solid #ff4444',
-                                }}
-                            >
-                                🗑️ Delete
-                            </button>
-                        )}
                         <button
                             type="button"
                             className="edit-btn edit-btn-cancel"
@@ -343,6 +354,7 @@ export function ContextEditorModal({
                                 color: 'var(--text-h)',
                                 border: '1px solid var(--border)',
                             }}
+                            disabled={isUploading}
                         >
                             Cancel
                         </button>
@@ -354,9 +366,11 @@ export function ContextEditorModal({
                                 ...buttonStyle,
                                 background: 'var(--accent)',
                                 color: '#fff',
+                                opacity: isUploading ? 0.7 : 1,
                             }}
+                            disabled={isUploading}
                         >
-                            {existingContext ? 'Update' : 'Create'}
+                            {isUploading ? 'Uploading...' : (existingContext ? 'Update' : 'Create')}
                         </button>
                     </div>
                 </div>
@@ -398,7 +412,7 @@ export function ContextEditorModal({
                     {/* Text */}
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
-                            Text {isTextRequired && <span style={{ color: '#ff4444' }}>*</span>}
+                            Text {textRequiresAsterisk && <span style={{ color: '#ff4444' }}>*</span>}
                         </label>
                         <textarea
                             value={text}
@@ -421,75 +435,61 @@ export function ContextEditorModal({
                     {/* Images */}
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
-                            Images {isImagesRequired && <span style={{ color: '#ff4444' }}>*</span>}
-                            <span
-                                style={{
-                                    fontSize: '0.65rem',
-                                    opacity: 0.6,
-                                    marginLeft: '8px',
-                                    fontWeight: 'normal',
+                            Images {imagesRequiresAsterisk && <span style={{ color: '#ff4444' }}>*</span>}
+                        </label>
+                        <div style={imageGridStyle}>
+                            {/* Existing/Uploaded Images */}
+                            {imagePreviews.map((preview, index) => (
+                                <div key={index} style={imageSquareActiveStyle}>
+                                    <img
+                                        src={preview}
+                                        alt={`Context image ${index + 1}`}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveImage(index)}
+                                        style={imageRemoveButtonStyle}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                            
+                            {/* Upload Square (trailing) */}
+                            <div
+                                style={uploadSquareStyle}
+                                onClick={() => !isUploading && fileInputRef.current?.click()}
+                                onMouseEnter={(e) => {
+                                    if (!isUploading && !errors.images) e.currentTarget.style.borderColor = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!isUploading && !errors.images) e.currentTarget.style.borderColor = 'var(--border)';
                                 }}
                             >
-                                Optional
-                            </span>
-                        </label>
-                        <div
-                            onClick={() => fileInputRef.current?.click()}
-                            style={{
-                                width: '100%',
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: `2px dashed ${errors.images ? '#ff4444' : 'var(--border)'}`,
-                                background: 'var(--social-bg)',
-                                cursor: 'pointer',
-                                textAlign: 'center',
-                                color: 'var(--text-h)',
-                                opacity: 0.6,
-                                transition: 'all 0.2s',
-                            }}
-                            onMouseEnter={(e) => {
-                                if (!errors.images) e.currentTarget.style.borderColor = 'var(--accent)';
-                            }}
-                            onMouseLeave={(e) => {
-                                if (!errors.images) e.currentTarget.style.borderColor = 'var(--border)';
-                            }}
-                        >
-                            📷 Click to upload images
+                                <div style={{ textAlign: 'center', color: 'var(--text-h)', opacity: 0.5 }}>
+                                    {isUploading ? '⏳' : '📷'}
+                                    <div style={{ fontSize: '0.7rem', marginTop: '4px' }}>
+                                        {isUploading ? 'Uploading...' : 'Upload'}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
                             multiple
+                            hidden
                             onChange={handleImageChange}
-                            style={{ display: 'none' }}
+                            disabled={isUploading}
                         />
                         {errors.images && <div style={errorStyle}>{errors.images}</div>}
-                        {imagePreviews.length > 0 && (
-                            <div style={imageContainerStyle}>
-                                {imagePreviews.map((preview, index) => (
-                                    <div key={index} style={imagePreviewStyle}>
-                                        <img
-                                            src={preview}
-                                            alt={`Context image ${index + 1}`}
-                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveImage(index)}
-                                            style={imageRemoveButtonStyle}
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </div>
 
-                    {/* Regular Expression Section */}
+                    {/* Regular Expression */}
                     <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Regular Expression Settings</div>
+                        <div style={sectionTitleStyle}>Regular Expression</div>
 
                         {/* Regex Trigger */}
                         <div style={fullRowStyle}>
@@ -512,9 +512,6 @@ export function ContextEditorModal({
                                     placeholder="/Eldoria|floating islands|sky city/i"
                                 />
                                 {errors.regex && <div style={errorStyle}>{errors.regex}</div>}
-                                <div style={helperStyle}>
-                                    The context will only be injected when this pattern matches the conversation context.
-                                </div>
                             </div>
                         </div>
 
@@ -532,9 +529,6 @@ export function ContextEditorModal({
                                     <option value="local">Local</option>
                                     <option value="previous">Previous</option>
                                 </select>
-                                <div style={helperStyle}>
-                                    What part of the conversation to check.
-                                </div>
                             </div>
                             <div>
                                 <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Target</label>
@@ -548,9 +542,6 @@ export function ContextEditorModal({
                                     <option value="responder">Responder</option>
                                     <option value="self">Self</option>
                                 </select>
-                                <div style={helperStyle}>
-                                    Whose messages to check.
-                                </div>
                             </div>
                         </div>
 
