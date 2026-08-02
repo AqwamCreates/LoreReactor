@@ -72,18 +72,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export async function uploadCharacterImage(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  // Use the original filename to preserve extensions
-  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const imagePath = `${PATHS.characterImages}/${filename}`;
-  
-  // Sends { base64: "..." } which the server intercepts and writes as binary
-  await putJson(imagePath, { base64 });
-  
-  return filename;
-}
-
 // --- Stop Pattern Repository ---
 export async function loadRawStopPatternManifest(): Promise<string[]> { return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; }
 export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
@@ -302,13 +290,31 @@ export function getCharacterImageUrl(imageFilename: string | undefined): string 
   return `${PATHS.characterImages}/${imageFilename}`;
 }
 
-// --- Storage Export ---
-export const storage = {
-  loadRawCharacterManifest, loadRawCharacter, loadAllRawCharacters, saveRawCharacter, deleteRawCharacter,
-  loadRawSamplerManifest, loadRawSampler, loadAllRawSamplers, saveRawSampler, deleteRawSampler,
-  loadRawStopPatternManifest, loadRawStopPattern, loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern,
-  loadRawContextManifest, loadRawContext, loadAllRawContexts, saveRawContext, deleteRawContext,
-  deleteRawChatMessage,
-  loadRawChatManifest, loadRawChatData, loadAllRawChatData, saveRawChatData, deleteRawChatData, branchRawChatData,
-  getCharacterImageUrl, uploadCharacterImage
-};
+export async function uploadCharacterImage(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  // Use the original filename to preserve extensions
+  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const imagePath = `${PATHS.characterImages}/${filename}`;
+  
+  // Sends { base64: "..." } which the server intercepts and writes as binary
+  await putJson(imagePath, { base64 });
+  
+  return filename;
+}
+
+export function getContextImageUrl(imageFilename: string | undefined): string | null {
+  if (!imageFilename) return null;
+  return `${PATHS.contexts}/${imageFilename}`;
+}
+
+export async function uploadContextImage(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  // Use the original filename to preserve extensions
+  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const imagePath = `${PATHS.contexts}/${filename}`;
+  
+  // Sends { base64: "..." } which the server intercepts and writes as binary
+  await putJson(imagePath, { base64 });
+  
+  return filename;
+}
