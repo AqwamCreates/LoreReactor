@@ -15,8 +15,19 @@ interface VRAMEstimationResult {
     error: string | null;
 }
 
-// Detect quantization from model name.
-const detectQuantization = (modelName: string): string => {
+// Estimate VRAM usage for llama.cpp models.
+const calculateVRAM = (modelName: string, gpuLayers: number, cacheType: string, contextSize: number): string => {
+    // Extract parameter count using regex - case insensitive.
+    const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
+    let parameterCount: number;
+    
+    if (sizeMatch) {
+        parameterCount = Number.parseFloat(sizeMatch[1]);
+    } else {
+        return 'Unknown';
+    }
+
+    // Detect quantization from model name.
     const quantizationPatterns = [
         { pattern: /[_-]?Q4_K[_-]?/i, value: 'Q4_K' },
         { pattern: /[_-]?Q5_K[_-]?/i, value: 'Q5_K' },
@@ -47,29 +58,13 @@ const detectQuantization = (modelName: string): string => {
         { pattern: /[_-]?GGUF[_-]?/i, value: 'GGUF' },
     ];
 
+    let quantization = 'Unknown';
     for (const { pattern, value } of quantizationPatterns) {
         if (pattern.test(modelName)) {
-            return value;
+            quantization = value;
+            break;
         }
     }
-    
-    return 'Unknown';
-};
-
-// Estimate VRAM usage for llama.cpp models.
-const calculateVRAM = (modelName: string, gpuLayers: number, cacheType: string, contextSize: number): string => {
-    // Extract parameter count using regex - case insensitive.
-    const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
-    let parameterCount: number;
-    
-    if (sizeMatch) {
-        parameterCount = Number.parseFloat(sizeMatch[1]);
-    } else {
-        return 'Unknown';
-    }
-
-    // Detect quantization from model name.
-    const quantization = detectQuantization(modelName);
     
     // Quantization size multipliers (relative to FP16).
     const quantizationMultipliers: Record<string, number> = {
@@ -133,12 +128,12 @@ const calculateVRAM = (modelName: string, gpuLayers: number, cacheType: string, 
     
     const adjustedKVCacheGB = kvCacheGB * cacheMultiplier;
     
-    // Calculate GPU layers memory.
+    // Calculate GPU layers memory
     const totalLayers = Math.ceil(parameterCount * 0.8); // Rough estimate: ~0.8 layers per billion parameters.
     const gpuLayerRatio = gpuLayers === -1 ? 1 : Math.min(gpuLayers / totalLayers, 1);
     const gpuMemoryGB = modelSizeGB * gpuLayerRatio + adjustedKVCacheGB * 0.5;
     
-    // Total VRAM estimate with overhead.
+    // Total VRAM estimate with overhead
     const overhead = 1.5; // Additional overhead for CUDA, activations, etc.
     const totalVRAMGB = gpuMemoryGB + overhead;
     
@@ -158,9 +153,18 @@ export function vramUseEstimation({
 
     useEffect(() => {
         const estimateVRAM = async () => {
-            // Only estimate for Llama.cpp backend.
+            // Only estimate for Llama.cpp backend
             if (backend !== 'Llama.cpp') {
                 setEstimatedVRAM('N/A');
+                setIsEstimating(false);
+                setError(null);
+                return;
+            }
+
+            // Check if model name has a size pattern.
+            const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
+            if (!sizeMatch) {
+                setEstimatedVRAM('Unknown');
                 setIsEstimating(false);
                 setError(null);
                 return;
@@ -174,7 +178,7 @@ export function vramUseEstimation({
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
                 const result = calculateVRAM(
-                    modelName || '7B',
+                    modelName,
                     gpuLayers,
                     cacheType,
                     contextSize || 8192

@@ -1,4 +1,3 @@
-// src/components/ModelEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { LanguageModel } from '../types';
@@ -647,16 +646,6 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
                             MMProj Path
-                            <span
-                                style={{
-                                    fontSize: '0.65rem',
-                                    opacity: 0.6,
-                                    marginLeft: '8px',
-                                    fontWeight: 'normal',
-                                }}
-                            >
-                                (Optional - for multi-modal models)
-                            </span>
                         </label>
                         <input
                             type="text"
@@ -774,7 +763,7 @@ export function ModelEditorModal({
                                     value={settings.draft_model}
                                     onChange={(e) => handleSettingChange('draft_model', e.target.value)}
                                     style={{ ...inputStyle, fontFamily: 'monospace' }}
-                                    placeholder="/path/to/draft/model.gguf (Optional)"
+                                    placeholder="/path/to/draft/model.gguf"
                                 />
                             </div>
                         </div>

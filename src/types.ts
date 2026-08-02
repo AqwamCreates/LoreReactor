@@ -33,12 +33,18 @@ export interface Instruction {
   name: string;
   description?: string;
   content: string;
+  regularExpressionTrigger?: string // If this is empty, then this always get triggered. You can disable chat-specific instructions in the instruction menu.
+  regularExpressionContext?: 'global' | 'local' | 'previous'  // The global context uses the whole conversation. The local context uses the information between the character's previous chat to the character's current talk. The previous context only takes into account from previous turn. 
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self' // If everyone is the target, then everyone's messages are used. If responder is the target, then that person's messages are used. If self is the target, then only the person themselves are used.
 }
 
 export interface RawInstruction {
   name: string;
   description?: string;
   content: string;
+  regularExpressionTrigger?: string // If this is empty, then this always get triggered. You can disable chat-specific instructions in the instruction menu.
+  regularExpressionContext?: 'global' | 'local' | 'previous'  // The global context uses the whole conversation. The local context uses the information between the character's previous chat to the character's current talk. The previous context only takes into account from previous turn. 
+  regularExpressionTarget?: 'everyone' | 'responder' | 'self' // If everyone is the target, then everyone's messages are used. If responder is the target, then that person's messages are used. If self is the target, then only the person themselves are used.
 }
 
 export interface LanguageModel {
