@@ -810,7 +810,13 @@
 
 .chat-item-info { display: flex; flex-direction: column; }
 
-.chat-item-title { font-weight: bold; font-size: 0.95rem; }
+.chat-item-title { 
+  font-weight: bold; 
+  font-size: 0.95rem; 
+  text-align: left; /* ✅ Forces text alignment */
+  margin-left: 0;   /* ✅ Ensures no left margin */
+  width: 100%;      /* ✅ Ensures it takes full available width */
+}
 
 .chat-item-sub { font-size: 0.75rem; opacity: 0.7; margin-top: 2px; }
 

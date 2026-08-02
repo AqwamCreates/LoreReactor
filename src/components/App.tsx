@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import type { ChatData, Character, Instruction, Sampler, StopPattern } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { deleteRawChatData, loadAllRawChatData, saveRawChatData } from '../hooks/storage';
+import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -30,7 +30,6 @@ function App() {
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
   
-  // Local Form State
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,49 +40,38 @@ function App() {
   // --- Load Data for Modals ---
   useEffect(() => {
     const loadData = async () => {
-      // 1. Load Chats
-      const chats = await loadAllRawChatData();
-      const validChats = chats.filter((c): c is ChatData => c !== null);
-      setAllChats(validChats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
-
-      // 2. Load Characters (Placeholder: In real app, call loadAllCharacters())
-      // For now, we ensure at least the current character is in the list
-      if (currentCharacter) {
-        setAllCharacters(prev => {
-          const exists = prev.find(c => c.id === currentCharacter.id);
-          return exists ? prev : [currentCharacter, ...prev];
-        });
+      if (isChatListOpen) {
+        const chats = await loadAllRawChatData();
+        setAllChats(chats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
       }
-
-      // 3. Load Instructions (From current chat or global store)
-      setAllInstructions(chatData?.instructions || []);
-
-      // 4. Load Samplers (From current character)
-      if (currentCharacter?.sampler) {
-        setAllSamplers([currentCharacter.sampler]);
+      if (isCharListOpen) {
+        const chars = await loadAllRawCharacters();
+        setAllCharacters(chars);
       }
-
-      // 5. Load Stop Patterns (From current sampler)
-      if (currentCharacter?.sampler?.stopPatterns) {
-        setAllStopPatterns(currentCharacter.sampler.stopPatterns);
+      if (isInstListOpen) {
+        const insts = await loadAllRawInstructions();
+        setAllInstructions(insts);
+      }
+      if (isSampListOpen) {
+        const samps = await loadAllRawSamplers();
+        setAllSamplers(samps);
+      }
+      if (isStopListOpen) {
+        const stops = await loadAllRawStopPatterns();
+        setAllStopPatterns(stops);
       }
     };
 
     if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, currentCharacter, chatData]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen]);
 
   // --- Handlers ---
 
-  // 1. Chat Handlers
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
-    if (selected) {
-      setChatData(selected);
-      setCurrentCharacter(selected.protagonist);
-      setIsChatListOpen(false);
-    }
+    if (selected) { setChatData(selected); setCurrentCharacter(selected.protagonist); setIsChatListOpen(false); }
   };
   const handleNewChat = () => {
     const charToUse = currentCharacter || (allChats.length > 0 ? allChats[0].protagonist : null);
@@ -94,132 +82,83 @@ function App() {
     if (!window.confirm("Delete this session?")) return;
     await deleteRawChatData(id);
     const updated = await loadAllRawChatData();
-    setAllChats(updated.filter((c): c is ChatData => c !== null).sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
+    setAllChats(updated.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
     if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
-  // 2. Character Handlers
   const handleSelectCharacter = (char: Character) => {
     if (chatData) {
       const updatedChat = { ...chatData, protagonist: char };
-      if (!updatedChat.participants.find(p => p.id === char.id)) {
-        updatedChat.participants = [...updatedChat.participants, char];
-      }
+      if (!updatedChat.participants.find(p => p.id === char.id)) updatedChat.participants = [...updatedChat.participants, char];
       setChatData(updatedChat);
       setCurrentCharacter(char);
-    } else {
-      setCurrentCharacter(char);
-      startNewChat(char);
-    }
+    } else { setCurrentCharacter(char); startNewChat(char); }
     setIsCharListOpen(false);
   };
   const handleCreateCharacter = () => alert("Create Character Modal coming soon!");
   const handleDeleteCharacter = async (id: string) => {
     if (!window.confirm("Delete this character?")) return;
-    // await deleteCharacter(id); // Implement in storage
+    // await deleteRawCharacter(id); // Implement if needed
     setAllCharacters(prev => prev.filter(c => c.id !== id));
   };
 
-  // 3. Instruction Handlers
-  const handleSelectInstruction = (inst: Instruction) => {
-     alert(`Selected Instruction: ${inst.name}. Logic to toggle active status coming soon!`);
-     setIsInstListOpen(false);
-  };
+  const handleSelectInstruction = (inst: Instruction) => { alert(`Selected: ${inst.name}`); setIsInstListOpen(false); };
   const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
   const handleDeleteInstruction = async (id: string) => {
-    if (!window.confirm("Delete this instruction?")) return;
+    if (!window.confirm("Delete?")) return;
     setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
-  // 4. Sampler Handlers
   const handleSelectSampler = (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
       setCurrentCharacter(updatedChar);
       if (chatData) {
         const updatedParticipants = chatData.participants.map(p => p.id === updatedChar.id ? updatedChar : p);
-        setChatData({ 
-          ...chatData, 
-          protagonist: updatedChar.id === chatData.protagonist.id ? updatedChar : chatData.protagonist, 
-          participants: updatedParticipants 
-        });
+        setChatData({ ...chatData, protagonist: updatedChar.id === chatData.protagonist.id ? updatedChar : chatData.protagonist, participants: updatedParticipants });
       }
     }
     setIsSampListOpen(false);
   };
   const handleCreateSampler = () => alert("Create Sampler Modal coming soon!");
   const handleDeleteSampler = async (id: string) => {
-    if (!window.confirm("Delete this sampler?")) return;
+    if (!window.confirm("Delete?")) return;
     setAllSamplers(prev => prev.filter(s => s.id !== id));
   };
 
-  // 5. Stop Pattern Handlers
-  const handleSelectStopPattern = (stop: StopPattern) => {
-    alert(`Selected Stop Pattern: ${stop.pattern}`);
-    setIsStopListOpen(false);
-  };
+  const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
-    if (!window.confirm("Delete this stop pattern?")) return;
+    if (!window.confirm("Delete?")) return;
     setAllStopPatterns(prev => prev.filter(s => s.id !== id));
   };
 
-  // Standard Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     e.target.value = '';
   };
   const handleSaveEdit = async () => {
     if (!chatData || !editingId) return;
-    try {
-      const updated = await editMessage(chatData, editingId, editDraft);
-      setChatData(updated);
-      setEditingId(null);
-      setEditDraft('');
-    } catch (err) { 
-        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-            alert((err as Error).message);
-        } else { console.error(err); }
-    }
+    try { const updated = await editMessage(chatData, editingId, editDraft); setChatData(updated); setEditingId(null); setEditDraft(''); } 
+    catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
   const handleDelete = async (id: string) => {
     if (!chatData) return;
-    try {
-      const updated = await deleteMessage(chatData, id);
-      setChatData(updated);
-    } catch (err) { 
-        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-            alert((err as Error).message);
-        } else { console.error(err); }
-    }
+    try { const updated = await deleteMessage(chatData, id); setChatData(updated); } 
+    catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
   const handleMassDeleteConfirm = async () => {
     if (!chatData || !massDeleteId) return;
     const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId);
     if (idx === -1) return;
-    try {
-      const updated = await massDeleteMessages(chatData, idx);
-      setChatData(updated);
-      setMassDeleteId(null);
-    } catch (err) { 
-        if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-            alert((err as Error).message);
-        } else { console.error(err); }
-    }
+    try { const updated = await massDeleteMessages(chatData, idx); setChatData(updated); setMassDeleteId(null); } 
+    catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
   const handleBranch = async (id: string) => {
     if (!chatData) return;
-    try {
-      await branchMessage(chatData, id);
-      window.open(window.location.href, '_blank');
-    } catch (err) { console.error(err); }
+    try { await branchMessage(chatData, id); window.open(window.location.href, '_blank'); } catch (err) { console.error(err); }
   };
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    sendMessage(inputText);
-    setInputText('');
-    setPendingFiles([]);
-  };
+  const handleSend = () => { if (!inputText.trim()) return; sendMessage(inputText); setInputText(''); setPendingFiles([]); };
 
   if (!currentCharacter) return <div className="loading-screen">Initializing...</div>;
 
@@ -246,20 +185,20 @@ function App() {
       </header>
 
       <div className="chat-history">
-        {chatData && chatData.chatMessageHistory.map((message, index) => {
-           const isProtagonist = message.character.id === currentCharacter.id;
-           const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
-           const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
-           const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
-           const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
-           const isLastProtag = isProtagonist;
-           const isEditing = editingId === message.id;
-           const isMassStart = message.id === massDeleteId;
-           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-           const isStemMessage = parentChatMessageIds.has(message.id);
-           const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
+        {chatData?.chatMessageHistory.map((message, index) => {
+          const isProtagonist = message.character.id === currentCharacter.id;
+          const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
+          const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
+          const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
+          const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
+          const isLastProtag = isProtagonist;
+          const isEditing = editingId === message.id;
+          const isMassStart = message.id === massDeleteId;
+          const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
+          const isStemMessage = parentChatMessageIds.has(message.id);
+          const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
-           return (
+          return (
             <React.Fragment key={message.id}>
               <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
                 {!isProtagonist && (
@@ -322,76 +261,11 @@ function App() {
         </div>
       </div>
 
-      {/* === MODALS === */}
-      {isChatListOpen && (
-        <ManagerModal
-          title="Chat Sessions"
-          items={allChats}
-          isOpen={isChatListOpen}
-          onClose={() => setIsChatListOpen(false)}
-          onSelect={(c) => handleSwitchChat(c.id)}
-          onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)}
-          onCreateNew={handleNewChat}
-          renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`}
-          emptyMessage="No saved chat sessions found."
-        />
-      )}
-
-      {isCharListOpen && (
-        <ManagerModal
-          title="Characters"
-          items={allCharacters}
-          isOpen={isCharListOpen}
-          onClose={() => setIsCharListOpen(false)}
-          onSelect={handleSelectCharacter}
-          onDelete={handleDeleteCharacter}
-          onCreateNew={handleCreateCharacter}
-          renderSubtext={(c) => c.description || "No description"}
-          emptyMessage="No characters found."
-        />
-      )}
-
-      {isInstListOpen && (
-        <ManagerModal
-          title="Instructions"
-          items={allInstructions}
-          isOpen={isInstListOpen}
-          onClose={() => setIsInstListOpen(false)}
-          onSelect={handleSelectInstruction}
-          onDelete={handleDeleteInstruction}
-          onCreateNew={handleCreateInstruction}
-          renderSubtext={(i) => i.content?.substring(0, 50) + "..."}
-          emptyMessage="No instructions found."
-        />
-      )}
-
-      {isSampListOpen && (
-        <ManagerModal
-          title="Samplers"
-          items={allSamplers}
-          isOpen={isSampListOpen}
-          onClose={() => setIsSampListOpen(false)}
-          onSelect={handleSelectSampler}
-          onDelete={handleDeleteSampler}
-          onCreateNew={handleCreateSampler}
-          renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`}
-          emptyMessage="No samplers found."
-        />
-      )}
-
-      {isStopListOpen && (
-        <ManagerModal
-          title="Stop Patterns"
-          items={allStopPatterns}
-          isOpen={isStopListOpen}
-          onClose={() => setIsStopListOpen(false)}
-          onSelect={handleSelectStopPattern}
-          onDelete={handleDeleteStopPattern}
-          onCreateNew={handleCreateStopPattern}
-          renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`}
-          emptyMessage="No stop patterns found."
-        />
-      )}
+      {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
+      {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={handleSelectCharacter} onDelete={handleDeleteCharacter} onCreateNew={handleCreateCharacter} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." />)}
+      {isInstListOpen && (<ManagerModal title="Instructions" items={allInstructions} isOpen={isInstListOpen} onClose={() => setIsInstListOpen(false)} onSelect={handleSelectInstruction} onDelete={handleDeleteInstruction} onCreateNew={handleCreateInstruction} renderSubtext={(i) => i.content?.substring(0, 50) + "..."} emptyMessage="No instructions found." />)}
+      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={handleSelectSampler} onDelete={handleDeleteSampler} onCreateNew={handleCreateSampler} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`} emptyMessage="No samplers found." />)}
+      {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={handleSelectStopPattern} onDelete={handleDeleteStopPattern} onCreateNew={handleCreateStopPattern} renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} emptyMessage="No stop patterns found." />)}
     </div>
   );
 }
