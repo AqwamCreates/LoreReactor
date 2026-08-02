@@ -153,20 +153,55 @@ export function CharacterEditorModal({
             setIsUploading(false);
         }
 
-        // ✅ Final safety: re-detect any remaining -1 values from current text
+        // Parse the current values
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
 
-        let finalIW = Number.isNaN(rawIW) || rawIW < 0 ? -1 : rawIW;
-        let finalCP = Number.isNaN(rawCP) || rawCP < 0 ? -1 : rawCP;
-        let finalMS = Number.isNaN(rawMS) || rawMS < 0 ? -1 : rawMS;
+        let finalIW: number;
+        let finalCP: number;
+        let finalMS: number;
 
-        if (finalIW === -1 || finalCP === -1 || finalMS === -1) {
-            const combinedText = `${name} ${description} ${systemPrompt}`;
-            if (finalIW === -1) finalIW = getInitiativeWeightValueFromText(combinedText);
-            if (finalCP === -1) finalCP = getChatProbabilityValue(combinedText);
-            if (finalMS === -1) finalMS = getMaximumChatStaminaValueFromText(combinedText);
+        // Check if values are valid (not NaN and not -1)
+        const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
+        const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
+        const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
+
+        if (existingCharacter) {
+            // For existing characters: revert to previous values if invalid or -1
+            finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
+            finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
+            finalMS = msValid ? rawMS : (existingCharacter.maximumChatStamina ?? -1);
+
+            // If all values are still -1, try auto-detection as a last resort
+            if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
+                const combinedText = `${name} ${description} ${systemPrompt}`;
+                finalIW = getInitiativeWeightValueFromText(combinedText);
+                finalCP = getChatProbabilityValue(combinedText);
+                finalMS = getMaximumChatStaminaValueFromText(combinedText);
+            }
+        } else {
+            // For new characters: use defaults if invalid or -1
+            const DEFAULT_IW = 1.2;
+            const DEFAULT_CP = 0.5;
+            const DEFAULT_MS = 4;
+
+            finalIW = iwValid ? rawIW : DEFAULT_IW;
+            finalCP = cpValid ? rawCP : DEFAULT_CP;
+            finalMS = msValid ? rawMS : DEFAULT_MS;
+
+            // If all values are still defaults, try auto-detection
+            if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
+                const combinedText = `${name} ${description} ${systemPrompt}`;
+                const detectedIW = getInitiativeWeightValueFromText(combinedText);
+                const detectedCP = getChatProbabilityValue(combinedText);
+                const detectedMS = getMaximumChatStaminaValueFromText(combinedText);
+                
+                // Only use detected values if they're reasonable (not -1)
+                if (detectedIW >= 0) finalIW = detectedIW;
+                if (detectedCP >= 0) finalCP = detectedCP;
+                if (detectedMS >= 0) finalMS = detectedMS;
+            }
         }
 
         const newChar: Character = {
