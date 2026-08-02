@@ -5,19 +5,15 @@ import cors from 'cors';
 
 const app = express();
 const PORT = 3001;
-
 const ROOT_DIR = process.cwd(); 
 
 app.use(cors());
-app.use(express.json());
+// Increase limit to handle large base64 image strings
+app.use(express.json({ limit: '50mb' }));
 
-// ✅ THE FIX: Use app.use() as middleware instead of app.put() routing.
-// This catches ANY request starting with /user_data, regardless of what comes after.
 app.use('/user_data', (req, res) => {
-  // Reconstruct the full path relative to root
-  // req.url here will be whatever comes AFTER '/user_data' (e.g., /chat_messages/file.json)
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
-  const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
+  const filePath = path.join(ROOT_DIR, 'user_data', relativePath || '');
   const dir = path.dirname(filePath);
 
   console.log(`📥 Request: ${req.method} ${req.url}`);
@@ -33,6 +29,28 @@ app.use('/user_data', (req, res) => {
       }
     }
 
+    // ✅ IMAGE HANDLING: Detect base64 image uploads
+    const isImageUpload = relativePath?.startsWith('character_images/');
+    const body = req.body as any;
+
+    if (isImageUpload && body && typeof body.base64 === 'string') {
+      try {
+        const buffer = Buffer.from(body.base64, 'base64');
+        fs.writeFile(filePath, buffer, (err: any) => {
+          if (err) {
+            console.error(`❌ Image write failed: ${err.message}`);
+            return res.status(500).json({ error: 'Failed to write image', details: err.message });
+          }
+          console.log(`✅ Saved image: ${filePath} (${buffer.length} bytes)`);
+          res.status(200).json({ success: true, path: filePath });
+        });
+        return;
+      } catch (err: any) {
+        return res.status(400).json({ error: 'Invalid base64 data', details: err.message });
+      }
+    }
+
+    // Standard JSON handling for everything else
     fs.writeFile(filePath, JSON.stringify(req.body, null, 2), (err: any) => {
       if (err) {
         console.error(`❌ Write failed: ${err.message}`);
@@ -57,7 +75,6 @@ app.use('/user_data', (req, res) => {
     });
   } 
   else {
-    // Handle GET or other methods if needed, or reject
     res.status(405).json({ error: 'Method not allowed on this middleware' });
   }
 });
@@ -67,5 +84,6 @@ app.listen(PORT, () => {
   console.log(`✅ Storage API Running on http://localhost:${PORT}`);
   console.log(`📂 Root Directory: ${ROOT_DIR}`);
   console.log("📝 Handling all /user_data/* requests");
+  console.log("🖼️  Base64 image uploads supported at /user_data/character_images/");
   console.log("-----------------------------------------");
 });

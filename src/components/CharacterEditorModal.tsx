@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Character, Sampler } from '../types';
+import { uploadCharacterImage } from '../hooks/storage';
 import './main.css';
 
 interface CharacterEditorModalProps {
@@ -23,6 +24,7 @@ export function CharacterEditorModal({
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [selectedSamplerId, setSelectedSamplerId] = useState<string>('');
     const [isHoveringImage, setIsHoveringImage] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,15 +69,27 @@ export function CharacterEditorModal({
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!name.trim()) {
         alert("Character Name Is Required!");
         return;
         }
 
-        const finalImageFilename = existingCharacter?.image && !imageFile 
-        ? existingCharacter.image 
-        : imageFile?.name;
+        let finalImageFilename = existingCharacter?.image || null;
+
+        // ✅ Upload new image through storage if one was selected
+        if (imageFile) {
+        setIsUploading(true);
+        try {
+            finalImageFilename = await uploadCharacterImage(imageFile);
+        } catch (err) {
+            console.error("Image upload failed:", err);
+            alert("Failed to upload image. Character not saved.");
+            setIsUploading(false);
+            return;
+        }
+        setIsUploading(false);
+        }
 
         const newChar: Character = {
         id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
@@ -123,7 +137,7 @@ export function CharacterEditorModal({
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto' }}>
             <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 
-                {/* ✅ Left Column: Fixed width anchors it left, alignItems centers image within */}
+                {/* Left Column: Fixed width anchors it left, alignItems centers image within */}
                 <div style={{ 
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
                 width: '220px', flexShrink: 0, paddingTop: '4px'
@@ -132,10 +146,10 @@ export function CharacterEditorModal({
                     style={{ 
                     position: 'relative', width: '180px', aspectRatio: '9/16', borderRadius: '12px',
                     overflow: 'hidden', border: imagePreview ? '2px solid var(--accent)' : '2px dashed var(--border)',
-                    backgroundColor: 'var(--social-bg)', cursor: 'pointer', transition: 'border-color 0.2s',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    backgroundColor: 'var(--social-bg)', cursor: isUploading ? 'wait' : 'pointer', transition: 'border-color 0.2s',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)', opacity: isUploading ? 0.7 : 1
                     }}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => !isUploading && fileInputRef.current?.click()}
                     onMouseEnter={() => setIsHoveringImage(true)}
                     onMouseLeave={() => setIsHoveringImage(false)}
                 >
@@ -150,10 +164,10 @@ export function CharacterEditorModal({
                         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '3rem', opacity: 0.3, pointerEvents: 'none'
-                    }}>📷</div>
+                    }}>{isUploading ? '⏳' : '📷'}</div>
                     )}
 
-                    {imagePreview && (
+                    {imagePreview && !isUploading && (
                     <div style={{
                         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                         backgroundColor: 'rgba(0,0,0,0.6)', display: isHoveringImage ? 'flex' : 'none',
@@ -169,31 +183,31 @@ export function CharacterEditorModal({
                 
                 <span style={{ 
                     marginTop: '10px', fontSize: '0.7rem', opacity: 0.6, textAlign: 'center', letterSpacing: '0.5px'
-                }}>Click To Upload</span>
+                }}>{isUploading ? 'Uploading...' : 'Click To Upload'}</span>
 
-                <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} />
+                <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
                 </div>
 
                 {/* Right Column */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', minWidth: '280px' }}>
                 <div>
                     <label style={labelStyle}>Name *</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="Character name" />
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="Character name" disabled={isUploading} />
                 </div>
                 
                 <div>
                     <label style={labelStyle}>Description</label>
-                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: '160px' }} placeholder="Describe the character's appearance and traits." />
+                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, minHeight: '160px' }} placeholder="Describe the character's appearance and traits." disabled={isUploading} />
                 </div>
 
-                {/* ✅ Sampler Select with Loading State */}
+                {/* Sampler Select with Loading State */}
                 <div>
                     <label style={labelStyle}>Sampler</label>
                     <select 
                     value={selectedSamplerId} 
                     onChange={(e) => setSelectedSamplerId(e.target.value)}
-                    style={{ ...inputStyle, opacity: isLoadingSamplers ? 0.6 : 1, cursor: isLoadingSamplers ? 'wait' : 'pointer' }}
-                    disabled={isLoadingSamplers}
+                    style={{ ...inputStyle, opacity: isLoadingSamplers || isUploading ? 0.6 : 1, cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' }}
+                    disabled={isLoadingSamplers || isUploading}
                     >
                     {isLoadingSamplers && <option>Loading samplers...</option>}
                     {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
@@ -210,17 +224,19 @@ export function CharacterEditorModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div>
                 <label style={labelStyle}>System Prompt</label>
-                <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} style={{ ...inputStyle, minHeight: '100px', fontFamily: 'monospace' }} placeholder="Hidden instructions for the AI." />
+                <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} style={{ ...inputStyle, minHeight: '100px', fontFamily: 'monospace' }} placeholder="Hidden instructions for the AI." disabled={isUploading} />
                 </div>
                 <div>
                 <label style={labelStyle}>First Message</label>
-                <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} style={{ ...inputStyle, minHeight: '80px' }} placeholder="The opening message of the chat." />
+                <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} style={{ ...inputStyle, minHeight: '80px' }} placeholder="The opening message of the chat." disabled={isUploading} />
                 </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '10px' }}>
-                <button type="button" className="edit-btn edit-btn-cancel" onClick={onClose} style={{ ...buttonStyle, background: 'transparent', color: 'var(--text-h)', border: '1px solid var(--border)' }}>Cancel</button>
-                <button type="button" className="edit-btn edit-btn-save" onClick={handleSubmit} style={{ ...buttonStyle, background: 'var(--accent)', color: '#fff' }}>Save</button>
+                <button type="button" className="edit-btn edit-btn-cancel" onClick={onClose} style={{ ...buttonStyle, background: 'transparent', color: 'var(--text-h)', border: '1px solid var(--border)' }} disabled={isUploading}>Cancel</button>
+                <button type="button" className="edit-btn edit-btn-save" onClick={handleSubmit} style={{ ...buttonStyle, background: 'var(--accent)', color: '#fff', opacity: isUploading ? 0.7 : 1 }} disabled={isUploading}>
+                    {isUploading ? 'Uploading...' : 'Save'}
+                </button>
             </div>
             </div>
         </div>
