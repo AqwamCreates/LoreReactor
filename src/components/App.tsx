@@ -19,17 +19,19 @@ function App() {
 
   // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
-  const [isCharListOpen, setIsCharListOpen] = useState(false);
-  const [isInstListOpen, setIsInstListOpen] = useState(false);
-  const [isSampListOpen, setIsSampListOpen] = useState(false);
-  const [isStopListOpen, setIsStopListOpen] = useState(false);
   
-  // Multi-Select States
+  // Characters
+  const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isParticipantsMode, setIsParticipantsMode] = useState(false);
   const [pendingParticipantIds, setPendingParticipantIds] = useState<string[]>([]);
   
-  const [isInstructionsMode, setIsInstructionsMode] = useState(false);
+  // Instructions
+  const [isInstListOpen, setIsInstListOpen] = useState(false); // Global List
+  const [isInstManageMode, setIsInstManageMode] = useState(false); // Chat Specific
   const [pendingInstructionIds, setPendingInstructionIds] = useState<string[]>([]);
+  
+  const [isSampListOpen, setIsSampListOpen] = useState(false);
+  const [isStopListOpen, setIsStopListOpen] = useState(false);
 
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
@@ -55,7 +57,8 @@ function App() {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      if (isInstListOpen || isInstructionsMode) {
+      // ✅ Load instructions if EITHER global list OR manage mode is open
+      if (isInstListOpen || isInstManageMode) {
         const insts = await loadAllRawInstructions();
         setAllInstructions(insts);
       }
@@ -69,10 +72,10 @@ function App() {
       }
     };
 
-    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstructionsMode) {
+    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstructionsMode]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode]);
 
   // --- Handlers ---
 
@@ -112,7 +115,7 @@ function App() {
     setAllCharacters(prev => prev.filter(c => c.id !== id));
   };
 
-  // ✅ 3. Participant Multi-Select
+  // 3. Participant Multi-Select
   const handleOpenParticipants = () => {
     if (!chatData) return;
     setPendingParticipantIds(chatData.participants.map(p => p.id));
@@ -141,11 +144,26 @@ function App() {
     setIsParticipantsMode(false);
   };
 
-  // ✅ 4. Instruction Multi-Select (New)
-  const handleOpenInstructions = () => {
+  // ✅ 4. Instruction Handlers (Split Logic)
+  
+  // A. Global List (Top Nav) - Just view/select single (future)
+  const handleSelectInstruction = (inst: Instruction) => {
+    if (!isInstManageMode) {
+        alert(`Selected: ${inst.name} (Future: Add to favorites)`);
+        setIsInstListOpen(false);
+    }
+  };
+  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
+  const handleDeleteInstruction = async (id: string) => {
+    if (!window.confirm("Delete permanently?")) return;
+    setAllInstructions(prev => prev.filter(i => i.id !== id));
+  };
+
+  // B. Manage Mode (Context Bar) - Multi-select for current chat
+  const handleOpenInstructionsManage = () => {
     if (!chatData) return;
     setPendingInstructionIds(chatData.instructions?.map(i => i.id) || []);
-    setIsInstructionsMode(true);
+    setIsInstManageMode(true);
   };
 
   const handleToggleInstructionSelection = (instId: string) => {
@@ -161,7 +179,7 @@ function App() {
     const updatedChat = { ...chatData, instructions: newInstructions };
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
-    setIsInstructionsMode(false);
+    setIsInstManageMode(false);
   };
 
   // 5. Sampler Handlers
@@ -235,7 +253,8 @@ function App() {
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
-            <button type="button" className="nav-btn" onClick={() => { setIsInstructionsMode(false); setIsInstListOpen(true); }}>📜 Instructions</button>
+            {/* ✅ Top Nav: Opens GLOBAL List */}
+            <button type="button" className="nav-btn" onClick={() => { setIsInstManageMode(false); setIsInstListOpen(true); }}>📜 Instructions</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
           </nav>
@@ -305,7 +324,8 @@ function App() {
 
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
-        <button type="button" className="context-btn" onClick={handleOpenInstructions}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
+        {/* ✅ Context Bar: Opens MANAGE Mode */}
+        <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
         <button type="button" className="context-btn" onClick={() => alert("Search coming soon!")}>🔍 Search</button>
       </div>
 
@@ -345,20 +365,20 @@ function App() {
         />
       )}
 
-      {/* ✅ Instructions (Multi-Select Enabled) */}
-      {(isInstListOpen || isInstructionsMode) && (
+      {/* ✅ Instructions (Split Logic) */}
+      {(isInstListOpen || isInstManageMode) && (
         <ManagerModal
-          title={isInstructionsMode ? "Manage Instructions" : "All Instructions"}
+          title={isInstManageMode ? "Manage Instructions" : "All Instructions"}
           items={allInstructions}
-          isOpen={isInstListOpen || isInstructionsMode}
-          onClose={() => { setIsInstListOpen(false); setIsInstructionsMode(false); }}
-          onSelect={isInstructionsMode ? undefined : handleSelectInstruction}
-          onDelete={isInstructionsMode ? undefined : handleDeleteInstruction}
+          isOpen={isInstListOpen || isInstManageMode}
+          onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
+          onSelect={isInstManageMode ? undefined : handleSelectInstruction}
+          onDelete={isInstManageMode ? undefined : handleDeleteInstruction}
           onCreateNew={handleCreateInstruction}
           renderSubtext={(i) => `${i.content?.substring(0, 50)}...`}
           emptyMessage="No instructions found."
           actionLabel="Delete"
-          selectionMode={isInstructionsMode}
+          selectionMode={isInstManageMode}
           selectedIds={pendingInstructionIds}
           onToggleSelect={handleToggleInstructionSelection}
           onConfirmSelection={handleConfirmInstructions}
