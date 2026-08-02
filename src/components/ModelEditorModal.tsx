@@ -174,6 +174,58 @@ const getCacheTypes = (backend: string) => {
     }
 };
 
+// Estimate VRAM usage for llama.cpp models
+const estimateVRAM = (modelName: string, gpuLayers: number, cacheType: string, contextSize: number): string => {
+    // Extract parameter count using regex - case insensitive
+    const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
+    let parameterCount = 0;
+    
+    if (sizeMatch) {
+        parameterCount = parseFloat(sizeMatch[1]);
+    } else {
+        // If no size found, default to 7B
+        parameterCount = 7;
+    }
+
+    // Calculate model size in GB (FP16)
+    // Formula: params * 2 bytes (FP16) / 1024^3
+    const modelSizeGB = (parameterCount * 1e9 * 2) / (1024 * 1024 * 1024);
+    
+    // KV cache size per token: ~0.5 MB per 1k context for 7B model
+    const kvCachePerToken = 0.0005 * (parameterCount / 7);
+    const kvCacheGB = (kvCachePerToken * contextSize) / 1024;
+    
+    // Adjust for cache type
+    let cacheMultiplier = 1.0;
+    const cacheLower = cacheType.toLowerCase();
+    if (cacheLower === 'q8_0' || cacheLower === 'q8') {
+        cacheMultiplier = 0.5;
+    } else if (cacheLower === 'q4_0' || cacheLower === 'q4') {
+        cacheMultiplier = 0.25;
+    } else if (cacheLower === 'q6') {
+        cacheMultiplier = 0.375;
+    } else if (cacheLower === 'q3') {
+        cacheMultiplier = 0.1875;
+    } else if (cacheLower === 'q2') {
+        cacheMultiplier = 0.125;
+    } else if (cacheLower === 'fp8') {
+        cacheMultiplier = 0.5;
+    }
+    
+    const adjustedKVCacheGB = kvCacheGB * cacheMultiplier;
+    
+    // Calculate GPU layers memory
+    const totalLayers = Math.ceil(parameterCount * 0.8); // Rough estimate: ~0.8 layers per billion params
+    const gpuLayerRatio = gpuLayers === -1 ? 1 : Math.min(gpuLayers / totalLayers, 1);
+    const gpuMemoryGB = modelSizeGB * gpuLayerRatio + adjustedKVCacheGB * 0.5;
+    
+    // Total VRAM estimate with overhead
+    const overhead = 1.5; // Additional overhead for CUDA, activations, etc.
+    const totalVRAMGB = gpuMemoryGB + overhead;
+    
+    return totalVRAMGB.toFixed(1);
+};
+
 export function ModelEditorModal({
     isOpen,
     onClose,
@@ -373,6 +425,14 @@ export function ModelEditorModal({
 
     if (!isOpen) return null;
 
+    // Calculate VRAM estimation
+    const vramEstimate = backend === 'Llama.cpp' ? estimateVRAM(
+        name || modelPath || '7B',
+        settings.gpu_layers,
+        settings.cache_type,
+        settings.ctx_size || 8192
+    ) : 'N/A';
+
     const inputStyle: React.CSSProperties = {
         width: '100%',
         boxSizing: 'border-box',
@@ -484,6 +544,18 @@ export function ModelEditorModal({
         border: '1px solid var(--border)',
         marginTop: '8px',
         fontStyle: 'italic',
+    };
+
+    const vramStyle: React.CSSProperties = {
+        fontSize: '0.7rem',
+        color: 'var(--accent)',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        background: 'var(--accent-bg)',
+        border: '1px solid var(--accent-border)',
+        marginTop: '4px',
+        display: 'inline-block',
+        fontWeight: 'bold',
     };
 
     const cacheTypes = getCacheTypes(backend);
@@ -714,6 +786,15 @@ export function ModelEditorModal({
                                 </select>
                             </div>
                         </div>
+
+                        {/* VRAM Estimation */}
+                        {backend === 'Llama.cpp' && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={vramStyle}>
+                                    💾 Estimated VRAM: ~{vramEstimate} GB
+                                </div>
+                            </div>
+                        )}
 
                         <div style={{ ...rowStyle, marginTop: '8px' }}>
                             <label style={checkboxStyle}>
