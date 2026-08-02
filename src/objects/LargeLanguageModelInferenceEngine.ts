@@ -1,5 +1,11 @@
+export interface TokenStats {
+  fullText: string;
+  msPerToken: number;
+  tokensPerSecond: number;
+}
+
 export interface StreamCallbacks {
-  onToken: (currentChunk: string) => void;
+  onToken: (stats: TokenStats) => void;
 }
 
 export class LargeLanguageModelInferenceEngine {
@@ -27,6 +33,10 @@ export class LargeLanguageModelInferenceEngine {
 
     const decoder = new TextDecoder("utf-8");
     let fullContent = "";
+    
+    // ⏱️ Timing Variables
+    let firstTokenTime = 0;
+    let tokenCount = 0;
 
     try {
       while (true) {
@@ -40,16 +50,37 @@ export class LargeLanguageModelInferenceEngine {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const jsonStr = line.slice(6);
-            if (jsonStr.trim() === '[DONE]') return fullContent.trim();
+            if (jsonStr.trim() === '[DONE]') {
+              // Final stats calculation
+              return fullContent.trim();
+            }
 
             try {
               const json = JSON.parse(jsonStr);
               const token = json.content || json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || "";
               
               if (token) {
+                const now = performance.now();
+                
+                if (tokenCount === 0) {
+                  firstTokenTime = now;
+                }
+                const lastTokenTime = now;
+                tokenCount++;
+
                 fullContent += token;
+
+                // 🚀 Calculate live stats
+                const totalTime = lastTokenTime - firstTokenTime;
+                const msPerToken = tokenCount > 0 ? totalTime / tokenCount : 0;
+                const tokensPerSecond = totalTime > 0 ? (tokenCount / totalTime) * 1000 : 0;
+
                 if (callbacks?.onToken) {
-                  callbacks.onToken(fullContent);
+                  callbacks.onToken({
+                    fullText: fullContent,
+                    msPerToken,
+                    tokensPerSecond
+                  });
                 }
               }
             } catch (e) {
@@ -59,7 +90,9 @@ export class LargeLanguageModelInferenceEngine {
         }
       }
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {return fullContent.trim()}
+      if ((error as Error).name === 'AbortError') {
+        return fullContent.trim();
+      }
       throw error;
     }
 

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 interface ChatStatisticsBarProps {
     generationSpeed: number; // ms per token
@@ -9,10 +10,10 @@ interface ChatStatisticsBarProps {
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
-    generationSpeed,
-    messageCount,
-    tokenCount,
-    maximumNumberOfTokens,
+    generationSpeed = 0,          
+    messageCount = 0,             
+    tokenCount = 0,               
+    maximumNumberOfTokens = 65536,
     className = '',
 }) => {
     const [showDetails, setShowDetails] = useState(false);
