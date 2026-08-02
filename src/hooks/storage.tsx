@@ -167,8 +167,9 @@ export async function loadRawInstruction(id: string): Promise<Instruction | null
     return { 
         id, 
         name: rawInstruction.name, 
-        description: rawInstruction.description,
-        content: rawInstruction.content,
+        description: rawInstruction.description, 
+        text: rawInstruction.text,
+        images: rawInstruction.images,
         regularExpressionTrigger: rawInstruction.regularExpressionTrigger,
         regularExpressionContext: rawInstruction.regularExpressionContext,
         regularExpressionTarget: rawInstruction.regularExpressionTarget,
