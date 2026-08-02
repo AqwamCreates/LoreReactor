@@ -4,13 +4,16 @@ import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension,
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { 
   deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, 
-  loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler 
+  loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
+  loadAllRawModels, saveRawModel, deleteRawModel
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
+import { ModelEditorModal } from './ModelEditorModal';
+import { SamplerEditorModal } from './SamplerEditorModal';
 import './main.css';
 
 function App() {
@@ -33,7 +36,11 @@ function App() {
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [isCharEditorOpen, setIsCharEditorOpen] = useState(false);
+  const [isModelEditorOpen, setIsModelEditorOpen] = useState(false);
+  const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [characterToEdit, setCharacterToEdit] = useState<Character | null>(null);
+  const [modelToEdit, setModelToEdit] = useState<LanguageModel | null>(null);
+  const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultInstructionIds, setDefaultInstructionIds] = useState<string[]>([]);
 
@@ -43,7 +50,6 @@ function App() {
   const [allInstructions, setAllInstructions] = useState<Instruction[]>([]);
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
-  
   const [allExtensions, setAllExtensions] = useState<Extension[]>([
     { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language', extensionType: 'language_model_api' },
     { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech', extensionType: 'accessibility' },
@@ -51,14 +57,8 @@ function App() {
     { id: 'ext_4', name: 'Light Mode Toggle', description: 'Force light mode for this session', extensionType: 'extra' },
     { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
   ]);
+  const [allModels, setAllModels] = useState<LanguageModel[]>([]);
 
-  const [allModels, setAllModels] = useState<LanguageModel[]>([
-    { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, model:"" },
-    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, model:"", mmproj: "Yay" },
-    { id: 'mdl_3', name: 'Gemma-E4B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, model:"", mmproj: "Yay" },
-    { id: 'mdl_4', name: 'Command R+', description: 'Optimized for tool use and RAG', contextLength: 128000, model:"" },
-  ]);
-  
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -78,8 +78,7 @@ function App() {
         catch (e) { console.error("Failed to parse default instructions", e); }
       }
 
-      // ✅ ALWAYS load samplers on mount or when editor/sampler modal opens
-      const shouldLoadSamplers = isSampListOpen || isCharEditorOpen || allSamplers.length === 0;
+      const shouldLoadSamplers = isSampListOpen || isCharEditorOpen || isSamplerEditorOpen || allSamplers.length === 0;
 
       if (isChatListOpen) {
         const chats = await loadAllRawChatData();
@@ -101,22 +100,29 @@ function App() {
         const stops = await loadAllRawStopPatterns();
         setAllStopPatterns(stops);
       }
+      if (isModelListOpen || isModelEditorOpen) {
+        const models = await loadAllRawModels();
+        setAllModels(models);
+      }
     };
 
     if (
       isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
       isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
-      isModelListOpen || isCharEditorOpen || allSamplers.length === 0
+      isModelListOpen || isCharEditorOpen || isModelEditorOpen || isSamplerEditorOpen ||
+      allSamplers.length === 0
     ) {
       loadData();
     }
   }, [
     isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
-    isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, isCharEditorOpen, 
-    allSamplers.length
+    isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, 
+    isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, allSamplers.length
   ]);
 
   // --- Handlers ---
+
+  // Chat Handlers
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) { setChatData(selected); setCurrentCharacter(selected.protagonist); setIsChatListOpen(false); }
@@ -138,6 +144,7 @@ function App() {
     if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
+  // Character Handlers
   const handleSelectCharacter = (char: Character) => {
     if (!isParticipantsMode && !isCharEditorOpen) {
       if (chatData) {
@@ -163,7 +170,6 @@ function App() {
       const updatedChars = await loadAllRawCharacters();
       setAllCharacters(updatedChars);
       
-      // ✅ Refresh samplers if character uses one
       if (char.sampler) {
         const freshSamplers = await loadAllRawSamplers();
         setAllSamplers(freshSamplers);
@@ -190,6 +196,7 @@ function App() {
     }
   };
 
+  // Participant Handlers
   const handleOpenParticipants = () => { if (!chatData) return; setIsParticipantsMode(true); };
 
   const handleToggleParticipant = async (charId: string) => {
@@ -216,6 +223,7 @@ function App() {
     setCurrentCharacter(char);
   };
 
+  // Instruction Handlers
   const handleOpenDefaultInstructions = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
   const handleToggleDefaultInstruction = (instId: string) => {
     let newIds = defaultInstructionIds.includes(instId) ? defaultInstructionIds.filter(id => id !== instId) : [...defaultInstructionIds, instId];
@@ -238,6 +246,7 @@ function App() {
     setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
+  // Extension Handlers
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
@@ -254,19 +263,75 @@ function App() {
     setAllExtensions(prev => prev.filter(e => e.id !== id));
   };
 
+  // Model Handlers
   const handleOpenModels = () => { setIsModelListOpen(true); };
+  
+  const handleOpenModelEditor = (model?: LanguageModel) => {
+    setModelToEdit(model || null);
+    setIsModelEditorOpen(true);
+    setIsModelListOpen(false);
+  };
+
+  const handleSaveModel = async (model: LanguageModel) => {
+    try {
+      await saveRawModel(model);
+      const freshModels = await loadAllRawModels();
+      setAllModels(freshModels);
+      if (selectedModelId === model.id) {
+        setSelectedModelId(model.id);
+      }
+    } catch (err) {
+      console.error("Failed to save model:", err);
+      alert("Failed to save model.");
+    }
+  };
+
+  const handleDeleteModel = async (id: string) => {
+    if (!window.confirm("Delete model permanently?")) return;
+    try {
+      await deleteRawModel(id);
+      const freshModels = await loadAllRawModels();
+      setAllModels(freshModels);
+      if (selectedModelId === id) {
+        setSelectedModelId(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete model:", err);
+      alert("Failed to delete model.");
+    }
+  };
+
   const handleSelectModel = (model: LanguageModel) => {
     setSelectedModelId(model.id);
     alert(`Switched to ${model.name}. (Backend integration required)`);
     setIsModelListOpen(false);
   };
-  const handleCreateModel = () => alert("Add Model Endpoint coming soon!");
-  const handleDeleteModel = async (id: string) => {
-    if (!window.confirm("Remove model from list?")) return;
-    setAllModels(prev => prev.filter(m => m.id !== id));
+
+  // Sampler Handlers
+  const handleOpenSamplerEditor = (sampler?: Sampler) => {
+    setSamplerToEdit(sampler || null);
+    setIsSamplerEditorOpen(true);
+    setIsSampListOpen(false);
   };
 
-  // ✅ Persistent Sampler Selection
+  const handleSaveSampler = async (sampler: Sampler) => {
+    try {
+      await saveRawSampler(sampler);
+      const freshSamplers = await loadAllRawSamplers();
+      setAllSamplers(freshSamplers);
+      
+      // Update current character if they use this sampler
+      if (currentCharacter?.sampler?.id === sampler.id) {
+        const updatedChar = { ...currentCharacter, sampler };
+        setCurrentCharacter(updatedChar);
+        await saveRawCharacter(updatedChar);
+      }
+    } catch (err) {
+      console.error("Failed to save sampler:", err);
+      alert("Failed to save sampler.");
+    }
+  };
+
   const handleSelectSampler = async (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
@@ -294,9 +359,6 @@ function App() {
     setIsSampListOpen(false);
   };
 
-  const handleCreateSampler = () => alert("Create Sampler Modal coming soon!");
-
-  // ✅ Safe Sampler Deletion with Character Refresh
   const handleDeleteSampler = async (id: string) => {
     if (!window.confirm("Delete this sampler? Characters using it will revert to Default.")) return;
     try {
@@ -317,6 +379,7 @@ function App() {
     }
   };
 
+  // Stop Pattern Handlers
   const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
@@ -324,20 +387,24 @@ function App() {
     setAllStopPatterns(prev => prev.filter(s => s.id !== id));
   };
 
+  // File & Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     e.target.value = '';
   };
+
   const handleSaveEdit = async () => {
     if (!chatData || !editingId) return;
     try { const updated = await editMessage(chatData, editingId, editDraft); setChatData(updated); setEditingId(null); setEditDraft(''); } 
     catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
+
   const handleDelete = async (id: string) => {
     if (!chatData) return;
     try { const updated = await deleteMessage(chatData, id); setChatData(updated); } 
     catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
+
   const handleMassDeleteConfirm = async () => {
     if (!chatData || !massDeleteId) return;
     const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId);
@@ -345,10 +412,12 @@ function App() {
     try { const updated = await massDeleteMessages(chatData, idx); setChatData(updated); setMassDeleteId(null); } 
     catch (err) { if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) alert((err as Error).message); else console.error(err); }
   };
+
   const handleBranch = async (id: string) => {
     if (!chatData) return;
     try { await branchMessage(chatData, id); window.open(window.location.href, '_blank'); } catch (err) { console.error(err); }
   };
+
   const handleSend = () => { if (!inputText.trim()) return; sendMessage(inputText); setInputText(''); setPendingFiles([]); };
 
   if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
@@ -366,8 +435,8 @@ function App() {
     </span>
   );
 
-  const renderModelSubtext = (languageModel: LanguageModel) => {
-    const isMultiModal = !!languageModel.mmproj; 
+  const renderModelSubtext = (model: LanguageModel) => {
+    const isMultiModal = !!model.mmproj; 
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
         {isMultiModal && (
@@ -375,8 +444,9 @@ function App() {
             Multi-Modal
           </span>
         )}
-        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(languageModel.contextLength / 1024).toFixed(0)}k</span>
-        <span>{languageModel.description}</span>
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
+        <span>{model.description}</span>
       </span>
     );
   };
@@ -387,7 +457,12 @@ function App() {
         <div className="header-content">
           <div className="header-top">
             <div className="header-title">{chatData?.title || "New Chat Draft"}</div>
-            <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} />
+            <ChatStatisticsBar 
+              generationSpeed={generationSpeed} 
+              messageCount={messageCount} 
+              tokenCount={tokenCount} 
+              maximumNumberOfTokens={maximumNumberOfTokens} 
+            />
           </div>
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
@@ -419,45 +494,97 @@ function App() {
               <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
                 {!isProtagonist && (
                   <div className="avatar-column">
-                    {avatarSrc ? (<img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />) : (<div className="character-avatar placeholder" />)}
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt={displayName} className="character-avatar" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+                    ) : (
+                      <div className="character-avatar placeholder" />
+                    )}
                     <span className="avatar-name">{displayName}</span>
                   </div>
                 )}
                 <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStemMessage ? 'bubble-stem' : ''}`}>
                   {isEditing ? (
                     <div className="edit-mode">
-                      <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
-                      <div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div>
+                      <textarea 
+                        value={editDraft} 
+                        onChange={(e) => setEditDraft(e.target.value)} 
+                        onKeyDown={(e) => { 
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } 
+                          if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } 
+                        }} 
+                        className="edit-textarea" 
+                        rows={Math.max(3, editDraft.split('\n').length)} 
+                      />
+                      <div className="edit-actions">
+                        <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                        <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                      </div>
                     </div>
                   ) : (
                     <>
                       <span className="message-text">{message.textContent}</span>
                       <div className="message-toolbar">
-                        {isStemMessage ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
+                        {isStemMessage ? (
+                          <span className="toolbar-lock">🔒 Locked</span>
+                        ) : !isMassActive ? (
                           <>
                             <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                            {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
+                            {(isLastAI || isLastProtag) && (
+                              <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>
+                            )}
                             <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
                             <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
                             <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
                           </>
-                        ) : isMassStart ? (<div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div>) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
+                        ) : isMassStart ? (
+                          <div className="mass-delete-confirm-bar">
+                            <span>Delete from here?</span>
+                            <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button>
+                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button>
+                          </div>
+                        ) : isInDeletionRange ? (
+                          <span className="deleted-preview-label">Will be deleted</span>
+                        ) : null}
                       </div>
                     </>
                   )}
                 </div>
               </div>
-              {isJustBeforeBranchOff && (<div className="branch-separator-line"><div className="branch-separator-content"><span className="branch-separator-icon">🌿</span><span className="branch-separator-text">Conversation Branches Here</span><span className="branch-separator-icon">🌿</span></div></div>)}
+              {isJustBeforeBranchOff && (
+                <div className="branch-separator-line">
+                  <div className="branch-separator-content">
+                    <span className="branch-separator-icon">🌿</span>
+                    <span className="branch-separator-text">Conversation Branches Here</span>
+                    <span className="branch-separator-icon">🌿</span>
+                  </div>
+                </div>
+              )}
             </React.Fragment>
           );
         })}
         {isLoading && streamingCharacter && (
           <div className="message-row message-left">
-            <div className="avatar-column">{streamingCharacter.image ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />) : (<div className="character-avatar placeholder" />)}<span className="avatar-name">{streamingCharacter.name}</span></div>
-            <div className="message-bubble bubble-ai"><div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{streamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div></div>
+            <div className="avatar-column">
+              {streamingCharacter.image ? (
+                <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" />
+              ) : (
+                <div className="character-avatar placeholder" />
+              )}
+              <span className="avatar-name">{streamingCharacter.name}</span>
+            </div>
+            <div className="message-bubble bubble-ai">
+              <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+              </div>
+            </div>
           </div>
         )}
-        {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}.</p></div>)}
+        {chatData && chatData.chatMessageHistory.length === 0 && (
+          <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}>
+            <p>Start the conversation as {currentCharacter.name}.</p>
+          </div>
+        )}
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
@@ -468,34 +595,81 @@ function App() {
       </div>
 
       <div className="input-wrapper">
-        {pendingFiles.length > 0 && (<div className="attachment-strip">{pendingFiles.map((file, idx) => (<div key={`${file.name}-${idx}`} className="attachment-chip"><span className="attachment-name">{file.name}</span><span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button></div>))}</div>)}
+        {pendingFiles.length > 0 && (
+          <div className="attachment-strip">
+            {pendingFiles.map((file, idx) => (
+              <div key={`${file.name}-${idx}`} className="attachment-chip">
+                <span className="attachment-name">{file.name}</span>
+                <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
+                <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="input-area">
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
           <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-          <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
-          <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
+          <textarea 
+            value={inputText} 
+            onChange={(e) => setInputText(e.target.value)} 
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+            placeholder={`Message as ${currentCharacter.name}...`} 
+            rows={3} 
+            className="chat-input" 
+            disabled={isLoading || !chatData} 
+          />
+          <button 
+            type="button" 
+            onClick={isLoading ? stopGeneration : handleSend} 
+            disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} 
+            className="send-button counter"
+          >
+            {isLoading ? '⏹ Stop' : 'Send'}
+          </button>
         </div>
       </div>
 
       {/* === MODALS === */}
-      {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
 
+      {/* Chat List Modal */}
+      {isChatListOpen && (
+        <ManagerModal 
+          title="Chat Sessions" 
+          items={allChats} 
+          isOpen={isChatListOpen} 
+          onClose={() => setIsChatListOpen(false)} 
+          onSelect={(c) => handleSwitchChat(c.id)} 
+          onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} 
+          onCreateNew={handleNewChat} 
+          renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} 
+          emptyMessage="No saved chat sessions found." 
+        />
+      )}
+
+      {/* Characters Modal */}
       {(isCharListOpen || isParticipantsMode) && (
         <ManagerModal
-          title="Characters" items={allCharacters} isOpen={isCharListOpen || isParticipantsMode}
+          title="Characters" 
+          items={allCharacters} 
+          isOpen={isCharListOpen || isParticipantsMode}
           onClose={() => { setIsCharListOpen(false); setIsParticipantsMode(false); }}
           onSelect={(char) => handleOpenCharacterEditor(char)} 
           onDelete={isParticipantsMode ? undefined : handleDeleteCharacter}
           onCreateNew={() => handleOpenCharacterEditor()} 
-          renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete"
-          orderedListMode={isParticipantsMode} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant}
-          specialActionIcon="★" onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
+          renderSubtext={(c) => c.description || "No description"} 
+          emptyMessage="No characters found." 
+          actionLabel="Delete"
+          orderedListMode={isParticipantsMode} 
+          currentOrderIds={chatData?.participants.map(p => p.id) || []} 
+          onToggleOrder={handleToggleParticipant}
+          specialActionIcon="★" 
+          onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
           specialActionTooltip={(c) => isParticipantsMode ? `set ${c.name} as the protagonist` : `set ${c.name} as the default for new chats`}
           activeSpecialActionId={isParticipantsMode ? chatData?.protagonist.id : defaultCharacterId || undefined}
         />
       )}
 
-      {/* ✅ Character Editor with Loading State */}
+      {/* Character Editor Modal */}
       {isCharEditorOpen && (
         <CharacterEditorModal
           isOpen={isCharEditorOpen}
@@ -507,36 +681,125 @@ function App() {
         />
       )}
 
+      {/* Instructions Modal */}
       {(isInstListOpen || isInstManageMode) && (
-        <ManagerModal title="Instructions" items={allInstructions} isOpen={isInstListOpen || isInstManageMode}
+        <ManagerModal 
+          title="Instructions" 
+          items={allInstructions} 
+          isOpen={isInstListOpen || isInstManageMode}
           onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
-          onSelect={undefined} onDelete={undefined} onCreateNew={handleCreateInstruction}
-          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`} emptyMessage="No instructions found." actionLabel="Delete"
-          orderedListMode={true} currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
+          onSelect={undefined} 
+          onDelete={undefined} 
+          onCreateNew={handleCreateInstruction}
+          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`} 
+          emptyMessage="No instructions found." 
+          actionLabel="Delete"
+          orderedListMode={true} 
+          currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
           onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
         />
       )}
 
+      {/* Models Modal */}
       {isModelListOpen && (
-        <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)}
-          onSelect={handleSelectModel} onDelete={handleDeleteModel} onCreateNew={handleCreateModel}
-          renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Remove"
-          orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓"
-          onSpecialAction={handleSelectModel} specialActionTooltip={(m) => `Use ${m.name}`}
+        <ManagerModal 
+          title="Models" 
+          items={allModels} 
+          isOpen={isModelListOpen} 
+          onClose={() => setIsModelListOpen(false)}
+          onSelect={(model) => handleOpenModelEditor(model)} 
+          onDelete={handleDeleteModel} 
+          onCreateNew={() => handleOpenModelEditor()} 
+          renderSubtext={renderModelSubtext} 
+          emptyMessage="No models available." 
+          actionLabel="Delete"
+          orderedListMode={false} 
+          activeSpecialActionId={selectedModelId || undefined} 
+          specialActionIcon="✓"
+          onSpecialAction={(id) => {
+            const model = allModels.find(m => m.id === id);
+            if (model) handleSelectModel(model);
+          }} 
+          specialActionTooltip={(m) => `Use ${m.name}`}
         />
       )}
 
+      {/* Model Editor Modal */}
+      {isModelEditorOpen && (
+        <ModelEditorModal
+          isOpen={isModelEditorOpen}
+          onClose={() => {
+            setIsModelEditorOpen(false);
+            setModelToEdit(null);
+          }}
+          onSave={handleSaveModel}
+          onDelete={handleDeleteModel}
+          existingModel={modelToEdit}
+        />
+      )}
+
+      {/* Samplers Modal */}
+      {isSampListOpen && (
+        <ManagerModal 
+          title="Samplers" 
+          items={allSamplers} 
+          isOpen={isSampListOpen} 
+          onClose={() => setIsSampListOpen(false)} 
+          onSelect={(sampler) => handleOpenSamplerEditor(sampler)} 
+          onDelete={handleDeleteSampler} 
+          onCreateNew={() => handleOpenSamplerEditor()} 
+          renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}, Tokens: ${s.maximumNumberOfTokens}`} 
+          emptyMessage="No samplers found." 
+        />
+      )}
+
+      {/* Sampler Editor Modal */}
+      {isSamplerEditorOpen && (
+        <SamplerEditorModal
+          isOpen={isSamplerEditorOpen}
+          onClose={() => {
+            setIsSamplerEditorOpen(false);
+            setSamplerToEdit(null);
+          }}
+          onSave={handleSaveSampler}
+          existingSampler={samplerToEdit}
+          allStopPatterns={allStopPatterns}
+        />
+      )}
+
+      {/* Extensions Modal */}
       {isExtListOpen && (
-        <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)}
-          onSelect={undefined} onDelete={handleDeleteExtension} onCreateNew={handleCreateExtension}
-          renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete"
-          orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension}
+        <ManagerModal 
+          title="Extensions" 
+          items={allExtensions} 
+          isOpen={isExtListOpen} 
+          onClose={() => setIsExtListOpen(false)}
+          onSelect={undefined} 
+          onDelete={handleDeleteExtension} 
+          onCreateNew={handleCreateExtension}
+          renderSubtext={renderExtensionSubtext} 
+          emptyMessage="No extensions available." 
+          actionLabel="Delete"
+          orderedListMode={true} 
+          currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} 
+          onToggleOrder={handleToggleExtension}
         />
       )}
 
-      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={handleSelectSampler} onDelete={handleDeleteSampler} onCreateNew={handleCreateSampler} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`} emptyMessage="No samplers found." />)}
-
-      {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={handleSelectStopPattern} onDelete={handleDeleteStopPattern} onCreateNew={handleCreateStopPattern} renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} emptyMessage="No stop patterns found." />)}
+      {/* Stop Patterns Modal */}
+      {isStopListOpen && (
+        <ManagerModal 
+          title="Stop Patterns" 
+          items={allStopPatterns} 
+          isOpen={isStopListOpen} 
+          onClose={() => setIsStopListOpen(false)} 
+          onSelect={handleSelectStopPattern} 
+          onDelete={handleDeleteStopPattern} 
+          onCreateNew={handleCreateStopPattern} 
+          renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} 
+          emptyMessage="No stop patterns found." 
+        />
+      )}
     </div>
   );
 }

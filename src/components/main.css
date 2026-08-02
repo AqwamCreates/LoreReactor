@@ -1024,3 +1024,177 @@
   transform: translateY(-1px);
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
+
+select,
+select option {
+  background: var(--social-bg);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+}
+
+select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+select option {
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+/* For WebKit browsers (Chrome, Safari, Edge) */
+select::-webkit-listbox,
+select::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+/* For Firefox */
+select:-moz-focusring {
+  color: transparent;
+  text-shadow: 0 0 0 var(--text-h);
+}
+
+/* Style the dropdown arrow for WebKit */
+select {
+  appearance: auto;
+  -webkit-appearance: auto;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  background-color: var(--social-bg);
+}
+
+/* Custom scrollbar for select dropdowns */
+select option:hover,
+select option:focus,
+select option:active,
+select option:checked {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* For dark mode, make the dropdown arrow lighter */
+@media (prefers-color-scheme: dark) {
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23aaa' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  }
+}
+
+/* Add to main.css - Slider Input Styles */
+
+.slider-input-container {
+    user-select: none;
+}
+
+.slider-input-container:hover .slider-fill {
+    background: var(--accent-hover, var(--accent));
+}
+
+.slider-track {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    cursor: pointer;
+    touch-action: none;
+}
+
+.slider-track:hover .slider-fill {
+    background: var(--accent-hover, var(--accent));
+}
+
+.slider-track:active .slider-thumb {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.slider-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s ease, left 0.1s ease;
+    cursor: grab;
+    z-index: 2;
+}
+
+.slider-thumb:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.slider-thumb:active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.slider-tooltip {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--text-h);
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 3;
+}
+
+.slider-track:active .slider-tooltip,
+.slider-thumb:active ~ .slider-tooltip {
+    opacity: 1;
+}
+
+/* Style the number input in the slider */
+.slider-input-container input[type="number"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+    width: 70px;
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    font-family: monospace;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-h);
+    text-align: right;
+    outline: none;
+}
+
+.slider-input-container input[type="number"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.slider-input-container input[type="number"]::-webkit-inner-spin-button,
+.slider-input-container input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Dark mode specific adjustments */
+@media (prefers-color-scheme: dark) {
+    .slider-thumb {
+        border-color: var(--bg);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+    
+    .slider-tooltip {
+        background: var(--bg);
+        border-color: var(--border);
+    }
+}
