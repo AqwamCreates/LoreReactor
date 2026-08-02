@@ -3,7 +3,9 @@ import type {
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
 } from '../types';
 
-export const DefaultSampler: Sampler = {
+import { localURL } from '../configurations';
+
+const DefaultSampler: Sampler = {
   id: "0", name: "Default", description: undefined,
   parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
   stopPatterns: [], maximumNumberOfTokens: 512,
@@ -11,7 +13,7 @@ export const DefaultSampler: Sampler = {
   lastUpdatedTimestamp: Date.now(),
 };
 
-const WRITE_API_URL = 'http://localhost:3001'; 
+const WRITE_API_URL = localURL; 
 const PATHS = {
   characters: "/user_data/character_data", characterImages: "/user_data/character_images",
   samplers: "/user_data/sampler_data", contexts: "/user_data/context_data",
