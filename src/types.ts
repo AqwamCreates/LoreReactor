@@ -46,15 +46,15 @@ export interface LanguageModel {
   name: string;
   description: string;
   contextLength: number;
-  model: string;
-  mmproj: string;
+  model: string; // Path to the language model.
+  mmproj: string; // Path to the language model's mmproj.
   parameters: string;
 }
 
 export interface Character {
   id: string;
   name: string;
-  image?: string;
+  image?: string; // Path to the character's image.
   description?: string;
   systemPrompt?: string;
   initiativeWeight?: number | undefined;
@@ -65,7 +65,7 @@ export interface Character {
 
 export interface RawCharacter {
   name: string;
-  image?: string;
+  image?: string; // Path to the character's image.
   description?: string;
   systemPrompt?: string;
   initiativeWeight?: number | undefined;
