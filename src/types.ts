@@ -109,3 +109,12 @@ export interface RawChatData {
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
 }
+
+export type ExtensionType = 'language_model_api' | 'image_generation_api' | 'accessibility' | 'extra';
+
+export interface Extension {
+  id: string;
+  name: string;
+  description: string;
+  extensionType: ExtensionType;
+}

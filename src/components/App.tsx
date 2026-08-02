@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Instruction, Sampler, StopPattern } from '../types';
+import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType } from '../types'; // ✅ Import Extension types
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
@@ -8,13 +8,6 @@ import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import './App.css';
-
-// ✅ Mock Extension Interface (Add to types.ts later)
-interface Extension {
-  id: string;
-  name: string;
-  description: string;
-}
 
 function App() {
   const { 
@@ -26,18 +19,11 @@ function App() {
 
   // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
-  
-  // Characters
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isParticipantsMode, setIsParticipantsMode] = useState(false);
-  
-  // Instructions
-  const [isInstListOpen, setIsInstListOpen] = useState(false); // Default List
-  const [isInstManageMode, setIsInstManageMode] = useState(false); // Chat List
-
-  // ✅ Extensions
+  const [isInstListOpen, setIsInstListOpen] = useState(false);
+  const [isInstManageMode, setIsInstManageMode] = useState(false);
   const [isExtListOpen, setIsExtListOpen] = useState(false);
-  
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
 
@@ -51,12 +37,13 @@ function App() {
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
   
-  // ✅ Mock Extensions Data
+  // ✅ Typed Mock Extensions
   const [allExtensions, setAllExtensions] = useState<Extension[]>([
-    { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language' },
-    { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech synthesis' },
-    { id: 'ext_3', name: 'Sentiment Analysis', description: 'Tag messages with emotional context' },
-    { id: 'ext_4', name: 'Image Generator', description: 'Generate images from scene descriptions' },
+    { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language', extensionType: 'language_model_api' },
+    { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech', extensionType: 'accessibility' },
+    { id: 'ext_3', name: 'Scene Illustrator', description: 'Generate images from scene descriptions', extensionType: 'image_generation_api' },
+    { id: 'ext_4', name: 'Dark Mode Toggle', description: 'Force dark mode for this session', extensionType: 'extra' },
+    { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'extra' },
   ]);
   
   const [inputText, setInputText] = useState('');
@@ -98,7 +85,6 @@ function App() {
         const stops = await loadAllRawStopPatterns();
         setAllStopPatterns(stops);
       }
-      // Extensions are mocked for now, no storage load needed
     };
 
     if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen) {
@@ -159,7 +145,7 @@ function App() {
     }
   };
 
-  // 3. Participant Handlers (Immediate Save)
+  // 3. Participant Handlers
   const handleOpenParticipants = () => {
     if (!chatData) return;
     setIsParticipantsMode(true);
@@ -167,92 +153,45 @@ function App() {
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
-    
-    if (charId === chatData.protagonist.id) {
-        alert("Cannot remove the protagonist.");
-        return;
-    }
-
+    if (charId === chatData.protagonist.id) { alert("Cannot remove the protagonist."); return; }
     const currentIds = chatData.participants.map(p => p.id);
-    let newIds: string[];
-    
-    if (currentIds.includes(charId)) {
-        newIds = currentIds.filter(id => id !== charId);
-    } else {
-        newIds = [...currentIds, charId];
-    }
-
+    let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
-    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
-        newParticipants.unshift(chatData.protagonist);
-    }
-
+    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
     const updatedChat = { ...chatData, participants: newParticipants };
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
-    
-    if (!newIds.includes(currentCharacter?.id)) {
-        setCurrentCharacter(updatedChat.protagonist);
-    }
+    if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
     if (!chatData) return;
     const char = allCharacters.find(c => c.id === charId);
     if (!char) return;
-
     const updatedChat = { ...chatData, protagonist: char };
-    if (!updatedChat.participants.find(p => p.id === charId)) {
-        updatedChat.participants = [char, ...updatedChat.participants];
-    }
-    
+    if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
     setCurrentCharacter(char);
   };
 
   // 4. Instruction Handlers
-  const handleOpenDefaultInstructions = () => {
-    setIsInstListOpen(true);
-    setIsInstManageMode(false);
-  };
-
+  const handleOpenDefaultInstructions = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
   const handleToggleDefaultInstruction = (instId: string) => {
-    let newIds: string[];
-    if (defaultInstructionIds.includes(instId)) {
-        newIds = defaultInstructionIds.filter(id => id !== instId);
-    } else {
-        newIds = [...defaultInstructionIds, instId];
-    }
+    let newIds = defaultInstructionIds.includes(instId) ? defaultInstructionIds.filter(id => id !== instId) : [...defaultInstructionIds, instId];
     setDefaultInstructionIds(newIds);
     localStorage.setItem('defaultInstructionIds', JSON.stringify(newIds));
   };
-
-  const handleOpenInstructionsManage = () => {
-    if (!chatData) return;
-    setIsInstManageMode(true);
-    setIsInstListOpen(false);
-  };
-
+  const handleOpenInstructionsManage = () => { if (!chatData) return; setIsInstManageMode(true); setIsInstListOpen(false); };
   const handleToggleChatInstruction = async (instId: string) => {
     if (!chatData) return;
-    
     const currentIds = chatData.instructions?.map(i => i.id) || [];
-    let newIds: string[];
-    
-    if (currentIds.includes(instId)) {
-        newIds = currentIds.filter(id => id !== instId);
-    } else {
-        newIds = [...currentIds, instId];
-    }
-
+    let newIds = currentIds.includes(instId) ? currentIds.filter(id => id !== instId) : [...currentIds, instId];
     const newInstructions = allInstructions.filter(i => newIds.includes(i.id));
     const updatedChat = { ...chatData, instructions: newInstructions };
-    
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
   };
-
   const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
   const handleDeleteInstruction = async (id: string) => {
     if (!window.confirm("Delete permanently?")) return;
@@ -260,30 +199,14 @@ function App() {
   };
 
   // ✅ 5. Extension Handlers
-  const handleOpenExtensions = () => {
-    if (!chatData) return;
-    setIsExtListOpen(true);
-  };
+  const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
 
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
-    
-    // Assuming extensions are stored similarly to instructions in chatData
-    // If your ChatData type doesn't have 'extensions' yet, you may need to add it or use a temporary field
     const currentIds = (chatData as any).extensions?.map((e: any) => e.id) || [];
-    let newIds: string[];
-    
-    if (currentIds.includes(extId)) {
-        newIds = currentIds.filter(id => id !== extId);
-    } else {
-        newIds = [...currentIds, extId];
-    }
-
+    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
-    
-    // Update chat data (casting to any if 'extensions' isn't in type yet)
     const updatedChat = { ...chatData, extensions: newExtensions } as any;
-    
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
   };
@@ -353,6 +276,17 @@ function App() {
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
   const branchOffIndex = chatData.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
+
+  // ✅ Helper to format Type Badge
+  const renderExtensionSubtext = (ext: Extension) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}>
+      <span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>
+        {/* ✅ Use Regex with 'g' flag to replace ALL underscores */}
+        {ext.extensionType.replace(/_/g, ' ')}
+      </span>
+      <span>{ext.description}</span>
+    </span>
+  );
 
   return (
     <div className="chat-container">
@@ -436,8 +370,6 @@ function App() {
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
         <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
-        
-        {/* ✅ REPLACED SEARCH WITH EXTENSIONS */}
         <button type="button" className="context-btn" onClick={handleOpenExtensions}>
           🧩 Extensions ({(chatData as any)?.extensions?.length || 0})
         </button>
@@ -471,11 +403,9 @@ function App() {
           renderSubtext={(c) => c.description || "No description"}
           emptyMessage="No characters found."
           actionLabel="Delete"
-          
           orderedListMode={isParticipantsMode}
           currentOrderIds={chatData?.participants.map(p => p.id) || []}
           onToggleOrder={handleToggleParticipant}
-          
           specialActionIcon="★"
           onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
           specialActionTooltip={(c) => isParticipantsMode ? `set ${c.name} as the protagonist` : `set ${c.name} as the default for new chats`}
@@ -496,14 +426,13 @@ function App() {
           renderSubtext={(i) => `${i.content?.substring(0, 50)}...`}
           emptyMessage="No instructions found."
           actionLabel="Delete"
-          
           orderedListMode={true}
           currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
           onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
         />
       )}
 
-      {/* ✅ Extensions Modal */}
+      {/* ✅ Extensions Modal with Type Badges */}
       {isExtListOpen && (
         <ManagerModal
           title="Extensions"
@@ -513,10 +442,9 @@ function App() {
           onSelect={undefined}
           onDelete={handleDeleteExtension}
           onCreateNew={handleCreateExtension}
-          renderSubtext={(e) => e.description}
+          renderSubtext={renderExtensionSubtext}
           emptyMessage="No extensions available."
           actionLabel="Delete"
-          
           orderedListMode={true}
           currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []}
           onToggleOrder={handleToggleExtension}
