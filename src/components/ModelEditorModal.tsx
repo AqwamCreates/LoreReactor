@@ -192,6 +192,11 @@ export function ModelEditorModal({
 
     const [errors, setErrors] = useState<{ name?: string; model?: string }>({});
 
+    // Cost fields
+    const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
+    const [cacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
+    const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
+
     // Use the VRAM estimation hook
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
         modelName: name || modelPath,
@@ -219,6 +224,9 @@ export function ModelEditorModal({
                 setContextLength(existingModel.contextLength || 8192);
                 setModelPath(existingModel.model || '');
                 setMmprojPath(existingModel.mmproj || '');
+                setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
+                setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
+                setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
                 
                 if (existingModel.parameters) {
                     const params = existingModel.parameters;
@@ -257,6 +265,9 @@ export function ModelEditorModal({
                 setContextLength(8192);
                 setModelPath('');
                 setMmprojPath('');
+                setCacheHitCostPerMillion(0);
+                setCacheMissCostPerMillion(0);
+                setOutputGenerationCostPerMillion(0);
                 setSettings({ ...DEFAULT_SETTINGS });
             }
             setErrors({});
@@ -368,6 +379,9 @@ export function ModelEditorModal({
             model: modelPath.trim(),
             mmproj: mmprojPath.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
+            cacheHitCostPerOneMillionOfTokens: cacheHitCostPerMillion,
+            cacheMissCostPerOneMillionOfTokens: cacheMissCostPerMillion,
+            outputGenerationCostPerOneMillionOfTokens: outputGenerationCostPerMillion,
             firstCreatedTimestamp: existingModel?.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: now,
         };
@@ -827,7 +841,7 @@ export function ModelEditorModal({
                     </div>
 
                     {/* Other Options */}
-                    <div style={{ ...sectionStyle, marginBottom: '0' }}>
+                    <div style={sectionStyle}>
                         <div style={sectionTitleStyle}>Other Options</div>
                         
                         <div style={rowStyle}>
@@ -987,6 +1001,63 @@ export function ModelEditorModal({
                                 />
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>Non-Uniform Memory Access</span>
                             </label>
+                        </div>
+                    </div>
+
+                    {/* Cost */}
+                    <div style={sectionStyle}>
+                        <div style={sectionTitleStyle}>Cost</div>
+                        
+                        <div style={rowStyle}>
+                            <div>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Hit Cost (Per 1 Million Of Tokens)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={cacheHitCostPerMillion}
+                                    onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)}
+                                    style={inputStyle}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Miss Cost (Per 1 Million Of Tokens)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={cacheMissCostPerMillion}
+                                    onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)}
+                                    style={inputStyle}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+
+                        <div style={fullRowStyle}>
+                            <div>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Output Generation Cost (Per 1 Million Of Tokens)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={outputGenerationCostPerMillion}
+                                    onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)}
+                                    style={inputStyle}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{
+                            fontSize: '0.65rem',
+                            color: 'var(--text-h)',
+                            opacity: 0.5,
+                            marginTop: '4px',
+                            fontStyle: 'italic',
+                        }}>
+                            💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.
                         </div>
                     </div>
                 </div>

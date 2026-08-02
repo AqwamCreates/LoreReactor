@@ -76,6 +76,9 @@ export interface LanguageModel {
   model: string;
   mmproj?: string;
   parameters?: Record<string, unknown>;
+  cacheHitCostPerOneMillionOfTokens?: number,
+  cacheMissCostPerOneMillionOfTokens?: number,
+  outputGenerationCostPerOneMillionOfTokens?: number,
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
