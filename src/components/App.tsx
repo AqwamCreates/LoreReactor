@@ -1,4 +1,4 @@
-// src/App.tsx
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import type { ChatData } from '../types';
@@ -26,7 +26,7 @@ function App() {
     generationSpeed,
     messageCount,
     tokenCount,
-    maxNumberOfContextTokens
+    maximumNumberOfTokens
   } = useChatSession();
 
   // --- UI State ---
@@ -172,7 +172,7 @@ function App() {
           generationSpeed={generationSpeed} // Placeholder, replace with actual speed if available
           messageCount={messageCount}
           tokenCount={tokenCount} // Placeholder, replace with actual token count if available
-          maximumNumberOfTokens={maxNumberOfContextTokens} // Placeholder, replace with actual max tokens if available
+          maximumNumberOfTokens={maximumNumberOfTokens} // Placeholder, replace with actual max tokens if available
         />
         
         {/* Navigation Row */}

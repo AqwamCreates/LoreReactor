@@ -4,7 +4,7 @@ import type { Character, ChatData } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../objects/ChatOrchestrator';
-import { LargeLanguageModelInferenceEngine, type TokenStats } from '../objects/LargeLanguageModelInferenceEngine';
+import { LargeLanguageModelInferenceEngine } from '../objects/LargeLanguageModelInferenceEngine';
 import { v4 as uuidv4 } from 'uuid';
 
 const engine = new LargeLanguageModelInferenceEngine();
@@ -21,8 +21,8 @@ export function useChatSession() {
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     
-    // ✅ New Stats State
-    const [generationSpeed, setGenerationSpeed] = useState<number>(0); // ms per token
+    // Stats State
+    const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -48,7 +48,7 @@ export function useChatSession() {
         data: ChatData, 
         character: Character, 
         signal: AbortSignal, 
-        onTokenStats?: (stats: TokenStats) => void
+        onToken?: (text: string) => void
     ): Promise<ChatData | null> => {
         let imageData: string | null = null;
         if (character.image) {
@@ -59,11 +59,11 @@ export function useChatSession() {
         const requestBody = prepareRequestBody(data, character, imageData);
 
         try {
+            // Pass a wrapper to capture speed stats AND forward text
             const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
-                // ✅ Receive stats from engine
-                onToken: (stats: TokenStats) => {
-                    setGenerationSpeed(stats.msPerToken); // Update global speed state
-                    if (onTokenStats) onTokenStats(stats); // Pass text up for UI streaming
+                onToken: (stats) => {
+                    setGenerationSpeed(stats.msPerToken);
+                    if (onToken) onToken(stats.fullText);
                 }
             });
             
@@ -156,7 +156,7 @@ export function useChatSession() {
         setIsLoading(false);
         setStreamingCharacter(null);
         setStreamingText("");
-        setGenerationSpeed(0); // Reset speed on stop
+        setGenerationSpeed(0);
     }, []);
 
     const sendMessage = useCallback(async (text: string) => {
@@ -166,7 +166,7 @@ export function useChatSession() {
         abortControllerRef.current = controller;
         
         setIsLoading(true);
-        setStreamingText("");
+        setStreamingText(""); // ✅ Clear immediately
         setGenerationSpeed(0);
 
         try {
@@ -174,16 +174,15 @@ export function useChatSession() {
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
 
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onTokenStats: (s: TokenStats)=>void) => 
-                handleServerResponse(data, char, signal, onTokenStats);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
+                handleServerResponse(data, char, signal, onToken);
 
             const updatedData = await runTurnSequence(
                 tempData, 
                 executor, 
                 controller, 
                 setStreamingCharacter, 
-                // ✅ Adapt the callback to just update text state
-                (stats: TokenStats) => setStreamingText(stats.fullText),
+                setStreamingText, // Pass the setter directly
                 setChatData 
             );
 
@@ -201,37 +200,152 @@ export function useChatSession() {
             setIsLoading(false);
             setStreamingText("");
             setStreamingCharacter(null);
-            // Keep the last speed visible for a moment or reset? Let's keep it.
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
-    // ... (regenerateLastAI and regenerateLastProtagonist follow similar pattern, omitted for brevity but should pass the stats callback) ...
-    // For brevity, assuming you copy the logic from sendMessage into these two functions regarding the executor.
-
+    // ✅ FIXED REGENERATE LAST AI
     const regenerateLastAI = useCallback(async () => {
-        // ... (Your existing logic) ...
-        // Just ensure when calling handleServerResponse, you pass the stats updater if you want speed tracking during regen
-        // Example: handleServerResponse(..., (stats) => setStreamingText(stats.fullText))
-        // Note: You might want to duplicate the speed logic here or refactor runTurnSequence to handle it globally.
-        // For now, speed tracking works best in sendMessage.
-        
-        // Placeholder implementation to avoid errors in this snippet:
         if (!chatData || isLoading) return;
-        // ... implement similar to sendMessage ...
-    }, [chatData, isLoading, handleServerResponse]);
-    
-    const regenerateLastProtagonist = useCallback(async () => {
-         // ... similar to above ...
-         if (!chatData || isLoading) return;
+        const history = chatData.chatMessageHistory;
+        
+        // Find the start of the AI block to regenerate
+        let trimIndex = history.length;
+        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+            trimIndex--;
+        }
+        if (trimIndex === 0 || trimIndex === history.length) return;
+
+        const oldMessages = history.slice(trimIndex);
+        
+        // 1. Delete old files
+        try {
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
+        } catch (err) { console.error("Delete failed:", err); }
+
+        // 2. Create trimmed state (up to the user message)
+        const trimmedData = { 
+            ...chatData, 
+            chatMessageHistory: history.slice(0, trimIndex), 
+            last_updated_timestamp: Date.now() 
+        };
+        
+        setChatData(trimmedData);
+        setIsLoading(true);
+        setStreamingText("");
+        setStreamingCharacter(null);
+        setGenerationSpeed(0);
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        try {
+            let currentData = trimmedData;
+            
+            // 3. Identify unique responders in order
+            const responders = oldMessages
+                .map(m => m.character)
+                .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
+
+            // 4. Loop and generate
+            for (const responder of responders) {
+                if (controller.signal.aborted) break;
+                
+                setStreamingCharacter(responder);
+                
+                // ✅ CRITICAL FIX: Pass the UPDATED currentData into the handler
+                // This ensures the prompt includes the previously regenerated messages in this loop
+                const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText);
+                
+                if (!result) break;
+                
+                // Update currentData for the NEXT iteration
+                currentData = result;
+                
+                // Optional: Small delay to prevent UI stuttering if generations are instant
+                // await new Promise(r => setTimeout(r, 50)); 
+            }
+
+            // 5. Final Save
+            if (!controller.signal.aborted) {
+                await saveRawChatData(currentData);
+                setChatData(currentData);
+            }
+        } catch (err) {
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Regen failed:", err);
+            }
+        } finally {
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
+        }
     }, [chatData, isLoading, handleServerResponse]);
 
-    // ✅ Calculate Context Tokens
+    // ✅ FIXED REGENERATE LAST PROTAGONIST
+    const regenerateLastProtagonist = useCallback(async () => {
+        if (!chatData || isLoading) return;
+        const history = chatData.chatMessageHistory;
+        
+        let trimIndex = history.length;
+        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+            trimIndex--;
+        }
+        if (trimIndex === 0 || trimIndex === history.length) return;
+
+        const oldMessages = history.slice(trimIndex);
+        try {
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id)));
+        } catch (err) { console.error("Delete failed:", err); }
+
+        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), last_updated_timestamp: Date.now() };
+        setChatData(trimmedData);
+        setIsLoading(true);
+        setStreamingText("");
+        setStreamingCharacter(null);
+        setGenerationSpeed(0);
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        try {
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
+                handleServerResponse(data, char, signal, onToken);
+
+            const updatedData = await runTurnSequence(
+                trimmedData, 
+                executor, 
+                controller, 
+                setStreamingCharacter, 
+                setStreamingText,
+                setChatData
+            );
+
+            if (!controller.signal.aborted && updatedData) {
+                setChatData(updatedData);
+            }
+        } catch (err) {
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Regen failed:", err);
+            }
+        } finally {
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
+        }
+    }, [chatData, isLoading, handleServerResponse]);
+
+    // Calculate Stats
     const currentTokenCount = chatData 
         ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0)
         : 0;
     
-    // Estimate Max Context (e.g., 4096 or from model config)
-    const maxContextTokens = 4096; 
+    const maximumNumberOfTokens = 4096; 
 
     return {
         chatData,
@@ -247,10 +361,9 @@ export function useChatSession() {
         regenerateLastProtagonist,
         messageEndRef,
         parentChatMessageIds,
-        // ✅ Expose Stats
         generationSpeed,
         messageCount: chatData?.chatMessageHistory.length || 0,
         tokenCount: currentTokenCount,
-        maxContextTokens
+        maximumNumberOfTokens
     };
 }
