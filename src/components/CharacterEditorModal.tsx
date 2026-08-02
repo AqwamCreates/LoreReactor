@@ -5,6 +5,10 @@ import { uploadCharacterImage } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import './main.css';
 
+const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
+const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
+const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
+
 interface CharacterEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -182,13 +186,10 @@ export function CharacterEditorModal({
             }
         } else {
             // For new characters: use defaults if invalid or -1
-            const DEFAULT_IW = 1.2;
-            const DEFAULT_CP = 0.5;
-            const DEFAULT_MS = 4;
 
-            finalIW = iwValid ? rawIW : DEFAULT_IW;
-            finalCP = cpValid ? rawCP : DEFAULT_CP;
-            finalMS = msValid ? rawMS : DEFAULT_MS;
+            finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT_VALUE;
+            finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY_VALUE;
+            finalMS = msValid ? rawMS : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
 
             // If all values are still defaults, try auto-detection
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
