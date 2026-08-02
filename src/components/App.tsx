@@ -6,6 +6,7 @@ import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '.
 import { deleteRawChatData, loadAllRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
+import { ChatStatisticsBar } from './ChatStatisticsBar';
 import './App.css';
 
 function App() {
@@ -141,7 +142,7 @@ function App() {
     return (
       <div className="loading-screen">
         <h2>No Active Chat</h2>
-        <button onClick={() => setIsChatListOpen(true)} className="send-button counter">Open Chat List</button>
+        <button type="button" onClick={() => setIsChatListOpen(true)} className="send-button counter">Open Chat List</button>
       </div>
     );
   }
@@ -155,15 +156,28 @@ function App() {
   return (
     <div className="chat-container">
       
-      {/* === TOP HEADER NAVIGATION === */}
+      {/* === TOP HEADER === */}
       <header className="app-header">
-        <div className="header-title">{chatData.title}</div>
+        {/* Title Row */}
+        <div className="header-title-row">
+          <div className="header-title">{chatData.title}</div>
+        </div>
+        
+        {/* Stats Bar - Between title and nav */}
+        <ChatStatisticsBar 
+          generationSpeed={100} // Placeholder, replace with actual speed if available
+          messageCount={chatData.chatMessageHistory.length}
+          tokenCount={1000} // Placeholder, replace with actual token count if available
+          maximumNumberOfTokens={1000} // Placeholder, replace with actual max tokens if available
+        />
+        
+        {/* Navigation Row */}
         <nav className="header-nav">
-          <button className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
-          <button className="nav-btn" disabled>🎭 Characters</button>
-          <button className="nav-btn" disabled>📜 Instructions</button>
-          <button className="nav-btn" disabled>🎚️ Samplers</button>
-          <button className="nav-btn" disabled>🛑 Stop Patterns</button>
+          <button type="button" className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
+          <button type="button" className="nav-btn" disabled>🎭 Characters</button>
+          <button type="button" className="nav-btn" disabled>📜 Instructions</button>
+          <button type="button" className="nav-btn" disabled>🎚️ Samplers</button>
+          <button type="button" className="nav-btn" disabled>🛑 Stop Patterns</button>
         </nav>
       </header>
 
@@ -265,13 +279,13 @@ function App() {
 
       {/* === BOTTOM CONTEXT BAR (Buttons Only) === */}
       <div className="context-bar">
-        <button className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
+        <button type="button" className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
           👥 Participants ({chatData.participants.length})
         </button>
-        <button className="context-btn" onClick={handleManageInstructions} title="Manage Instructions (Coming Soon)">
+        <button type="button" className="context-btn" onClick={handleManageInstructions} title="Manage Instructions (Coming Soon)">
           📜 Instructions ({chatData.instructions?.length || 0})
         </button>
-        <button className="context-btn" onClick={handleSearch} title="Search Messages (Coming Soon)">
+        <button type="button" className="context-btn" onClick={handleSearch} title="Search Messages (Coming Soon)">
           🔍 Search
         </button>
       </div>
@@ -305,7 +319,7 @@ function App() {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Chat Sessions</h2>
-              <button className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
+              <button type="button" className="close-btn" onClick={() => setIsChatListOpen(false)}>×</button>
             </div>
             <div className="modal-body">
               {allChats.length === 0 ? (
@@ -324,7 +338,7 @@ function App() {
                             {isBranch && <div className="chat-item-sub">Branch of {chat.parentChatDataId.substring(0,8)}...</div>}
                           </div>
                         </div>
-                        <button className="delete-chat-btn" onClick={(e) => handleDeleteChat(e, chat.id)} title="Delete Chat">🗑️</button>
+                        <button type="button" className="delete-chat-btn" onClick={(e) => handleDeleteChat(e, chat.id)} title="Delete Chat">🗑️</button>
                       </li>
                     );
                   })}
