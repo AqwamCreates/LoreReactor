@@ -194,7 +194,7 @@ export function ModelEditorModal({
 
     // Use the VRAM estimation hook
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
-        modelName: name || modelPath || '7B',
+        modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
         cacheType: settings.cache_type,
         contextSize: settings.ctx_size || 8192,
