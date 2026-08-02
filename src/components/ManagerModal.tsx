@@ -1,11 +1,11 @@
-import React from 'react';
+import type React from 'react';
 import './App.css';
 
 interface ManagerItem {
-    id: string;
-    name: string;
-    description?: string;
-    last_updated_timestamp?: number;
+  id: string;
+  name: string;
+  description?: string;
+  last_updated_timestamp?: number;
 }
 
 interface ManagerModalProps<T extends ManagerItem> {
@@ -26,6 +26,12 @@ interface ManagerModalProps<T extends ManagerItem> {
     onToggleSelect?: (id: string) => void;
     onConfirmSelection?: () => void;
     confirmButtonText?: string;
+
+    // ✅ New Special Action Props (e.g., Set Protagonist)
+    specialActionIcon?: React.ReactNode;
+    onSpecialAction?: (id: string) => void;
+    specialActionTooltip?: (item: T) => string;
+  activeSpecialActionId?: string; // To highlight the current selection
 }
 
 export function ManagerModal<T extends ManagerItem>({
@@ -43,7 +49,11 @@ export function ManagerModal<T extends ManagerItem>({
     selectedIds = [],
     onToggleSelect,
     onConfirmSelection,
-    confirmButtonText = "Confirm Selection"
+    confirmButtonText = "Confirm Selection",
+    specialActionIcon,
+    onSpecialAction,
+    specialActionTooltip,
+    activeSpecialActionId
     }: ManagerModalProps<T>) {
     if (!isOpen) return null;
 
@@ -92,18 +102,19 @@ export function ManagerModal<T extends ManagerItem>({
                 <p className="empty-state">{emptyMessage}</p>
             ) : (
                 <ul className="chat-list">
-                {sortedItems.map((item, index) => {
+                {sortedItems.map((item) => {
                     const selectedIndex = selectedIds.indexOf(item.id);
                     const isSelected = selectedIndex !== -1;
+                    const isSpecialActive = activeSpecialActionId === item.id;
                     
                     return (
                     <li 
                         key={item.id} 
-                        className={`chat-list-item ${isSelected ? 'selected-item' : ''}`} 
+                        className={`chat-list-item ${isSelected ? 'selected-item' : ''} ${isSpecialActive ? 'special-active-item' : ''}`} 
                         onClick={() => selectionMode && onToggleSelect ? onToggleSelect(item.id) : onSelect?.(item)}
                         style={{ cursor: 'pointer', justifyContent: 'space-between', alignItems: 'center' }}
                     >
-                        {/* Left Content (Text Only, No Icon) */}
+                        {/* Left Content (Text Only) */}
                         <div className="chat-item-main" style={{ flex: 1, minWidth: 0 }}>
                         <div className="chat-item-info" style={{ width: '100%', textAlign: 'left' }}>
                             <div className="chat-item-title" style={{ textAlign: 'left' }}>{item.name}</div>
@@ -115,8 +126,34 @@ export function ManagerModal<T extends ManagerItem>({
                         </div>
                         </div>
                         
-                        {/* Right Action (Number Badge or Delete) */}
-                        <div style={{ display: 'flex', alignItems: 'center', marginLeft: '15px', flexShrink: 0 }}>
+                        {/* Right Actions Container */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '15px', flexShrink: 0 }}>
+                        
+                        {/* ✅ Special Action Icon (e.g., Star for Protagonist) */}
+                        {specialActionIcon && onSpecialAction && (
+                            <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onSpecialAction(item.id); }}
+                            title={specialActionTooltip ? specialActionTooltip(item) : 'Set Active'}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '1.2rem',
+                                color: isSpecialActive ? '#ffd700' : 'var(--border)', // Gold if active
+                                transition: 'color 0.2s',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '4px'
+                            }}
+                            onMouseEnter={(e) => { if (!isSpecialActive) e.currentTarget.style.color = 'var(--text-h)'; }}
+                            onMouseLeave={(e) => { if (!isSpecialActive) e.currentTarget.style.color = 'var(--border)'; }}
+                            >
+                            {specialActionIcon}
+                            </button>
+                        )}
+
+                        {/* Selection Number or Delete Button */}
                         {selectionMode ? (
                             <div style={{ 
                             width: '24px', 

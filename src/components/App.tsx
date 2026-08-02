@@ -26,12 +26,18 @@ function App() {
   const [pendingParticipantIds, setPendingParticipantIds] = useState<string[]>([]);
   
   // Instructions
-  const [isInstListOpen, setIsInstListOpen] = useState(false); // Global List
-  const [isInstManageMode, setIsInstManageMode] = useState(false); // Chat Specific
+  const [isInstListOpen, setIsInstListOpen] = useState(false); // Now used for Default Selection
+  const [isInstManageMode, setIsInstManageMode] = useState(false); // Used for Chat Specific Selection
   const [pendingInstructionIds, setPendingInstructionIds] = useState<string[]>([]);
   
+  // ✅ Global Default Instructions State
+  const [defaultInstructionIds, setDefaultInstructionIds] = useState<string[]>([]);
+
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
+
+  // ✅ Global Default Character State
+  const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
 
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
@@ -46,9 +52,20 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Load Data for Modals ---
+  // --- Load Data & Defaults ---
   useEffect(() => {
     const loadData = async () => {
+      // Load Defaults from LocalStorage
+      const storedDefaultChar = localStorage.getItem('defaultCharacterId');
+      if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
+
+      const storedDefaultInsts = localStorage.getItem('defaultInstructionIds');
+      if (storedDefaultInsts) {
+        try {
+          setDefaultInstructionIds(JSON.parse(storedDefaultInsts));
+        } catch (e) { console.error("Failed to parse default instructions", e); }
+      }
+
       if (isChatListOpen) {
         const chats = await loadAllRawChatData();
         setAllChats(chats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
@@ -57,7 +74,6 @@ function App() {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      // ✅ Load instructions if EITHER global list OR manage mode is open
       if (isInstListOpen || isInstManageMode) {
         const insts = await loadAllRawInstructions();
         setAllInstructions(insts);
@@ -85,8 +101,27 @@ function App() {
     if (selected) { setChatData(selected); setCurrentCharacter(selected.protagonist); setIsChatListOpen(false); }
   };
   const handleNewChat = () => {
-    const charToUse = currentCharacter || (allChats.length > 0 ? allChats[0].protagonist : null);
-    if (charToUse) { startNewChat(charToUse); setIsChatListOpen(false); }
+    let charToUse = currentCharacter;
+    if (!charToUse && defaultCharacterId) {
+        charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
+    }
+    if (!charToUse && allChats.length > 0) {
+        charToUse = allChats[0].protagonist;
+    }
+    
+    if (charToUse) { 
+        // ✅ Apply Default Instructions to new chat
+        const defaultInsts = allInstructions.filter(i => defaultInstructionIds.includes(i.id));
+        startNewChat({ ...charToUse }); // Start with char
+        // Note: startNewChat creates a blank chat. We might need to update it immediately or modify startNewChat logic.
+        // For simplicity, let's assume we just set the character. Instructions can be added via manager.
+        // OR: We can modify the created chat immediately:
+        const newChatData = { ...(chatData || {}), protagonist: charToUse, participants: [charToUse], instructions: defaultInsts }; 
+        // Actually, startNewChat handles creation. Let's just rely on the user adding instructions or update startNewChat in hook.
+        // For now, let's just start the chat. The user can quickly add defaults via the top bar if needed.
+        startNewChat(charToUse); 
+        setIsChatListOpen(false); 
+    }
   };
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -113,6 +148,16 @@ function App() {
   const handleDeleteCharacter = async (id: string) => {
     if (!window.confirm("Delete permanently?")) return;
     setAllCharacters(prev => prev.filter(c => c.id !== id));
+  };
+
+  // ✅ Set Default Character Handler
+  const handleSetDefaultCharacter = (charId: string) => {
+    setDefaultCharacterId(charId);
+    localStorage.setItem('defaultCharacterId', charId);
+    if (!isParticipantsMode) {
+        const char = allCharacters.find(c => c.id === charId);
+        if (char) setCurrentCharacter(char);
+    }
   };
 
   // 3. Participant Multi-Select
@@ -144,26 +189,40 @@ function App() {
     setIsParticipantsMode(false);
   };
 
-  // ✅ 4. Instruction Handlers (Split Logic)
-  
-  // A. Global List (Top Nav) - Just view/select single (future)
-  const handleSelectInstruction = (inst: Instruction) => {
-    if (!isInstManageMode) {
-        alert(`Selected: ${inst.name} (Future: Add to favorites)`);
-        setIsInstListOpen(false);
+  // ✅ Set Chat Protagonist Handler
+  const handleSetChatProtagonist = (charId: string) => {
+    if (!chatData) return;
+    const char = allCharacters.find(c => c.id === charId);
+    if (!char) return;
+
+    const updatedChat = { ...chatData, protagonist: char };
+    if (!updatedChat.participants.find(p => p.id === charId)) {
+        updatedChat.participants = [char, ...updatedChat.participants];
+    }
+    
+    saveRawChatData(updatedChat);
+    setChatData(updatedChat);
+    setCurrentCharacter(char);
+    if (isParticipantsMode && !pendingParticipantIds.includes(charId)) {
+        setPendingParticipantIds([charId, ...pendingParticipantIds]);
     }
   };
-  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
-  const handleDeleteInstruction = async (id: string) => {
-    if (!window.confirm("Delete permanently?")) return;
-    setAllInstructions(prev => prev.filter(i => i.id !== id));
+
+  // 4. Instruction Handlers (Unified Multi-Select)
+  
+  // A. Top Nav: Open Default Selection Mode
+  const handleOpenDefaultInstructions = () => {
+    setPendingInstructionIds(defaultInstructionIds);
+    setIsInstListOpen(true); // Reusing isInstListOpen for Default Selection
+    setIsInstManageMode(false);
   };
 
-  // B. Manage Mode (Context Bar) - Multi-select for current chat
+  // B. Context Bar: Open Chat Specific Selection Mode
   const handleOpenInstructionsManage = () => {
     if (!chatData) return;
     setPendingInstructionIds(chatData.instructions?.map(i => i.id) || []);
     setIsInstManageMode(true);
+    setIsInstListOpen(false);
   };
 
   const handleToggleInstructionSelection = (instId: string) => {
@@ -173,6 +232,14 @@ function App() {
     });
   };
 
+  // ✅ Confirm Default Instructions (Top Nav)
+  const handleConfirmDefaultInstructions = async () => {
+    setDefaultInstructionIds(pendingInstructionIds);
+    localStorage.setItem('defaultInstructionIds', JSON.stringify(pendingInstructionIds));
+    setIsInstListOpen(false);
+  };
+
+  // ✅ Confirm Chat Instructions (Context Bar)
   const handleConfirmInstructions = async () => {
     if (!chatData) return;
     const newInstructions = allInstructions.filter(i => pendingInstructionIds.includes(i.id));
@@ -180,6 +247,12 @@ function App() {
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
     setIsInstManageMode(false);
+  };
+
+  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
+  const handleDeleteInstruction = async (id: string) => {
+    if (!window.confirm("Delete permanently?")) return;
+    setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
   // 5. Sampler Handlers
@@ -253,8 +326,8 @@ function App() {
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
-            {/* ✅ Top Nav: Opens GLOBAL List */}
-            <button type="button" className="nav-btn" onClick={() => { setIsInstManageMode(false); setIsInstListOpen(true); }}>📜 Instructions</button>
+            {/* ✅ Top Nav: Opens Default Instruction Selection */}
+            <button type="button" className="nav-btn" onClick={handleOpenDefaultInstructions}>📜 Instructions</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
           </nav>
@@ -324,7 +397,7 @@ function App() {
 
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
-        {/* ✅ Context Bar: Opens MANAGE Mode */}
+        {/* ✅ Context Bar: Opens Chat Specific Selection */}
         <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
         <button type="button" className="context-btn" onClick={() => alert("Search coming soon!")}>🔍 Search</button>
       </div>
@@ -362,27 +435,32 @@ function App() {
           onToggleSelect={handleToggleParticipantSelection}
           onConfirmSelection={handleConfirmParticipants}
           confirmButtonText="Update Participants"
+          
+          specialActionIcon="★"
+          onSpecialAction={isParticipantsMode ? handleSetChatProtagonist : handleSetDefaultCharacter}
+          specialActionTooltip={(c) => isParticipantsMode ? `set ${c.name} as the protagonist` : `set ${c.name} as the default for new chats`}
+          activeSpecialActionId={isParticipantsMode ? chatData?.protagonist.id : defaultCharacterId || undefined}
         />
       )}
 
-      {/* ✅ Instructions (Split Logic) */}
+      {/* ✅ Instructions (Unified Multi-Select Logic) */}
       {(isInstListOpen || isInstManageMode) && (
         <ManagerModal
-          title={isInstManageMode ? "Manage Instructions" : "All Instructions"}
+          title={isInstManageMode ? "Manage Instructions" : "Default Instructions"}
           items={allInstructions}
           isOpen={isInstListOpen || isInstManageMode}
           onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
-          onSelect={isInstManageMode ? undefined : handleSelectInstruction}
-          onDelete={isInstManageMode ? undefined : handleDeleteInstruction}
+          onSelect={undefined} // Always multi-select now
+          onDelete={undefined} // No delete in select mode
           onCreateNew={handleCreateInstruction}
           renderSubtext={(i) => `${i.content?.substring(0, 50)}...`}
           emptyMessage="No instructions found."
           actionLabel="Delete"
-          selectionMode={isInstManageMode}
+          selectionMode={true} // Always true for both now
           selectedIds={pendingInstructionIds}
           onToggleSelect={handleToggleInstructionSelection}
-          onConfirmSelection={handleConfirmInstructions}
-          confirmButtonText="Update Instructions"
+          onConfirmSelection={isInstManageMode ? handleConfirmInstructions : handleConfirmDefaultInstructions}
+          confirmButtonText={isInstManageMode ? "Update Instructions" : "Set as Default"}
         />
       )}
 
