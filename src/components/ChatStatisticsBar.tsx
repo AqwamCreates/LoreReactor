@@ -66,7 +66,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
             </div>
             <div className="chat-stat-detail-row">
                 <div className="chat-stat-detail-label">Generation Speed:</div>
-                <div className="chat-stat-detail-value">{generationSpeed.toFixed(1)} ms/token</div>
+                <div className="chat-stat-detail-value">{generationSpeed.toFixed(2)} ms/token</div>
             </div>
             <div className="chat-stat-detail-row">
                 <div className="chat-stat-detail-label">Message Count:</div>
@@ -74,7 +74,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
             </div>
             <div className="chat-stat-detail-row">
                 <div className="chat-stat-detail-label">Avg Tokens/Message:</div>
-                <div className="chat-stat-detail-value">{messageCount > 0 ? Math.round(tokenCount / messageCount) : 0} tokens</div>
+                <div className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(2) : 0} tokens</div>
             </div>
             </div>
         )}

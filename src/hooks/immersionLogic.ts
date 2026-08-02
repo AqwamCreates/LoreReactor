@@ -23,8 +23,6 @@ export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryInde
         const character = chatMessage.character
 
         if (character.id === characterId) {
-        console.log(`2 Found previous message from character ${character.name} at index ${i}. isNameRevealed: ${chatMessage.isNameRevealed}`)
-        console.log(`targetChatMessage: ${JSON.stringify(targetChatMessage)}`)
         // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
         if (chatMessage.isNameRevealed && targetChatMessage) {return character.name}
         break; 
