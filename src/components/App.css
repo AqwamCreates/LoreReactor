@@ -828,3 +828,213 @@
   opacity: 0.6;
   padding: 20px;
 }
+
+/* src/App.css - Chat Stats Bar (namespaced) */
+
+.chat-stats-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(2px, 0.8vw, 8px) clamp(8px, 1.5vw, 20px);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: clamp(0.60rem, 1.2vw, 0.85rem);
+  color: var(--text-h);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  min-height: clamp(20px, 4vw, 40px);
+  user-select: none;
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chat-stats-bar:hover {
+  background: var(--social-bg);
+  border-color: var(--accent-border);
+}
+
+.chat-stats-bar.chat-stats-warning {
+  border-color: orange;
+  background: rgba(255, 165, 0, 0.05);
+}
+
+.chat-stats-bar.chat-stats-warning:hover {
+  background: rgba(255, 165, 0, 0.1);
+}
+
+.chat-stat-context-fill {
+  background: #ff4444;
+  animation: chat-stats-pulse 2s infinite; /* ← Move animation here */
+}
+
+.chat-stat-speed-value {
+  animation: chat-stats-pulse 2s infinite; /* ← Move animation here */
+}
+
+.chat-stats-items {
+  display: flex;
+  gap: clamp(12px, 2vw, 24px);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.chat-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.chat-stat-label {
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+
+.chat-stat-value {
+  font-weight: bold;
+  min-width: clamp(20px, 2vw, 40px);
+  text-align: center;
+}
+
+/* Token display specific */
+.chat-stat-percentage {
+  min-width: clamp(28px, 3vw, 44px);
+  color: var(--accent);
+}
+
+.chat-stat-tokens {
+  min-width: clamp(40px, 5vw, 80px);
+  font-weight: 600;
+}
+
+.chat-stat-max {
+  opacity: 0.5;
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.chat-stat-separator {
+  opacity: 0.3;
+  margin: 0 2px;
+}
+
+/* Details tooltip */
+.chat-stats-details {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+  width: 100%; /* ← Match parent width */
+  max-width: 100%; /* ← Don't exceed parent */
+  font-size: 0.75rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box; /* ← Include padding in width */
+}
+
+.chat-stat-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0px;
+  font-size: clamp(0.3rem, 1.2vw, 0.65rem); /* ← Smaller on mobile, larger on desktop */
+}
+
+.chat-stat-detail-label {
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.chat-stat-detail-value {
+  font-weight: bold;
+  text-align: right;
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
+}
+
+@keyframes chat-stats-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+  .chat-stats-bar {
+    padding: 2px 6px;
+    gap: 4px;
+    min-height: 20px;
+    font-size: 0.5rem;
+  }
+  
+  .chat-stats-items {
+    gap: 6px;
+  }
+  
+  .chat-stat-context-bar {
+    width: 24px;
+  }
+  
+  .chat-stat-value {
+    min-width: 12px;
+  }
+  
+  .chat-stat-percentage {
+    min-width: 20px;
+  }
+  
+  .chat-stat-tokens {
+    min-width: 28px;
+    font-size: 0.9em;
+  }
+  
+  .chat-stat-max {
+    font-size: 0.8em;
+  }
+  
+  .chat-stats-details {
+    right: auto;
+    left: 0;
+    min-width: 160px;
+    font-size: 0.6rem;
+    padding: 8px 12px;
+  }
+}
+
+.chat-stat-context-bar {
+  display: inline-block;
+  width: clamp(40px, 6vw, 80px);
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin: 0 4px;
+}
+
+.chat-stat-context-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.5s ease;
+  border-radius: 2px;
+}
+
+.chat-stats-bar.chat-stats-warning .chat-stat-context-fill {
+  background: orange;
+}
+
+.chat-stats-bar.chat-stats-critical .chat-stat-context-fill {
+  background: #ff4444;
+}
