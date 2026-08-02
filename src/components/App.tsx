@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import type { ChatData } from '../types';
@@ -162,27 +161,28 @@ function App() {
       
       {/* === TOP HEADER === */}
       <header className="app-header">
-        {/* Title Row */}
-        <div className="header-title-row">
-          <div className="header-title">{chatData.title}</div>
+        <div className="header-content">
+          
+          {/* Top Row: Title + Stats (Side by Side on Mobile) */}
+          <div className="header-top">
+            <div className="header-title">{chatData.title}</div>
+            <ChatStatisticsBar 
+              generationSpeed={generationSpeed}
+              messageCount={messageCount}
+              tokenCount={tokenCount}
+              maximumNumberOfTokens={maximumNumberOfTokens}
+            />
+          </div>
+          
+          {/* Bottom Row: Navigation (Full Width Below) */}
+          <nav className="header-nav">
+            <button type="button" className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
+            <button type="button" className="nav-btn" disabled>🎭 Characters</button>
+            <button type="button" className="nav-btn" disabled>📜 Instructions</button>
+            <button type="button" className="nav-btn" disabled>🎚️ Samplers</button>
+            <button type="button" className="nav-btn" disabled>🛑 Stop Patterns</button>
+          </nav>
         </div>
-        
-        {/* Stats Bar - Between title and nav */}
-        <ChatStatisticsBar 
-          generationSpeed={generationSpeed} // Placeholder, replace with actual speed if available
-          messageCount={messageCount}
-          tokenCount={tokenCount} // Placeholder, replace with actual token count if available
-          maximumNumberOfTokens={maximumNumberOfTokens} // Placeholder, replace with actual max tokens if available
-        />
-        
-        {/* Navigation Row */}
-        <nav className="header-nav">
-          <button type="button" className="nav-btn active" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
-          <button type="button" className="nav-btn" disabled>🎭 Characters</button>
-          <button type="button" className="nav-btn" disabled>📜 Instructions</button>
-          <button type="button" className="nav-btn" disabled>🎚️ Samplers</button>
-          <button type="button" className="nav-btn" disabled>🛑 Stop Patterns</button>
-        </nav>
       </header>
 
       <div className="chat-history">
@@ -243,7 +243,7 @@ function App() {
                           <div className="mass-delete-confirm-bar">
                             <span style={{fontSize: '0.8em', marginRight: '5px'}}>Delete from here?</span>
                             <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm" style={{backgroundColor: '#ff4444', color: 'white'}}>Confirm</button>
-                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: '#ccc'}}>Cancel</button>
+                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel" style={{backgroundColor: 'var(--border)', color: 'var(--text-h)', border: '1px solid var(--border)'}}>Cancel</button>
                           </div>
                         ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
                       </div>
@@ -281,7 +281,7 @@ function App() {
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
-      {/* === BOTTOM CONTEXT BAR (Buttons Only) === */}
+      {/* === BOTTOM CONTEXT BAR === */}
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleManageParticipants} title="Manage Participants (Coming Soon)">
           👥 Participants ({chatData.participants.length})
@@ -339,7 +339,7 @@ function App() {
                           <span className="chat-icon">{isBranch ? '🌿' : '💬'}</span>
                           <div className="chat-item-info">
                             <div className="chat-item-title">{chat.title}</div>
-                            {isBranch && <div className="chat-item-sub">Branch of {chat.parentChatDataId.substring(0,8)}...</div>}
+                            {isBranch && chat.parentChatDataId && <div className="chat-item-sub">Branch of {chat.parentChatDataId.substring(0,8)}...</div>}
                           </div>
                         </div>
                         <button type="button" className="delete-chat-btn" onClick={(e) => handleDeleteChat(e, chat.id)} title="Delete Chat">🗑️</button>
