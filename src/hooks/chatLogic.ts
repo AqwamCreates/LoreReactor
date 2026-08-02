@@ -214,8 +214,8 @@ export function createNewChatData(character: Character): ChatData {
         participants: [character],
         contexts: [],
         chatMessageHistory: [],
-        first_created_timestamp: now,
-        last_updated_timestamp: now,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
         parentChatDataId: null,
         parentChatMessageId: null,
     };
@@ -229,13 +229,16 @@ export function createChatMessage(chatData: ChatData, character: Character, text
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
 
+    const now = Date.now()
+
     return {
         id: uuidv4(),
         character: { ...character },
         textContent,
         remainingChatStamina: remainingChatStamina,
         isNameRevealed: isRevealed,
-        timestamp: Date.now(),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
         parentChatMessageId: lastMessageId,
     };
 }
@@ -287,7 +290,7 @@ export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMes
   return {
     ...chatData,
     chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-    last_updated_timestamp: Date.now(),
+    lastUpdatedTimestamp: Date.now(),
   };
 }
 
@@ -330,7 +333,7 @@ export function branchChatMessage(chatData: ChatData, branchPointMessageId: stri
         protagonist: chatData.protagonist,
         participants: chatData.participants,
         chatMessageHistory: chatData.chatMessageHistory.slice(0, branchIndex + 1),
-        first_created_timestamp: currentTimestamp,
-        last_updated_timestamp: currentTimestamp,
+        firstCreatedTimestamp: currentTimestamp,
+        lastUpdatedTimestamp: currentTimestamp,
     };
 }
