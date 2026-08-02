@@ -22,7 +22,11 @@ function App() {
     regenerateLastAI,
     regenerateLastProtagonist,
     messageEndRef,
-    parentChatMessageIds
+    parentChatMessageIds,
+    generationSpeed,
+    messageCount,
+    tokenCount,
+    maxNumberOfContextTokens
   } = useChatSession();
 
   // --- UI State ---
@@ -165,10 +169,10 @@ function App() {
         
         {/* Stats Bar - Between title and nav */}
         <ChatStatisticsBar 
-          generationSpeed={100} // Placeholder, replace with actual speed if available
-          messageCount={chatData.chatMessageHistory.length}
-          tokenCount={1000} // Placeholder, replace with actual token count if available
-          maximumNumberOfTokens={1000} // Placeholder, replace with actual max tokens if available
+          generationSpeed={generationSpeed} // Placeholder, replace with actual speed if available
+          messageCount={messageCount}
+          tokenCount={tokenCount} // Placeholder, replace with actual token count if available
+          maximumNumberOfTokens={maxNumberOfContextTokens} // Placeholder, replace with actual max tokens if available
         />
         
         {/* Navigation Row */}
