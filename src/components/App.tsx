@@ -85,7 +85,7 @@ function App() {
 
       if (isChatListOpen) {
         const chats = await loadAllRawChatData();
-        setAllChats(chats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
+        setAllChats(chats.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp));
       }
       if (isCharListOpen || isParticipantsMode || isCharEditorOpen) {
         const chars = await loadAllRawCharacters();
@@ -144,7 +144,7 @@ function App() {
     if (!window.confirm("Delete this session?")) return;
     await deleteRawChatData(id);
     const updated = await loadAllRawChatData();
-    setAllChats(updated.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
+    setAllChats(updated.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp));
     if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
@@ -739,9 +739,10 @@ function App() {
           onDelete={handleDeleteContext} 
           onCreateNew={() => handleOpenContextEditor()} 
           renderSubtext={(i) => {
-            const contentPreview = i.content?.substring(0, 50) || '';
+            const contentPreview = i.text?.substring(0, 50) || '';
             const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌';
-            return `${hasRegex} ${contentPreview}...`;
+            const hasImages = i.images && i.images.length > 0 ? '🖼️' : '';
+            return `${hasRegex} ${hasImages} ${contentPreview}...`;
           }} 
           emptyMessage="No contexts found." 
           actionLabel="Delete"
