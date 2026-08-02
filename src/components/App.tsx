@@ -9,6 +9,13 @@ import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import './App.css';
 
+// ✅ Mock Extension Interface (Add to types.ts later)
+interface Extension {
+  id: string;
+  name: string;
+  description: string;
+}
+
 function App() {
   const { 
     chatData, setChatData, currentCharacter, setCurrentCharacter,
@@ -27,6 +34,9 @@ function App() {
   // Instructions
   const [isInstListOpen, setIsInstListOpen] = useState(false); // Default List
   const [isInstManageMode, setIsInstManageMode] = useState(false); // Chat List
+
+  // ✅ Extensions
+  const [isExtListOpen, setIsExtListOpen] = useState(false);
   
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
@@ -40,6 +50,14 @@ function App() {
   const [allInstructions, setAllInstructions] = useState<Instruction[]>([]);
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
+  
+  // ✅ Mock Extensions Data
+  const [allExtensions, setAllExtensions] = useState<Extension[]>([
+    { id: 'ext_1', name: 'Auto-Translate', description: 'Translate responses to your language' },
+    { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech synthesis' },
+    { id: 'ext_3', name: 'Sentiment Analysis', description: 'Tag messages with emotional context' },
+    { id: 'ext_4', name: 'Image Generator', description: 'Generate images from scene descriptions' },
+  ]);
   
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -80,12 +98,13 @@ function App() {
         const stops = await loadAllRawStopPatterns();
         setAllStopPatterns(stops);
       }
+      // Extensions are mocked for now, no storage load needed
     };
 
-    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode) {
+    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstManageMode, isExtListOpen]);
 
   // --- Handlers ---
 
@@ -149,7 +168,6 @@ function App() {
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
     
-    // Prevent removing protagonist
     if (charId === chatData.protagonist.id) {
         alert("Cannot remove the protagonist.");
         return;
@@ -165,7 +183,6 @@ function App() {
     }
 
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
-    // Ensure protagonist is always first
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
         newParticipants.unshift(chatData.protagonist);
     }
@@ -185,7 +202,6 @@ function App() {
     if (!char) return;
 
     const updatedChat = { ...chatData, protagonist: char };
-    // Add to participants if missing
     if (!updatedChat.participants.find(p => p.id === charId)) {
         updatedChat.participants = [char, ...updatedChat.participants];
     }
@@ -195,9 +211,7 @@ function App() {
     setCurrentCharacter(char);
   };
 
-  // 4. Instruction Handlers (Immediate Save)
-  
-  // A. Top Nav: Toggle Default Instructions
+  // 4. Instruction Handlers
   const handleOpenDefaultInstructions = () => {
     setIsInstListOpen(true);
     setIsInstManageMode(false);
@@ -214,7 +228,6 @@ function App() {
     localStorage.setItem('defaultInstructionIds', JSON.stringify(newIds));
   };
 
-  // B. Context Bar: Toggle Chat Instructions
   const handleOpenInstructionsManage = () => {
     if (!chatData) return;
     setIsInstManageMode(true);
@@ -246,7 +259,42 @@ function App() {
     setAllInstructions(prev => prev.filter(i => i.id !== id));
   };
 
-  // 5. Sampler Handlers
+  // ✅ 5. Extension Handlers
+  const handleOpenExtensions = () => {
+    if (!chatData) return;
+    setIsExtListOpen(true);
+  };
+
+  const handleToggleExtension = async (extId: string) => {
+    if (!chatData) return;
+    
+    // Assuming extensions are stored similarly to instructions in chatData
+    // If your ChatData type doesn't have 'extensions' yet, you may need to add it or use a temporary field
+    const currentIds = (chatData as any).extensions?.map((e: any) => e.id) || [];
+    let newIds: string[];
+    
+    if (currentIds.includes(extId)) {
+        newIds = currentIds.filter(id => id !== extId);
+    } else {
+        newIds = [...currentIds, extId];
+    }
+
+    const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
+    
+    // Update chat data (casting to any if 'extensions' isn't in type yet)
+    const updatedChat = { ...chatData, extensions: newExtensions } as any;
+    
+    await saveRawChatData(updatedChat);
+    setChatData(updatedChat);
+  };
+
+  const handleCreateExtension = () => alert("Create Extension Modal coming soon!");
+  const handleDeleteExtension = async (id: string) => {
+    if (!window.confirm("Delete extension permanently?")) return;
+    setAllExtensions(prev => prev.filter(e => e.id !== id));
+  };
+
+  // 6. Sampler Handlers
   const handleSelectSampler = (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
@@ -264,7 +312,7 @@ function App() {
     setAllSamplers(prev => prev.filter(s => s.id !== id));
   };
 
-  // 6. Stop Pattern Handlers
+  // 7. Stop Pattern Handlers
   const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
@@ -388,7 +436,11 @@ function App() {
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
         <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
-        <button type="button" className="context-btn" onClick={() => alert("Search coming soon!")}>🔍 Search</button>
+        
+        {/* ✅ REPLACED SEARCH WITH EXTENSIONS */}
+        <button type="button" className="context-btn" onClick={handleOpenExtensions}>
+          🧩 Extensions ({(chatData as any)?.extensions?.length || 0})
+        </button>
       </div>
 
       <div className="input-wrapper">
@@ -431,7 +483,7 @@ function App() {
         />
       )}
 
-      {/* Instructions (Unified Ordered List) */}
+      {/* Instructions */}
       {(isInstListOpen || isInstManageMode) && (
         <ManagerModal
           title="Instructions"
@@ -448,6 +500,26 @@ function App() {
           orderedListMode={true}
           currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
           onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
+        />
+      )}
+
+      {/* ✅ Extensions Modal */}
+      {isExtListOpen && (
+        <ManagerModal
+          title="Extensions"
+          items={allExtensions}
+          isOpen={isExtListOpen}
+          onClose={() => setIsExtListOpen(false)}
+          onSelect={undefined}
+          onDelete={handleDeleteExtension}
+          onCreateNew={handleCreateExtension}
+          renderSubtext={(e) => e.description}
+          emptyMessage="No extensions available."
+          actionLabel="Delete"
+          
+          orderedListMode={true}
+          currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []}
+          onToggleOrder={handleToggleExtension}
         />
       )}
 

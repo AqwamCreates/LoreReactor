@@ -1,5 +1,5 @@
 // src/components/ManagerModal.tsx
-import React from 'react';
+import type React from 'react';
 import './App.css';
 
 interface ManagerItem {
