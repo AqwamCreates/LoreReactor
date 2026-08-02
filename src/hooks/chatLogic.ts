@@ -1,6 +1,6 @@
 // src/services/chatLogic.ts
 import { v4 as uuidv4 } from 'uuid';
-import type { Character, ChatData, ChatMessage, Instruction, StopPattern } from '../types';
+import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
 export function getCharacterPromptId(character: Character, participants: Character[]): string {
@@ -8,7 +8,7 @@ export function getCharacterPromptId(character: Character, participants: Charact
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-export function getFatigueInstruction(currentChatStamina: number, maximumChatStamina: number): string {
+export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
@@ -101,36 +101,36 @@ function getTargetText(
     }
 }
 
-function getActiveInstructions(
-    instructions: Instruction[], 
+function getActiveContexts(
+    contexts: Context[], 
     chatData: ChatData, 
     character: Character
-): Instruction[] {
-    return instructions.filter(instruction => {
+): Context[] {
+    return contexts.filter(context => {
         // If no regex trigger, always include
-        if (!instruction.regularExpressionTrigger) {
+        if (!context.regularExpressionTrigger) {
             return true;
         }
         
         try {
-            const regex = new RegExp(instruction.regularExpressionTrigger);
+            const regex = new RegExp(context.regularExpressionTrigger);
             
-            // Build context based on the instruction's context type
-            const contextType = instruction.regularExpressionContext || 'global';
+            // Build context based on the context's context type
+            const contextType = context.regularExpressionContext || 'global';
             const context = buildContext(chatData, character, contextType);
             
-            // If context is empty, skip this instruction
+            // If context is empty, skip this context
             if (!context) return false;
             
-            // Get target text based on the instruction's target type
-            const targetType = instruction.regularExpressionTarget || 'everyone';
+            // Get target text based on the context's target type
+            const targetType = context.regularExpressionTarget || 'everyone';
             const targetText = getTargetText(chatData, character, targetType);
             
             // Test the regex against the target text
             return regex.test(targetText);
         } catch (error) {
-            // If regex is invalid, include the instruction (fallback to safe behavior)
-            console.warn(`Invalid regex pattern for instruction "${instruction.name}":`, error);
+            // If regex is invalid, include the context (fallback to safe behavior)
+            console.warn(`Invalid regex pattern for context "${context.name}":`, error);
             return true;
         }
     });
@@ -144,10 +144,10 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
 
     const lastChatMessage = chatData.chatMessageHistory
 
-    const activeInstructions = chatData.instructions?.length ? getActiveInstructions(chatData.instructions, conversationContext) : [];
+    const activeContexts = chatData.contexts?.length ? getActiveContexts(chatData.contexts, conversationContext) : [];
 
-    if (activeInstructions.length > 0) {
-        lines.push(activeInstructions.map(i => `[Instruction: ${i.content}]`).join('\n'));
+    if (activeContexts.length > 0) {
+        lines.push(activeContexts.map(i => `[Context: ${i.content}]`).join('\n'));
     }
     if (character.systemPrompt) lines.push(`[${name} System Prompt: ${character.systemPrompt}]`);
     if (character.description) lines.push(`[${name} Description: ${character.description}]`);
@@ -158,7 +158,7 @@ export function buildPromptFromHistory(chatData: ChatData, character: Character)
     lines.push(`[Complete the reply as ${charId} / ${name}. Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
-        const fatigue = getFatigueInstruction(currentChatStamina, maximumChatStamina);
+        const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
         if (fatigue) lines.push(fatigue);
     }
 
@@ -199,7 +199,7 @@ export function createNewChatData(character: Character): ChatData {
         title: "New Chat",
         protagonist: character,
         participants: [character],
-        instructions: [],
+        contexts: [],
         chatMessageHistory: [],
         first_created_timestamp: now,
         last_updated_timestamp: now,

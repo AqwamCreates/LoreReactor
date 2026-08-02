@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, LanguageModel } from '../types';
+import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { 
-  deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, 
+  deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawContexts, 
   loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
-  loadAllRawModels, saveRawModel, deleteRawModel, saveRawInstruction, deleteRawInstruction
+  loadAllRawModels, saveRawModel, deleteRawModel, saveRawContext, deleteRawContext
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -14,7 +14,7 @@ import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
-import { InstructionEditorModal } from './InstructionEditorModal';
+import { ContextEditorModal } from './ContextEditorModal';
 import './main.css';
 
 function App() {
@@ -39,18 +39,18 @@ function App() {
   const [isCharEditorOpen, setIsCharEditorOpen] = useState(false);
   const [isModelEditorOpen, setIsModelEditorOpen] = useState(false);
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
-  const [isInstructionEditorOpen, setIsInstructionEditorOpen] = useState(false);
+  const [isContextEditorOpen, setIsContextEditorOpen] = useState(false);
   const [characterToEdit, setCharacterToEdit] = useState<Character | null>(null);
   const [modelToEdit, setModelToEdit] = useState<LanguageModel | null>(null);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
-  const [instructionToEdit, setInstructionToEdit] = useState<Instruction | null>(null);
+  const [contextToEdit, setContextToEdit] = useState<Context | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
-  const [defaultInstructionIds, setDefaultInstructionIds] = useState<string[]>([]);
+  const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
 
   // --- Data State ---
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
-  const [allInstructions, setAllInstructions] = useState<Instruction[]>([]);
+  const [allContexts, setAllContexts] = useState<Context[]>([]);
   const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
   const [allStopPatterns, setAllStopPatterns] = useState<StopPattern[]>([]);
   const [allExtensions, setAllExtensions] = useState<Extension[]>([
@@ -75,10 +75,10 @@ function App() {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
 
-      const storedDefaultInsts = localStorage.getItem('defaultInstructionIds');
+      const storedDefaultInsts = localStorage.getItem('defaultContextIds');
       if (storedDefaultInsts) {
-        try { setDefaultInstructionIds(JSON.parse(storedDefaultInsts)); } 
-        catch (e) { console.error("Failed to parse default instructions", e); }
+        try { setDefaultContextIds(JSON.parse(storedDefaultInsts)); } 
+        catch (e) { console.error("Failed to parse default contexts", e); }
       }
 
       const shouldLoadSamplers = isSampListOpen || isCharEditorOpen || isSamplerEditorOpen || allSamplers.length === 0;
@@ -91,9 +91,9 @@ function App() {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      if (isInstListOpen || isInstManageMode || isInstructionEditorOpen) {
-        const insts = await loadAllRawInstructions();
-        setAllInstructions(insts);
+      if (isInstListOpen || isInstManageMode || isContextEditorOpen) {
+        const insts = await loadAllRawContexts();
+        setAllContexts(insts);
       }
       if (shouldLoadSamplers) {
         const samps = await loadAllRawSamplers();
@@ -113,14 +113,14 @@ function App() {
       isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
       isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
       isModelListOpen || isCharEditorOpen || isModelEditorOpen || isSamplerEditorOpen ||
-      isInstructionEditorOpen || allSamplers.length === 0
+      isContextEditorOpen || allSamplers.length === 0
     ) {
       loadData();
     }
   }, [
     isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
     isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, 
-    isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, isInstructionEditorOpen,
+    isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, isContextEditorOpen,
     allSamplers.length
   ]);
 
@@ -227,68 +227,68 @@ function App() {
     setCurrentCharacter(char);
   };
 
-  // Instruction Handlers
-  const handleOpenInstructionEditor = (instruction?: Instruction) => {
-    setInstructionToEdit(instruction || null);
-    setIsInstructionEditorOpen(true);
+  // Context Handlers
+  const handleOpenContextEditor = (context?: Context) => {
+    setContextToEdit(context || null);
+    setIsContextEditorOpen(true);
     setIsInstListOpen(false);
     setIsInstManageMode(false);
   };
 
-  const handleSaveInstruction = async (instruction: Instruction) => {
+  const handleSaveContext = async (context: Context) => {
     try {
-      await saveRawInstruction(instruction);
-      const freshInstructions = await loadAllRawInstructions();
-      setAllInstructions(freshInstructions);
+      await saveRawContext(context);
+      const freshContexts = await loadAllRawContexts();
+      setAllContexts(freshContexts);
       
-      // Update current chat if it uses this instruction
-      if (chatData?.instructions?.some(i => i.id === instruction.id)) {
-        const updatedInstructions = chatData.instructions.map(i => 
-          i.id === instruction.id ? instruction : i
+      // Update current chat if it uses this context
+      if (chatData?.contexts?.some(i => i.id === context.id)) {
+        const updatedContexts = chatData.contexts.map(i => 
+          i.id === context.id ? context : i
         );
-        const updatedChat = { ...chatData, instructions: updatedInstructions };
+        const updatedChat = { ...chatData, contexts: updatedContexts };
         await saveRawChatData(updatedChat);
         setChatData(updatedChat);
       }
     } catch (err) {
-      console.error("Failed to save instruction:", err);
-      alert("Failed to save instruction.");
+      console.error("Failed to save context:", err);
+      alert("Failed to save context.");
     }
   };
 
-  const handleDeleteInstruction = async (id: string) => {
+  const handleDeleteContext = async (id: string) => {
     if (!window.confirm("Delete permanently?")) return;
     try {
-      await deleteRawInstruction(id);
-      const freshInstructions = await loadAllRawInstructions();
-      setAllInstructions(freshInstructions);
+      await deleteRawContext(id);
+      const freshContexts = await loadAllRawContexts();
+      setAllContexts(freshContexts);
       
       // Remove from current chat if present
-      if (chatData?.instructions?.some(i => i.id === id)) {
-        const updatedInstructions = chatData.instructions.filter(i => i.id !== id);
-        const updatedChat = { ...chatData, instructions: updatedInstructions };
+      if (chatData?.contexts?.some(i => i.id === id)) {
+        const updatedContexts = chatData.contexts.filter(i => i.id !== id);
+        const updatedChat = { ...chatData, contexts: updatedContexts };
         await saveRawChatData(updatedChat);
         setChatData(updatedChat);
       }
     } catch (err) {
-      console.error("Failed to delete instruction:", err);
-      alert("Failed to delete instruction.");
+      console.error("Failed to delete context:", err);
+      alert("Failed to delete context.");
     }
   };
 
-  const handleOpenDefaultInstructions = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
-  const handleToggleDefaultInstruction = (instId: string) => {
-    let newIds = defaultInstructionIds.includes(instId) ? defaultInstructionIds.filter(id => id !== instId) : [...defaultInstructionIds, instId];
-    setDefaultInstructionIds(newIds);
-    localStorage.setItem('defaultInstructionIds', JSON.stringify(newIds));
+  const handleOpenDefaultContexts = () => { setIsInstListOpen(true); setIsInstManageMode(false); };
+  const handleToggleDefaultContext = (instId: string) => {
+    let newIds = defaultContextIds.includes(instId) ? defaultContextIds.filter(id => id !== instId) : [...defaultContextIds, instId];
+    setDefaultContextIds(newIds);
+    localStorage.setItem('defaultContextIds', JSON.stringify(newIds));
   };
-  const handleOpenInstructionsManage = () => { if (!chatData) return; setIsInstManageMode(true); setIsInstListOpen(false); };
-  const handleToggleChatInstruction = async (instId: string) => {
+  const handleOpenContextsManage = () => { if (!chatData) return; setIsInstManageMode(true); setIsInstListOpen(false); };
+  const handleToggleChatContext = async (instId: string) => {
     if (!chatData) return;
-    const currentIds = chatData.instructions?.map(i => i.id) || [];
+    const currentIds = chatData.contexts?.map(i => i.id) || [];
     let newIds = currentIds.includes(instId) ? currentIds.filter(id => id !== instId) : [...currentIds, instId];
-    const newInstructions = allInstructions.filter(i => newIds.includes(i.id));
-    const updatedChat = { ...chatData, instructions: newInstructions };
+    const newContexts = allContexts.filter(i => newIds.includes(i.id));
+    const updatedChat = { ...chatData, contexts: newContexts };
     await saveRawChatData(updatedChat);
     setChatData(updatedChat);
   };
@@ -514,7 +514,7 @@ function App() {
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
             <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
-            <button type="button" className="nav-btn" onClick={handleOpenDefaultInstructions}>📜 Instructions</button>
+            <button type="button" className="nav-btn" onClick={handleOpenDefaultContexts}>📜 Contexts</button>
             <button type="button" className="nav-btn" onClick={handleOpenModels}>🤖 Models</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
@@ -637,7 +637,7 @@ function App() {
 
       <div className="context-bar">
         <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
-        <button type="button" className="context-btn" onClick={handleOpenInstructionsManage}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
+        <button type="button" className="context-btn" onClick={handleOpenContextsManage}>📜 Contexts ({chatData?.contexts?.length || 0})</button>
         <button type="button" className="context-btn" onClick={handleOpenExtensions}>🧩 Extensions ({(chatData as any)?.extensions?.length || 0})</button>
       </div>
 
@@ -728,40 +728,40 @@ function App() {
         />
       )}
 
-      {/* Instructions Modal */}
+      {/* Contexts Modal */}
       {(isInstListOpen || isInstManageMode) && (
         <ManagerModal 
-          title="Instructions" 
-          items={allInstructions} 
+          title="Contexts" 
+          items={allContexts} 
           isOpen={isInstListOpen || isInstManageMode}
           onClose={() => { setIsInstListOpen(false); setIsInstManageMode(false); }}
-          onSelect={(instruction) => handleOpenInstructionEditor(instruction)} 
-          onDelete={handleDeleteInstruction} 
-          onCreateNew={() => handleOpenInstructionEditor()} 
+          onSelect={(context) => handleOpenContextEditor(context)} 
+          onDelete={handleDeleteContext} 
+          onCreateNew={() => handleOpenContextEditor()} 
           renderSubtext={(i) => {
             const contentPreview = i.content?.substring(0, 50) || '';
             const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌';
             return `${hasRegex} ${contentPreview}...`;
           }} 
-          emptyMessage="No instructions found." 
+          emptyMessage="No contexts found." 
           actionLabel="Delete"
           orderedListMode={true} 
-          currentOrderIds={isInstManageMode ? (chatData?.instructions?.map(i => i.id) || []) : defaultInstructionIds}
-          onToggleOrder={isInstManageMode ? handleToggleChatInstruction : handleToggleDefaultInstruction}
+          currentOrderIds={isInstManageMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds}
+          onToggleOrder={isInstManageMode ? handleToggleChatContext : handleToggleDefaultContext}
         />
       )}
 
-      {/* Instruction Editor Modal */}
-      {isInstructionEditorOpen && (
-        <InstructionEditorModal
-          isOpen={isInstructionEditorOpen}
+      {/* Context Editor Modal */}
+      {isContextEditorOpen && (
+        <ContextEditorModal
+          isOpen={isContextEditorOpen}
           onClose={() => {
-            setIsInstructionEditorOpen(false);
-            setInstructionToEdit(null);
+            setIsContextEditorOpen(false);
+            setContextToEdit(null);
           }}
-          onSave={handleSaveInstruction}
-          onDelete={handleDeleteInstruction}
-          existingInstruction={instructionToEdit}
+          onSave={handleSaveContext}
+          onDelete={handleDeleteContext}
+          existingContext={contextToEdit}
         />
       )}
 
