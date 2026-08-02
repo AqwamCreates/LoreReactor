@@ -1,6 +1,6 @@
 // src/components/InstructionEditorModal.tsx
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Instruction } from '../types';
 import './main.css';
 
@@ -21,27 +21,35 @@ export function InstructionEditorModal({
 }: InstructionEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [content, setContent] = useState('');
+    const [text, setText] = useState('');
+    const [images, setImages] = useState<string[]>([]);
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [regexTrigger, setRegexTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'responder' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
-    const [errors, setErrors] = useState<{ name?: string; content?: string; regex?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string }>({});
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen) {
             if (existingInstruction) {
                 setName(existingInstruction.name || '');
                 setDescription(existingInstruction.description || '');
-                setContent(existingInstruction.content || '');
+                setText(existingInstruction.text || '');
+                setImages(existingInstruction.images || []);
                 setRegexTrigger(existingInstruction.regularExpressionTrigger || '');
                 setRegexContext(existingInstruction.regularExpressionContext || 'global');
                 setRegexTarget(existingInstruction.regularExpressionTarget || 'everyone');
             } else {
                 setName('');
                 setDescription('');
-                setContent('');
+                setText('');
+                setImages([]);
+                setImageFiles([]);
+                setImagePreviews([]);
                 setRegexTrigger('');
                 setRegexContext('global');
                 setRegexTarget('everyone');
@@ -53,14 +61,14 @@ export function InstructionEditorModal({
     }, [isOpen, existingInstruction]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; content?: string; regex?: string } = {};
+        const newErrors: { name?: string; text?: string; regex?: string } = {};
         
         if (!name.trim()) {
             newErrors.name = 'Instruction name is required.';
         }
         
-        if (!content.trim()) {
-            newErrors.content = 'Instruction content is required.';
+        if (!text.trim()) {
+            newErrors.text = 'Instruction text is required.';
         }
         
         // Validate regex if provided
@@ -92,6 +100,28 @@ export function InstructionEditorModal({
         }
     };
 
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const files = Array.from(e.target.files);
+            setImageFiles(prev => [...prev, ...files]);
+            
+            const newPreviews = files.map(file => URL.createObjectURL(file));
+            setImagePreviews(prev => [...prev, ...newPreviews]);
+            
+            // For storage, we'd upload these and store the paths
+            // For now, we just store the filenames
+            const newImages = files.map(file => file.name);
+            setImages(prev => [...prev, ...newImages]);
+        }
+        e.target.value = '';
+    };
+
+    const handleRemoveImage = (index: number) => {
+        setImages(prev => prev.filter((_, i) => i !== index));
+        setImageFiles(prev => prev.filter((_, i) => i !== index));
+        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    };
+
     const handleSubmit = () => {
         if (!validate()) return;
 
@@ -99,7 +129,8 @@ export function InstructionEditorModal({
             id: existingInstruction?.id || crypto.randomUUID(),
             name: name.trim(),
             description: description.trim() || undefined,
-            content: content.trim(),
+            text: text.trim(),
+            images: images.length > 0 ? images : undefined,
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
@@ -234,6 +265,39 @@ export function InstructionEditorModal({
         justifyContent: 'center',
     };
 
+    const imageContainerStyle: React.CSSProperties = {
+        display: 'flex',
+        gap: '8px',
+        flexWrap: 'wrap',
+        marginTop: '8px',
+    };
+
+    const imagePreviewStyle: React.CSSProperties = {
+        position: 'relative',
+        width: '80px',
+        height: '80px',
+        borderRadius: '6px',
+        overflow: 'hidden',
+        border: '1px solid var(--border)',
+    };
+
+    const imageRemoveButtonStyle: React.CSSProperties = {
+        position: 'absolute',
+        top: '2px',
+        right: '2px',
+        background: 'rgba(0,0,0,0.7)',
+        border: 'none',
+        color: '#fff',
+        borderRadius: '50%',
+        width: '20px',
+        height: '20px',
+        cursor: 'pointer',
+        fontSize: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div
@@ -321,27 +385,91 @@ export function InstructionEditorModal({
                         />
                     </div>
 
-                    {/* Content */}
+                    {/* Text */}
                     <div style={{ marginBottom: '16px' }}>
                         <label style={labelStyle}>
-                            Content <span style={{ color: '#ff4444' }}>*</span>
+                            Text <span style={{ color: '#ff4444' }}>*</span>
                         </label>
                         <textarea
-                            value={content}
+                            value={text}
                             onChange={(e) => {
-                                setContent(e.target.value);
-                                if (errors.content) setErrors({ ...errors, content: undefined });
+                                setText(e.target.value);
+                                if (errors.text) setErrors({ ...errors, text: undefined });
                             }}
                             style={{
                                 ...inputStyle,
                                 minHeight: '120px',
-                                borderColor: errors.content ? '#ff4444' : 'var(--border)',
+                                borderColor: errors.text ? '#ff4444' : 'var(--border)',
                                 fontFamily: 'monospace',
                             }}
-                            placeholder="The instruction content that will be injected into the prompt"
+                            placeholder="The instruction text that will be injected into the prompt"
                             rows={6}
                         />
-                        {errors.content && <div style={errorStyle}>{errors.content}</div>}
+                        {errors.text && <div style={errorStyle}>{errors.text}</div>}
+                    </div>
+
+                    {/* Images */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <label style={labelStyle}>
+                            Images
+                            <span
+                                style={{
+                                    fontSize: '0.65rem',
+                                    opacity: 0.6,
+                                    marginLeft: '8px',
+                                    fontWeight: 'normal',
+                                }}
+                            >
+                                (Optional - for scene/character references)
+                            </span>
+                        </label>
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            style={{
+                                width: '100%',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '2px dashed var(--border)',
+                                background: 'var(--social-bg)',
+                                cursor: 'pointer',
+                                textAlign: 'center',
+                                color: 'var(--text-h)',
+                                opacity: 0.6,
+                                transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                        >
+                            📷 Click to upload images
+                        </div>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handleImageChange}
+                            style={{ display: 'none' }}
+                        />
+                        {imagePreviews.length > 0 && (
+                            <div style={imageContainerStyle}>
+                                {imagePreviews.map((preview, index) => (
+                                    <div key={index} style={imagePreviewStyle}>
+                                        <img
+                                            src={preview}
+                                            alt={`Instruction image ${index + 1}`}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveImage(index)}
+                                            style={imageRemoveButtonStyle}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Regular Expression Section */}
