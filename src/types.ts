@@ -1,76 +1,76 @@
-export interface StopPattern {
+interface ObjectData {
+
   id: string;
   name: string;
   description?: string;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
+
+}
+
+interface RawData {
+
+  name: string;
+  description?: string;
+  firstCreatedTimestamp: number;
+  lastUpdatedTimestamp: number;
+
+}
+
+export interface StopPattern extends ObjectData {
+
   pattern: string;
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
-export interface RawStopPattern {
-  name: string;
-  description?: string;
+export interface RawStopPattern extends RawData {
+
   pattern: string;
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
-export interface Sampler {
-  id: string;
-  name: string;
-  description?: string;
+export interface Sampler extends ObjectData {
+
   parameters?: Record<string, unknown>;
   stopPatterns: StopPattern[];
   maximumNumberOfTokens?: number;
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+  
 }
 
-export interface RawSampler {
-  name: string;
-  description?: string;
+export interface RawSampler extends RawData  {
+
   parameters?: Record<string, unknown>;
   stopPatternIds: string[];
   maximumNumberOfTokens?: number;
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
-export interface Context {
-  id: string;
-  name: string;
-  description?: string;
+export interface Context extends ObjectData  {
   text?: string;
   images?: string[];
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
 }
 
-export interface RawContext {
-  name: string;
-  description?: string;
+export interface RawContext extends RawData  {
+
   text?: string;
   images?: string[];
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'responder' | 'self';
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
-export interface LanguageModel {
-  id: string;
-  name: string;
-  description?: string;
+export interface LanguageModel extends ObjectData {
+
   backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | 'OpenAI' | 'Other';
   contextLength: number;
   model: string;
@@ -79,34 +79,27 @@ export interface LanguageModel {
   cacheHitCostPerOneMillionOfTokens?: number,
   cacheMissCostPerOneMillionOfTokens?: number,
   outputGenerationCostPerOneMillionOfTokens?: number,
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
 }
-export interface Character {
-  id: string;
-  name: string;
+export interface Character extends ObjectData  {
+  
   image?: string; // Path to the character's image.
-  description?: string;
   systemPrompt?: string;
   initiativeWeight?: number | undefined;
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   sampler?: Sampler | undefined;
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
-export interface RawCharacter {
-  name: string;
+export interface RawCharacter extends RawData {
+
   image?: string; // Path to the character's image.
-  description?: string;
   systemPrompt?: string;
   initiativeWeight?: number | undefined;
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   samplerId?: string | undefined; // Store only the sampler ID here
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
 }
 
 export interface ChatMessage {
@@ -159,11 +152,36 @@ export interface RawChatData {
 
 export type ExtensionType = 'language_model_api' | 'image_generation_api' | 'accessibility' | 'extra';
 
-export interface Extension {
-  id: string;
-  name: string;
-  description: string;
+export interface Extension extends ObjectData{
+
   extensionType: ExtensionType;
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+
+}
+
+export interface BudgetStrategy extends ObjectData {
+
+  onlineModel: LanguageModel;
+  localModel: LanguageModel;
+  switchProbabilty: number; //When the random value is less than the probability, the online model will be used.
+  switchOnContextSize: number; //When the context size exceeds this limit, the online model will be used.
+  switchOnComplexityScore: number, // When complexity score exceeds this limit, the online model will be used.
+  fallbackOnLocalFailure: boolean; // If the local model fails to stop, the online model will be used.
+  fallbackOnQualityThreshold: number;  // If the quality score below this, the online model will be used.
+  fallbackOnTimeoutInSeconds: number; // If local takes too long, the online model will be used.
+  maximumBudget: number; //When the cost exceeds the budget, then the local model will be used throughout the rest of the conversations.
+
+}
+
+export interface RawBudgetStrategy extends RawData {
+
+  onlineModelId: string;
+  localModelId: string;
+  switchProbabilty: number; //When the random value is less than the probability, the online model will be used.
+  switchOnContextSize: number; //When the context size exceeds this limit, the online model will be used.
+  switchOnComplexityScore: number, // When complexity score exceeds this limit, the online model will be used.
+  fallbackOnLocalFailure: boolean; // If the local model fails to stop, the online model will be used.
+  fallbackOnQualityThreshold: number;  // If the quality score below this, the online model will be used.
+  fallbackOnTimeoutInSeconds: number; // If local takes too long, the online model will be used.
+  maximumBudget: number; //When the cost exceeds the budget, then the local model will be used throughout the rest of the conversations.
+
 }
