@@ -1,4 +1,5 @@
 // src/components/SamplerEditorModal.tsx
+// src/components/SamplerEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { Sampler, StopPattern } from '../types';
@@ -386,7 +387,7 @@ const PARAMETER_CONFIGS = {
         min: 0, 
         max: 1, 
         step: 1, 
-        description: 'Ignore End-Of-Sequence token (0=disabled, 1=enabled)',
+        description: 'Ignore End-Of-Sequence token',
         label: 'Ignore EOS',
         category: 'Other',
         defaultEnabled: false,
@@ -406,11 +407,9 @@ const getParamValue = (params: Record<string, unknown> | undefined, key: string,
     return defaultValue;
 };
 
-// Format number to remove trailing zeros
 const formatNumber = (num: number, decimals: number): string => {
     if (decimals === 0) return String(num);
     const formatted = num.toFixed(decimals);
-    // Remove trailing zeros and decimal point if no decimals needed
     return parseFloat(formatted).toString();
 };
 
@@ -687,33 +686,7 @@ export function SamplerEditorModal({
         }
 
         if (config.isBoolean) {
-            return (
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '4px 0',
-                }}>
-                    <button
-                        type="button"
-                        onClick={() => handleParameterChange(paramKey, !parameters[paramKey] as boolean)}
-                        disabled={!isEnabled}
-                        style={{
-                            padding: '4px 12px',
-                            borderRadius: '4px',
-                            border: `1px solid ${parameters[paramKey] ? 'var(--accent)' : 'var(--border)'}`,
-                            background: parameters[paramKey] ? 'var(--accent-bg)' : 'transparent',
-                            color: parameters[paramKey] ? 'var(--accent)' : 'var(--text-h)',
-                            cursor: isEnabled ? 'pointer' : 'not-allowed',
-                            fontSize: '0.75rem',
-                            fontFamily: 'inherit',
-                            opacity: isEnabled ? 1 : 0.5,
-                        }}
-                    >
-                        {parameters[paramKey] ? '✓ Enabled' : '✗ Disabled'}
-                    </button>
-                </div>
-            );
+            return null;
         }
 
         const decimals = config.decimals || 2;

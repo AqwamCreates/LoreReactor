@@ -6,9 +6,9 @@ import './main.css';
 interface SliderInputProps {
     label: string;
     value: number;
-    minimumValue: number;
-    maximumValue: number;
-    stepValue: number;
+    minimumValue?: number;
+    maximumValue?: number;
+    stepValue?: number;
     decimals?: number;
     onChange: (value: number) => void;
     description?: string;
@@ -19,7 +19,6 @@ interface SliderInputProps {
 const formatNumber = (num: number, decimals: number): string => {
     if (decimals === 0) return String(num);
     const formatted = num.toFixed(decimals);
-    // Remove trailing zeros and decimal point if no decimals needed
     return parseFloat(formatted).toString();
 };
 
@@ -28,7 +27,7 @@ export function SliderInput({
     value,
     minimumValue: min,
     maximumValue: max,
-    stepValue: step,
+    stepValue: step = 1,
     decimals = 2,
     onChange,
     description,
@@ -38,26 +37,33 @@ export function SliderInput({
     const sliderRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
 
-    const clampedValue = Math.max(min, Math.min(max, value));
-    const steppedValue = Math.round(clampedValue / step) * step;
-    const displayValue = Math.max(min, Math.min(max, steppedValue));
-    const percentage = ((displayValue - min) / (max - min)) * 100;
+    // Check if we have a valid range (both min and max are defined and min < max)
+    const hasValidRange = min !== undefined && max !== undefined && min < max;
+    
+    // If no range, treat as free input (no slider, just number input)
+    const isFreeInput = !hasValidRange;
+
+    // For sliders with range
+    const clampedValue = hasValidRange ? Math.max(min!, Math.min(max!, value)) : value;
+    const steppedValue = hasValidRange ? Math.round(clampedValue / step) * step : value;
+    const displayValue = hasValidRange ? Math.max(min!, Math.min(max!, steppedValue)) : value;
+    const percentage = hasValidRange ? ((displayValue - min!) / (max! - min!)) * 100 : 0;
     const formattedDisplay = formatNumber(displayValue, decimals);
 
     const handleSliderChange = (clientX: number) => {
-        if (!sliderRef.current || disabled) return;
+        if (!sliderRef.current || disabled || isFreeInput) return;
         
         const rect = sliderRef.current.getBoundingClientRect();
         const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        const newValue = min + (max - min) * percent;
+        const newValue = min! + (max! - min!) * percent;
         const steppedValue = Math.round(newValue / step) * step;
-        const clampedValue = Math.max(min, Math.min(max, steppedValue));
+        const clampedValue = Math.max(min!, Math.min(max!, steppedValue));
         
         onChange(clampedValue);
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        if (disabled) return;
+        if (disabled || isFreeInput) return;
         setIsDragging(true);
         handleSliderChange(e.clientX);
     };
@@ -73,7 +79,7 @@ export function SliderInput({
     };
 
     const handleTouchStart = (e: React.TouchEvent) => {
-        if (disabled) return;
+        if (disabled || isFreeInput) return;
         setIsDragging(true);
         handleSliderChange(e.touches[0].clientX);
     };
@@ -107,9 +113,14 @@ export function SliderInput({
         if (disabled) return;
         const val = parseFloat(e.target.value);
         if (!isNaN(val)) {
-            const clamped = Math.max(min, Math.min(max, val));
-            const stepped = Math.round(clamped / step) * step;
-            onChange(stepped);
+            if (hasValidRange) {
+                const clamped = Math.max(min!, Math.min(max!, val));
+                const stepped = Math.round(clamped / step) * step;
+                onChange(stepped);
+            } else {
+                // Free input - no clamping or stepping
+                onChange(val);
+            }
         }
     };
 
@@ -119,6 +130,62 @@ export function SliderInput({
         }
     };
 
+    // For free input mode, just show a number input with description
+    if (isFreeInput) {
+        return (
+            <div className="slider-input-container" style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '4px',
+                width: '100%',
+                opacity: disabled ? 0.6 : 1,
+                cursor: disabled ? 'not-allowed' : 'default',
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'flex-end',
+                    alignItems: 'center',
+                    gap: '8px',
+                }}>
+                    <input
+                        type="number"
+                        value={formattedDisplay}
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        disabled={disabled}
+                        step={step}
+                        style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                            borderRadius: '4px',
+                            border: `1px solid ${disabled ? 'var(--border)' : 'var(--border)'}`,
+                            background: disabled ? 'var(--social-bg)' : 'var(--bg)',
+                            color: disabled ? 'var(--text-h)' : 'var(--text-h)',
+                            textAlign: 'right',
+                            outline: 'none',
+                            opacity: disabled ? 0.5 : 1,
+                            cursor: disabled ? 'not-allowed' : 'text',
+                        }}
+                    />
+                </div>
+                {description && (
+                    <div style={{
+                        fontSize: '0.6rem',
+                        color: 'var(--text-h)',
+                        opacity: disabled ? 0.3 : 0.5,
+                        marginTop: '2px',
+                        textAlign: 'right',
+                    }}>
+                        {description}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // Full slider mode (with range)
     return (
         <div className="slider-input-container" style={{ 
             display: 'flex', 
@@ -135,11 +202,12 @@ export function SliderInput({
                 gap: '8px',
             }}>
                 <input
-                    type="text"
+                    type="number"
                     value={formattedDisplay}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     disabled={disabled}
+                    step={step}
                     style={{
                         width: '70px',
                         padding: '2px 6px',
