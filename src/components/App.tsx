@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import type { ChatData, Character, Instruction, Sampler, StopPattern } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns } from '../hooks/storage';
+import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -23,6 +23,13 @@ function App() {
   const [isInstListOpen, setIsInstListOpen] = useState(false);
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
+  
+  // Multi-Select States
+  const [isParticipantsMode, setIsParticipantsMode] = useState(false);
+  const [pendingParticipantIds, setPendingParticipantIds] = useState<string[]>([]);
+  
+  const [isInstructionsMode, setIsInstructionsMode] = useState(false);
+  const [pendingInstructionIds, setPendingInstructionIds] = useState<string[]>([]);
 
   const [allChats, setAllChats] = useState<ChatData[]>([]);
   const [allCharacters, setAllCharacters] = useState<Character[]>([]);
@@ -44,11 +51,11 @@ function App() {
         const chats = await loadAllRawChatData();
         setAllChats(chats.sort((a, b) => b.last_updated_timestamp - a.last_updated_timestamp));
       }
-      if (isCharListOpen) {
+      if (isCharListOpen || isParticipantsMode) {
         const chars = await loadAllRawCharacters();
         setAllCharacters(chars);
       }
-      if (isInstListOpen) {
+      if (isInstListOpen || isInstructionsMode) {
         const insts = await loadAllRawInstructions();
         setAllInstructions(insts);
       }
@@ -62,13 +69,14 @@ function App() {
       }
     };
 
-    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen) {
+    if (isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || isStopListOpen || isParticipantsMode || isInstructionsMode) {
       loadData();
     }
-  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen]);
+  }, [isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, isParticipantsMode, isInstructionsMode]);
 
   // --- Handlers ---
 
+  // 1. Chat Handlers
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) { setChatData(selected); setCurrentCharacter(selected.protagonist); setIsChatListOpen(false); }
@@ -86,29 +94,77 @@ function App() {
     if (chatData?.id === id) startNewChat(currentCharacter!);
   };
 
+  // 2. Character Handlers
   const handleSelectCharacter = (char: Character) => {
-    if (chatData) {
-      const updatedChat = { ...chatData, protagonist: char };
-      if (!updatedChat.participants.find(p => p.id === char.id)) updatedChat.participants = [...updatedChat.participants, char];
-      setChatData(updatedChat);
-      setCurrentCharacter(char);
-    } else { setCurrentCharacter(char); startNewChat(char); }
-    setIsCharListOpen(false);
+    if (!isParticipantsMode) {
+        if (chatData) {
+          const updatedChat = { ...chatData, protagonist: char };
+          if (!updatedChat.participants.find(p => p.id === char.id)) updatedChat.participants = [...updatedChat.participants, char];
+          setChatData(updatedChat);
+          setCurrentCharacter(char);
+        } else { setCurrentCharacter(char); startNewChat(char); }
+        setIsCharListOpen(false);
+    }
   };
   const handleCreateCharacter = () => alert("Create Character Modal coming soon!");
   const handleDeleteCharacter = async (id: string) => {
-    if (!window.confirm("Delete this character?")) return;
-    // await deleteRawCharacter(id); // Implement if needed
+    if (!window.confirm("Delete permanently?")) return;
     setAllCharacters(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleSelectInstruction = (inst: Instruction) => { alert(`Selected: ${inst.name}`); setIsInstListOpen(false); };
-  const handleCreateInstruction = () => alert("Create Instruction Modal coming soon!");
-  const handleDeleteInstruction = async (id: string) => {
-    if (!window.confirm("Delete?")) return;
-    setAllInstructions(prev => prev.filter(i => i.id !== id));
+  // ✅ 3. Participant Multi-Select
+  const handleOpenParticipants = () => {
+    if (!chatData) return;
+    setPendingParticipantIds(chatData.participants.map(p => p.id));
+    setIsParticipantsMode(true);
   };
 
+  const handleToggleParticipantSelection = (charId: string) => {
+    setPendingParticipantIds(prev => {
+      if (prev.includes(charId)) {
+        if (charId === chatData?.protagonist.id) { alert("Cannot remove protagonist."); return prev; }
+        return prev.filter(id => id !== charId);
+      }
+        return [...prev, charId];
+    });
+  };
+
+  const handleConfirmParticipants = async () => {
+    if (!chatData) return;
+    const newParticipants = allCharacters.filter(c => pendingParticipantIds.includes(c.id));
+    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
+    
+    const updatedChat = { ...chatData, participants: newParticipants };
+    await saveRawChatData(updatedChat);
+    setChatData(updatedChat);
+    if (!pendingParticipantIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
+    setIsParticipantsMode(false);
+  };
+
+  // ✅ 4. Instruction Multi-Select (New)
+  const handleOpenInstructions = () => {
+    if (!chatData) return;
+    setPendingInstructionIds(chatData.instructions?.map(i => i.id) || []);
+    setIsInstructionsMode(true);
+  };
+
+  const handleToggleInstructionSelection = (instId: string) => {
+    setPendingInstructionIds(prev => {
+      if (prev.includes(instId)) return prev.filter(id => id !== instId);
+      return [...prev, instId];
+    });
+  };
+
+  const handleConfirmInstructions = async () => {
+    if (!chatData) return;
+    const newInstructions = allInstructions.filter(i => pendingInstructionIds.includes(i.id));
+    const updatedChat = { ...chatData, instructions: newInstructions };
+    await saveRawChatData(updatedChat);
+    setChatData(updatedChat);
+    setIsInstructionsMode(false);
+  };
+
+  // 5. Sampler Handlers
   const handleSelectSampler = (samp: Sampler) => {
     if (currentCharacter) {
       const updatedChar = { ...currentCharacter, sampler: samp };
@@ -126,6 +182,7 @@ function App() {
     setAllSamplers(prev => prev.filter(s => s.id !== id));
   };
 
+  // 6. Stop Pattern Handlers
   const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
   const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
   const handleDeleteStopPattern = async (id: string) => {
@@ -133,6 +190,7 @@ function App() {
     setAllStopPatterns(prev => prev.filter(s => s.id !== id));
   };
 
+  // Standard Message Handlers
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     e.target.value = '';
@@ -176,8 +234,8 @@ function App() {
           </div>
           <nav className="header-nav">
             <button type="button" className="nav-btn" onClick={() => setIsChatListOpen(true)}>💬 Chat List</button>
-            <button type="button" className="nav-btn" onClick={() => setIsCharListOpen(true)}>🎭 Characters</button>
-            <button type="button" className="nav-btn" onClick={() => setIsInstListOpen(true)}>📜 Instructions</button>
+            <button type="button" className="nav-btn" onClick={() => { setIsParticipantsMode(false); setIsCharListOpen(true); }}>🎭 Characters</button>
+            <button type="button" className="nav-btn" onClick={() => { setIsInstructionsMode(false); setIsInstListOpen(true); }}>📜 Instructions</button>
             <button type="button" className="nav-btn" onClick={() => setIsSampListOpen(true)}>🎚️ Samplers</button>
             <button type="button" className="nav-btn" onClick={() => setIsStopListOpen(true)}>🛑 Stop Patterns</button>
           </nav>
@@ -246,8 +304,8 @@ function App() {
       </div>
 
       <div className="context-bar">
-        <button type="button" className="context-btn" onClick={() => setIsCharListOpen(true)}>👥 Participants ({chatData?.participants.length || 0})</button>
-        <button type="button" className="context-btn" onClick={() => setIsInstListOpen(true)}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
+        <button type="button" className="context-btn" onClick={handleOpenParticipants}>👥 Participants ({chatData?.participants.length || 0})</button>
+        <button type="button" className="context-btn" onClick={handleOpenInstructions}>📜 Instructions ({chatData?.instructions?.length || 0})</button>
         <button type="button" className="context-btn" onClick={() => alert("Search coming soon!")}>🔍 Search</button>
       </div>
 
@@ -261,10 +319,57 @@ function App() {
         </div>
       </div>
 
+      {/* === MODALS === */}
+      
+      {/* Chat List */}
       {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
-      {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={handleSelectCharacter} onDelete={handleDeleteCharacter} onCreateNew={handleCreateCharacter} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." />)}
-      {isInstListOpen && (<ManagerModal title="Instructions" items={allInstructions} isOpen={isInstListOpen} onClose={() => setIsInstListOpen(false)} onSelect={handleSelectInstruction} onDelete={handleDeleteInstruction} onCreateNew={handleCreateInstruction} renderSubtext={(i) => i.content?.substring(0, 50) + "..."} emptyMessage="No instructions found." />)}
+
+      {/* Characters */}
+      {(isCharListOpen || isParticipantsMode) && (
+        <ManagerModal
+          title={isParticipantsMode ? "Manage Participants" : "All Characters"}
+          items={allCharacters}
+          isOpen={isCharListOpen || isParticipantsMode}
+          onClose={() => { setIsCharListOpen(false); setIsParticipantsMode(false); }}
+          onSelect={isParticipantsMode ? undefined : handleSelectCharacter}
+          onDelete={isParticipantsMode ? undefined : handleDeleteCharacter}
+          onCreateNew={handleCreateCharacter}
+          renderSubtext={(c) => c.description || "No description"}
+          emptyMessage="No characters found."
+          actionLabel="Delete"
+          selectionMode={isParticipantsMode}
+          selectedIds={pendingParticipantIds}
+          onToggleSelect={handleToggleParticipantSelection}
+          onConfirmSelection={handleConfirmParticipants}
+          confirmButtonText="Update Participants"
+        />
+      )}
+
+      {/* ✅ Instructions (Multi-Select Enabled) */}
+      {(isInstListOpen || isInstructionsMode) && (
+        <ManagerModal
+          title={isInstructionsMode ? "Manage Instructions" : "All Instructions"}
+          items={allInstructions}
+          isOpen={isInstListOpen || isInstructionsMode}
+          onClose={() => { setIsInstListOpen(false); setIsInstructionsMode(false); }}
+          onSelect={isInstructionsMode ? undefined : handleSelectInstruction}
+          onDelete={isInstructionsMode ? undefined : handleDeleteInstruction}
+          onCreateNew={handleCreateInstruction}
+          renderSubtext={(i) => `${i.content?.substring(0, 50)}...`}
+          emptyMessage="No instructions found."
+          actionLabel="Delete"
+          selectionMode={isInstructionsMode}
+          selectedIds={pendingInstructionIds}
+          onToggleSelect={handleToggleInstructionSelection}
+          onConfirmSelection={handleConfirmInstructions}
+          confirmButtonText="Update Instructions"
+        />
+      )}
+
+      {/* Samplers */}
       {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={handleSelectSampler} onDelete={handleDeleteSampler} onCreateNew={handleCreateSampler} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}`} emptyMessage="No samplers found." />)}
+
+      {/* Stop Patterns */}
       {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={handleSelectStopPattern} onDelete={handleDeleteStopPattern} onCreateNew={handleCreateStopPattern} renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} emptyMessage="No stop patterns found." />)}
     </div>
   );
