@@ -62,7 +62,6 @@ interface ManagerItem {
                 {sortedItems.map(item => (
                     <li key={item.id} className="chat-list-item" onClick={() => onSelect(item)}>
                     <div className="chat-item-main">
-                        <span className="chat-icon">📄</span>
                         <div className="chat-item-info">
                         <div className="chat-item-title">{item.name}</div>
                         {renderSubtext && <div className="chat-item-sub">{renderSubtext(item)}</div>}
