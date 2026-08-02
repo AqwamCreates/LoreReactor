@@ -25,7 +25,6 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     return null;
 }
 
-
 function buildContext(
     chatData: ChatData, 
     character: Character, 
