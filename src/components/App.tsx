@@ -5,7 +5,8 @@ import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '.
 import { 
   deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawContexts, 
   loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData, saveRawCharacter, deleteRawSampler,
-  loadAllRawModels, saveRawModel, deleteRawModel, saveRawContext, deleteRawContext
+  loadAllRawModels, saveRawModel, deleteRawModel, saveRawContext, deleteRawContext,
+  saveRawStopPattern, deleteRawStopPattern
 } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -15,6 +16,7 @@ import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
+import { StopPatternEditorModal } from './StopPatternEditorModal';
 import './main.css';
 
 function App() {
@@ -40,10 +42,12 @@ function App() {
   const [isModelEditorOpen, setIsModelEditorOpen] = useState(false);
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [isContextEditorOpen, setIsContextEditorOpen] = useState(false);
+  const [isStopPatternEditorOpen, setIsStopPatternEditorOpen] = useState(false);
   const [characterToEdit, setCharacterToEdit] = useState<Character | null>(null);
   const [modelToEdit, setModelToEdit] = useState<LanguageModel | null>(null);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [contextToEdit, setContextToEdit] = useState<Context | null>(null);
+  const [stopPatternToEdit, setStopPatternToEdit] = useState<StopPattern | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
 
@@ -99,7 +103,7 @@ function App() {
         const samps = await loadAllRawSamplers();
         setAllSamplers(samps);
       }
-      if (isStopListOpen) {
+      if (isStopListOpen || isStopPatternEditorOpen) {
         const stops = await loadAllRawStopPatterns();
         setAllStopPatterns(stops);
       }
@@ -113,7 +117,7 @@ function App() {
       isChatListOpen || isCharListOpen || isInstListOpen || isSampListOpen || 
       isStopListOpen || isParticipantsMode || isInstManageMode || isExtListOpen || 
       isModelListOpen || isCharEditorOpen || isModelEditorOpen || isSamplerEditorOpen ||
-      isContextEditorOpen || allSamplers.length === 0
+      isContextEditorOpen || isStopPatternEditorOpen || allSamplers.length === 0
     ) {
       loadData();
     }
@@ -121,7 +125,7 @@ function App() {
     isChatListOpen, isCharListOpen, isInstListOpen, isSampListOpen, isStopListOpen, 
     isParticipantsMode, isInstManageMode, isExtListOpen, isModelListOpen, 
     isCharEditorOpen, isModelEditorOpen, isSamplerEditorOpen, isContextEditorOpen,
-    allSamplers.length
+    isStopPatternEditorOpen, allSamplers.length
   ]);
 
   // --- Handlers ---
@@ -293,6 +297,57 @@ function App() {
     setChatData(updatedChat);
   };
 
+  // Stop Pattern Handlers
+  const handleOpenStopPatternEditor = (stopPattern?: StopPattern) => {
+    setStopPatternToEdit(stopPattern || null);
+    setIsStopPatternEditorOpen(true);
+    setIsStopListOpen(false);
+  };
+
+  const handleSaveStopPattern = async (stopPattern: StopPattern) => {
+    try {
+      await saveRawStopPattern(stopPattern);
+      const freshStopPatterns = await loadAllRawStopPatterns();
+      setAllStopPatterns(freshStopPatterns);
+      
+      // Update samplers that use this stop pattern
+      if (allSamplers.some(s => s.stopPatterns.some(sp => sp.id === stopPattern.id))) {
+        const updatedSamplers = allSamplers.map(s => {
+          if (s.stopPatterns.some(sp => sp.id === stopPattern.id)) {
+            const updatedStopPatterns = s.stopPatterns.map(sp => 
+              sp.id === stopPattern.id ? stopPattern : sp
+            );
+            return { ...s, stopPatterns: updatedStopPatterns };
+          }
+          return s;
+        });
+        setAllSamplers(updatedSamplers);
+      }
+    } catch (err) {
+      console.error("Failed to save stop pattern:", err);
+      alert("Failed to save stop pattern.");
+    }
+  };
+
+  const handleDeleteStopPattern = async (id: string) => {
+    if (!window.confirm("Delete this stop pattern? Samplers using it will lose it.")) return;
+    try {
+      await deleteRawStopPattern(id);
+      const freshStopPatterns = await loadAllRawStopPatterns();
+      setAllStopPatterns(freshStopPatterns);
+      
+      // Remove from samplers
+      const updatedSamplers = allSamplers.map(s => ({
+        ...s,
+        stopPatterns: s.stopPatterns.filter(sp => sp.id !== id)
+      }));
+      setAllSamplers(updatedSamplers);
+    } catch (err) {
+      console.error("Failed to delete stop pattern:", err);
+      alert("Failed to delete stop pattern.");
+    }
+  };
+
   // Extension Handlers
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
   const handleToggleExtension = async (extId: string) => {
@@ -424,14 +479,6 @@ function App() {
       console.error("Failed to delete sampler:", err);
       alert("Failed to delete sampler.");
     }
-  };
-
-  // Stop Pattern Handlers
-  const handleSelectStopPattern = (stop: StopPattern) => { alert(`Selected: ${stop.pattern}`); setIsStopListOpen(false); };
-  const handleCreateStopPattern = () => alert("Create Stop Pattern Modal coming soon!");
-  const handleDeleteStopPattern = async (id: string) => {
-    if (!window.confirm("Delete?")) return;
-    setAllStopPatterns(prev => prev.filter(s => s.id !== id));
   };
 
   // File & Message Handlers
@@ -833,6 +880,40 @@ function App() {
         />
       )}
 
+      {/* Stop Patterns Modal */}
+      {isStopListOpen && (
+        <ManagerModal 
+          title="Stop Patterns" 
+          items={allStopPatterns} 
+          isOpen={isStopListOpen} 
+          onClose={() => setIsStopListOpen(false)} 
+          onSelect={(stopPattern) => handleOpenStopPatternEditor(stopPattern)} 
+          onDelete={handleDeleteStopPattern} 
+          onCreateNew={() => handleOpenStopPatternEditor()} 
+          renderSubtext={(s) => {
+            const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌';
+            return `${hasRegex} Pattern: ${s.pattern}`;
+          }} 
+          emptyMessage="No stop patterns found." 
+          actionLabel="Delete"
+          orderedListMode={false}
+        />
+      )}
+
+      {/* Stop Pattern Editor Modal */}
+      {isStopPatternEditorOpen && (
+        <StopPatternEditorModal
+          isOpen={isStopPatternEditorOpen}
+          onClose={() => {
+            setIsStopPatternEditorOpen(false);
+            setStopPatternToEdit(null);
+          }}
+          onSave={handleSaveStopPattern}
+          onDelete={handleDeleteStopPattern}
+          existingStopPattern={stopPatternToEdit}
+        />
+      )}
+
       {/* Extensions Modal */}
       {isExtListOpen && (
         <ManagerModal 
@@ -849,21 +930,6 @@ function App() {
           orderedListMode={true} 
           currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} 
           onToggleOrder={handleToggleExtension}
-        />
-      )}
-
-      {/* Stop Patterns Modal */}
-      {isStopListOpen && (
-        <ManagerModal 
-          title="Stop Patterns" 
-          items={allStopPatterns} 
-          isOpen={isStopListOpen} 
-          onClose={() => setIsStopListOpen(false)} 
-          onSelect={handleSelectStopPattern} 
-          onDelete={handleDeleteStopPattern} 
-          onCreateNew={handleCreateStopPattern} 
-          renderSubtext={(s) => s.description || `Pattern: ${s.pattern}`} 
-          emptyMessage="No stop patterns found." 
         />
       )}
     </div>
