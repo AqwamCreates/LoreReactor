@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
-import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType } from '../types';
+import type { ChatData, Character, Instruction, Sampler, StopPattern, Extension, ExtensionType, LanguageModel } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { deleteRawChatData, loadAllRawChatData, loadAllRawCharacters, loadAllRawInstructions, loadAllRawSamplers, loadAllRawStopPatterns, saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
@@ -8,15 +8,6 @@ import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import './App.css';
-
-// ✅ Mock Model Interface
-interface Model {
-  id: string;
-  name: string;
-  description: string;
-  contextLength: number;
-  parameters: string;
-}
 
 function App() {
   const { 
@@ -60,11 +51,11 @@ function App() {
   ]);
 
   // ✅ Mock Models Data
-  const [allModels, setAllModels] = useState<Model[]>([
-    { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, parameters: '70B' },
-    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, parameters: 'Unknown' },
-    { id: 'mdl_3', name: 'Gemma-7B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, parameters: '7B' },
-    { id: 'mdl_4', name: 'Command R+', description: 'Optimized for tool use and RAG', contextLength: 128000, parameters: '104B' },
+  const [allModels, setAllModels] = useState<LanguageModel[]>([
+    { id: 'mdl_1', name: 'Llama-3-70B-Instruct', description: 'High quality reasoning and roleplay', contextLength: 8192, model:"" },
+    { id: 'mdl_2', name: 'Mistral-Large', description: 'Balanced speed and intelligence', contextLength: 32768, model:"", mmproj: "" },
+    { id: 'mdl_3', name: 'Gemma-E4B-It', description: 'Fast and lightweight for quick chats', contextLength: 8192, model:"", mmproj: "" },
+    { id: 'mdl_4', name: 'Command R+', description: 'Optimized for tool use and RAG', contextLength: 128000, model:"" },
   ]);
   
   const [inputText, setInputText] = useState('');
@@ -321,17 +312,37 @@ function App() {
   );
 
   // ✅ Helper to format Model Subtext
-  const renderModelSubtext = (model: Model) => (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-      <span style={{ fontSize: '0.7rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-        {model.parameters}
+  const renderModelSubtext = (languageModel: LanguageModel) => {
+    // Detect multi-modal based on the presence of mmproj path
+    // You might need to add `mmproj?: string;` to your Model interface if not already there
+    const isMultiModal = !!languageModel.mmproj; 
+
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+        {/* ✅ Show Multi-Modal Badge if applicable */}
+        {isMultiModal && (
+          <span style={{ 
+            fontSize: '0.7rem', 
+            background: '#8b5cf6', // Purple for vision
+            color: '#fff', 
+            padding: '2px 6px', 
+            borderRadius: '4px', 
+            fontWeight: 'bold',
+            textTransform: 'uppercase'
+          }}>
+            Multi-Modal
+          </span>
+        )}
+        
+        {/* Context Size is still useful info */}
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>
+          Context: {(languageModel.contextLength / 1024).toFixed(0)}k
+        </span>
+        
+        <span>{languageModel.description}</span>
       </span>
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>
-        Context: {(model.contextLength / 1024).toFixed(0)}k
-      </span>
-      <span>{model.description}</span>
-    </span>
-  );
+    );
+  };
 
   return (
     <div className="chat-container">
