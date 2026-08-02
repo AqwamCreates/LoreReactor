@@ -45,7 +45,7 @@ export interface LanguageModel {
   id: string;
   name: string;
   description: string;
-  backend: 'llama-cpp' | 'ollama' | 'openai' | 'other';
+  backend: 'llama-cpp' | 'ollama' | `deepseek` | 'openai' | 'other';
   contextLength: number;
   model: string; // Path to the language model.
   mmproj: string; // Path to the language model's mmproj.
