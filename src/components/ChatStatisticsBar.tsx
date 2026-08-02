@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ChatStatisticsBarProps {
     generationSpeed: number; // ms per token
@@ -7,6 +7,8 @@ interface ChatStatisticsBarProps {
     tokenCount: number;
     maximumNumberOfTokens: number;
     className?: string;
+    numberOfCacheInvalidations?: number;
+    numberOfRequests?: number;
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
@@ -15,6 +17,8 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     tokenCount = 0,               
     maximumNumberOfTokens = 65536,
     className = '',
+    numberOfCacheInvalidations = 0,
+    numberOfRequests = 0,
 }) => {
     const [showDetails, setShowDetails] = useState(false);
     const percentage = Math.round((tokenCount / maximumNumberOfTokens) * 100);
@@ -24,60 +28,83 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const speedColor = generationSpeed < 30 ? 'var(--accent)' : 
                         generationSpeed < 60 ? 'orange' : '#ff4444';
 
-    // Format speed for display
     const speedDisplay = generationSpeed < 1 ? '<1' : Math.round(generationSpeed);
+
+    const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
+    const hasCacheData = numberOfRequests > 0;
 
     return (
         <div 
-        className={`chat-stats-bar ${isCritical ? 'chat-stats-critical' : isNearLimit ? 'chat-stats-warning' : ''} ${className}`}
-        onClick={() => setShowDetails(!showDetails)}
+            className={`chat-stats-bar ${isCritical ? 'chat-stats-critical' : isNearLimit ? 'chat-stats-warning' : ''} ${className}`}
+            onClick={() => setShowDetails(!showDetails)}
         >
-        <div className="chat-stats-items">
-            {/* Generation Speed - First (most important) */}
-            <div className="chat-stat-item">
-            <div className="chat-stat-label">⚡</div>
-            <div className="chat-stat-speed-value" style={{ color: speedColor }}>
-                {speedDisplay}ms
+            <div className="chat-stats-items">
+                {/* Generation Speed */}
+                <div className="chat-stat-item">
+                    <span className="chat-stat-label">⚡</span>
+                    <span className="chat-stat-speed-value" style={{ color: speedColor }}>
+                        {speedDisplay}ms
+                    </span>
+                </div>
+
+                 {/* Cache Invalidation Count */}
+                <div className="chat-stat-item">
+                    <span className="chat-stat-label">🔄</span>
+                    <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
+                </div>
+                
+                {/* Token Usage */}
+                <div className="chat-stat-item chat-stat-token-usage">
+                    <span className="chat-stat-label">📊</span>
+                    <span className="chat-stat-context-bar">
+                        <span 
+                            className="chat-stat-context-fill" 
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                        />
+                    </span>
+                </div>
+
+                {/* Message Count */}
+                <div className="chat-stat-item">
+                    <span className="chat-stat-label">💬</span>
+                    <span className="chat-stat-value">{messageCount}</span>
+                </div>
             </div>
-            </div>
-            
-            {/* Message Count - Second */}
-            <div className="chat-stat-item">
-            <div className="chat-stat-label">💬</div>
-            <div className="chat-stat-value">{messageCount}</div>
-            </div>
-            
-            {/* Token Usage - Progress Bar */}
-            <div className="chat-stat-item chat-stat-token-usage">
-            <div className="chat-stat-label">📊</div>
-            <div className="chat-stat-context-bar">
-                <div 
-                className="chat-stat-context-fill" 
-                style={{ width: `${Math.min(percentage, 100)}%` }}
-                />
-            </div>
-            </div>
-        </div>
-        {showDetails && (
-            <div className="chat-stats-details">
-            <div className="chat-stat-detail-row">
-                <div className="chat-stat-detail-label">Context Used:</div>
-                <div className="chat-stat-detail-value">{tokenCount.toLocaleString()} / {maximumNumberOfTokens.toLocaleString()} ({percentage}%)</div>
-            </div>
-            <div className="chat-stat-detail-row">
-                <div className="chat-stat-detail-label">Generation Speed:</div>
-                <div className="chat-stat-detail-value">{generationSpeed.toFixed(2)} ms/token</div>
-            </div>
-            <div className="chat-stat-detail-row">
-                <div className="chat-stat-detail-label">Message Count:</div>
-                <div className="chat-stat-detail-value">{messageCount} messages</div>
-            </div>
-            <div className="chat-stat-detail-row">
-                <div className="chat-stat-detail-label">Average Tokens Per Message:</div>
-                <div className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(2) : 0} tokens</div>
-            </div>
-            </div>
-        )}
+
+            {showDetails && (
+                <div className="chat-stats-details">
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Context Used:</span>
+                        <span className="chat-stat-detail-value">{tokenCount.toLocaleString()} / {maximumNumberOfTokens.toLocaleString()} ({percentage}%)</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Generation Speed:</span>
+                        <span className="chat-stat-detail-value">{generationSpeed.toFixed(2)} ms/token</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Message Count:</span>
+                        <span className="chat-stat-detail-value">{messageCount} messages</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
+                        <span className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(2) : 0} tokens</span>
+                    </div>
+                    
+                    {/* Cache Details */}
+                    <div className="chat-stat-detail-row" style={{ marginTop: '4px' }}>
+                        <span className="chat-stat-detail-label">Cache Invalidations:</span>
+                        <span className="chat-stat-detail-value">{numberOfCacheInvalidations.toLocaleString()}</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Total Requests:</span>
+                        <span className="chat-stat-detail-value">{numberOfRequests.toLocaleString()}</span>
+                    </div>
+                    <div className="chat-stat-detail-row">
+                        <span className="chat-stat-detail-label">Cache Hit Rate:</span>
+                        <span className="chat-stat-detail-value">{hasCacheData ? `${100 - invalidationRate}%` : 'N/A'}</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
