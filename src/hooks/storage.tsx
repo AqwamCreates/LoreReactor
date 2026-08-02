@@ -1,6 +1,7 @@
 import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel ,
+  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
+  BudgetStrategy, RawBudgetStrategy
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -20,6 +21,7 @@ const PATHS = {
   models: "/user_data/model_data",
   stopPatterns: "/user_data/stop_patterns_data", chatMessages: "/user_data/chat_messages", 
   chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
+  budgetStrategies: "/user_data/budget_strategies",
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -88,6 +90,9 @@ export async function loadRawStopPattern(id: string): Promise<StopPattern | null
     name: rawPattern.name, 
     description: rawPattern.description, 
     pattern: rawPattern.pattern,
+    regularExpressionTrigger: rawPattern.regularExpressionTrigger,
+    regularExpressionContext: rawPattern.regularExpressionContext,
+    regularExpressionTarget: rawPattern.regularExpressionTarget,
     firstCreatedTimestamp: rawPattern.firstCreatedTimestamp,
     lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp,
   };
@@ -282,6 +287,67 @@ export async function saveRawModel(model: LanguageModel): Promise<void> {
 export async function deleteRawModel(id: string): Promise<void> {
     await deleteResource(`${PATHS.models}/${id}.json`);
     await updateManifest(PATHS.models, id, 'remove');
+}
+
+// --- Budget Strategy Repository ---
+export async function loadRawBudgetStrategyManifest(): Promise<string[]> {
+    return await fetchJson<string[]>(`${PATHS.budgetStrategies}/${MANIFEST_FILE}`) || [];
+}
+
+export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy | null> {
+    const rawStrategy = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
+    if (!rawStrategy) return null;
+    
+    // Load the referenced models
+    const [onlineModel, localModel] = await Promise.all([
+        loadRawModel(rawStrategy.onlineModelId),
+        loadRawModel(rawStrategy.localModelId)
+    ]);
+
+    if (!onlineModel || !localModel) {
+        console.warn(`Failed to load models for budget strategy ${id}`);
+        return null;
+    }
+
+    return {
+        id,
+        name: rawStrategy.name,
+        description: rawStrategy.description,
+        onlineModel,
+        localModel,
+        switchProbabilty: rawStrategy.switchProbabilty,
+        switchOnContextSize: rawStrategy.switchOnContextSize,
+        switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
+        fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
+        fallbackOnQualityThreshold: rawStrategy.fallbackOnQualityThreshold,
+        fallbackOnTimeoutInSeconds: rawStrategy.fallbackOnTimeoutInSeconds,
+        maximumBudget: rawStrategy.maximumBudget,
+        firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp,
+    };
+}
+
+export async function loadAllRawBudgetStrategies(): Promise<BudgetStrategy[]> {
+    const ids = await loadRawBudgetStrategyManifest();
+    const results = await Promise.all(ids.map(id => loadRawBudgetStrategy(id)));
+    return results.filter((s): s is BudgetStrategy => s !== null);
+}
+
+export async function saveRawBudgetStrategy(strategy: BudgetStrategy): Promise<void> {
+    const { id, onlineModel, localModel, ...rawStrategy } = strategy;
+    const payload: RawBudgetStrategy = {
+        ...rawStrategy,
+        onlineModelId: onlineModel.id,
+        localModelId: localModel.id,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.budgetStrategies}/${id}.json`, payload);
+    await updateManifest(PATHS.budgetStrategies, id, 'add');
+}
+
+export async function deleteRawBudgetStrategy(id: string): Promise<void> {
+    await deleteResource(`${PATHS.budgetStrategies}/${id}.json`);
+    await updateManifest(PATHS.budgetStrategies, id, 'remove');
 }
 
 // --- Chat Message Repository ---
