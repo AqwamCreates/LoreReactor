@@ -54,7 +54,7 @@ At ≤10B Q4, individual KV cache files are 50–150MB. Disk I/O is faster than 
 
 "When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
 
-### Why Internal IDs Instead of Names?
+### Why IDs Instead Of Names For Internal Prompt Creation?
 
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
