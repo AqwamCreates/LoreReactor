@@ -13,6 +13,7 @@ export function getParticipantId(character: Character, participants: Character[]
 export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
+    if (ratio > 0.7) return "";
     if (ratio > 0.5) return "[You are starting to feel slightly winded.]";
     if (ratio > 0.3) return "[You are quite exhausted. You somewhat have the energy to speak.]";
     if (ratio > 0.1) return "[You are completely drained. You barely have the energy to speak.]";
@@ -266,32 +267,23 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     const participantId = getParticipantId(character, chatData.participants);
     
-    promptLines.push(`[You must reply as ${participantId} / ${character.name}. Your response must be in character.]`);
+    promptLines.push(`[You must reply as ${participantId} (${character.name}). Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
         if (fatigue) promptLines.push(fatigue);
     }
 
-    // Identity Map
-    const identityMapEntries = chatData.participants.map(p => {
-        const id = getParticipantId(p, chatData.participants);
-        const isCurrent = id === participantId;
-        const isRevealed = revealedNamesMap.has(p.id);
-        const displayName = (isRevealed || isCurrent) ? p.name : "Unknown";
-        return `${id} = ${displayName}`;
-    });
-    
-    if (identityMapEntries.length > 0) {
-        promptLines.push(`[Identity Map: ${identityMapEntries.join('; ')}]`);
-    }
-
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
         
         for (const msg of chatMessageHistory) {
-            const participantId = getParticipantId(msg.character, chatData.participants);
-            historyLines.push(`Character ${participantId}: ${msg.textContent}`);
+            const otherCharacter = msg.character
+            const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
+            const isCurrent = otherParticipantId === participantId;
+            const isRevealed = revealedNamesMap.has(otherParticipantId);
+            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
+            historyLines.push(`Character ${participantId} (${displayName}): ${msg.textContent}`);
         }
         
         promptLines.push(historyLines.join('\n'));
