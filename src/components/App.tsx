@@ -14,7 +14,7 @@ import { useToast } from '../context/ToastContext';
 
 import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel, BudgetStrategy } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { saveRawChatData } from '../hooks/storage';
+import { saveRawChatData, loadRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -114,6 +114,9 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- State for branch source chat title
+  const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
+
   // --- Load Non-Hook Data ---
   useEffect(() => {
     const loadData = async () => {
@@ -121,7 +124,29 @@ function App() {
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
     };
     loadData();
-  });
+  }, []);
+
+  // ✅ Load branch source chat title when chatData changes
+  useEffect(() => {
+    const loadBranchSource = async () => {
+      if (chatData?.parentChatDataId) {
+        try {
+          const sourceChat = await loadRawChatData(chatData.parentChatDataId);
+          if (sourceChat) {
+            setBranchSourceTitle(sourceChat.title || 'Untitled Chat');
+          } else {
+            setBranchSourceTitle(null);
+          }
+        } catch (err) {
+          console.error("Failed to load branch source:", err);
+          setBranchSourceTitle(null);
+        }
+      } else {
+        setBranchSourceTitle(null);
+      }
+    };
+    loadBranchSource();
+  }, [chatData?.parentChatDataId]);
 
   useEffect(() => {
       if(defaultCharacterId) {
@@ -343,6 +368,24 @@ function App() {
     }
   };
 
+  // ✅ Handler to navigate back to the source chat
+  const handleNavigateToSource = async () => {
+    if (!chatData?.parentChatDataId) return;
+    try {
+      const sourceChat = await loadRawChatData(chatData.parentChatDataId);
+      if (sourceChat) {
+        setChatData(sourceChat);
+        setCurrentCharacter(sourceChat.protagonist);
+        addToast(`Navigated back to "${sourceChat.title || 'Untitled Chat'}"`, "info");
+      } else {
+        addToast("Source chat not found.", "error");
+      }
+    } catch (err) {
+      console.error("Failed to load source chat:", err);
+      addToast("Failed to navigate to source chat.", "error");
+    }
+  };
+
   const handleSend = () => { if (!inputText.trim()) return; sendMessage(inputText); setInputText(''); setPendingFiles([]); };
 
   // ✅ 3. Action Interjection Handler - uses the label directly
@@ -459,6 +502,28 @@ function App() {
     );
   };
 
+  // ✅ 6. Helper function to check if a message is a stem (locked) message
+  const isStemMessage = (messageId: string): boolean => {
+    // If there's no parent chat message, there's no branch
+    if (!chatData?.parentChatMessageId) return false;
+    
+    // Find the index of the branch point
+    const branchIndex = chatData.chatMessageHistory.findIndex(
+      m => m.id === chatData.parentChatMessageId
+    );
+    
+    // If branch point not found, nothing is a stem
+    if (branchIndex === -1) return false;
+    
+    // Find the index of the current message
+    const currentIndex = chatData.chatMessageHistory.findIndex(
+      m => m.id === messageId
+    );
+    
+    // Messages from index 0 to branchIndex (inclusive) are stems
+    return currentIndex !== -1 && currentIndex <= branchIndex;
+  };
+
   if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
 
   const isMassActive = massDeleteId !== null;
@@ -543,7 +608,10 @@ function App() {
           const isEditing = editingId === message.id;
           const isMassStart = message.id === massDeleteId;
           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-          const isStemMessage = parentChatMessageIds.has(message.id);
+          
+          // ✅ Use the helper function to check if this message is a stem
+          const isStem = isStemMessage(message.id);
+          
           const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
           return (
@@ -573,7 +641,7 @@ function App() {
                     <span className="avatar-name">{displayName}</span>
                   </div>
                 )}
-                <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStemMessage ? 'bubble-stem' : ''}`}>
+                <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
                   {isEditing ? (
                     <div className="edit-mode">
                       <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
@@ -586,7 +654,9 @@ function App() {
                     <>
                       <span className="message-text">{message.textContent}</span>
                       <div className="message-toolbar">
-                        {isStemMessage ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
+                        {isStem ? (
+                          <span className="toolbar-lock">🔒 Locked</span>
+                        ) : !isMassActive ? (
                           <>
                             <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                             {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
@@ -607,10 +677,17 @@ function App() {
                 </div>
               </div>
               {isJustBeforeBranchOff && (
-                <div className="branch-separator-line">
+                <div 
+                  className="branch-separator-line clickable" 
+                  onClick={handleNavigateToSource}
+                  title={`Click to go back to "${branchSourceTitle || 'source chat'}"`}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="branch-separator-content">
                     <span className="branch-separator-icon">🌿</span>
-                    <span className="branch-separator-text">Conversation Branches Here</span>
+                    <span className="branch-separator-text">
+                      {branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}
+                    </span>
                     <span className="branch-separator-icon">🌿</span>
                   </div>
                 </div>
