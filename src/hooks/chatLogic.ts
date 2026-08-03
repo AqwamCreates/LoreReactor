@@ -5,7 +5,7 @@ import { detectName } from './nameDetection';
 
 // --- Helpers ---
 
-export function getCharacterPromptId(character: Character, participants: Character[]): string {
+export function getParticipantId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
@@ -264,9 +264,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
-    const participantId = getCharacterPromptId(character, chatData.participants);
+    const participantId = getParticipantId(character, chatData.participants);
     
-    promptLines.push(`[You must reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character. If you finish chatting, use "Character ${participantId}"]`);
+    promptLines.push(`[You must reply as ${participantId} / ${character.name}. Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
@@ -275,7 +275,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // Identity Map
     const identityMapEntries = chatData.participants.map(p => {
-        const id = getCharacterPromptId(p, chatData.participants);
+        const id = getParticipantId(p, chatData.participants);
         const isCurrent = id === participantId;
         const isRevealed = revealedNamesMap.has(p.id);
         const displayName = (isRevealed || isCurrent) ? p.name : "Unknown";
@@ -286,7 +286,19 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         promptLines.push(`[Identity Map: ${identityMapEntries.join('; ')}]`);
     }
 
-    promptLines.push(`${participantId}:`);
+    if (chatMessageHistory.length > 0) {
+        const historyLines: string[] = [];
+        
+        for (const msg of chatMessageHistory) {
+            const participantId = getParticipantId(msg.character, chatData.participants);
+            historyLines.push(`Character ${participantId}: ${msg.textContent}`);
+        }
+        
+        promptLines.push(historyLines.join('\n'));
+
+    }
+
+    promptLines.push(`Character ${participantId}:`);
 
     return {
         prompt: promptLines.join('\n'),
@@ -306,7 +318,7 @@ export async function prepareRequestBody(chatData: ChatData, character: Characte
 
     // 2. Calculate Dynamic Stops
     const roleplayStops = participants.flatMap(p => {
-        const id = getCharacterPromptId(p, participants);
+        const id = getParticipantId(p, participants);
         return [`\n${id}:`, `\n${p.name}:`];
     });
 
@@ -320,7 +332,7 @@ export async function prepareRequestBody(chatData: ChatData, character: Characte
         ...activeStopPatterns.map(sp => sp.pattern), // Inject activated stop patterns
     ];
 
-    // 🛡️ SANITIZATION: Filter out empty strings, nulls, or undefineds to prevent 400 errors
+    // 🛡️ SANITIZATION: Filter out empty strings, nulls, or undefined to prevent 400 errors
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     // 3. Collect Images (Character + Contexts)
