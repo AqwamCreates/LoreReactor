@@ -257,15 +257,16 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     }
 
     // 5. Construct Final Prompt String
-    if (character.systemPrompt) promptLines.push(`[System: ${character.systemPrompt}]`);
-    if (character.description) promptLines.push(`[Description: ${character.description}]`);
+    if (character.systemPrompt) promptLines.push(`[${character.systemPrompt}]`);
 
     // Fatigue
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
+
+    const participantId = getCharacterPromptId(character, chatData.participants);
     
-    promptLines.push(`[You must reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character.]`);
+    promptLines.push(`[You must reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character. If you finish chatting, use "Character ${participantId}"]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
@@ -273,12 +274,11 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     }
 
     // Identity Map
-    const charId = getCharacterPromptId(character, chatData.participants);
     const identityMapEntries = chatData.participants.map(p => {
         const id = getCharacterPromptId(p, chatData.participants);
-        const isCurrent = id === charId;
+        const isCurrent = id === participantId;
         const isRevealed = revealedNamesMap.has(p.id);
-        const displayName = (isRevealed || isCurrent) ? p.name : '[name unknown]';
+        const displayName = (isRevealed || isCurrent) ? p.name : "Unknown";
         return `${id} = ${displayName}`;
     });
     
@@ -286,16 +286,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         promptLines.push(`[Identity Map: ${identityMapEntries.join('; ')}]`);
     }
 
-    // Full History
-    for (let i = 0; i < characterIdArray.length; i++) {
-        const cid = characterIdArray[i];
-        const txt = textContentArray[i];
-        const p = chatData.participants.find(part => part.id === cid);
-        const name = (p && (revealedNamesMap.has(cid) || cid === currentCharacterId)) ? p.name : '[name unknown]';
-        promptLines.push(`${name}: ${txt}`);
-    }
-
-    promptLines.push(`${character.name}:`);
+    promptLines.push(`${participantId}:`);
 
     return {
         prompt: promptLines.join('\n'),
@@ -404,7 +395,7 @@ export function createNewChatData(character: Character): ChatData {
     const now = Date.now();
     return {
         id: uuidv4(),
-        title: "New Chat",
+        name: "Untitled Chat",
         protagonist: character,
         participants: [character],
         contexts: [],
