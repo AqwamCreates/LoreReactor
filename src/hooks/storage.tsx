@@ -261,11 +261,7 @@ export async function loadRawModelManifest(): Promise<string[]> {
 export async function loadRawModel(id: string): Promise<LanguageModel | null> {
     const rawModel = await fetchJson<LanguageModel>(`${PATHS.models}/${id}.json`);
     if (!rawModel) return null;
-    return {
-        ...rawModel,
-        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
-    };
+    return rawModel;
 }
 
 export async function loadAllRawModels(): Promise<LanguageModel[]> {
