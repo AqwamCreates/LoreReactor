@@ -267,7 +267,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     const participantId = getParticipantId(character, chatData.participants);
     
-    promptLines.push(`[You must reply as ${participantId} (${character.name}). Your response must be in character. One sentence only.]`);
+    promptLines.push(`[You must reply as ${participantId} (${character.name}). Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
