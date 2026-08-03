@@ -13,10 +13,10 @@ export function getCharacterPromptId(character: Character, participants: Charact
 export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
-    if (ratio > 0.7) return "";
-    if (ratio > 0.4) return "[You are starting to feel slightly winded.]";
-    if (ratio > 0.1) return "[You are quite exhausted. You somewhat have the energy to speak.]";
-    return "[You are completely drained. You barely have the energy to speak.]";
+    if (ratio > 0.5) return "[You are starting to feel slightly winded.]";
+    if (ratio > 0.3) return "[You are quite exhausted. You somewhat have the energy to speak.]";
+    if (ratio > 0.1) return "[You are completely drained. You barely have the energy to speak.]";
+    return "[You have no energy left to do anything.]";
 }
 
 export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
