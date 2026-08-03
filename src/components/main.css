@@ -1082,119 +1082,636 @@ select option:checked {
   }
 }
 
-/* Add to main.css - Slider Input Styles */
-
-.slider-input-container {
-    user-select: none;
+/* === Editor Modal Layout === */
+.editor-modal-content {
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-.slider-input-container:hover .slider-fill {
-    background: var(--accent-hover, var(--accent));
+.editor-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
 }
 
-.slider-track {
-    position: relative;
+.editor-section {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.editor-section-title {
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-h);
+    opacity: 0.6;
+    margin-bottom: 12px;
+    display: block;
+}
+
+/* === Form Elements === */
+.form-label {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-h);
+    display: block;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+    opacity: 0.8;
+}
+
+.form-label-small {
+    font-size: 0.65rem;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
     width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--border);
+    box-sizing: border-box;
+    font-size: 0.85rem;
+    font-family: inherit;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--social-bg);
+    color: var(--text-h);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-textarea {
+    resize: vertical;
+    font-family: monospace;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    border-color: var(--accent);
+}
+
+.form-input.error,
+.form-textarea.error,
+.form-select.error {
+    border-color: #ff4444;
+}
+
+.form-select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
     cursor: pointer;
-    touch-action: none;
 }
 
-.slider-track:hover .slider-fill {
-    background: var(--accent-hover, var(--accent));
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
 }
 
-.slider-track:active .slider-thumb {
-    transform: translate(-50%, -50%) scale(1.2);
+.form-row-full {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
 }
 
-.slider-thumb {
+/* === Messages === */
+.error-message {
+    font-size: 0.75rem;
+    color: #ff4444;
+    margin-top: 4px;
+}
+
+.success-message {
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-top: 4px;
+    text-align: center;
+}
+
+/* === Image Grid === */
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.image-square {
+    position: relative;
+    aspect-ratio: 1/1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    background-color: var(--social-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-square.active {
+    border-color: var(--accent);
+}
+
+.image-square img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.upload-square {
+    border-style: dashed;
+    cursor: pointer;
+    transition: border-color 0.2s, opacity 0.2s;
+}
+
+.upload-square:hover {
+    border-color: var(--accent);
+}
+
+.upload-square.disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.image-remove-btn {
     position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    top: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    border: none;
+    color: #fff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: background 0.2s;
+}
+
+.image-remove-btn:hover {
+    background: #ff4444;
+}
+
+/* === Regex Tester === */
+.regex-tester-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.test-result-container {
+    height: 24px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* === Base64 Toggle Section === */
+.encoding-toggle-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.75rem;
+    color: var(--text-h);
+}
+
+.checkbox-input {
     width: 16px;
     height: 16px;
-    border-radius: 50%;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.encoding-hint {
+    font-size: 0.65rem;
+    color: var(--text-h);
+    opacity: 0.7;
+    margin-top: 4px;
+    margin-left: 24px;
+    display: block;
+    line-height: 1.4;
+}
+
+/* === Buttons === */
+.modal-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn {
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.btn-cancel {
+    background: transparent;
+    color: var(--text-h);
+    border: 1px solid var(--border);
+}
+
+.btn-cancel:hover {
+    background: var(--social-bg);
+}
+
+.btn-save {
     background: var(--accent);
-    border: 2px solid var(--bg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transition: transform 0.15s ease, left 0.1s ease;
-    cursor: grab;
-    z-index: 2;
+    color: #fff;
 }
 
-.slider-thumb:hover {
-    transform: translate(-50%, -50%) scale(1.1);
+.btn-save:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
 }
 
-.slider-thumb:active {
-    cursor: grabbing;
-    transform: translate(-50%, -50%) scale(1.2);
+.btn-save:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
 }
 
-.slider-tooltip {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    font-size: 0.7rem;
-    font-family: monospace;
-    color: var(--text-h);
-    pointer-events: none;
+.btn-test {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    padding: 6px 16px;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 3;
-}
-
-.slider-track:active .slider-tooltip,
-.slider-thumb:active ~ .slider-tooltip {
-    opacity: 1;
-}
-
-/* Style the number input in the slider */
-.slider-input-container input[type="number"] {
-    appearance: textfield;
-    -moz-appearance: textfield;
-    width: 70px;
-    padding: 2px 6px;
     font-size: 0.75rem;
-    font-family: monospace;
-    border-radius: 4px;
+}
+
+.btn-test:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* === Generic Editor Modal Styles (Reusable for Text/Inputs) === */
+
+/* Layout */
+.editor-modal-content {
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.editor-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Sections (Boxed areas like Regex, Speculative Decoding, etc.) */
+.editor-section {
     border: 1px solid var(--border);
-    background: var(--bg);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.editor-section-title {
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--text-h);
-    text-align: right;
+    opacity: 0.6;
+    margin-bottom: 12px;
+    display: block;
+}
+
+/* Labels (The text that describes the input) */
+.editor-label {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-h);
+    display: block;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+    opacity: 0.8;
+}
+
+.editor-label-small {
+    font-size: 0.65rem;
+}
+
+/* Inputs & Textareas (Where text is modified) */
+.editor-input,
+.editor-textarea,
+.editor-select {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.85rem;
+    font-family: inherit;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--social-bg);
+    color: var(--text-h);
     outline: none;
+    transition: border-color 0.2s;
 }
 
-.slider-input-container input[type="number"]:focus {
+.editor-textarea {
+    resize: vertical;
+    font-family: monospace; /* Ideal for code/text editing */
+}
+
+.editor-input:focus,
+.editor-textarea:focus,
+.editor-select:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
-.slider-input-container input[type="number"]::-webkit-inner-spin-button,
-.slider-input-container input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
+.editor-input.error,
+.editor-textarea.error,
+.editor-select.error {
+    border-color: #ff4444;
+}
+
+.editor-select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+}
+
+/* Grids for layout */
+.editor-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.editor-row-full {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+/* Messages */
+.editor-error-message {
+    font-size: 0.75rem;
+    color: #ff4444;
+    margin-top: 4px;
+}
+
+.editor-success-message {
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-top: 4px;
+    text-align: center;
+}
+
+/* Image Grid */
+.editor-image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.editor-image-square {
+    position: relative;
+    aspect-ratio: 1/1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    background-color: var(--social-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editor-image-square.active {
+    border-color: var(--accent);
+}
+
+.editor-image-square img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.editor-upload-square {
+    border-style: dashed;
+    cursor: pointer;
+    transition: border-color 0.2s, opacity 0.2s;
+}
+
+.editor-upload-square:hover {
+    border-color: var(--accent);
+}
+
+.editor-upload-square.disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.editor-image-remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    border: none;
+    color: #fff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: background 0.2s;
+}
+
+.editor-image-remove-btn:hover {
+    background: #ff4444;
+}
+
+/* Regex Tester Row */
+.editor-tester-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.editor-test-result-container {
+    height: 24px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Base64 Toggle Section (Generic Toggle Style) */
+.editor-toggle-section {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.02);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.editor-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85rem;
+    color: var(--text-h);
+    font-weight: bold;
     margin: 0;
 }
 
-/* Dark mode specific adjustments */
-@media (prefers-color-scheme: dark) {
-    .slider-thumb {
-        border-color: var(--bg);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    }
-    
-    .slider-tooltip {
-        background: var(--bg);
-        border-color: var(--border);
-    }
+.editor-checkbox-input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* Buttons */
+.editor-modal-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.editor-btn {
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.editor-btn-cancel {
+    background: transparent;
+    color: var(--text-h);
+    border: 1px solid var(--border);
+}
+
+.editor-btn-cancel:hover {
+    background: var(--social-bg);
+}
+
+.editor-btn-save {
+    background: var(--accent);
+    color: #fff;
+}
+
+.editor-btn-save:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.editor-btn-save:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.editor-btn-test {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    padding: 6px 16px;
+    white-space: nowrap;
+    font-size: 0.75rem;
+}
+
+.editor-btn-test:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.editor-toggle-section {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.02);
+    display: flex;
+    align-items: center; /* Ensures the whole label block is centered if needed */
+}
+
+.editor-checkbox-label {
+    display: flex;
+    align-items: center; /* Vertically centers the text relative to the checkbox */
+    gap: 10px;           /* Space between box and text */
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85rem;
+    color: var(--text-h);
+    font-weight: bold;
+    margin: 0;           /* Reset default margins */
+    width: 100%;         /* Ensure it takes full width of parent */
+    line-height: 1;      /* Prevents extra vertical space in text */
+}
+
+.editor-checkbox-input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;           /* Reset default browser margins */
+    flex-shrink: 0;      /* Prevents checkbox from shrinking */
+}
+
+/* Specific style for the span containing the text to ensure perfect alignment */
+.editor-checkbox-label span {
+    display: inline-block;
+    line-height: 1;
+    transform: translateY(0); /* Explicitly ensure no offset */
 }

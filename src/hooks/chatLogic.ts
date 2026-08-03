@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
+// --- Helpers ---
+
 export function getCharacterPromptId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
@@ -25,172 +27,350 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     return null;
 }
 
-function buildContext(
-    chatData: ChatData, 
-    character: Character, 
+// --- Unified Filtering Logic (The Core Engine) ---
+
+function filterArrayBasedOnContext(
+    characterIdArray: string[], 
+    textContentArray: string[], 
+    currentCharacterId: string, 
     contextType: 'global' | 'local' | 'previous'
-): string {
-    const messages = chatData.chatMessageHistory;
-    
-    switch (contextType) {
-        case 'global':
-            // Use the whole conversation
-            return messages.map(msg => `${msg.character.name}: ${msg.textContent}`).join('\n');
-            
-        case 'local': {
-            // Use messages between the character's previous chat and their current talk
-            const selfMessages = messages.filter(msg => msg.character.id === character.id);
-            if (selfMessages.length === 0) return '';
-            
-            const lastSelfMessage = selfMessages[selfMessages.length - 1];
-            const lastSelfIndex = messages.indexOf(lastSelfMessage);
-            const previousSelfIndex = selfMessages.length > 1 
-                ? messages.indexOf(selfMessages[selfMessages.length - 2]) 
-                : -1;
-            
-            // Get messages since the previous self message (or from the beginning)
-            const startIndex = previousSelfIndex !== -1 ? previousSelfIndex + 1 : 0;
-            return messages
-                .slice(startIndex, lastSelfIndex + 1)
-                .map(msg => `${msg.character.name}: ${msg.textContent}`)
-                .join('\n');
-        }
-            
-        case 'previous': {
-            // Only take the previous turn
-            if (messages.length === 0) return '';
-            const lastMessage = messages[messages.length - 1];
-            return `${lastMessage.character.name}: ${lastMessage.textContent}`;
-        }
-            
-        default:
-            return '';
+): { characterIdArray: string[]; textContentArray: string[] } {
+
+    const length = characterIdArray.length;
+
+    if (contextType === "global") {
+        return { characterIdArray, textContentArray };
     }
+
+    if (contextType === "previous") {
+        if (length === 0) return { characterIdArray: [], textContentArray: [] };
+        return {
+            characterIdArray: [characterIdArray[length - 1]],
+            textContentArray: [textContentArray[length - 1]]
+        };
+    }
+
+    if (contextType === "local") {
+        let targetIndex = -1;
+        // Find the MOST RECENT message by THIS character BEFORE the current turn
+        for (let i = length - 1; i >= 0; i--) {
+            if (characterIdArray[i] === currentCharacterId) {
+                targetIndex = i;
+                break;
+            }
+        }
+
+        if (targetIndex === -1) return { characterIdArray: [], textContentArray: [] };
+
+        const startIndex = targetIndex + 1;
+        if (startIndex >= length) return { characterIdArray: [], textContentArray: [] };
+
+        return {
+            characterIdArray: characterIdArray.slice(startIndex),
+            textContentArray: textContentArray.slice(startIndex)
+        };
+    }
+
+    return { characterIdArray: [], textContentArray: [] };
 }
 
-function getTargetText(
-    chatData: ChatData, 
-    character: Character,
-    targetType: 'everyone' | 'responder' | 'self'
-): string {
-    const messages = chatData.chatMessageHistory;
-    
-    switch (targetType) {
-        case 'everyone':
-            // Use all messages
-            return messages.map(msg => `${msg.character.name}: ${msg.textContent}`).join('\n');
-            
-        case 'responder':
-            // Only use the responder's messages (current character)
-            return messages
-                .filter(msg => msg.character.id === character.id)
-                .map(msg => `${msg.character.name}: ${msg.textContent}`)
-                .join('\n');
-            
-        case 'self': {
-            // Use messages that reference the character (by name)
-            const name = character.name;
-            return messages
-                .filter(msg => msg.textContent.includes(name))
-                .map(msg => `${msg.character.name}: ${msg.textContent}`)
-                .join('\n');
-        }
-            
-        default:
-            return '';
+function filterArrayBasedOnTarget(
+    characterIdArray: string[], 
+    textContentArray: string[], 
+    currentCharacterId: string, 
+    targetType: 'everyone' | 'listener' | 'self'
+): { characterIdArray: string[]; textContentArray: string[] } {
+
+    const length = characterIdArray.length;
+    if (length === 0) return { characterIdArray: [], textContentArray: [] };
+
+    if (targetType === "everyone") {
+        return { characterIdArray, textContentArray };
     }
+
+    let targetCharacterId: string | undefined = undefined;
+
+    if (targetType === "self") {
+        targetCharacterId = currentCharacterId;
+    } else if (targetType === "listener") {
+        // Find the most recent speaker who is NOT the current character
+        for (let i = length - 1; i >= 0; i--) {
+            if (characterIdArray[i] !== currentCharacterId) {
+                targetCharacterId = characterIdArray[i];
+                break;
+            }
+        }
+    }
+
+    if (!targetCharacterId) {
+        return { characterIdArray: [], textContentArray: [] };
+    }
+
+    const extractedCharacterIdArray: string[] = [];
+    const extractedTextContentArray: string[] = [];
+
+    for (let i = 0; i < length; i++) {
+        if (characterIdArray[i] === targetCharacterId) {
+            extractedCharacterIdArray.push(characterIdArray[i]);
+            extractedTextContentArray.push(textContentArray[i]);
+        }
+    }
+
+    return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
-function getActiveContexts(
-    contexts: Context[], 
-    chatData: ChatData, 
-    character: Character
-): Context[] {
-    return contexts.filter(context => {
-        // If no regex trigger, always include
-        if (!context.regularExpressionTrigger) {
-            return true;
+// --- Main Builder with Shared Cache ---
+
+interface BuildResult {
+    prompt: string;
+    activeStopPatterns: StopPattern[];
+    activeContextsForImages: Context[]; // Contexts that passed regex and have images/base64 flag
+}
+
+export function buildPromptAndStopPatterns(chatData: ChatData, character: Character): BuildResult {
+    const chatMessageHistory = chatData.chatMessageHistory;
+    const contexts = chatData.contexts || [];
+    const sampler = character.sampler;
+    const allStopPatterns = sampler?.stopPatterns || [];
+    const currentCharacterId = character.id;
+
+    // 1. Flatten History into Arrays
+    const characterIdArray: string[] = [];
+    const textContentArray: string[] = [];
+    const revealedNamesMap = new Map<string, boolean>();
+
+    for (const msg of chatMessageHistory) {
+        characterIdArray.push(msg.character.id);
+        textContentArray.push(msg.textContent);
+        if (msg.isNameRevealed) {
+            revealedNamesMap.set(msg.character.id, true);
+        }
+    }
+
+    // 2. Initialize Shared Cache
+    // Key: ContextType -> Key: TargetType -> Value: Filtered Result
+    const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
+
+    const promptLines: string[] = [];
+    const activeStopPatterns: StopPattern[] = [];
+    const activeContextsForImages: Context[] = [];
+
+    // Helper to get filtered data from cache
+    const getFilteredData = (ctxType: string, tgtType: string) => {
+        if (!combinationCache[ctxType]) {
+            combinationCache[ctxType] = {};
         }
         
-        try {
-            const regex = new RegExp(context.regularExpressionTrigger);
-            
-            // Build context based on the context's context type
-            const contextType = context.regularExpressionContext || 'global';
-            const contextText = buildContext(chatData, character, contextType);
-            
-            // If context is empty, skip this context
-            if (!contextText) return false;
-            
-            // Get target text based on the context's target type
-            const targetType = context.regularExpressionTarget || 'everyone';
-            const targetText = getTargetText(chatData, character, targetType);
-            
-            // Test the regex against the target text
-            return regex.test(targetText);
-        } catch (error) {
-            // If regex is invalid, include the context (fallback to safe behavior)
-            console.warn(`Invalid regex pattern for context "${context.name}":`, error);
-            return true;
+        if (!combinationCache[ctxType][tgtType]) {
+            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, currentCharacterId, ctxType as any);
+            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, currentCharacterId, tgtType as any);
+            combinationCache[ctxType][tgtType] = step2;
         }
-    });
-}
+        
+        return combinationCache[ctxType][tgtType];
+    };
 
-export function buildPromptFromHistory(chatData: ChatData, character: Character): string {
-    const lines: string[] = [];
-    const name = character.name;
-    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
-    const charId = getCharacterPromptId(character, chatData.participants);
-    const activeContextImages = []
+    // 3. Process CONTEXTS (Injection & Image Flagging)
+    for (const context of contexts) {
+        const ctxType = context.regularExpressionContext || 'global';
+        const tgtType = context.regularExpressionTarget || 'everyone';
+        const regexTrigger = context.regularExpressionTrigger;
 
-    // Get active contexts
-    const activeContexts = chatData.contexts?.length 
-        ? getActiveContexts(chatData.contexts, chatData, character) 
-        : [];
+        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
-    // Add active contexts to prompt
-    if (activeContexts.length > 0) {
-        lines.push(activeContexts.map(i => {
-            // Use the context text if available, otherwise indicate it has images
-            if (i.text) {
-                return `[Context: ${i.text}]`;
-            }if (i.images && i.images.length > 0) {
-                return "[Context: Images available]";
+        if (filteredTexts.length === 0 && !regexTrigger) {
+            if (ctxType !== 'global' || tgtType !== 'everyone') continue;
+        }
+
+        const searchSpace = filteredTexts.join('\n');
+        let shouldInject = false;
+
+        if (!regexTrigger) {
+            shouldInject = true;
+        } else {
+            try {
+                const regex = new RegExp(regexTrigger);
+                if (regex.test(searchSpace)) {
+                    shouldInject = true;
+                }
+            } catch (e) {
+                console.warn(`Invalid regex in context ${context.name}`, e);
+                shouldInject = true;
             }
-            return `[Context: ${i.name}]`; // Just in case if either one is missing.
-        }).join('\n'));
+        }
+
+        if (shouldInject) {
+            if (context.text) {
+                promptLines.push(`[Context: ${context.text}]`);
+            }
+            // Track contexts that have images AND want base64 encoding for later processing
+            if (context.images && context.images.length > 0 && context.useBase64Encoding) {
+                activeContextsForImages.push(context);
+            }
+        }
     }
-    
-    if (character.systemPrompt) lines.push(`[${name} System Prompt: ${character.systemPrompt}]`);
-    if (character.description) lines.push(`[${name} Description: ${character.description}]`);
 
+    // 4. Process STOP PATTERNS (Activation)
+    for (const stopPattern of allStopPatterns) {
+        const ctxType = stopPattern.regularExpressionContext || 'global';
+        const tgtType = stopPattern.regularExpressionTarget || 'everyone';
+        const regexTrigger = stopPattern.regularExpressionTrigger;
+
+        // Use the SAME cache entry calculated above
+        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
+
+        if (!regexTrigger) {
+            // If no regex, the stop pattern is always active (standard behavior)
+            activeStopPatterns.push(stopPattern);
+            continue;
+        }
+
+        if (filteredTexts.length === 0) continue;
+
+        const searchSpace = filteredTexts.join('\n');
+
+        try {
+            const regex = new RegExp(regexTrigger);
+            if (regex.test(searchSpace)) {
+                activeStopPatterns.push(stopPattern);
+            }
+        } catch (e) {
+            console.warn(`Invalid regex in stop pattern ${stopPattern.name}`, e);
+            activeStopPatterns.push(stopPattern);
+        }
+    }
+
+    // 5. Construct Final Prompt String
+    if (character.systemPrompt) promptLines.push(`[System: ${character.systemPrompt}]`);
+    if (character.description) promptLines.push(`[Description: ${character.description}]`);
+
+    // Fatigue
     const previousMessage = findPreviousChatMessage(chatData, character.id);
+    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
-
-    lines.push(`[Complete the reply as ${charId} / ${name}. Your response must be in character.]`);
+    
+    promptLines.push(`[Complete the reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
-        if (fatigue) lines.push(fatigue);
+        if (fatigue) promptLines.push(fatigue);
     }
 
-    const mappings = chatData.participants.map(p => {
+    // Identity Map
+    const charId = getCharacterPromptId(character, chatData.participants);
+    const identityMapEntries = chatData.participants.map(p => {
         const id = getCharacterPromptId(p, chatData.participants);
         const isCurrent = id === charId;
-        const isRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
-        const displayName = isRevealed || isCurrent ? p.name : '[name unknown]';
+        const isRevealed = revealedNamesMap.has(p.id);
+        const displayName = (isRevealed || isCurrent) ? p.name : '[name unknown]';
         return `${id} = ${displayName}`;
-    }).join('; ');
+    });
     
-    lines.push(`[Identity Map: ${mappings}]`);
-
-    for (const message of chatData.chatMessageHistory) {
-        const pid = getCharacterPromptId(message.character, chatData.participants);
-        lines.push(`${pid}: ${message.textContent}`);
+    if (identityMapEntries.length > 0) {
+        promptLines.push(`[Identity Map: ${identityMapEntries.join('; ')}]`);
     }
-    lines.push(`${charId}:`);
-    return lines.join('\n'), activeContextImages;
+
+    // Full History
+    for (let i = 0; i < characterIdArray.length; i++) {
+        const cid = characterIdArray[i];
+        const txt = textContentArray[i];
+        const p = chatData.participants.find(part => part.id === cid);
+        const name = (p && (revealedNamesMap.has(cid) || cid === currentCharacterId)) ? p.name : '[name unknown]';
+        promptLines.push(`${name}: ${txt}`);
+    }
+
+    promptLines.push(`${character.name}:`);
+
+    return {
+        prompt: promptLines.join('\n'),
+        activeStopPatterns,
+        activeContextsForImages
+    };
 }
+
+// --- Request Preparation ---
+
+export async function prepareRequestBody(chatData: ChatData, character: Character, characterImageBase64?: string | null): Promise<any> {
+    const sampler = character.sampler;
+    const participants = chatData.participants;
+    
+    // 1. Run the Unified Builder
+    const { prompt, activeStopPatterns, activeContextsForImages } = buildPromptAndStopPatterns(chatData, character);
+
+    // 2. Calculate Dynamic Stops
+    const roleplayStops = participants.flatMap(p => {
+        const id = getCharacterPromptId(p, participants);
+        return [`\n${id}:`, `\n${p.name}:`];
+    });
+
+    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
+    
+    const finalStops = [
+        '<|end_of_turn|>',
+        '<|start_of_turn|>',
+        ...roleplayStops,
+        ...(Array.isArray(paramStops) ? paramStops : []),
+        ...activeStopPatterns.map(sp => sp.pattern), // Inject activated stop patterns
+    ];
+
+    // 🛡️ SANITIZATION: Filter out empty strings, nulls, or undefineds to prevent 400 errors
+    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
+
+    // 3. Collect Images (Character + Contexts)
+    const allImageData: { data: string; id: number }[] = [];
+    let imageIdCounter = 13; // Start after character image ID (12)
+
+    if (characterImageBase64) {
+        allImageData.push({ data: characterImageBase64, id: 12 });
+    }
+
+    // Process Context Images that flagged for Base64
+    if (activeContextsForImages.length > 0) {
+        const imagePromises = activeContextsForImages.flatMap(context => {
+            if (!context.images) return [];
+            return context.images.map(async (filename) => {
+                // Fetch and Convert
+                try {
+                    // Adjust path if necessary based on your storage.tsx PATHS
+                    const imageUrl = `/user_data/context_data/${filename}`; 
+                    const response = await fetch(imageUrl);
+                    if (!response.ok) return null;
+                    const blob = await response.blob();
+                    const base64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    });
+                    return { data: base64, id: imageIdCounter++ };
+                } catch (e) {
+                    console.warn(`Failed to load context image ${filename}`, e);
+                    return null;
+                }
+            });
+        });
+
+        const resolvedImages = (await Promise.all(imagePromises)).filter(img => img !== null);
+        allImageData.push(...resolvedImages);
+    }
+
+    // 4. Construct Body
+    const body: any = {
+        ...otherParams, 
+        prompt,
+        n_predict: sampler?.maximumNumberOfTokens ?? 512,
+        stream: true,
+        stop: uniqueStops, // ✅ Now guaranteed to be clean
+    };
+
+    // ✅ Only add image_data if the array is not empty
+    if (allImageData.length > 0) {
+        body.image_data = allImageData;
+    }
+
+    return body;
+}
+
+// --- Message Management (Unchanged) ---
 
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
     let result = text;
@@ -227,8 +407,7 @@ export function createChatMessage(chatData: ChatData, character: Character, text
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
-
-    const now = Date.now()
+    const now = Date.now();
 
     return {
         id: uuidv4(),
@@ -240,49 +419,6 @@ export function createChatMessage(chatData: ChatData, character: Character, text
         lastUpdatedTimestamp: now,
         parentChatMessageId: lastMessageId,
     };
-}
-
-export function prepareRequestBody(chatData: ChatData, character: Character, imageBase64?: string | null): any {
-    const sampler = character.sampler;
-    const participants = chatData.participants;
-    
-    // 1. Calculate dynamic roleplay stops.
-    const roleplayStops = participants.flatMap(p => {
-        const id = getCharacterPromptId(p, participants);
-        return [`\n${id}:`, `\n${p.name}:`];
-    });
-
-    // 2. Get custom stops from parameters (if any exist there).
-    // We extract 'stop' from parameters so we don't lose user-defined custom stops.
-    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
-    
-    // 3. Merge them safely.
-    // Priority: Roleplay Stops (essential) + Custom Param Stops (optional).
-    const finalStops = [
-        '<|end_of_turn|>',
-        '<|start_of_turn|>',
-        ...roleplayStops,
-        ...(Array.isArray(paramStops) ? paramStops : []), // Add any extra stops from params
-        ...(sampler?.stopPatterns?.map((sp: StopPattern) => sp.pattern) ?? []),
-    ];
-
-    // Remove duplicates just in case
-    const uniqueStops = Array.from(new Set(finalStops));
-
-    // 4. Construct Body
-    const body: any = {
-        // Spread the CLEANED parameters (without 'stop')
-        ...otherParams, 
-        prompt: buildPromptFromHistory(chatData, character),
-        n_predict: sampler?.maximumNumberOfTokens ?? 512,
-        stream: true,
-        stop: uniqueStops,
-    };
-
-    if (imageBase64) {
-        body.image_data = [{ data: imageBase64, id: 12 }];
-    }
-    return body;
 }
 
 export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {

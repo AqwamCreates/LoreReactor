@@ -1010,7 +1010,7 @@ export function ModelEditorModal({
                         
                         <div style={rowStyle}>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Hit Cost (Per 1 Million Of Tokens)</label>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Hit Cost (Per 1M tokens)</label>
                                 <input
                                     type="number"
                                     step="0.01"
@@ -1022,7 +1022,7 @@ export function ModelEditorModal({
                                 />
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Miss Cost (Per 1 Million Of Tokens)</label>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Miss Cost (Per 1M tokens)</label>
                                 <input
                                     type="number"
                                     step="0.01"
@@ -1037,7 +1037,7 @@ export function ModelEditorModal({
 
                         <div style={fullRowStyle}>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Output Generation Cost (Per 1 Million Of Tokens)</label>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Output Generation Cost (Per 1M tokens)</label>
                                 <input
                                     type="number"
                                     step="0.01"
