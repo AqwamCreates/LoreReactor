@@ -1,4 +1,8 @@
-# Logs
+# === STANDARD BUILD & DEPENDENCIES ===
+node_modules
+dist
+dist-ssr
+*.local
 logs
 *.log
 npm-debug.log*
@@ -7,12 +11,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# === EDITOR & OS ===
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -23,21 +22,25 @@ dist-ssr
 *.sln
 *.sw?
 
-# --- LOCAL DATA CONFIGURATION ---
-
-# 1. Ignore the main user_data folder by default
+# === USER DATA (DEFAULT: IGNORE EVERYTHING) ===
+# We ignore the whole user_data folder by default to protect privacy
 user_data/
 
-# 2. EXCEPT: Re-include the specific folders you want to share
+# === EXCEPTIONS: SHARE THESE DEFAULT CONFIGS ===
+# The '!' symbol tells Git to track these specific folders despite the rule above
 !user_data/sampler_data/
 !user_data/stop_patterns_data/
+!user_data/budget_strategy_data/
 
-# 3. Keep ignoring sensitive/private data (Characters, Chats, Contexts, Models)
-# These will remain ignored because of rule #1, unless you explicitly un-ignore them too.
-# user_data/character_data/  <- Uncomment if you also want to share characters
-# user_data/context_data/    <- Uncomment if you also want to share contexts
-# user_data/chat_data/       <- Keep ignored (private chats)
-# user_data/chat_messages/   <- Keep ignored (private messages)
-# user_data/model_data/      <- Keep ignored (local paths usually differ per user)
+# === KEEP THESE PRIVATE (NO EXCEPTIONS) ===
+# These contain personal chats, custom characters, images, and cache files
+# They will remain ignored because of the 'user_data/' rule at the top
+# user_data/chat_data/
+# user_data/chat_messages/
+# user_data/character_data/
+# user_data/character_images/
+# user_data/context_data/
+# user_data/kv_caches/
+# user_data/extensions/
 
 llama/
