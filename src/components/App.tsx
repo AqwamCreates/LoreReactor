@@ -357,18 +357,21 @@ function App() {
     }
   };
 
+  // ✅ In-app branch switching - no page reload
   const handleBranch = async (id: string) => {
     if (!chatData) return;
     try { 
-      await branchMessage(chatData, id); 
-      window.open(window.location.href, '_blank'); 
-      addToast("Chat branched successfully!", "success");
+      const branchedChat = await branchMessage(chatData, id);
+      // ✅ Switch in-app
+      setChatData(branchedChat);
+      setCurrentCharacter(branchedChat.protagonist);
+      addToast(`Branched to "${branchedChat.title}"`, "success");
     } catch (err) { 
       addToast("Failed to branch chat.", "error");
     }
   };
 
-  // ✅ Handler to navigate back to the source chat
+  // ✅ In-app navigation back to source chat - no page reload
   const handleNavigateToSource = async () => {
     if (!chatData?.parentChatDataId) return;
     try {
