@@ -5,6 +5,7 @@ import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacter
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
+import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { v4 as uuidv4 } from 'uuid';
 
 const engine = new LargeLanguageModelInferenceEngine();
@@ -45,6 +46,14 @@ export function useChatSession() {
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
+    // ✅ Stats State
+    const [stats, setStats] = useState({
+        numberOfCacheInvalidations: 0,
+        numberOfRequests: 0,
+        totalCost: 0,
+        costWithoutCacheMisses: 0,
+    });
+
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
 
@@ -78,11 +87,34 @@ export function useChatSession() {
 
         const requestBody = await prepareRequestBody(data, character, imageData);
 
+        // ✅ Extract Pricing (Default to 0 if not defined in your types yet)
+        const pricing: ModelPricing = {
+            cacheHitPerMillion: 0, 
+            cacheMissPerMillion: 0, 
+            outputPerMillion: 0
+        };
+        // TODO: Populate these from character.sampler or model config if available
+
         try {
             const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
                 onToken: (stats) => {
                     setGenerationSpeed(stats.msPerToken);
                     if (onToken) onToken(stats.fullText);
+                },
+                onFinish: (responseStats) => {
+                    // ✅ Calculate Costs
+                    const promptTokens = responseStats.promptTokens || 0;
+                    const completionTokens = responseStats.completionTokens || 0;
+                    const isCacheMiss = responseStats.cacheMiss || false;
+
+                    const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+
+                    setStats(prev => ({
+                        numberOfRequests: prev.numberOfRequests + 1,
+                        numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                        totalCost: prev.totalCost + costResult.totalCost,
+                        costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                    }));
                 }
             });
             
@@ -94,18 +126,16 @@ export function useChatSession() {
         } catch (error) {
             const err = error as Error;
             
-            // ✅ USER-FRIENDLY ERROR HANDLING
             if (err.name === 'AbortError') {
                 return null;
             }
 
-            // Check for network errors or 502/503/504 status codes
             const isNetworkError = err.message.includes('Failed to fetch') || 
-                                   err.message.includes('NetworkError') ||
-                                   err.message.includes('ERR_ABORTED') ||
-                                   err.message.includes('502') ||
-                                   err.message.includes('503') ||
-                                   err.message.includes('504');
+                                    err.message.includes('NetworkError') ||
+                                    err.message.includes('ERR_ABORTED') ||
+                                    err.message.includes('502') ||
+                                    err.message.includes('503') ||
+                                    err.message.includes('504');
 
             if (isNetworkError) {
                 alert(
@@ -120,12 +150,66 @@ export function useChatSession() {
                 return null;
             }
 
-            // Generic error for other issues
             console.error("Inference failed:", err);
             alert(`❌ Inference Error\n\n${err.message}`);
             return null;
         }
     }, []);
+
+    // ✅ New function: Send action and get AI response
+    const sendActionAndGetResponse = useCallback(async (
+        actionText: string,
+        targetChar: Character
+    ): Promise<void> => {
+        if (!chatData || !currentCharacter || isLoading) return;
+
+        try {
+            // 1. Create and add the action message
+            const actionMsg = createChatMessage(chatData, currentCharacter, actionText);
+            const updatedData = addMessageToChatData(chatData, actionMsg);
+            
+            // 2. Save immediately
+            await saveRawChatData(updatedData);
+            setChatData(updatedData);
+            
+            // 3. Wait for save to complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // 4. Trigger AI response
+            const controller = new AbortController();
+            abortControllerRef.current = controller;
+            setIsLoading(true);
+            setStreamingText("");
+            setStreamingCharacter(targetChar);
+            setGenerationSpeed(0);
+            
+            try {
+                const result = await handleServerResponse(
+                    updatedData,
+                    targetChar,
+                    controller.signal,
+                    setStreamingText
+                );
+                
+                if (!controller.signal.aborted && result) {
+                    await saveRawChatData(result);
+                    setChatData(result);
+                }
+            } catch (err) {
+                if ((err as Error).name !== 'AbortError') {
+                    console.error("AI response failed:", err);
+                }
+            } finally {
+                if (abortControllerRef.current === controller) abortControllerRef.current = null;
+                setIsLoading(false);
+                setStreamingText("");
+                setStreamingCharacter(null);
+            }
+        } catch (error) {
+            console.error("Failed to send action:", error);
+            setIsLoading(false);
+        }
+    }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -153,7 +237,6 @@ export function useChatSession() {
             await handleServerResponse(data, silentCharacter, controller.signal, undefined);
             setIsInitialImageProcessed(true);
         } catch (error) {
-            // Silent fail for initial image processing to avoid annoying alerts on load
             console.warn("Silent image processing failed:", error);
             setIsInitialImageProcessed(true);
         }
@@ -345,6 +428,11 @@ export function useChatSession() {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
         sendMessage, stopGeneration, regenerateLastAI, regenerateLastProtagonist, messageEndRef, parentChatMessageIds,
         generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
-        maximumNumberOfTokens: maxContextTokens, startNewChat
+        maximumNumberOfTokens: maxContextTokens, startNewChat,
+        sendActionAndGetResponse,
+        numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
+        numberOfRequests: stats.numberOfRequests,
+        totalCost: stats.totalCost,
+        costWithoutCacheMisses: stats.costWithoutCacheMisses,
     };
 }

@@ -82,6 +82,20 @@ export interface LanguageModel extends ObjectData {
   cacheHitCostPerOneMillionOfTokens?: number,
   cacheMissCostPerOneMillionOfTokens?: number,
   outputGenerationCostPerOneMillionOfTokens?: number,
+
+}
+
+export interface LanguageModel extends RawData {
+
+  backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | 'OpenAI' | 'Other';
+  contextLength: number;
+  model: string;
+  mmproj?: string;
+  parameters?: Record<string, unknown>;
+  cacheHitCostPerOneMillionOfTokens?: number,
+  cacheMissCostPerOneMillionOfTokens?: number,
+  outputGenerationCostPerOneMillionOfTokens?: number,
+
 }
 export interface Character extends ObjectData  {
   
@@ -106,6 +120,7 @@ export interface RawCharacter extends RawData {
 }
 
 export interface ChatMessage {
+  
   id: string;
   character: Character;
   textContent: string;
@@ -115,9 +130,11 @@ export interface ChatMessage {
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
   parentChatMessageId?: string | null;
+
 }
 
 export interface RawChatMessage {
+
   characterId: string;
   textContent: string;
   remainingChatStamina: number | undefined;
@@ -126,9 +143,11 @@ export interface RawChatMessage {
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
   parentChatMessageId?: string | null;
+
 }
 
 export interface ChatData {
+
   id: string;
   title: string;
   protagonist: Character;
@@ -139,9 +158,11 @@ export interface ChatData {
   lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
+
 }
 
 export interface RawChatData {
+
   title: string;
   protagonistId: string;
   participantIds: string[];
@@ -151,6 +172,7 @@ export interface RawChatData {
   lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
+
 }
 
 export type ExtensionType = 'language_model_api' | 'image_generation_api' | 'accessibility' | 'extra';

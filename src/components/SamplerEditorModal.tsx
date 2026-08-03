@@ -1,5 +1,4 @@
 // src/components/SamplerEditorModal.tsx
-// src/components/SamplerEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { Sampler, StopPattern } from '../types';
@@ -134,264 +133,82 @@ const DEFAULT_ENABLED: EnabledParams = {
 
 const PARAMETER_CONFIGS = {
     temperature: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Controls randomness: lower = more deterministic, higher = more creative',
-        label: 'Temperature',
-        category: 'Core',
-        defaultEnabled: true,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 
     },
     top_k: { 
-        min: 0, 
-        max: 200, 
-        step: 1, 
-        description: 'Limits token selection to top K most likely tokens (0 = disabled)',
-        label: 'Top K',
-        category: 'Core',
-        defaultEnabled: true,
-        decimals: 0
+        min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 
     },
     top_p: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Nucleus sampling: limits to top P probability mass (1.0 = disabled)',
-        label: 'Top P',
-        category: 'Core',
-        defaultEnabled: true,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 
     },
     repeat_penalty: { 
-        min: 1, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Penalizes repetition of tokens (1.0 = disabled)',
-        label: 'Repeat Penalty',
-        category: 'Core',
-        defaultEnabled: true,
-        decimals: 2
+        min: 1, max: 2, step: 0.05, description: 'Penalizes repetition', label: 'Repeat Penalty', category: 'Core', defaultEnabled: true, decimals: 2 
     },
     frequency_penalty: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Penalizes frequent tokens in the response (OpenAI style)',
-        label: 'Frequency Penalty',
-        category: 'Core',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Penalizes frequent tokens', label: 'Frequency Penalty', category: 'Core', defaultEnabled: false, decimals: 2 
     },
     presence_penalty: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Penalizes tokens that have appeared before (OpenAI style)',
-        label: 'Presence Penalty',
-        category: 'Core',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Penalizes tokens that have appeared before', label: 'Presence Penalty', category: 'Core', defaultEnabled: false, decimals: 2 
     },
     min_p: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Minimum probability threshold for token selection (0 = disabled)',
-        label: 'Min P',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Minimum probability threshold', label: 'Min P', category: 'Advanced', defaultEnabled: false, decimals: 2 
     },
     typical_p: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Typical sampling: selects tokens with typical probability (1.0 = disabled)',
-        label: 'Typical P',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Typical sampling', label: 'Typical P', category: 'Advanced', defaultEnabled: false, decimals: 2 
     },
     tfs_z: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Tail-free sampling: removes lower probability tokens (1.0 = disabled)',
-        label: 'TFS Z',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Tail-free sampling', label: 'TFS Z', category: 'Advanced', defaultEnabled: false, decimals: 2 
     },
     top_a: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Top-A sampling: removes tokens below a probability threshold (0 = disabled)',
-        label: 'Top A',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Top-A sampling', label: 'Top A', category: 'Advanced', defaultEnabled: false, decimals: 2 
     },
     mirostat: { 
-        min: 0, 
-        max: 2, 
-        step: 1, 
-        description: 'Mirostat mode: 0=disabled, 1=Mirostat, 2=Mirostat 2.0',
-        label: 'Mirostat Mode',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 0
+        min: 0, max: 2, step: 1, description: 'Mirostat mode', label: 'Mirostat Mode', category: 'Advanced', defaultEnabled: false, decimals: 0 
     },
     mirostat_tau: { 
-        min: 0, 
-        max: 10, 
-        step: 0.1, 
-        description: 'Mirostat target entropy (lower = more focused)',
-        label: 'Mirostat Tau',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 1
+        min: 0, max: 10, step: 0.1, description: 'Mirostat target entropy', label: 'Mirostat Tau', category: 'Advanced', defaultEnabled: false, decimals: 1 
     },
     mirostat_eta: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Mirostat learning rate',
-        label: 'Mirostat Eta',
-        category: 'Advanced',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Mirostat learning rate', label: 'Mirostat Eta', category: 'Advanced', defaultEnabled: false, decimals: 2 
     },
     rep_penalty_range: { 
-        min: 0, 
-        max: 4096, 
-        step: 64, 
-        description: 'Number of tokens to consider for repetition penalty (0 = all)',
-        label: 'Rep Penalty Range',
-        category: 'Repetition',
-        defaultEnabled: false,
-        decimals: 0
+        min: 0, max: 4096, step: 64, description: 'Tokens to consider for repetition penalty', label: 'Rep Penalty Range', category: 'Repetition', defaultEnabled: false, decimals: 0 
     },
     rep_penalty_slope: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Slope for repetition penalty curve',
-        label: 'Rep Penalty Slope',
-        category: 'Repetition',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Slope for repetition penalty curve', label: 'Rep Penalty Slope', category: 'Repetition', defaultEnabled: false, decimals: 2 
     },
     encoder_repetition_penalty: { 
-        min: 1, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Penalty for tokens from the prompt',
-        label: 'Encoder Rep Penalty',
-        category: 'Repetition',
-        defaultEnabled: false,
-        decimals: 2
+        min: 1, max: 2, step: 0.05, description: 'Penalty for tokens from the prompt', label: 'Encoder Rep Penalty', category: 'Repetition', defaultEnabled: false, decimals: 2 
     },
     no_repeat_ngram_size: { 
-        min: 0, 
-        max: 20, 
-        step: 1, 
-        description: 'Size of n-grams to prevent repetition (0 = disabled)',
-        label: 'No Repeat N-Gram Size',
-        category: 'Repetition',
-        defaultEnabled: false,
-        decimals: 0
+        min: 0, max: 20, step: 1, description: 'Size of n-grams to prevent repetition', label: 'No Repeat N-Gram Size', category: 'Repetition', defaultEnabled: false, decimals: 0 
     },
     penalty_alpha: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Penalty alpha for contrastive search',
-        label: 'Penalty Alpha',
-        category: 'Repetition',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Penalty alpha for contrastive search', label: 'Penalty Alpha', category: 'Repetition', defaultEnabled: false, decimals: 2 
     },
     smoothing_factor: { 
-        min: 0, 
-        max: 1, 
-        step: 0.05, 
-        description: 'Smoothing factor for probabilities (0 = disabled)',
-        label: 'Smoothing Factor',
-        category: 'Smoothing',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 1, step: 0.05, description: 'Smoothing factor', label: 'Smoothing Factor', category: 'Smoothing', defaultEnabled: false, decimals: 2 
     },
     smoothing_curve: { 
-        min: 0.1, 
-        max: 5, 
-        step: 0.1, 
-        description: 'Curve shape for smoothing (higher = more aggressive)',
-        label: 'Smoothing Curve',
-        category: 'Smoothing',
-        defaultEnabled: false,
-        decimals: 1
+        min: 0.1, max: 5, step: 0.1, description: 'Curve shape for smoothing', label: 'Smoothing Curve', category: 'Smoothing', defaultEnabled: false, decimals: 1 
     },
     dry_allowed_length: { 
-        min: 0, 
-        max: 20, 
-        step: 1, 
-        description: 'Maximum allowed repetition length',
-        label: 'DRY Allowed Length',
-        category: 'DRY',
-        defaultEnabled: false,
-        decimals: 0
+        min: 0, max: 20, step: 1, description: 'Maximum allowed repetition length', label: 'DRY Allowed Length', category: 'DRY', defaultEnabled: false, decimals: 0 
     },
     dry_penalty_last_n: { 
-        min: -1, 
-        max: 4096, 
-        step: 64, 
-        description: 'Tokens to consider for DRY penalty (-1 = all)',
-        label: 'DRY Penalty Last N',
-        category: 'DRY',
-        defaultEnabled: false,
-        decimals: 0
+        min: -1, max: 4096, step: 64, description: 'Tokens to consider for DRY penalty', label: 'DRY Penalty Last N', category: 'DRY', defaultEnabled: false, decimals: 0 
     },
     dry_base: { 
-        min: 1, 
-        max: 3, 
-        step: 0.05, 
-        description: 'Base for DRY exponential penalty',
-        label: 'DRY Base',
-        category: 'DRY',
-        defaultEnabled: false,
-        decimals: 2
+        min: 1, max: 3, step: 0.05, description: 'Base for DRY exponential penalty', label: 'DRY Base', category: 'DRY', defaultEnabled: false, decimals: 2 
     },
     dry_multiplier: { 
-        min: 0, 
-        max: 2, 
-        step: 0.05, 
-        description: 'Multiplier for DRY penalty (0 = disabled)',
-        label: 'DRY Multiplier',
-        category: 'DRY',
-        defaultEnabled: false,
-        decimals: 2
+        min: 0, max: 2, step: 0.05, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 
     },
     dry_sequence_breaker: { 
-        min: 0, 
-        max: 0, 
-        step: 0, 
-        description: 'Characters that break DRY sequence detection',
-        label: 'DRY Sequence Breaker',
-        category: 'DRY',
-        defaultEnabled: false,
-        isString: true
+        min: 0, max: 0, step: 0, description: 'Characters that break DRY sequence', label: 'DRY Sequence Breaker', category: 'DRY', defaultEnabled: false, isString: true 
     },
     ignore_eos: { 
-        min: 0, 
-        max: 1, 
-        step: 1, 
-        description: 'Ignore End-Of-Sequence token',
-        label: 'Ignore EOS',
-        category: 'Other',
-        defaultEnabled: false,
-        isBoolean: true
+        min: 0, max: 1, step: 1, description: 'Ignore End-Of-Sequence token', label: 'Ignore EOS', category: 'Other', defaultEnabled: false, isBoolean: true 
     },
 };
 
@@ -405,12 +222,6 @@ const getParamValue = (params: Record<string, unknown> | undefined, key: string,
     }
     if (typeof val === 'boolean') return val;
     return defaultValue;
-};
-
-const formatNumber = (num: number, decimals: number): string => {
-    if (decimals === 0) return String(num);
-    const formatted = num.toFixed(decimals);
-    return parseFloat(formatted).toString();
 };
 
 export function SamplerEditorModal({
@@ -436,40 +247,20 @@ export function SamplerEditorModal({
             if (existingSampler) {
                 setName(existingSampler.name || '');
                 setDescription(existingSampler.description || '');
-                setParameters({
-                    temperature: getParamValue(existingSampler.parameters, 'temperature', DEFAULT_PARAMETERS.temperature) as number,
-                    top_k: getParamValue(existingSampler.parameters, 'top_k', DEFAULT_PARAMETERS.top_k) as number,
-                    top_p: getParamValue(existingSampler.parameters, 'top_p', DEFAULT_PARAMETERS.top_p) as number,
-                    repeat_penalty: getParamValue(existingSampler.parameters, 'repeat_penalty', DEFAULT_PARAMETERS.repeat_penalty) as number,
-                    frequency_penalty: getParamValue(existingSampler.parameters, 'frequency_penalty', DEFAULT_PARAMETERS.frequency_penalty) as number,
-                    presence_penalty: getParamValue(existingSampler.parameters, 'presence_penalty', DEFAULT_PARAMETERS.presence_penalty) as number,
-                    min_p: getParamValue(existingSampler.parameters, 'min_p', DEFAULT_PARAMETERS.min_p) as number,
-                    typical_p: getParamValue(existingSampler.parameters, 'typical_p', DEFAULT_PARAMETERS.typical_p) as number,
-                    tfs_z: getParamValue(existingSampler.parameters, 'tfs_z', DEFAULT_PARAMETERS.tfs_z) as number,
-                    top_a: getParamValue(existingSampler.parameters, 'top_a', DEFAULT_PARAMETERS.top_a) as number,
-                    mirostat: getParamValue(existingSampler.parameters, 'mirostat', DEFAULT_PARAMETERS.mirostat) as number,
-                    mirostat_tau: getParamValue(existingSampler.parameters, 'mirostat_tau', DEFAULT_PARAMETERS.mirostat_tau) as number,
-                    mirostat_eta: getParamValue(existingSampler.parameters, 'mirostat_eta', DEFAULT_PARAMETERS.mirostat_eta) as number,
-                    rep_penalty_range: getParamValue(existingSampler.parameters, 'rep_penalty_range', DEFAULT_PARAMETERS.rep_penalty_range) as number,
-                    rep_penalty_slope: getParamValue(existingSampler.parameters, 'rep_penalty_slope', DEFAULT_PARAMETERS.rep_penalty_slope) as number,
-                    encoder_repetition_penalty: getParamValue(existingSampler.parameters, 'encoder_repetition_penalty', DEFAULT_PARAMETERS.encoder_repetition_penalty) as number,
-                    no_repeat_ngram_size: getParamValue(existingSampler.parameters, 'no_repeat_ngram_size', DEFAULT_PARAMETERS.no_repeat_ngram_size) as number,
-                    penalty_alpha: getParamValue(existingSampler.parameters, 'penalty_alpha', DEFAULT_PARAMETERS.penalty_alpha) as number,
-                    smoothing_factor: getParamValue(existingSampler.parameters, 'smoothing_factor', DEFAULT_PARAMETERS.smoothing_factor) as number,
-                    smoothing_curve: getParamValue(existingSampler.parameters, 'smoothing_curve', DEFAULT_PARAMETERS.smoothing_curve) as number,
-                    dry_allowed_length: getParamValue(existingSampler.parameters, 'dry_allowed_length', DEFAULT_PARAMETERS.dry_allowed_length) as number,
-                    dry_penalty_last_n: getParamValue(existingSampler.parameters, 'dry_penalty_last_n', DEFAULT_PARAMETERS.dry_penalty_last_n) as number,
-                    dry_base: getParamValue(existingSampler.parameters, 'dry_base', DEFAULT_PARAMETERS.dry_base) as number,
-                    dry_multiplier: getParamValue(existingSampler.parameters, 'dry_multiplier', DEFAULT_PARAMETERS.dry_multiplier) as number,
-                    dry_sequence_breaker: getParamValue(existingSampler.parameters, 'dry_sequence_breaker', DEFAULT_PARAMETERS.dry_sequence_breaker) as string,
-                    ignore_eos: getParamValue(existingSampler.parameters, 'ignore_eos', DEFAULT_PARAMETERS.ignore_eos) as boolean,
+                
+                const loadedParams: any = {};
+                Object.keys(DEFAULT_PARAMETERS).forEach(key => {
+                    loadedParams[key] = getParamValue(existingSampler.parameters, key, DEFAULT_PARAMETERS[key as keyof SamplerParameters]);
                 });
+                setParameters(loadedParams);
                 
                 const storedEnabled: Partial<EnabledParams> = {};
                 Object.keys(DEFAULT_ENABLED).forEach(key => {
                     const stored = existingSampler.parameters?.[`_enabled_${key}`];
                     if (typeof stored === 'boolean') {
                         storedEnabled[key as keyof EnabledParams] = stored;
+                    } else {
+                        storedEnabled[key as keyof EnabledParams] = DEFAULT_ENABLED[key as keyof EnabledParams];
                     }
                 });
                 setEnabledParams({ ...DEFAULT_ENABLED, ...storedEnabled });
@@ -506,7 +297,7 @@ export function SamplerEditorModal({
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
         if (!name.trim()) {
-            newErrors.name = 'Sampler name is required';
+            newErrors.name = 'Name is required';
         }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -560,9 +351,7 @@ export function SamplerEditorModal({
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
         const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
-        
         if (dragIndex === dropIndex) return;
-        
         const newOrder = [...parameterOrder];
         const [removed] = newOrder.splice(dragIndex, 1);
         newOrder.splice(dropIndex, 0, removed);
@@ -571,92 +360,6 @@ export function SamplerEditorModal({
     };
 
     if (!isOpen) return null;
-
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        boxSizing: 'border-box',
-        fontSize: '0.85rem',
-        fontFamily: 'inherit',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        border: '1px solid var(--border)',
-        background: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        outline: 'none',
-        resize: 'vertical',
-    };
-
-    const labelStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        color: 'var(--text-h)',
-        display: 'block',
-        marginBottom: '4px',
-        letterSpacing: '0.5px',
-        opacity: 0.8,
-    };
-
-    const errorStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        color: '#ff4444',
-        marginTop: '4px',
-    };
-
-    const buttonStyle: React.CSSProperties = {
-        padding: '8px 20px',
-        fontSize: '0.85rem',
-        fontWeight: 'bold',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        border: '1px solid transparent',
-        fontFamily: 'inherit',
-        transition: 'all 0.2s',
-    };
-
-    const sectionStyle: React.CSSProperties = {
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '16px',
-        background: 'rgba(0,0,0,0.02)',
-    };
-
-    const sectionTitleStyle: React.CSSProperties = {
-        fontSize: '0.7rem',
-        fontWeight: 'bold',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        color: 'var(--text-h)',
-        opacity: 0.6,
-        marginBottom: '12px',
-    };
-
-    const dragHandleStyle: React.CSSProperties = {
-        cursor: 'grab',
-        opacity: 0.3,
-        fontSize: '0.8rem',
-        padding: '4px 6px',
-        userSelect: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'opacity 0.2s',
-        minWidth: '20px',
-        flexShrink: 0,
-        marginRight: '8px',
-    };
-
-    const parameterItemStyle = (isDragging: boolean, isEnabled: boolean): React.CSSProperties => ({
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: '2px',
-        padding: '8px',
-        borderRadius: '6px',
-        background: isDragging ? 'var(--accent-bg)' : 'transparent',
-        border: isDragging ? '2px dashed var(--accent)' : '2px solid transparent',
-        transition: 'all 0.2s',
-        opacity: isDragging ? 0.5 : (isEnabled ? 1 : 0.5),
-    });
 
     const renderParameterInput = (key: string, config: any, paramKey: keyof SamplerParameters) => {
         const isEnabled = enabledParams[paramKey as keyof EnabledParams] ?? false;
@@ -668,146 +371,75 @@ export function SamplerEditorModal({
                     value={parameters[paramKey] as string}
                     onChange={(e) => handleParameterChange(paramKey, e.target.value)}
                     disabled={!isEnabled}
-                    style={{
-                        width: '100%',
-                        padding: '4px 8px',
-                        fontSize: '0.75rem',
-                        fontFamily: 'monospace',
-                        borderRadius: '4px',
-                        border: `1px solid ${isEnabled ? 'var(--border)' : 'var(--border)'}`,
-                        background: isEnabled ? 'var(--bg)' : 'var(--social-bg)',
-                        color: isEnabled ? 'var(--text-h)' : 'var(--text-h)',
-                        opacity: isEnabled ? 1 : 0.5,
-                        outline: 'none',
-                        cursor: isEnabled ? 'text' : 'not-allowed',
-                    }}
+                    className={`editor-input ${!isEnabled ? 'disabled' : ''}`}
+                    style={{ fontFamily: 'monospace', fontSize: '0.75rem', padding: '4px 8px' }}
                 />
             );
         }
-
-        if (config.isBoolean) {
-            return null;
-        }
+        if (config.isBoolean) return null;
 
         const decimals = config.decimals || 2;
         return (
             <SliderInput
-                label=""
-                value={parameters[paramKey] as number}
-                minimumValue={config.min}
-                maximumValue={config.max}
-                stepValue={config.step}
-                decimals={decimals}
-                onChange={(value) => handleParameterChange(paramKey, value)}
-                description={config.description}
-                disabled={!isEnabled}
+                label="" value={parameters[paramKey] as number} minimumValue={config.min} maximumValue={config.max}
+                stepValue={config.step} decimals={decimals} onChange={(value) => handleParameterChange(paramKey, value)}
+                description={config.description} disabled={!isEnabled}
             />
         );
     };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div
-                className="modal-content"
-                onClick={e => e.stopPropagation()}
-                style={{ maxWidth: '700px', maxHeight: '95vh', overflow: 'hidden' }}
-            >
-                <div className="modal-header" style={{ flexShrink: 0 }}>
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
                     <h2>{existingSampler ? 'Edit Sampler' : 'Create New Sampler'}</h2>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            style={{
-                                ...buttonStyle,
-                                background: 'transparent',
-                                color: 'var(--text-h)',
-                                border: '1px solid var(--border)',
-                            }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSubmit}
-                            style={{
-                                ...buttonStyle,
-                                background: 'var(--accent)',
-                                color: '#fff',
-                            }}
-                        >
-                            {existingSampler ? 'Update' : 'Create'}
-                        </button>
+                    <div className="editor-modal-actions">
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingSampler ? 'Update' : 'Create'}</button>
                     </div>
                 </div>
 
-                <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-                    {/* Name */}
+                <div className="modal-body editor-modal-body">
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>
-                            Sampler Name <span style={{ color: '#ff4444' }}>*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => {
-                                setName(e.target.value);
-                                if (errors.name) setErrors({ ...errors, name: undefined });
-                            }}
-                            style={{
-                                ...inputStyle,
-                                borderColor: errors.name ? '#ff4444' : 'var(--border)',
-                            }}
-                            placeholder="e.g., Creative Writing, Balanced, Deterministic"
+                        <label className="editor-label"> Name <span style={{ color: '#ff4444' }}>*</span></label>
+                        <input 
+                            type="text" 
+                            value={name} 
+                            onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} 
+                            className={`editor-input ${errors.name ? 'error' : ''}`} 
+                            placeholder="e.g., Creative Writing" 
                         />
-                        {errors.name && <div style={errorStyle}>{errors.name}</div>}
+                        {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
-                    {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            style={{ ...inputStyle, minHeight: '40px' }}
-                            placeholder="Describe how this sampler works"
-                            rows={2}
+                        <label className="editor-label">Description</label>
+                        <textarea 
+                            value={description} 
+                            onChange={(e) => setDescription(e.target.value)} 
+                            className="editor-textarea" 
+                            placeholder="Describe how this sampler works" 
+                            rows={2} 
                         />
                     </div>
 
-                    {/* Maximum Number Of Tokens */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>Maximum Number Of Tokens</label>
-                        <input
-                            type="number"
-                            value={maxTokens}
-                            onChange={(e) => setMaxTokens(Number(e.target.value) || 0)}
-                            style={inputStyle}
-                            placeholder="512"
-                            min="1"
-                            step="1"
+                        <label className="editor-label">Maximum Number Of Tokens</label>
+                        <input 
+                            type="number" 
+                            value={maxTokens} 
+                            onChange={(e) => setMaxTokens(Number(e.target.value) || 0)} 
+                            className="editor-input" 
+                            placeholder="512" 
+                            min="1" 
+                            step="1" 
                         />
                     </div>
 
-                    {/* Parameters - Draggable */}
-                    <div style={sectionStyle}>
-                        <div style={{ 
-                            ...sectionTitleStyle, 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            paddingRight: '4px',
-                        }}>
+                    <div className="editor-section">
+                        <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>Sampling Parameters ({parameterOrder.length})</span>
-                            <span style={{ 
-                                fontSize: '0.6rem', 
-                                opacity: 0.5,
-                                fontWeight: 'normal',
-                                marginLeft: '16px',
-                                textTransform: 'none',
-                            }}>
-                                ↕ Drag To Reorder
-                            </span>
+                            <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', marginLeft: '16px', textTransform: 'none' }}>↕ Drag To Reorder</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {parameterOrder.map((key, index) => {
@@ -826,61 +458,26 @@ export function SamplerEditorModal({
                                         onDragEnd={handleDragEnd}
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, index)}
-                                        style={parameterItemStyle(isDragging, isEnabled)}
+                                        className={`sampler-param-item ${isDragging ? 'dragging' : ''} ${!isEnabled ? 'disabled-item' : ''}`}
                                     >
                                         <div 
-                                            style={dragHandleStyle}
-                                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
-                                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
+                                            className="sampler-drag-handle"
+                                            onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.opacity = '0.8'}
+                                            onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.opacity = '0.3'}
                                             title="Drag to reorder"
                                         >
                                             ⋮⋮
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '1px',
-                                                marginBottom: '4px',
-                                            }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1px', marginBottom: '4px' }}>
                                                 <div
                                                     onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        cursor: 'pointer',
-                                                        userSelect: 'none',
-                                                        flexShrink: 0,
-                                                        height: '28px',
-                                                    }}
+                                                    className="sampler-enable-toggle"
                                                 >
-                                                    <div
-                                                        style={{
-                                                            width: '16px',
-                                                            height: '16px',
-                                                            borderRadius: '4px',
-                                                            border: `2px solid ${isEnabled ? 'var(--accent)' : 'var(--border)'}`,
-                                                            background: isEnabled ? 'var(--accent)' : 'transparent',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            transition: 'all 0.2s',
-                                                            flexShrink: 0,
-                                                        }}
-                                                    >
-                                                        {isEnabled && (
-                                                            <span style={{ color: '#fff', fontSize: '10px' }}>✓</span>
-                                                        )}
+                                                    <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
+                                                        {isEnabled && <span style={{ color: '#fff', fontSize: '10px' }}>✓</span>}
                                                     </div>
-                                                    <span style={{
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 'bold',
-                                                        color: isEnabled ? 'var(--accent)' : 'var(--text-h)',
-                                                        opacity: isEnabled ? 1 : 0.5,
-                                                    }}>
-                                                        {config.label}
-                                                    </span>
+                                                    <span className={`sampler-label ${isEnabled ? 'enabled' : ''}`}>{config.label}</span>
                                                 </div>
                                             </div>
                                             {renderParameterInput(key, config, paramKey)}
@@ -891,10 +488,9 @@ export function SamplerEditorModal({
                         </div>
                     </div>
 
-                    {/* Stop Patterns */}
                     {allStopPatterns.length > 0 && (
-                        <div style={sectionStyle}>
-                            <div style={sectionTitleStyle}>Stop Patterns</div>
+                        <div className="editor-section">
+                            <div className="editor-section-title">Stop Patterns</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 {allStopPatterns.map(sp => {
                                     const isSelected = selectedStopPatternIds.includes(sp.id);
@@ -902,53 +498,15 @@ export function SamplerEditorModal({
                                         <div
                                             key={sp.id}
                                             onClick={() => handleStopPatternToggle(sp.id)}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '10px',
-                                                padding: '6px 12px',
-                                                borderRadius: '6px',
-                                                background: isSelected ? 'var(--accent-bg)' : 'transparent',
-                                                border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s',
-                                            }}
+                                            className={`stop-pattern-item ${isSelected ? 'selected' : ''}`}
                                         >
-                                            <div
-                                                style={{
-                                                    width: '18px',
-                                                    height: '18px',
-                                                    borderRadius: '4px',
-                                                    border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                                                    background: isSelected ? 'var(--accent)' : 'transparent',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    flexShrink: 0,
-                                                }}
-                                            >
-                                                {isSelected && (
-                                                    <span style={{ color: '#fff', fontSize: '12px' }}>✓</span>
-                                                )}
+                                            <div className={`stop-pattern-checkbox ${isSelected ? 'checked' : ''}`}>
+                                                {isSelected && <span style={{ color: '#fff', fontSize: '12px' }}>✓</span>}
                                             </div>
                                             <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>
-                                                    {sp.name}
-                                                </div>
-                                                {sp.description && (
-                                                    <div style={{ fontSize: '0.7rem', opacity: 0.6, color: 'var(--text-h)' }}>
-                                                        {sp.description}
-                                                    </div>
-                                                )}
-                                                <div style={{ 
-                                                    fontSize: '0.65rem', 
-                                                    fontFamily: 'monospace', 
-                                                    opacity: 0.5, 
-                                                    color: 'var(--text-h)',
-                                                    marginTop: '2px',
-                                                }}>
-                                                    {sp.pattern}
-                                                </div>
+                                                <div className="stop-pattern-name">{sp.name}</div>
+                                                {sp.description && <div className="stop-pattern-desc">{sp.description}</div>}
+                                                <div className="stop-pattern-code">{sp.pattern}</div>
                                             </div>
                                         </div>
                                     );

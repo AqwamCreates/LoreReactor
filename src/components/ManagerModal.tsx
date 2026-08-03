@@ -1,91 +1,39 @@
 // src/components/ManagerModal.tsx
-import type React from 'react';
-import { useState } from 'react';
+import React from 'react';
+import type { Character, Context, StopPattern, Extension, LanguageModel, BudgetStrategy, ChatData } from '../types';
 import './main.css';
 
-interface ManagerItem {
-    id: string;
-    name: string;
-    description?: string;
-    first_created_timestamp?: number;
-    last_updated_timestamp?: number;
-}
-
-interface ManagerModalProps<T extends ManagerItem> {
+interface ManagerModalProps<T> {
     title: string;
     items: T[];
     isOpen: boolean;
     onClose: () => void;
-    onCreateNew: () => void;
-    
-    // Core Logic
     onSelect?: (item: T) => void;
     onDelete?: (id: string) => void;
+    onCreateNew: () => void;
     renderSubtext?: (item: T) => React.ReactNode;
     emptyMessage?: string;
-
-    // Ordered List Logic
+    actionLabel?: string;
     orderedListMode?: boolean;
     currentOrderIds?: string[];
     onToggleOrder?: (id: string) => void;
-    
-    // Special Action
-    specialActionIcon?: React.ReactNode;
+    specialActionIcon?: string;
     onSpecialAction?: (id: string) => void;
     specialActionTooltip?: (item: T) => string;
     activeSpecialActionId?: string;
-
-    // Chat Title Editing Support
-    renderTitle?: (item: T) => React.ReactNode;
-    renderTitleActions?: (item: T) => React.ReactNode;
-    
-    // Timestamp display
-    showTimestamps?: boolean;
 }
 
-// Helper to format timestamp with full words and proper pluralization
-const formatTimestamp = (timestamp?: number): string => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    const diffWeeks = Math.floor(diffDays / 7);
-    const diffMonths = Math.floor(diffDays / 30);
-    const diffYears = Math.floor(diffDays / 365);
-
-    if (diffMinutes < 1) return 'Just now';
-    if (diffMinutes < 60) {
-        return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
-    }
-    if (diffHours < 24) {
-        return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    }
-    if (diffDays < 7) {
-        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    }
-    if (diffWeeks < 4) {
-        return `${diffWeeks} week${diffWeeks > 1 ? 's' : ''} ago`;
-    }
-    if (diffMonths < 12) {
-        return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
-    }
-    return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`;
-};
-
-export function ManagerModal<T extends ManagerItem>({
+export function ManagerModal<T extends { id: string; name?: string }>({
     title,
     items,
     isOpen,
     onClose,
-    onCreateNew,
     onSelect,
     onDelete,
+    onCreateNew,
     renderSubtext,
-    emptyMessage = `No ${title.toLowerCase()} found.`,
+    emptyMessage = "No items found.",
+    actionLabel = "Delete",
     orderedListMode = false,
     currentOrderIds = [],
     onToggleOrder,
@@ -93,190 +41,135 @@ export function ManagerModal<T extends ManagerItem>({
     onSpecialAction,
     specialActionTooltip,
     activeSpecialActionId,
-    renderTitle,
-    renderTitleActions,
-    showTimestamps = true,
-}: ManagerModalProps<T>) {
-    const [searchQuery, setSearchQuery] = useState('');
-
+    }: ManagerModalProps<T>) {
     if (!isOpen) return null;
 
-    // Filter items based on search query
-    const filteredItems = searchQuery.trim() 
-        ? items.filter(item => 
-            item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
-          )
-        : items;
-
-    // Sort filtered items by last_updated_timestamp (newest first)
-    const sortedItems = [...filteredItems].sort((a, b) => {
-        if (a.last_updated_timestamp && b.last_updated_timestamp) {
-            return b.last_updated_timestamp - a.last_updated_timestamp;
+    // ✅ LOGIC TO HANDLE PLURALIZATION (ies -> y, s -> '')
+    const get_singular_noun = (plural: string) => {
+        if (plural.endsWith('ies')) {
+        return plural.slice(0, -3) + 'y'; // Strategies -> Strategy
         }
-        return 0;
-    });
+        if (plural.endsWith('s')) {
+        return plural.slice(0, -1); // Models -> Model
+        }
+        return plural; // Fallback
+    };
 
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        boxSizing: 'border-box',
-        fontSize: '0.85rem',
-        fontFamily: 'inherit',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        border: '1px solid var(--border)',
-        background: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        outline: 'none',
-        resize: 'vertical',
+    const singularTitle = get_singular_noun(title);
+
+    // Get the order number for an item in the current order list
+    const getOrderNumber = (id: string): number | null => {
+        const index = currentOrderIds.indexOf(id);
+        return index !== -1 ? index + 1 : null;
     };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>{title}</h2>
-                    <div className="modal-header-actions">
-                        <button type="button" className="new-chat-btn" onClick={onCreateNew} title={`Create New ${title.slice(0, -1)}`}>
-                            ➕ New {title.slice(0, -1)}
-                        </button>
-                        <button type="button" className="close-btn" onClick={onClose}>×</button>
-                    </div>
-                </div>
-
-                <div className="modal-body">
-                    {/* Search Input */}
-                    <div style={{ marginBottom: '12px' }}>
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{
-                                ...inputStyle,
-                                padding: '6px 12px',
-                                fontSize: '0.8rem',
-                            }}
-                            placeholder={`Search ${title.toLowerCase()}...`}
-                        />
-                    </div>
-
-                    {sortedItems.length === 0 ? (
-                        <p className="empty-state">
-                            {searchQuery.trim() ? `No ${title.toLowerCase()} match your search.` : emptyMessage}
-                        </p>
-                    ) : (
-                        <ul className="chat-list">
-                            {sortedItems.map((item) => {
-                                const currentIndex = currentOrderIds.indexOf(item.id);
-                                const isInList = currentIndex !== -1;
-                                const isSpecialActive = activeSpecialActionId === item.id;
-                                
-                                return (
-                                    <li 
-                                        key={item.id} 
-                                        className={`chat-list-item ${isInList ? 'selected-item' : ''} ${isSpecialActive ? 'special-active-item' : ''}`} 
-                                        onClick={() => {
-                                            if (orderedListMode && onToggleOrder) {
-                                                onToggleOrder(item.id);
-                                            } else {
-                                                onSelect?.(item);
-                                            }
-                                        }}
-                                        style={{ cursor: 'pointer', justifyContent: 'space-between', alignItems: 'center' }}
-                                    >
-                                        {/* Left Content */}
-                                        <div className="chat-item-main" style={{ flex: 1, minWidth: 0 }}>
-                                            <div className="chat-item-info" style={{ width: '100%', textAlign: 'left' }}>
-                                                {/* Title with Edit Support - Pencil icon RIGHT NEXT to title */}
-                                                <div className="chat-item-title-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', flexWrap: 'wrap' }}>
-                                                    {renderTitle ? renderTitle(item) : (
-                                                        <span className="chat-item-title">{item.name}</span>
-                                                    )}
-                                                    {renderTitleActions && renderTitleActions(item)}
-                                                    {/* Timestamp */}
-                                                    {showTimestamps && item.last_updated_timestamp && (
-                                                        <span style={{
-                                                            fontSize: '0.6rem',
-                                                            color: 'var(--text-h)',
-                                                            opacity: 0.4,
-                                                            marginLeft: 'auto',
-                                                            flexShrink: 0,
-                                                            fontWeight: 'normal',
-                                                        }}>
-                                                            {formatTimestamp(item.last_updated_timestamp)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {renderSubtext && (
-                                                    <div className="chat-item-sub" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                        {renderSubtext(item)}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Right Actions - Star and Delete/Number badge */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '15px', flexShrink: 0 }}>
-                                        
-                                            {/* Special Action (Star) */}
-                                            {specialActionIcon && onSpecialAction && (
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); onSpecialAction(item.id); }}
-                                                    title={specialActionTooltip ? specialActionTooltip(item) : 'Set Active'}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        fontSize: '1.2rem',
-                                                        color: isSpecialActive ? '#ffd700' : 'var(--border)',
-                                                        transition: 'color 0.2s',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        padding: '4px'
-                                                    }}
-                                                    onMouseEnter={(e) => { if (!isSpecialActive) e.currentTarget.style.color = 'var(--text-h)'; }}
-                                                    onMouseLeave={(e) => { if (!isSpecialActive) e.currentTarget.style.color = 'var(--border)'; }}
-                                                >
-                                                    {specialActionIcon}
-                                                </button>
-                                            )}
-
-                                            {/* Number Badge (Ordered Mode) OR Delete Button (Standard Mode) */}
-                                            {orderedListMode ? (
-                                                <div style={{ 
-                                                    width: '24px', 
-                                                    height: '24px', 
-                                                    borderRadius: '50%', 
-                                                    background: isInList ? 'var(--accent)' : 'transparent',
-                                                    border: `1px solid ${isInList ? 'var(--accent)' : 'var(--border)'}`,
-                                                    color: isInList ? '#fff' : 'var(--text-h)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '0.8rem',
-                                                    fontWeight: 'bold'
-                                                }}>
-                                                    {isInList ? currentIndex + 1 : '+'}
-                                                </div>
-                                            ) : onDelete ? (
-                                                <button 
-                                                    type="button" 
-                                                    className="delete-chat-btn" 
-                                                    onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
-                                                    title="Delete"
-                                                >
-                                                    🗑️
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    )}
-                </div>
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+            <h2>{title}</h2>
+            <div className="modal-header-actions">
+                <button 
+                type="button" 
+                className="create-new-btn" 
+                onClick={onCreateNew} 
+                title={`Create New ${singularTitle}`}
+                >
+                ➕ New {singularTitle}
+                </button>
+                <button type="button" className="close-btn" onClick={onClose}>×</button>
             </div>
+            </div>
+
+            <div className="modal-body">
+            {items.length === 0 ? (
+                <div className="empty-state">{emptyMessage}</div>
+            ) : (
+                <ul className="manager-list">
+                {items.map((item) => {
+                    const isActive = activeSpecialActionId === item.id;
+                    const isInCurrentOrder = currentOrderIds.includes(item.id);
+                    const orderNumber = getOrderNumber(item.id);
+                    
+                    return (
+                    <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''}`}>
+                        <div 
+                        className="manager-item-main" 
+                        onClick={() => onSelect?.(item)}
+                        style={{ cursor: onSelect ? 'pointer' : 'default' }}
+                        >
+                        <div className="manager-item-info">
+                            <div className="manager-item-title">{item.name || 'Untitled'}</div>
+                            {renderSubtext && <div className="manager-item-sub">{renderSubtext(item)}</div>}
+                        </div>
+                        </div>
+
+                        {/* ✅ Button Order: Number Order → Star → Delete */}
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            
+                            {/* 1. Number Order Button (Optional) */}
+                            {orderedListMode && onToggleOrder && (
+                                <button
+                                type="button"
+                                onClick={() => onToggleOrder(item.id)}
+                                className="toolbar-btn"
+                                title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
+                                style={{ 
+                                    background: isInCurrentOrder ? 'var(--accent-bg)' : 'transparent',
+                                    color: isInCurrentOrder ? 'var(--accent)' : 'var(--text-h)',
+                                    border: '1px solid var(--border)',
+                                    width: '32px', 
+                                    height: '32px', 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                >
+                                {isInCurrentOrder ? orderNumber : '+'}
+                                </button>
+                            )}
+
+                            {/* 2. Star Button (Optional) */}
+                            {specialActionIcon && onSpecialAction && (
+                                <button
+                                type="button"
+                                onClick={() => onSpecialAction(item.id)}
+                                className="toolbar-btn"
+                                title={specialActionTooltip?.(item) || "Action"}
+                                style={{ 
+                                    width: '32px', 
+                                    height: '32px', 
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                >
+                                {isActive ? '⭐' : '☆'}
+                                </button>
+                            )}
+
+                            {/* 3. Delete Button (Always visible if onDelete provided) */}
+                            {onDelete && (
+                                <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                                className="delete-item-btn"
+                                title={actionLabel}
+                                >
+                                🗑️
+                                </button>
+                            )}
+                        </div>
+                    </li>
+                    );
+                })}
+                </ul>
+            )}
+            </div>
+        </div>
         </div>
     );
 }
