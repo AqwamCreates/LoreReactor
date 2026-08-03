@@ -421,8 +421,7 @@ function App() {
           alignItems: 'center',
           flexShrink: 0
         }}>
-          <span>{isStreaming ? 'INTERRUPT STREAM' : 'INTERJECT ACTION'}</span>
-          <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData?.chatMessageHistory, character.id)}</span>
+          <span>{'INTERJECT ACTION'}</span>
         </div>
         <div style={{
           overflowY: 'auto',
@@ -626,7 +625,7 @@ function App() {
                 {streamingCharacter.image ? (
                   <img 
                     src={getCharacterImageUrl(streamingCharacter.image)!} 
-                    alt={streamingCharacter.name} 
+                    alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} 
                     className="character-avatar" 
                     onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
                     style={{ cursor: 'pointer' }}
@@ -640,7 +639,7 @@ function App() {
                 )}
                 {renderActionMenu('streaming-message', streamingCharacter)}
               </div>
-              <span className="avatar-name">{streamingCharacter.name}</span>
+              <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
             </div>
             <div className="message-bubble bubble-ai">
               <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
