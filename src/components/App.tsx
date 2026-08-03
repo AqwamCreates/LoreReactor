@@ -99,7 +99,7 @@ function App() {
   // --- Generic Modal Hooks ---
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
-  const sampleModal = useEntityModal<Context>(saveSampler, deleteSampler, 'Sampler');
+  const sampleModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
