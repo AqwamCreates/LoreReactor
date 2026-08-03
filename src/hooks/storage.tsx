@@ -384,7 +384,7 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
   return {
     id, 
-    title: rawChatData.title, 
+    name: rawChatData.name, 
     protagonist, 
     participants, 
     contexts, 
@@ -435,7 +435,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   if (branchIndex === -1) throw new Error("Branch point message not found");
   const newChatId = crypto.randomUUID();
   const newPayload: RawChatData = {
-    title: `${sourceChat.title} (Branch)`, 
+    name: `${sourceChat.name} (Branch)`, 
     protagonistId: sourceChat.protagonist.id,
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],

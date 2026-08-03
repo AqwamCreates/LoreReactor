@@ -10,6 +10,7 @@ export function useSamplerManager() {
         setIsLoading(true);
         try {
         const data = await loadAllRawSamplers();
+        console.log(data)
         setSamplers(data);
         } catch (err) {
         console.error("Failed to load Samplers", err);

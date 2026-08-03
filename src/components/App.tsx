@@ -66,10 +66,10 @@ function App() {
   const { addToast } = useToast();
 
   // --- Data Managers ---
-  const { chats: allChats, deleteChat: deleteChatFromList } = useChatListManager();
+  const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
-  const { samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager()
+  const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
   const { models: allModels, saveModel, deleteModel } = useModelManager();
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
@@ -161,7 +161,8 @@ function App() {
     const selected = allChats.find(c => c.id === id);
     if (selected) { 
       setChatData(selected); 
-      setCurrentCharacter(selected.protagonist); 
+      setCurrentCharacter(selected.protagonist);
+      refreshChatList();
       setIsChatListOpen(false);
     }
   };
@@ -171,7 +172,8 @@ function App() {
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
     if (charToUse) { 
-      startNewChat(charToUse); 
+      startNewChat(charToUse);
+      refreshChatList();
       setIsChatListOpen(false);
     }
   };
@@ -298,6 +300,7 @@ function App() {
     const updatedChat = { ...chatData, title: newTitle };
     setChatData(updatedChat);
     saveRawChatData(updatedChat);
+    refreshChatList();
     setIsEditingTitle(false);
     addToast("Chat title updated", "success");
   };
@@ -365,6 +368,7 @@ function App() {
       // ✅ Switch in-app
       setChatData(branchedChat);
       setCurrentCharacter(branchedChat.protagonist);
+      refreshChatList();
       addToast(`Branched to "${branchedChat.title}"`, "success");
     } catch (err) { 
       addToast("Failed to branch chat.", "error");
@@ -379,6 +383,7 @@ function App() {
       if (sourceChat) {
         setChatData(sourceChat);
         setCurrentCharacter(sourceChat.protagonist);
+        refreshChatList();
         addToast(`Navigated back to "${sourceChat.title || 'Untitled Chat'}"`, "info");
       } else {
         addToast("Source chat not found.", "error");
@@ -435,8 +440,6 @@ function App() {
   // ✅ 5. Render Action Menu Component (reusable) - with scrollable action list
   const renderActionMenu = (messageId: string, character: Character) => {
     if (!actionMenuTarget || actionMenuTarget.messageId !== messageId) return null;
-    
-    const isStreaming = isLoading && streamingCharacter && streamingCharacter.id === character.id;
     
     return (
       <div style={{
@@ -790,7 +793,7 @@ function App() {
           activeSpecialActionId={chatData?.protagonist.id} 
         />
       )}
-      {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} isLoadingSamplers={allSamplers.length === 0} />)}
+      {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
       
       {/* ✅ Contexts modal - always shows active contexts functionality when in a chat */}
       {(contextModal.isOpen || isContextListMode) && (
@@ -815,8 +818,8 @@ function App() {
       {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={modelModal.handleDelete} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓" onSpecialAction={(id) => { const model = allModels.find(m => m.id === id); if (model) handleSelectModel(model); }} specialActionTooltip={(m) => `Use ${m.name}`} />)}
       {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
       
-      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => handleOpenSamplerEditor(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => handleOpenSamplerEditor()} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}, Tokens: ${s.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-      {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
+      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
+      {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={sampleModal.close} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
       
       {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
       {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}

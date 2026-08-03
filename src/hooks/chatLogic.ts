@@ -480,7 +480,7 @@ export function branchChatMessage(chatData: ChatData, branchPointMessageId: stri
     const currentTimestamp = Date.now();
     return {
         id: uuidv4(),
-        title: `${chatData.title} [#${branchIndex + 1}]`,
+        name: `${chatData.name} [#${branchIndex + 1}]`,
         protagonist: chatData.protagonist,
         participants: chatData.participants,
         chatMessageHistory: chatData.chatMessageHistory.slice(0, branchIndex + 1),

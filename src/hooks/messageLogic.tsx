@@ -1,6 +1,6 @@
 // src/hooks/messageLogic.ts
-import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData, branchRawChatData } from './storage';
-import { deleteChatMessage as calculateDelete, editChatMessageInChatData, branchChatMessage } from './chatLogic';
+import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
+import { deleteChatMessage as calculateDelete, editChatMessageInChatData } from './chatLogic';
 import type { ChatData } from '../types';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
@@ -79,7 +79,7 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
     const branchedChat: ChatData = {
         ...currentChat,
         id: crypto.randomUUID(), // New ID for the branch
-        title: `${currentChat.title || 'Untitled Chat'} (Branch)`,
+        name: `${currentChat.name} (Branch)`,
         // ✅ Copy all contexts and participants from the source
         contexts: [...(currentChat.contexts || [])],
         participants: [...currentChat.participants],
@@ -94,10 +94,6 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
 
     // Save the new branch chat
     await saveRawChatData(branchedChat);
-    
-    // Also update the manifest via branchRawChatData to ensure it appears in the chat list
-    // Note: branchRawChatData will create another copy, so we need to handle this carefully
-    // Using saveRawChatData already handles the manifest update via updateManifest
     
     return branchedChat;
 }
