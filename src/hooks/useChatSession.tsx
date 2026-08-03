@@ -179,6 +179,8 @@ export function useChatSession() {
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setIsLoading(true);
+            
+            // ✅ FIX: Clear streaming text before starting
             setStreamingText("");
             setStreamingCharacter(targetChar);
             setGenerationSpeed(0);
@@ -202,12 +204,15 @@ export function useChatSession() {
             } finally {
                 if (abortControllerRef.current === controller) abortControllerRef.current = null;
                 setIsLoading(false);
+                // ✅ FIX: Clear streaming text after completion
                 setStreamingText("");
                 setStreamingCharacter(null);
             }
         } catch (error) {
             console.error("Failed to send action:", error);
             setIsLoading(false);
+            setStreamingText("");
+            setStreamingCharacter(null);
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
@@ -329,8 +334,12 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
         setIsLoading(true);
+        
+        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
+        setStreamingCharacter(null);
         setGenerationSpeed(0);
+        
         try {
             const userMsg = createChatMessage(chatData, currentCharacter, text);
             const tempData = addMessageToChatData(chatData, userMsg);
@@ -347,6 +356,7 @@ export function useChatSession() {
         } finally {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             setIsLoading(false);
+            // ✅ FIX: Clear streaming text after completion
             setStreamingText("");
             setStreamingCharacter(null);
         }
@@ -367,9 +377,12 @@ export function useChatSession() {
         };
         setChatData(trimmedData);
         setIsLoading(true);
+        
+        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
+        
         const controller = new AbortController();
         abortControllerRef.current = controller;
         try {
@@ -387,7 +400,13 @@ export function useChatSession() {
                 setChatData(currentData);
             }
         } catch (err) { if ((err as Error).name !== 'AbortError') console.error(err); }
-        finally { if (abortControllerRef.current === controller) abortControllerRef.current = null; setIsLoading(false); setStreamingText(""); setStreamingCharacter(null); }
+        finally { 
+            if (abortControllerRef.current === controller) abortControllerRef.current = null; 
+            setIsLoading(false); 
+            // ✅ FIX: Clear streaming text after completion
+            setStreamingText(""); 
+            setStreamingCharacter(null); 
+        }
     }, [chatData, isLoading, handleServerResponse]);
 
     const regenerateLastProtagonist = useCallback(async () => {
@@ -405,9 +424,12 @@ export function useChatSession() {
         };
         setChatData(trimmedData);
         setIsLoading(true);
+        
+        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
+        
         const controller = new AbortController();
         abortControllerRef.current = controller;
         try {
@@ -418,7 +440,13 @@ export function useChatSession() {
                 setChatData(updatedData);
             }
         } catch (err) { if ((err as Error).name !== 'AbortError') console.error(err); }
-        finally { if (abortControllerRef.current === controller) abortControllerRef.current = null; setIsLoading(false); setStreamingText(""); setStreamingCharacter(null); }
+        finally { 
+            if (abortControllerRef.current === controller) abortControllerRef.current = null; 
+            setIsLoading(false); 
+            // ✅ FIX: Clear streaming text after completion
+            setStreamingText(""); 
+            setStreamingCharacter(null); 
+        }
     }, [chatData, isLoading, handleServerResponse]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;

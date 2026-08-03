@@ -202,7 +202,7 @@ function App() {
     setChatData(updatedChat);
     
     if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
-    addToast("Participants updated (Session Only). Click Save to persist.", "info");
+    addToast("Participants updated (Session Only).", "info");
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
