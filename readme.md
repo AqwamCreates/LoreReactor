@@ -1,6 +1,6 @@
 # Lore Reactor
 
-> The familiarity of ChatGPT-style chat. The depth of a dedicated roleplay engine.
+> The familiarity of ChatGPT-style chat. The depth of a SillyTavern UI. The customization of Oogabooga way.
 
 Author: Aqwam Harish Aiman
 
