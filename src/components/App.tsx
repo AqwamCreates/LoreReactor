@@ -132,7 +132,7 @@ function App() {
           const char = allCharacters.find(c => c.id === defaultCharacterId);
           if(char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
       }
-  }, [defaultCharacterId, allCharacters]);
+  }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
   // --- Handlers ---
 
