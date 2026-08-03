@@ -24,7 +24,7 @@ export function StopPatternEditorModal({
     const [pattern, setPattern] = useState('');
     const [regexTrigger, setRegexTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
-    const [regexTarget, setRegexTarget] = useState<'everyone' | 'responder' | 'self'>('everyone');
+    const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
     const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string }>({});
@@ -386,12 +386,12 @@ export function StopPatternEditorModal({
                                 <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Target</label>
                                 <select
                                     value={regexTarget}
-                                    onChange={(e) => setRegexTarget(e.target.value as 'everyone' | 'responder' | 'self')}
+                                    onChange={(e) => setRegexTarget(e.target.value as 'everyone' | 'listener' | 'self')}
                                     style={selectStyle}
                                     disabled={!regexTrigger.trim()}
                                 >
                                     <option value="everyone">Everyone</option>
-                                    <option value="responder">Responder</option>
+                                    <option value="listener">Listener</option>
                                     <option value="self">Self</option>
                                 </select>
                             </div>

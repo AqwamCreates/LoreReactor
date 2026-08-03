@@ -23,6 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local data
+# --- LOCAL DATA CONFIGURATION ---
+
+# 1. Ignore the main user_data folder by default
 user_data/
+
+# 2. EXCEPT: Re-include the specific folders you want to share
+!user_data/sampler_data/
+!user_data/stop_patterns_data/
+
+# 3. Keep ignoring sensitive/private data (Characters, Chats, Contexts, Models)
+# These will remain ignored because of rule #1, unless you explicitly un-ignore them too.
+# user_data/character_data/  <- Uncomment if you also want to share characters
+# user_data/context_data/    <- Uncomment if you also want to share contexts
+# user_data/chat_data/       <- Keep ignored (private chats)
+# user_data/chat_messages/   <- Keep ignored (private messages)
+# user_data/model_data/      <- Keep ignored (local paths usually differ per user)
+
 llama/

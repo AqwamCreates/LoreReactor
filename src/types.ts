@@ -22,7 +22,7 @@ export interface StopPattern extends ObjectData {
   pattern: string;
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
 
 }
 
@@ -31,7 +31,7 @@ export interface RawStopPattern extends RawData {
   pattern: string;
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
 
 }
 
@@ -56,7 +56,9 @@ export interface Context extends ObjectData  {
   images?: string[];
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  useBase64Encoding: boolean
+
 }
 
 export interface RawContext extends RawData  {
@@ -65,7 +67,8 @@ export interface RawContext extends RawData  {
   images?: string[];
   regularExpressionTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'responder' | 'self';
+  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  useBase64Encoding: boolean
 
 }
 

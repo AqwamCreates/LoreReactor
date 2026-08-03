@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, prepareRequestBody, createNewChatData } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,11 +11,9 @@ const engine = new LargeLanguageModelInferenceEngine();
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-// Helper: Create a safe default character
 function getDefaultCharacter(): Character {
     const now = Date.now();
-    
-    const character: Character = {
+    return {
         id: 'default-user',
         name: 'User',
         description: 'Default user character',
@@ -35,19 +33,15 @@ function getDefaultCharacter(): Character {
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };
-
-    return character;
 }
 
 export function useChatSession() {
     const [chatData, setChatData] = useState<ChatData | null>(null);
     const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
-    
     const [isLoading, setIsLoading] = useState(false);
     const [streamingText, setStreamingText] = useState("");
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
-    
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
@@ -82,7 +76,7 @@ export function useChatSession() {
             if (url) imageData = await getImageBase64(url);
         }
 
-        const requestBody = prepareRequestBody(data, character, imageData);
+        const requestBody = await prepareRequestBody(data, character, imageData);
 
         try {
             const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
@@ -98,9 +92,37 @@ export function useChatSession() {
             const aiMessage = createChatMessage(data, character, displayText);
             return addMessageToChatData(data, aiMessage);
         } catch (error) {
-            if ((error as Error).name !== 'AbortError') {
-                console.error("Inference failed:", error);
+            const err = error as Error;
+            
+            // ✅ USER-FRIENDLY ERROR HANDLING
+            if (err.name === 'AbortError') {
+                return null;
             }
+
+            // Check for network errors or 502/503/504 status codes
+            const isNetworkError = err.message.includes('Failed to fetch') || 
+                                   err.message.includes('NetworkError') ||
+                                   err.message.includes('ERR_ABORTED') ||
+                                   err.message.includes('502') ||
+                                   err.message.includes('503') ||
+                                   err.message.includes('504');
+
+            if (isNetworkError) {
+                alert(
+                    "⚠️ Backend Connection Failed\n\n" +
+                    "Could not connect to the AI backend at /api/completion.\n\n" +
+                    "Please ensure:\n" +
+                    "1. Your backend server (llama.cpp, Oobabooga, etc.) is running.\n" +
+                    "2. The server address in your configuration is correct.\n" +
+                    "3. There are no firewall issues blocking the connection."
+                );
+                setIsLoading(false);
+                return null;
+            }
+
+            // Generic error for other issues
+            console.error("Inference failed:", err);
+            alert(`❌ Inference Error\n\n${err.message}`);
             return null;
         }
     }, []);
@@ -131,42 +153,33 @@ export function useChatSession() {
             await handleServerResponse(data, silentCharacter, controller.signal, undefined);
             setIsInitialImageProcessed(true);
         } catch (error) {
-            if ((error as Error).name !== 'AbortError') {
-                console.warn("Silent image processing failed:", error);
-            }
+            // Silent fail for initial image processing to avoid annoying alerts on load
+            console.warn("Silent image processing failed:", error);
             setIsInitialImageProcessed(true);
         }
     }, [handleServerResponse]);
 
-    // FIXED INITIALIZATION: Handle missing protagonist gracefully
     useEffect(() => {
         const init = async () => {
-            // 1. Load all chats
             const arr = await loadAllRawChatData();
             const validChats = arr.filter((c): c is ChatData => c !== null);
             
             let charToUse: Character | null = null;
             let chatToLoad: ChatData | null = null;
 
-            // 2. Find a valid chat AND a valid protagonist
             if (validChats.length > 0) {
-                // Try to use the first valid chat
                 const firstChat = validChats[0];
-                // Check if protagonist is fully resolved (has name, etc.) or if it's the broken default
                 if (firstChat.protagonist && firstChat.protagonist.id !== 'default-user') {
                     chatToLoad = firstChat;
                     charToUse = firstChat.protagonist;
                 }
             }
 
-            // 3. Fallback: If no valid chat/char found, create Default
             if (!charToUse) {
                 charToUse = getDefaultCharacter();
-                // Do NOT load old broken chats. Start fresh.
                 chatToLoad = null; 
             }
 
-            // 4. Set State
             if (!currentCharacter && charToUse) {
                 setCurrentCharacter(charToUse);
             }
@@ -175,19 +188,16 @@ export function useChatSession() {
                 if (chatToLoad) {
                     setChatData(chatToLoad);
                 } else {
-                    // Create fresh draft
                     const newDraft = createNewChatData(charToUse);
                     setChatData(newDraft);
                 }
             }
 
-            // 5. Process Image
             const dataToProcess = chatToLoad || (charToUse ? createNewChatData(charToUse) : null);
             if (dataToProcess && charToUse && !isInitialImageProcessed) {
                 await processProtagonistImageSilently(dataToProcess, charToUse);
             }
 
-            // 6. Calculate Branch Points
             if (chatData || chatToLoad) {
                 const activeChat = chatToLoad || chatData;
                 if (activeChat) {
