@@ -453,7 +453,7 @@ function App() {
           flexShrink: 0
         }}>
           <span>{isStreaming ? 'INTERRUPT STREAM' : 'INTERJECT ACTION'}</span>
-          <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>{character.name}</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData?.chatMessageHistory, character.id)}</span>
         </div>
         <div style={{
           overflowY: 'auto',
@@ -567,7 +567,7 @@ function App() {
       <div className="chat-history">
         {chatData?.chatMessageHistory.map((message, index) => {
           const isProtagonist = message.character.id === currentCharacter.id;
-          const displayName = getDelayedDisplayName(chatData, index, message.character.id, chatData.participants);
+          const displayName = getDelayedDisplayName(chatData, index, message.character.id);
           const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
           const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
           const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));

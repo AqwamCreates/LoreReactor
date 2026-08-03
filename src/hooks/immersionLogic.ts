@@ -1,12 +1,14 @@
-import type {Character, ChatData } from "../types";
+import type { ChatData } from "../types";
 
-export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryIndex: number, characterId: string, participants: Character[]): string {
+export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryIndex: number, characterId: string): string {
+
+    const participants = chatData.participants
 
     const chatMessageHistory = chatData.chatMessageHistory
 
     const chatMessageHistoryLength = chatMessageHistory.length
 
-    if (!chatMessageHistory || chatMessageHistoryLength === 0 || chatMessageHistoryIndex < 0 || chatMessageHistoryIndex >= chatMessageHistoryLength) {
+    if (!chatData || !chatMessageHistory || chatMessageHistoryLength === 0 || chatMessageHistoryIndex < 0 || chatMessageHistoryIndex >= chatMessageHistoryLength) {
         const index = participants.findIndex(p => p.id === characterId);
         return index !== -1 ? `Character ${index + 1}` : 'Unknown';
     }
