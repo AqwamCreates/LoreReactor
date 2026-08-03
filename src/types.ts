@@ -149,7 +149,7 @@ export interface RawChatMessage {
 export interface ChatData {
 
   id: string;
-  title: string;
+  name: string;
   protagonist: Character;
   participants: Character[];
   contexts?: Context[]; // Changed from instructions
@@ -163,7 +163,7 @@ export interface ChatData {
 
 export interface RawChatData {
 
-  title: string;
+  name: string;
   protagonistId: string;
   participantIds: string[];
   contextIds: string[]; // Changed from instructionIds

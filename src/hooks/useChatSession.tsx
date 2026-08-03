@@ -256,7 +256,9 @@ export function useChatSession() {
             let chatToLoad: ChatData | null = null;
 
             if (validChats.length > 0) {
-                const firstChat = validChats[0];
+                // ✅ Try to load the most recent chat first
+                const sortedChats = [...validChats].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
+                const firstChat = sortedChats[0];
                 if (firstChat.protagonist && firstChat.protagonist.id !== 'default-user') {
                     chatToLoad = firstChat;
                     charToUse = firstChat.protagonist;
@@ -301,7 +303,7 @@ export function useChatSession() {
             }
         };
         init();
-    }, [chatData, currentCharacter, isInitialImageProcessed, processProtagonistImageSilently]);
+    }, []); // ✅ Empty dependency array to run only once on mount
 
     useEffect(() => {
         if (isLoading && streamingText && messageEndRef.current) {
@@ -324,9 +326,11 @@ export function useChatSession() {
 
     const startNewChat = useCallback((character: Character) => {
         const newChat = createNewChatData(character);
+        newChat.name = "Untitled Chat";
         setChatData(newChat);
         setCurrentCharacter(character);
         setIsInitialImageProcessed(false);
+        saveRawChatData(newChat).catch(err => console.error("Failed to save new chat:", err));
     }, []);
 
     const sendMessage = useCallback(async (text: string) => {
