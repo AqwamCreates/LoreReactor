@@ -119,10 +119,6 @@ function App() {
     const loadData = async () => {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
-      const storedDefaultContexts = localStorage.getItem('defaultContextIds');
-      if (storedDefaultContexts) {
-        try { setDefaultContextIds(JSON.parse(storedDefaultContexts)); } catch (e) { console.error(e); }
-      }
     };
     loadData();
   });
