@@ -257,17 +257,18 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
     }
 
+    const participantId = getParticipantId(character, chatData.participants);
+    
+
     // 5. Construct Final Prompt String
-    if (character.systemPrompt) promptLines.push(`[${character.systemPrompt}]`);
+    if (character.systemPrompt) promptLines.push(`[${participantId} (${character.name} Prompt: ${character.systemPrompt}]`);
 
     // Fatigue
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
-    const participantId = getParticipantId(character, chatData.participants);
-    
-    promptLines.push(`[You must reply as ${participantId} (${character.name}). Your response must be in character.]`);
+    promptLines.push(`[This is a conversation between a group of characters. You must reply as ${participantId} (${character.name}). Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
@@ -290,7 +291,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     }
 
-    promptLines.push(`Character ${participantId}:`);
+    //promptLines.push(`Character ${participantId}:`);
+
+    promptLines.push(`React to the situation, ${participantId} (${character.name}.`)
 
     return {
         prompt: promptLines.join('\n'),

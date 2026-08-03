@@ -11,7 +11,7 @@ interface ModelEditorModalProps {
     onSave: (model: LanguageModel) => void;
     onDelete?: (id: string) => void;
     existingModel?: LanguageModel | null;
-    allStopPatterns: StopPattern[]; // ✅ NEW PROP
+    allStopPatterns: StopPattern[];
 }
 
 interface ModelSettings {
@@ -124,6 +124,8 @@ export function ModelEditorModal({
     const [contextLength, setContextLength] = useState<number>(8192);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
+    const [apiKey, setApiKey] = useState('');
+    const [showApiKey, setShowApiKey] = useState(false); // ✅ Toggle for showing API key
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
     const [errors, setErrors] = useState<{ name?: string; model?: string }>({});
     
@@ -160,6 +162,7 @@ export function ModelEditorModal({
                 setContextLength(existingModel.contextLength || 8192);
                 setModelPath(existingModel.model || '');
                 setMmprojPath(existingModel.mmproj || '');
+                setApiKey(existingModel.apiKey || '');
                 setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
                 setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
                 setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
@@ -205,6 +208,7 @@ export function ModelEditorModal({
                 setContextLength(8192);
                 setModelPath('');
                 setMmprojPath('');
+                setApiKey('');
                 setCacheHitCostPerMillion(0);
                 setCacheMissCostPerMillion(0);
                 setOutputGenerationCostPerMillion(0);
@@ -262,6 +266,11 @@ export function ModelEditorModal({
             params.stop_pattern_ids = selectedStopPatternIds;
         }
 
+        // ✅ Save API Key
+        if (apiKey.trim()) {
+            params.api_key = apiKey.trim();
+        }
+
         const now = Date.now();
         const model: LanguageModel = {
             id: existingModel?.id || crypto.randomUUID(),
@@ -271,6 +280,7 @@ export function ModelEditorModal({
             contextLength: contextLength || 8192,
             model: modelPath.trim(),
             mmproj: mmprojPath.trim() || undefined,
+            apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
             cacheHitCostPerOneMillionOfTokens: cacheHitCostPerMillion,
             cacheMissCostPerOneMillionOfTokens: cacheMissCostPerMillion,
@@ -297,6 +307,9 @@ export function ModelEditorModal({
 
     // Helper to get stop pattern object by ID
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
+
+    // ✅ Check if current backend requires an API key
+    const requiresApiKey = ['DeepSeek', 'OpenAI', 'Qwen'].includes(backend);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -351,6 +364,53 @@ export function ModelEditorModal({
                         <label className="editor-label">MMProj Path</label>
                         <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/mmproj.gguf" />
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
+                    </div>
+
+                    {/* ✅ API Key Field */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <label className="editor-label">
+                            API Key {requiresApiKey && <span style={{ color: '#ff4444' }}>*</span>}
+                        </label>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input 
+                                type={showApiKey ? 'text' : 'password'}
+                                value={apiKey} 
+                                onChange={(e) => setApiKey(e.target.value)} 
+                                className="editor-input" 
+                                style={{ fontFamily: 'monospace', flex: 1 }}
+                                placeholder="Enter your API key..."
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowApiKey(!showApiKey)}
+                                style={{ 
+                                    padding: '4px 8px', 
+                                    fontSize: '1rem',
+                                    background: 'transparent',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-h)',
+                                    opacity: 0.7,
+                                    transition: 'opacity 0.2s',
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                title={showApiKey ? 'Hide API key' : 'Show API key'}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                            >
+                                {showApiKey ? '🙈' : '👁️'}
+                            </button>
+                        </div>
+                        {requiresApiKey && (
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.6, marginTop: '4px' }}>
+                                Required for {backend} models. Get one from the provider's website.
+                            </div>
+                        )}
                     </div>
 
                     {/* Main Options */}
@@ -520,7 +580,6 @@ export function ModelEditorModal({
                         <div className="editor-row-full">
                             <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.5, marginTop: '4px', fontStyle: 'italic' }}>💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.</div>
                     </div>
                 </div>
             </div>
