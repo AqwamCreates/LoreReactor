@@ -1,0 +1,13 @@
+.\llama\llama-server.exe ^
+    -m "user_data\models\gemma4-E4B-it-Abliterated-AND-Disinhibited-USE-THIS.Q8_0.gguf" ^
+    -c 131072 ^
+    --cache-type-k q8_0 ^
+    -np 1 ^
+    --port 8080 ^
+    --host 0.0.0.0 ^
+    -ngl 99 ^
+    --mmproj "user_data\mmproj\Gemma-4-E4B-mmproj-F16.gguf" ^
+    --cache-reuse 256 ^
+    --chat-template-kwargs "{\"enable_thinking\": false}" ^
+    -fa on ^
+    --reasoning off
