@@ -591,7 +591,7 @@ function App() {
               ) : (
                 <>
                   <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
-                    {chatData?.title || "New Chat Draft"}
+                    {chatData?.name || "Untitled Chat"}
                   </div>
                   <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.5, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}>✎</span>
                 </>
