@@ -1,12 +1,11 @@
 .\llama\llama-server.exe ^
-    -m "user_data\models\Bonsai-27B-Q1_0.gguf" ^
+    -m "user_data\models\Qwen3.5-9B-Q3_K_S.gguf" ^
     -c 131072 ^
     --cache-type-k q8_0 ^
     -np 1 ^
     --port 8080 ^
     --host 0.0.0.0 ^
     -ngl 99 ^
-    --mmproj "user_data\mmproj\Bonsai-27B-mmproj-Q8_0.gguf" ^
     --cache-reuse 256 ^
     --chat-template-kwargs "{\"enable_thinking\": false}" ^
     -fa on ^

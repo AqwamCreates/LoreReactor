@@ -369,7 +369,7 @@ export function CharacterEditorModal({
                                             {renderAutoHint('cp')}
                                         </div>
                                         <div>
-                                            <label className="editor-label editor-label-small">Max Stamina</label>
+                                            <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
                                             <input 
                                                 type="number" step="1" 
                                                 value={maximumChatStaminaStr} 
