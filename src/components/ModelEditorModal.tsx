@@ -1,6 +1,7 @@
+// src/components/ModelEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
-import type { LanguageModel } from '../types';
+import type { LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import './main.css';
 
@@ -10,24 +11,20 @@ interface ModelEditorModalProps {
     onSave: (model: LanguageModel) => void;
     onDelete?: (id: string) => void;
     existingModel?: LanguageModel | null;
+    allStopPatterns: StopPattern[]; // ✅ NEW PROP
 }
 
 interface ModelSettings {
-    // Main options
     gpu_layers: number;
     ctx_size: number;
     cache_type: string;
     split_mode: string;
     ik: boolean;
-    
-    // Speculative decoding
     spec_type: string;
     draft_max: number;
     draft_model: string;
     gpu_layers_draft: number;
     device_draft: string;
-    
-    // Other options
     parallel: number;
     threads: number;
     threads_batch: number;
@@ -44,21 +41,16 @@ interface ModelSettings {
 }
 
 const DEFAULT_SETTINGS: ModelSettings = {
-    // Main options
     gpu_layers: -1,
     ctx_size: 0,
     cache_type: 'fp16',
     split_mode: 'layer',
     ik: false,
-    
-    // Speculative decoding
     spec_type: 'none',
     draft_max: 3,
     draft_model: '',
     gpu_layers_draft: 256,
     device_draft: '',
-    
-    // Other options
     parallel: 1,
     threads: 0,
     threads_batch: 0,
@@ -100,77 +92,21 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
-// Cache type options for each backend
 const getCacheTypes = (backend: string) => {
     switch (backend) {
-        case 'Llama.cpp':
-            return [
-                { value: 'fp16', label: 'FP16' },
-                { value: 'q8_0', label: 'Q8_0' },
-                { value: 'q4_0', label: 'Q4_0' },
-            ];
-        case 'Ollama':
-            return [
-                { value: 'f16', label: 'F16' },
-                { value: 'q8_0', label: 'Q8_0' },
-                { value: 'q4_0', label: 'Q4_0' },
-            ];
-        case 'ExLlamaV3':
-        case 'ExLlamaV3 HF':
-            return [
-                { value: 'fp16', label: 'FP16' },
-                { value: 'fp8', label: 'FP8' },
-                { value: 'q8', label: 'Q8' },
-                { value: 'q7', label: 'Q7' },
-                { value: 'q6', label: 'Q6' },
-                { value: 'q5', label: 'Q5' },
-                { value: 'q4', label: 'Q4' },
-                { value: 'q3', label: 'Q3' },
-                { value: 'q2', label: 'Q2' },
-                { value: 'q4_q8', label: 'Q4_Q8' },
-            ];
+        case 'Llama.cpp': return [{ value: 'fp16', label: 'FP16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
+        case 'Ollama': return [{ value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
+        case 'ExLlamaV3': case 'ExLlamaV3 HF':
+            return [{ value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' }, { value: 'q8', label: 'Q8' }, { value: 'q7', label: 'Q7' }, { value: 'q6', label: 'Q6' }, { value: 'q5', label: 'Q5' }, { value: 'q4', label: 'Q4' }, { value: 'q3', label: 'Q3' }, { value: 'q2', label: 'Q2' }, { value: 'q4_q8', label: 'Q4_Q8' }];
         case 'ExLlamaV2':
-            return [
-                { value: 'fp16', label: 'FP16' },
-                { value: 'fp8', label: 'FP8' },
-                { value: 'q8', label: 'Q8' },
-                { value: 'q6', label: 'Q6' },
-                { value: 'q4', label: 'Q4' },
-            ];
+            return [{ value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' }, { value: 'q8', label: 'Q8' }, { value: 'q6', label: 'Q6' }, { value: 'q4', label: 'Q4' }];
         case 'TensorRT-LLM':
-            return [
-                { value: 'auto', label: 'Auto' },
-                { value: 'fp16', label: 'FP16' },
-                { value: 'bf16', label: 'BF16' },
-                { value: 'fp8', label: 'FP8' },
-                { value: 'int8', label: 'INT8' },
-                { value: 'nvfp4', label: 'NVFP4' },
-            ];
+            return [{ value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' }, { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' }, { value: 'int8', label: 'INT8' }, { value: 'nvfp4', label: 'NVFP4' }];
         case 'Transformers':
-            return [
-                { value: 'dynamic', label: 'Dynamic' },
-                { value: 'static', label: 'Static' },
-                { value: 'offloaded', label: 'Offloaded' },
-                { value: 'offloaded_static', label: 'Offloaded Static' },
-                { value: 'quantized', label: 'Quantized' },
-                { value: 'sliding_window', label: 'Sliding Window' },
-                { value: 'sink', label: 'Sink' },
-            ];
-        case 'DeepSeek':
-            return [
-                { value: 'auto', label: 'Auto' },
-            ];
-        case 'Qwen':
-            return [
-                { value: 'align', label: 'Align' },
-                { value: 'dynamic', label: 'Dynamic' },
-            ];
-        case 'OpenAI':
-        case 'Other':
-        default:
-            return [
-                { value: 'default', label: 'Default' },
-            ];
+            return [{ value: 'dynamic', label: 'Dynamic' }, { value: 'static', label: 'Static' }, { value: 'offloaded', label: 'Offloaded' }, { value: 'offloaded_static', label: 'Offloaded Static' }, { value: 'quantized', label: 'Quantized' }, { value: 'sliding_window', label: 'Sliding Window' }, { value: 'sink', label: 'Sink' }];
+        case 'DeepSeek': return [{ value: 'auto', label: 'Auto' }];
+        case 'Qwen': return [{ value: 'align', label: 'Align' }, { value: 'dynamic', label: 'Dynamic' }];
+        default: return [{ value: 'default', label: 'Default' }];
     }
 };
 
@@ -180,6 +116,7 @@ export function ModelEditorModal({
     onSave,
     onDelete,
     existingModel,
+    allStopPatterns,
 }: ModelEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -187,17 +124,17 @@ export function ModelEditorModal({
     const [contextLength, setContextLength] = useState<number>(8192);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
-    
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
-
     const [errors, setErrors] = useState<{ name?: string; model?: string }>({});
-
+    
     // Cost fields
     const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
     const [cacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
     const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
 
-    // Use the VRAM estimation hook
+    // ✅ Stop Pattern State (Stores IDs)
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
@@ -206,7 +143,6 @@ export function ModelEditorModal({
         backend: backend,
     });
 
-    // Reset cache type to default when backend changes
     useEffect(() => {
         const cacheTypes = getCacheTypes(backend);
         const currentCacheTypeExists = cacheTypes.some(ct => ct.value === settings.cache_type);
@@ -228,6 +164,10 @@ export function ModelEditorModal({
                 setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
                 setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
                 
+                // ✅ Load Stop Patterns from parameters
+                const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
+                setSelectedStopPatternIds(storedIds);
+
                 if (existingModel.parameters) {
                     const params = existingModel.parameters;
                     setSettings({
@@ -269,6 +209,7 @@ export function ModelEditorModal({
                 setCacheMissCostPerMillion(0);
                 setOutputGenerationCostPerMillion(0);
                 setSettings({ ...DEFAULT_SETTINGS });
+                setSelectedStopPatternIds([]);
             }
             setErrors({});
         }
@@ -280,15 +221,8 @@ export function ModelEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; model?: string } = {};
-        
-        if (!name.trim()) {
-            newErrors.name = 'Model name is required';
-        }
-        
-        if (!modelPath.trim()) {
-            newErrors.model = 'Model path is required';
-        }
-        
+        if (!name.trim()) newErrors.name = 'Model name is required';
+        if (!modelPath.trim()) newErrors.model = 'Model path is required';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -298,75 +232,34 @@ export function ModelEditorModal({
 
         const params: Record<string, unknown> = {};
         
-        // Only include non-empty/non-default values
-        if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) {
-            params.gpu_layers = settings.gpu_layers;
-        }
-        if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) {
-            params.ctx_size = settings.ctx_size;
-        }
-        if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) {
-            params.cache_type = settings.cache_type;
-        }
-        if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) {
-            params.split_mode = settings.split_mode;
-        }
-        if (settings.ik !== DEFAULT_SETTINGS.ik) {
-            params.ik = settings.ik;
-        }
-        if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) {
-            params.spec_type = settings.spec_type;
-        }
-        if (settings.draft_max !== DEFAULT_SETTINGS.draft_max) {
-            params.draft_max = settings.draft_max;
-        }
-        if (settings.draft_model && settings.draft_model.trim()) {
-            params.draft_model = settings.draft_model;
-        }
-        if (settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) {
-            params.gpu_layers_draft = settings.gpu_layers_draft;
-        }
-        if (settings.device_draft && settings.device_draft.trim()) {
-            params.device_draft = settings.device_draft;
-        }
-        if (settings.parallel !== DEFAULT_SETTINGS.parallel) {
-            params.parallel = settings.parallel;
-        }
-        if (settings.threads !== DEFAULT_SETTINGS.threads) {
-            params.threads = settings.threads;
-        }
-        if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) {
-            params.threads_batch = settings.threads_batch;
-        }
-        if (settings.batch_size !== DEFAULT_SETTINGS.batch_size) {
-            params.batch_size = settings.batch_size;
-        }
-        if (settings.ubatch_size !== DEFAULT_SETTINGS.ubatch_size) {
-            params.ubatch_size = settings.ubatch_size;
-        }
-        if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) {
-            params.fit_target = settings.fit_target;
-        }
-        if (settings.tensor_split && settings.tensor_split.trim()) {
-            params.tensor_split = settings.tensor_split;
-        }
-        if (settings.extra_flags && settings.extra_flags.trim()) {
-            params.extra_flags = settings.extra_flags;
-        }
-        if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) {
-            params.cpu_moe = settings.cpu_moe;
-        }
-        if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) {
-            params.no_kv_offload = settings.no_kv_offload;
-        }
-        if (settings.no_mmap !== DEFAULT_SETTINGS.no_mmap) {
-            params.no_mmap = settings.no_mmap;
-        }
-        if (settings.mlock !== DEFAULT_SETTINGS.mlock) {
-            params.mlock = settings.mlock;
-        }
-        if (settings.numa !== DEFAULT_SETTINGS.numa) {
-            params.numa = settings.numa;
+        // Only include non-default values
+        if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
+        if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
+        if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+        if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
+        if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
+        if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
+        if (settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
+        if (settings.draft_model && settings.draft_model.trim()) params.draft_model = settings.draft_model;
+        if (settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
+        if (settings.device_draft && settings.device_draft.trim()) params.device_draft = settings.device_draft;
+        if (settings.parallel !== DEFAULT_SETTINGS.parallel) params.parallel = settings.parallel;
+        if (settings.threads !== DEFAULT_SETTINGS.threads) params.threads = settings.threads;
+        if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) params.threads_batch = settings.threads_batch;
+        if (settings.batch_size !== DEFAULT_SETTINGS.batch_size) params.batch_size = settings.batch_size;
+        if (settings.ubatch_size !== DEFAULT_SETTINGS.ubatch_size) params.ubatch_size = settings.ubatch_size;
+        if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) params.fit_target = settings.fit_target;
+        if (settings.tensor_split && settings.tensor_split.trim()) params.tensor_split = settings.tensor_split;
+        if (settings.extra_flags && settings.extra_flags.trim()) params.extra_flags = settings.extra_flags;
+        if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
+        if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;
+        if (settings.no_mmap !== DEFAULT_SETTINGS.no_mmap) params.no_mmap = settings.no_mmap;
+        if (settings.mlock !== DEFAULT_SETTINGS.mlock) params.mlock = settings.mlock;
+        if (settings.numa !== DEFAULT_SETTINGS.numa) params.numa = settings.numa;
+
+        // ✅ Save Stop Pattern IDs
+        if (selectedStopPatternIds.length > 0) {
+            params.stop_pattern_ids = selectedStopPatternIds;
         }
 
         const now = Date.now();
@@ -399,666 +292,235 @@ export function ModelEditorModal({
 
     if (!isOpen) return null;
 
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        boxSizing: 'border-box',
-        fontSize: '0.85rem',
-        fontFamily: 'inherit',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        border: '1px solid var(--border)',
-        background: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        outline: 'none',
-        resize: 'vertical',
-    };
-
-    const selectStyle: React.CSSProperties = {
-        ...inputStyle,
-        appearance: 'auto',
-        WebkitAppearance: 'auto',
-        backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23666\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 12px center',
-        paddingRight: '32px',
-        backgroundColor: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        cursor: 'pointer',
-    };
-
-    const labelStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        color: 'var(--text-h)',
-        display: 'block',
-        marginBottom: '4px',
-        letterSpacing: '0.5px',
-        opacity: 0.8,
-    };
-
-    const errorStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        color: '#ff4444',
-        marginTop: '4px',
-    };
-
-    const buttonStyle: React.CSSProperties = {
-        padding: '8px 20px',
-        fontSize: '0.85rem',
-        fontWeight: 'bold',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        border: '1px solid transparent',
-        fontFamily: 'inherit',
-        transition: 'all 0.2s',
-    };
-
-    const sectionStyle: React.CSSProperties = {
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '16px',
-        background: 'rgba(0,0,0,0.02)',
-    };
-
-    const sectionTitleStyle: React.CSSProperties = {
-        fontSize: '0.7rem',
-        fontWeight: 'bold',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        color: 'var(--text-h)',
-        opacity: 0.6,
-        marginBottom: '12px',
-    };
-
-    const checkboxStyle: React.CSSProperties = {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        cursor: 'pointer',
-        userSelect: 'none',
-    };
-
-    const checkboxInputStyle: React.CSSProperties = {
-        width: '16px',
-        height: '16px',
-        accentColor: 'var(--accent)',
-        cursor: 'pointer',
-    };
-
-    const rowStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '12px',
-        marginBottom: '8px',
-    };
-
-    const fullRowStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: '1fr',
-        gap: '12px',
-        marginBottom: '8px',
-    };
-
-    const disclaimerStyle: React.CSSProperties = {
-        fontSize: '0.7rem',
-        color: 'var(--text-h)',
-        opacity: 0.6,
-        padding: '8px 12px',
-        borderRadius: '6px',
-        background: 'var(--social-bg)',
-        border: '1px solid var(--border)',
-        marginTop: '8px',
-        fontStyle: 'italic',
-    };
-
-    const vramStyle: React.CSSProperties = {
-        fontSize: '0.7rem',
-        color: 'var(--accent)',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        background: 'var(--accent-bg)',
-        border: '1px solid var(--accent-border)',
-        display: 'inline-block',
-        fontWeight: 'bold',
-    };
-
     const cacheTypes = getCacheTypes(backend);
-
-    // Determine what to display for VRAM
     const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
+
+    // Helper to get stop pattern object by ID
+    const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div
-                className="modal-content"
-                onClick={e => e.stopPropagation()}
-                style={{ maxWidth: '700px', maxHeight: '90vh', overflow: 'hidden' }}
-            >
-                <div className="modal-header" style={{ flexShrink: 0 }}>
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
                     <h2>{existingModel ? 'Edit Model' : 'Create New Model'}</h2>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {/* VRAM Estimation in top right corner */}
+                    <div className="editor-modal-actions">
                         {backend === 'Llama.cpp' && (
-                            <div style={vramStyle}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', fontWeight: 'bold' }}>
                                 💾 {displayVRAM} GB
                             </div>
                         )}
                         {existingModel && onDelete && (
-                            <button
-                                type="button"
-                                className="edit-btn edit-btn-delete"
-                                onClick={handleDelete}
-                                style={{
-                                    ...buttonStyle,
-                                    background: 'transparent',
-                                    color: '#ff4444',
-                                    border: '1px solid #ff4444',
-                                }}
-                            >
-                                🗑️ Delete
-                            </button>
+                            <button type="button" className="editor-btn" onClick={handleDelete} style={{ background: 'transparent', color: '#ff4444', border: '1px solid #ff4444' }}>🗑️ Delete</button>
                         )}
-                        <button
-                            type="button"
-                            className="edit-btn edit-btn-cancel"
-                            onClick={onClose}
-                            style={{
-                                ...buttonStyle,
-                                background: 'transparent',
-                                color: 'var(--text-h)',
-                                border: '1px solid var(--border)',
-                            }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            className="edit-btn edit-btn-save"
-                            onClick={handleSubmit}
-                            style={{
-                                ...buttonStyle,
-                                background: 'var(--accent)',
-                                color: '#fff',
-                            }}
-                        >
-                            {existingModel ? 'Update' : 'Create'}
-                        </button>
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingModel ? 'Update' : 'Create'}</button>
                     </div>
                 </div>
 
-                <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                <div className="modal-body editor-modal-body">
                     {/* Name */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>
-                            Model Name <span style={{ color: '#ff4444' }}>*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => {
-                                setName(e.target.value);
-                                if (errors.name) setErrors({ ...errors, name: undefined });
-                            }}
-                            style={{
-                                ...inputStyle,
-                                borderColor: errors.name ? '#ff4444' : 'var(--border)',
-                            }}
-                            placeholder="e.g., Llama-3-70B-Instruct"
-                        />
-                        {errors.name && <div style={errorStyle}>{errors.name}</div>}
+                        <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
+                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Llama-3-70B-Instruct" />
+                        {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
                     {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            style={{ ...inputStyle, minHeight: '60px' }}
-                            placeholder="Describe the model's strengths, use cases, etc."
-                            rows={2}
-                        />
+                        <label className="editor-label">Description</label>
+                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe the model's strengths, use cases, etc." rows={2} />
                     </div>
 
                     {/* Backend */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>Backend</label>
-                        <select
-                            value={backend}
-                            onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])}
-                            style={selectStyle}
-                        >
-                            {BACKEND_OPTIONS.map(opt => (
-                                <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                </option>
-                            ))}
+                        <label className="editor-label">Backend</label>
+                        <select value={backend} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
+                            {BACKEND_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                         </select>
                     </div>
 
                     {/* Model Path */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>
-                            Model Path <span style={{ color: '#ff4444' }}>*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={modelPath}
-                            onChange={(e) => {
-                                setModelPath(e.target.value);
-                                if (errors.model) setErrors({ ...errors, model: undefined });
-                            }}
-                            style={{
-                                ...inputStyle,
-                                borderColor: errors.model ? '#ff4444' : 'var(--border)',
-                                fontFamily: 'monospace',
-                            }}
-                            placeholder="/path/to/model.gguf"
-                        />
-                        {errors.model && <div style={errorStyle}>{errors.model}</div>}
+                        <label className="editor-label">Model Path <span style={{ color: '#ff4444' }}>*</span></label>
+                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder="/path/to/model.gguf" />
+                        {errors.model && <div className="editor-error-message">{errors.model}</div>}
                     </div>
 
                     {/* MMProj Path */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>
-                            MMProj Path
-                        </label>
-                        <input
-                            type="text"
-                            value={mmprojPath}
-                            onChange={(e) => {
-                                setMmprojPath(e.target.value);
-                            }}
-                            style={{
-                                ...inputStyle,
-                                fontFamily: 'monospace',
-                            }}
-                            placeholder="/path/to/mmproj.gguf"
-                        />
-                        {mmprojPath && (
-                            <div
-                                style={{
-                                    fontSize: '0.7rem',
-                                    color: 'var(--accent)',
-                                    marginTop: '4px',
-                                }}
-                            >
-                                ✓ Multi-modal support enabled
-                            </div>
-                        )}
+                        <label className="editor-label">MMProj Path</label>
+                        <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/mmproj.gguf" />
+                        {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
                     {/* Main Options */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Main Options</div>
-                        
-                        <div style={rowStyle}>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Main Options</span>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>GPU Layers</label>
-                                <input
-                                    type="number"
-                                    value={settings.gpu_layers}
-                                    onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)}
-                                    style={inputStyle}
-                                    min="-1"
-                                    step="1"
-                                    placeholder="-1 (auto)"
-                                />
+                                <label className="editor-label editor-label-small">GPU Layers</label>
+                                <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Context Size</label>
-                                <input
-                                    type="number"
-                                    value={settings.ctx_size}
-                                    onChange={(e) => handleSettingChange('ctx_size', Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    min="0"
-                                    step="1"
-                                    placeholder="0 (auto)"
-                                />
+                                <label className="editor-label editor-label-small">Context Size</label>
+                                <input type="number" value={settings.ctx_size} onChange={(e) => handleSettingChange('ctx_size', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" />
                             </div>
                         </div>
-
-                        <div style={rowStyle}>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Type</label>
-                                <select
-                                    value={settings.cache_type}
-                                    onChange={(e) => handleSettingChange('cache_type', e.target.value)}
-                                    style={selectStyle}
-                                >
-                                    {cacheTypes.map(opt => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
+                                <label className="editor-label editor-label-small">Cache Type</label>
+                                <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
+                                    {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Split Mode</label>
-                                <select
-                                    value={settings.split_mode}
-                                    onChange={(e) => handleSettingChange('split_mode', e.target.value)}
-                                    style={selectStyle}
-                                >
-                                    {SPLIT_MODE_OPTIONS.map(opt => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
+                                <label className="editor-label editor-label-small">Split Mode</label>
+                                <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
+                                    {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                         </div>
-
-                        <div style={{ ...rowStyle, marginTop: '8px' }}>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.ik}
-                                    onChange={(e) => handleSettingChange('ik', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>Use IK Llama.cpp</span>
+                        <div style={{ marginTop: '8px' }}>
+                            <label className="editor-checkbox-label">
+                                <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
+                                <span>Use IK Llama.cpp</span>
                             </label>
                         </div>
-
-                        <div style={disclaimerStyle}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
                             ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
                         </div>
                     </div>
 
                     {/* Speculative Decoding */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Speculative Decoding</div>
-                        
-                        <div style={fullRowStyle}>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Speculative Decoding</span>
+                        <div className="editor-row-full">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Draft Model</label>
-                                <input
-                                    type="text"
-                                    value={settings.draft_model}
-                                    onChange={(e) => handleSettingChange('draft_model', e.target.value)}
-                                    style={{ ...inputStyle, fontFamily: 'monospace' }}
-                                    placeholder="/path/to/draft/model.gguf"
-                                />
+                                <label className="editor-label editor-label-small">Draft Model</label>
+                                <input type="text" value={settings.draft_model} onChange={(e) => handleSettingChange('draft_model', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/draft/model.gguf" />
                             </div>
                         </div>
-
-                        <div style={rowStyle}>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Speculation Type</label>
-                                <select
-                                    value={settings.spec_type}
-                                    onChange={(e) => handleSettingChange('spec_type', e.target.value)}
-                                    style={selectStyle}
-                                >
-                                    {SPEC_TYPE_OPTIONS.map(opt => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
+                                <label className="editor-label editor-label-small">Speculation Type</label>
+                                <select value={settings.spec_type} onChange={(e) => handleSettingChange('spec_type', e.target.value)} className="editor-select">
+                                    {SPEC_TYPE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Draft Maximum</label>
-                                <input
-                                    type="number"
-                                    value={settings.draft_max}
-                                    onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)}
-                                    style={inputStyle}
-                                    min="1"
-                                    step="1"
-                                    placeholder="3"
-                                />
+                                <label className="editor-label editor-label-small">Draft Maximum</label>
+                                <input type="number" value={settings.draft_max} onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)} className="editor-input" min="1" step="1" placeholder="3" />
                             </div>
                         </div>
-
-                        <div style={rowStyle}>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>GPU Layers (Draft)</label>
-                                <input
-                                    type="number"
-                                    value={settings.gpu_layers_draft}
-                                    onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)}
-                                    style={inputStyle}
-                                    min="0"
-                                    step="1"
-                                    placeholder="256"
-                                />
+                                <label className="editor-label editor-label-small">GPU Layers (Draft)</label>
+                                <input type="number" value={settings.gpu_layers_draft} onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)} className="editor-input" min="0" step="1" placeholder="256" />
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Device (Draft)</label>
-                                <input
-                                    type="text"
-                                    value={settings.device_draft}
-                                    onChange={(e) => handleSettingChange('device_draft', e.target.value)}
-                                    style={inputStyle}
-                                    placeholder="CUDA0,CUDA1"
-                                />
+                                <label className="editor-label editor-label-small">Device (Draft)</label>
+                                <input type="text" value={settings.device_draft} onChange={(e) => handleSettingChange('device_draft', e.target.value)} className="editor-input" placeholder="CUDA0,CUDA1" />
                             </div>
                         </div>
                     </div>
 
                     {/* Other Options */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Other Options</div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Other Options</span>
+                        <div className="editor-row">
+                            <div><label className="editor-label editor-label-small">Parallel Slots</label><input type="number" value={settings.parallel} onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)} className="editor-input" min="1" step="1" placeholder="1" /></div>
+                            <div><label className="editor-label editor-label-small">Thread Count</label><input type="number" value={settings.threads} onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                        </div>
+                        <div className="editor-row">
+                            <div><label className="editor-label editor-label-small">Thread Count (Batch)</label><input type="number" value={settings.threads_batch} onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                            <div><label className="editor-label editor-label-small">Batch Size</label><input type="number" value={settings.batch_size} onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
+                        </div>
+                        <div className="editor-row">
+                            <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
+                            <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
+                        </div>
+                        <div className="editor-row-full"><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
+                        <div className="editor-row-full"><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
                         
-                        <div style={rowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Parallel Slots</label>
-                                <input
-                                    type="number"
-                                    value={settings.parallel}
-                                    onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)}
-                                    style={inputStyle}
-                                    min="1"
-                                    step="1"
-                                    placeholder="1"
-                                />
-                            </div>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Thread Count</label>
-                                <input
-                                    type="number"
-                                    value={settings.threads}
-                                    onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    min="0"
-                                    step="1"
-                                    placeholder="0 (auto)"
-                                />
-                            </div>
+                        <div style={{ marginTop: '8px' }}>
+                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
+                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
+                        </div>
+                        <div style={{ marginTop: '8px' }}>
+                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
+                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
+                        </div>
+                        <div style={{ marginTop: '8px' }}>
+                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
+                        </div>
+                    </div>
+
+                    {/* ✅ STOP PATTERNS SECTION */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Model Stop Patterns</span>
+                        <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
+                            These stop patterns will be automatically applied when using this model.
+                        </div>
+                        
+                        {/* List of Assigned Patterns */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                            {selectedStopPatternIds.length === 0 && (
+                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No stop patterns assigned.</div>
+                            )}
+                            {selectedStopPatternIds.map(id => {
+                                const sp = getStopPatternById(id);
+                                if (!sp) return null;
+                                return (
+                                    <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{sp.name}</span>
+                                            <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', opacity: 0.6, color: 'var(--text-h)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sp.pattern}</span>
+                                        </div>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
+                                            style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px' }}
+                                            title="Remove"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
 
-                        <div style={rowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Thread Count (Batch)</label>
-                                <input
-                                    type="number"
-                                    value={settings.threads_batch}
-                                    onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    min="0"
-                                    step="1"
-                                    placeholder="0 (auto)"
-                                />
-                            </div>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Batch Size</label>
-                                <input
-                                    type="number"
-                                    value={settings.batch_size}
-                                    onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)}
-                                    style={inputStyle}
-                                    min="1"
-                                    step="1"
-                                    placeholder="1024"
-                                />
-                            </div>
-                        </div>
-
-                        <div style={rowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Micro Batch Size</label>
-                                <input
-                                    type="number"
-                                    value={settings.ubatch_size}
-                                    onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)}
-                                    style={inputStyle}
-                                    min="1"
-                                    step="1"
-                                    placeholder="1024"
-                                />
-                            </div>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Fit Target (MiB)</label>
-                                <input
-                                    type="text"
-                                    value={settings.fit_target}
-                                    onChange={(e) => handleSettingChange('fit_target', e.target.value)}
-                                    style={inputStyle}
-                                    placeholder="512"
-                                />
-                            </div>
-                        </div>
-
-                        <div style={fullRowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Tensor Split</label>
-                                <input
-                                    type="text"
-                                    value={settings.tensor_split}
-                                    onChange={(e) => handleSettingChange('tensor_split', e.target.value)}
-                                    style={{ ...inputStyle, fontFamily: 'monospace' }}
-                                    placeholder="60,40"
-                                />
-                            </div>
-                        </div>
-
-                        <div style={fullRowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Extra Flags</label>
-                                <input
-                                    type="text"
-                                    value={settings.extra_flags}
-                                    onChange={(e) => handleSettingChange('extra_flags', e.target.value)}
-                                    style={{ ...inputStyle, fontFamily: 'monospace' }}
-                                    placeholder="--jinja --rpc 192.168.1.100:50052"
-                                />
-                            </div>
-                        </div>
-
-                        <div style={{ ...rowStyle, marginTop: '8px' }}>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.cpu_moe}
-                                    onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>Mixture-Of-Experts On CPU</span>
-                            </label>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.no_kv_offload}
-                                    onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>No Key-Value Offload</span>
-                            </label>
-                        </div>
-
-                        <div style={rowStyle}>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.no_mmap}
-                                    onChange={(e) => handleSettingChange('no_mmap', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>No Memory Map</span>
-                            </label>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.mlock}
-                                    onChange={(e) => handleSettingChange('mlock', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>Memory Lock</span>
-                            </label>
-                        </div>
-
-                        <div style={rowStyle}>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.numa}
-                                    onChange={(e) => handleSettingChange('numa', e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>Non-Uniform Memory Access</span>
-                            </label>
+                        {/* Add New Pattern Dropdown */}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <select 
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val && !selectedStopPatternIds.includes(val)) {
+                                        setSelectedStopPatternIds(prev => [...prev, val]);
+                                    }
+                                    e.target.value = ""; // Reset dropdown
+                                }}
+                                className="editor-select"
+                                defaultValue=""
+                            >
+                                <option value="" disabled>+ Add a stop pattern</option>
+                                {allStopPatterns.filter(sp => !selectedStopPatternIds.includes(sp.id)).map(sp => (
+                                    <option key={sp.id} value={sp.id}>{sp.name} ({sp.pattern})</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
                     {/* Cost */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Cost</div>
-                        
-                        <div style={rowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Hit Cost (Per 1M tokens)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={cacheHitCostPerMillion}
-                                    onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Cache Miss Cost (Per 1M tokens)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={cacheMissCostPerMillion}
-                                    onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    placeholder="0.00"
-                                />
-                            </div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Cost</span>
+                        <div className="editor-row">
+                            <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
-
-                        <div style={fullRowStyle}>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Output Generation Cost (Per 1M tokens)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={outputGenerationCostPerMillion}
-                                    onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)}
-                                    style={inputStyle}
-                                    placeholder="0.00"
-                                />
-                            </div>
+                        <div className="editor-row-full">
+                            <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
-
-                        <div style={{
-                            fontSize: '0.65rem',
-                            color: 'var(--text-h)',
-                            opacity: 0.5,
-                            marginTop: '4px',
-                            fontStyle: 'italic',
-                        }}>
-                            💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.
-                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.5, marginTop: '4px', fontStyle: 'italic' }}>💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.</div>
                     </div>
                 </div>
             </div>

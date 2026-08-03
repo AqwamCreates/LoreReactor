@@ -19,7 +19,7 @@ const DEFAULT_STRATEGY: Omit<BudgetStrategy, 'id' | 'firstCreatedTimestamp' | 'l
     description: '',
     onlineModel: {} as LanguageModel,
     localModel: {} as LanguageModel,
-    switchProbabilty: 20,       // ✅ Fixed spelling
+    switchProbabilty: 20,
     switchOnContextSize: 8192,
     switchOnComplexityScore: 70,
     fallbackOnLocalFailure: true,
@@ -40,7 +40,7 @@ export function BudgetStrategyEditorModal({
     const [description, setDescription] = useState('');
     const [onlineModelId, setOnlineModelId] = useState<string>('');
     const [localModelId, setLocalModelId] = useState<string>('');
-    const [switchProbabilty, setSwitchProbabilty] = useState<number>(20);       // ✅ Fixed spelling
+    const [switchProbabilty, setSwitchProbabilty] = useState<number>(20);
     const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(8192);
     const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(70);
     const [fallbackOnLocalFailure, setFallbackOnLocalFailure] = useState<boolean>(true);
@@ -56,7 +56,7 @@ export function BudgetStrategyEditorModal({
                 setDescription(existingStrategy.description || '');
                 setOnlineModelId(existingStrategy.onlineModel?.id || '');
                 setLocalModelId(existingStrategy.localModel?.id || '');
-                setSwitchProbabilty(existingStrategy.switchProbabilty ?? 20);       // ✅ Fixed spelling
+                setSwitchProbabilty(existingStrategy.switchProbabilty ?? 20);
                 setSwitchOnContextSize(existingStrategy.switchOnContextSize ?? 8192);
                 setSwitchOnComplexityScore(existingStrategy.switchOnComplexityScore ?? 70);
                 setFallbackOnLocalFailure(existingStrategy.fallbackOnLocalFailure ?? true);
@@ -68,7 +68,7 @@ export function BudgetStrategyEditorModal({
                 setDescription('');
                 setOnlineModelId('');
                 setLocalModelId('');
-                setSwitchProbabilty(20);       // ✅ Fixed spelling
+                setSwitchProbabilty(20);
                 setSwitchOnContextSize(8192);
                 setSwitchOnComplexityScore(70);
                 setFallbackOnLocalFailure(true);
@@ -83,17 +83,9 @@ export function BudgetStrategyEditorModal({
     const validate = (): boolean => {
         const newErrors: { name?: string; onlineModel?: string; localModel?: string } = {};
         
-        if (!name.trim()) {
-            newErrors.name = 'Strategy name is required.';
-        }
-        
-        if (!onlineModelId) {
-            newErrors.onlineModel = 'Online model is required.';
-        }
-        
-        if (!localModelId) {
-            newErrors.localModel = 'Local model is required.';
-        }
+        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!onlineModelId) newErrors.onlineModel = 'Online model is required.';
+        if (!localModelId) newErrors.localModel = 'Local model is required.';
         
         if (onlineModelId && localModelId && onlineModelId === localModelId) {
             newErrors.onlineModel = 'Online and local models must be different.';
@@ -122,7 +114,7 @@ export function BudgetStrategyEditorModal({
             description: description.trim() || '',
             onlineModel,
             localModel,
-            switchProbabilty,       // ✅ Fixed spelling
+            switchProbabilty,
             switchOnContextSize,
             switchOnComplexityScore,
             fallbackOnLocalFailure,
@@ -137,174 +129,26 @@ export function BudgetStrategyEditorModal({
         onClose();
     };
 
-    const handleDelete = () => {
-        if (!existingStrategy) return;
-        if (!window.confirm(`Delete strategy "${existingStrategy.name}" permanently?`)) return;
-        onDelete?.(existingStrategy.id);
-        onClose();
-    };
-
     if (!isOpen) return null;
-
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        boxSizing: 'border-box',
-        fontSize: '0.85rem',
-        fontFamily: 'inherit',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        border: '1px solid var(--border)',
-        background: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        outline: 'none',
-        resize: 'vertical',
-    };
-
-    const selectStyle: React.CSSProperties = {
-        ...inputStyle,
-        appearance: 'auto',
-        WebkitAppearance: 'auto',
-        backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23666\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 12px center',
-        paddingRight: '32px',
-        backgroundColor: 'var(--social-bg)',
-        color: 'var(--text-h)',
-        cursor: 'pointer',
-    };
-
-    const labelStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        color: 'var(--text-h)',
-        display: 'block',
-        marginBottom: '4px',
-        letterSpacing: '0.5px',
-        opacity: 0.8,
-    };
-
-    const errorStyle: React.CSSProperties = {
-        fontSize: '0.75rem',
-        color: '#ff4444',
-        marginTop: '4px',
-    };
-
-    const buttonStyle: React.CSSProperties = {
-        padding: '8px 20px',
-        fontSize: '0.85rem',
-        fontWeight: 'bold',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        border: '1px solid transparent',
-        fontFamily: 'inherit',
-        transition: 'all 0.2s',
-    };
-
-    const sectionStyle: React.CSSProperties = {
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '16px',
-        background: 'rgba(0,0,0,0.02)',
-    };
-
-    const sectionTitleStyle: React.CSSProperties = {
-        fontSize: '0.7rem',
-        fontWeight: 'bold',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        color: 'var(--text-h)',
-        opacity: 0.6,
-        marginBottom: '12px',
-    };
-
-    const rowStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '12px',
-        marginBottom: '8px',
-    };
-
-    const fullRowStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: '1fr',
-        gap: '12px',
-        marginBottom: '8px',
-    };
-
-    const checkboxStyle: React.CSSProperties = {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        cursor: 'pointer',
-        userSelect: 'none',
-    };
-
-    const checkboxInputStyle: React.CSSProperties = {
-        width: '16px',
-        height: '16px',
-        accentColor: 'var(--accent)',
-        cursor: 'pointer',
-    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div
-                className="modal-content"
-                onClick={e => e.stopPropagation()}
-                style={{ maxWidth: '700px', maxHeight: '95vh', overflow: 'hidden' }}
-            >
-                <div className="modal-header" style={{ flexShrink: 0 }}>
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
                     <h2>{existingStrategy ? 'Edit Budget Strategy' : 'Create Budget Strategy'}</h2>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {existingStrategy && onDelete && (
-                            <button
-                                type="button"
-                                className="edit-btn edit-btn-delete"
-                                onClick={handleDelete}
-                                style={{
-                                    ...buttonStyle,
-                                    background: 'transparent',
-                                    color: '#ff4444',
-                                    border: '1px solid #ff4444',
-                                }}
-                            >
-                                🗑️ Delete
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            className="edit-btn edit-btn-cancel"
-                            onClick={onClose}
-                            style={{
-                                ...buttonStyle,
-                                background: 'transparent',
-                                color: 'var(--text-h)',
-                                border: '1px solid var(--border)',
-                            }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            className="edit-btn edit-btn-save"
-                            onClick={handleSubmit}
-                            style={{
-                                ...buttonStyle,
-                                background: 'var(--accent)',
-                                color: '#fff',
-                            }}
-                        >
+                    <div className="editor-modal-actions">
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>
                             {existingStrategy ? 'Update' : 'Create'}
                         </button>
                     </div>
                 </div>
 
-                <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                <div className="modal-body editor-modal-body">
                     {/* Name */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>
-                            Strategy Name <span style={{ color: '#ff4444' }}>*</span>
+                        <label className="editor-label">
+                            Name <span style={{ color: '#ff4444' }}>*</span>
                         </label>
                         <input
                             type="text"
@@ -313,34 +157,31 @@ export function BudgetStrategyEditorModal({
                                 setName(e.target.value);
                                 if (errors.name) setErrors({ ...errors, name: undefined });
                             }}
-                            style={{
-                                ...inputStyle,
-                                borderColor: errors.name ? '#ff4444' : 'var(--border)',
-                            }}
+                            className={`editor-input ${errors.name ? 'error' : ''}`}
                             placeholder="e.g., Balanced, Budget Saver, Quality Focused"
                         />
-                        {errors.name && <div style={errorStyle}>{errors.name}</div>}
+                        {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
                     {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={labelStyle}>Description</label>
+                        <label className="editor-label">Description</label>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            style={{ ...inputStyle, minHeight: '40px' }}
+                            className="editor-textarea"
                             placeholder="Describe when to use this strategy"
                             rows={2}
                         />
                     </div>
 
                     {/* Model Selection */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Model Selection</div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Model Selection</span>
                         
-                        <div style={rowStyle}>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>
+                                <label className="editor-label editor-label-small">
                                     Online Model <span style={{ color: '#ff4444' }}>*</span>
                                 </label>
                                 <select
@@ -349,20 +190,17 @@ export function BudgetStrategyEditorModal({
                                         setOnlineModelId(e.target.value);
                                         if (errors.onlineModel) setErrors({ ...errors, onlineModel: undefined });
                                     }}
-                                    style={{
-                                        ...selectStyle,
-                                        borderColor: errors.onlineModel ? '#ff4444' : 'var(--border)',
-                                    }}
+                                    className={`editor-select ${errors.onlineModel ? 'error' : ''}`}
                                 >
                                     <option value="">Select online model...</option>
                                     {allModels.map(m => (
                                         <option key={m.id} value={m.id}>{m.name}</option>
                                     ))}
                                 </select>
-                                {errors.onlineModel && <div style={errorStyle}>{errors.onlineModel}</div>}
+                                {errors.onlineModel && <div className="editor-error-message">{errors.onlineModel}</div>}
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>
+                                <label className="editor-label editor-label-small">
                                     Local Model <span style={{ color: '#ff4444' }}>*</span>
                                 </label>
                                 <select
@@ -371,26 +209,23 @@ export function BudgetStrategyEditorModal({
                                         setLocalModelId(e.target.value);
                                         if (errors.localModel) setErrors({ ...errors, localModel: undefined });
                                     }}
-                                    style={{
-                                        ...selectStyle,
-                                        borderColor: errors.localModel ? '#ff4444' : 'var(--border)',
-                                    }}
+                                    className={`editor-select ${errors.localModel ? 'error' : ''}`}
                                 >
                                     <option value="">Select local model...</option>
                                     {allModels.map(m => (
                                         <option key={m.id} value={m.id}>{m.name}</option>
                                     ))}
                                 </select>
-                                {errors.localModel && <div style={errorStyle}>{errors.localModel}</div>}
+                                {errors.localModel && <div className="editor-error-message">{errors.localModel}</div>}
                             </div>
                         </div>
                     </div>
 
                     {/* Switching Rules */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Switching Rules</div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Switching Rules</span>
                         
-                        <div style={fullRowStyle}>
+                        <div className="editor-row-full">
                             <SliderInput
                                 label="Online Model Probability"
                                 value={switchProbabilty}
@@ -403,26 +238,26 @@ export function BudgetStrategyEditorModal({
                             />
                         </div>
 
-                        <div style={rowStyle}>
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Switch On Context Size</label>
+                                <label className="editor-label editor-label-small">Switch On Context Size</label>
                                 <input
                                     type="number"
                                     value={switchOnContextSize}
                                     onChange={(e) => setSwitchOnContextSize(Number(e.target.value) || 0)}
-                                    style={inputStyle}
+                                    className="editor-input"
                                     min="0"
                                     step="64"
                                     placeholder="8192"
                                 />
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Switch On Complexity Score</label>
+                                <label className="editor-label editor-label-small">Switch On Complexity Score</label>
                                 <input
                                     type="number"
                                     value={switchOnComplexityScore}
                                     onChange={(e) => setSwitchOnComplexityScore(Number(e.target.value) || 0)}
-                                    style={inputStyle}
+                                    className="editor-input"
                                     min="0"
                                     max="100"
                                     step="1"
@@ -432,32 +267,19 @@ export function BudgetStrategyEditorModal({
                         </div>
                     </div>
 
-                    {/* Fallback Rules */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Fallback Rules</div>
+                    {/* Fallback Rules (REORDERED) */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Fallback Rules</span>
                         
-                        <div style={fullRowStyle}>
-                            <label style={checkboxStyle}>
-                                <input
-                                    type="checkbox"
-                                    checked={fallbackOnLocalFailure}
-                                    onChange={(e) => setFallbackOnLocalFailure(e.target.checked)}
-                                    style={checkboxInputStyle}
-                                />
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>
-                                    Fallback on local failure
-                                </span>
-                            </label>
-                        </div>
-
-                        <div style={rowStyle}>
+                        {/* ✅ Numeric Inputs First */}
+                        <div className="editor-row">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Quality Threshold</label>
+                                <label className="editor-label editor-label-small">Quality Threshold</label>
                                 <input
                                     type="number"
                                     value={fallbackOnQualityThreshold}
                                     onChange={(e) => setFallbackOnQualityThreshold(Number(e.target.value) || 0)}
-                                    style={inputStyle}
+                                    className="editor-input"
                                     min="0"
                                     max="100"
                                     step="1"
@@ -465,42 +287,50 @@ export function BudgetStrategyEditorModal({
                                 />
                             </div>
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Fallback Timeout (Seconds)</label>
+                                <label className="editor-label editor-label-small">Fallback Timeout (Seconds)</label>
                                 <input
                                     type="number"
                                     value={fallbackOnTimeoutInSeconds}
                                     onChange={(e) => setFallbackOnTimeoutInSeconds(Number(e.target.value) || 0)}
-                                    style={inputStyle}
+                                    className="editor-input"
                                     min="1"
                                     step="1"
                                     placeholder="30"
                                 />
                             </div>
                         </div>
+
+                        {/* ✅ Checkbox Last */}
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={fallbackOnLocalFailure}
+                                    onChange={(e) => setFallbackOnLocalFailure(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Fallback on local failure</span>
+                            </label>
+                        </div>
                     </div>
 
                     {/* Budget Control */}
-                    <div style={sectionStyle}>
-                        <div style={sectionTitleStyle}>Budget Control</div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Budget Control</span>
                         
-                        <div style={fullRowStyle}>
+                        <div className="editor-row-full">
                             <div>
-                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Maximum Budget ($)</label>
+                                <label className="editor-label editor-label-small">Maximum Budget ($)</label>
                                 <input
                                     type="number"
                                     value={maximumBudget}
                                     onChange={(e) => setMaximumBudget(Number(e.target.value) || 0)}
-                                    style={inputStyle}
+                                    className="editor-input"
                                     min="0"
                                     step="0.5"
                                     placeholder="10"
                                 />
-                                <div style={{
-                                    fontSize: '0.6rem',
-                                    color: 'var(--text-h)',
-                                    opacity: 0.5,
-                                    marginTop: '2px',
-                                }}>
+                                <div className="editor-label" style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '4px' }}>
                                     When cost exceeds this, the strategy will switch to local-only mode
                                 </div>
                             </div>

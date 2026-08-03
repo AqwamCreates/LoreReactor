@@ -422,11 +422,11 @@ export function createChatMessage(chatData: ChatData, character: Character, text
 }
 
 export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {
-  return {
-    ...chatData,
-    chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-    lastUpdatedTimestamp: Date.now(),
-  };
+    return {
+        ...chatData,
+        chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
+        lastUpdatedTimestamp: Date.now(),
+    };
 }
 
 export function editChatMessageInChatData(chatData: ChatData, messageId: string, newText: string): ChatData {

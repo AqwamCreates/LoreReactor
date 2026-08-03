@@ -19,7 +19,7 @@ const PATHS = {
   characters: "/user_data/character_data", characterImages: "/user_data/character_images",
   samplers: "/user_data/sampler_data", contexts: "/user_data/context_data",
   models: "/user_data/model_data",
-  stopPatterns: "/user_data/stop_patterns_data", chatMessages: "/user_data/chat_messages", 
+  stopPatterns: "/user_data/stop_pattern_data", chatMessages: "/user_data/chat_messages", 
   chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
 };

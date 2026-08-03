@@ -78,7 +78,7 @@ export function ContextEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; text?: string; regex?: string; images?: string } = {};
-        if (!name.trim()) newErrors.name = 'Context name is required.';
+        if (!name.trim()) newErrors.name = 'Name is required.';
         if (!text.trim() && imagePreviews.length === 0 && imageFiles.length === 0) {
             newErrors.text = 'Either text or images are required.';
             newErrors.images = 'Either text or images are required.';

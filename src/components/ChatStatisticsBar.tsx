@@ -1,5 +1,6 @@
+// src/components/ChatStatisticsBar.tsx
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface ChatStatisticsBarProps {
     generationSpeed: number; // ms per token
@@ -26,115 +27,160 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     numberOfRequests = 0,
     totalCost = 0,
     costWithoutCacheMisses = 0,
-    cacheHitCostPerMillion = 0,
-    cacheMissCostPerMillion = 0,
-    outputGenerationCostPerMillion = 0,
 }) => {
     const [showDetails, setShowDetails] = useState(false);
-    const percentage = Math.round((tokenCount / maximumNumberOfTokens) * 100);
+
+    // Calculate Percentage
+    const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
+    const percentage = Math.min(100, Math.round((tokenCount / safeMax) * 100));
     const isNearLimit = percentage > 80;
     const isCritical = percentage > 95;
     
-    const speedColor = generationSpeed < 30 ? 'var(--accent)' : 
-                        generationSpeed < 60 ? 'orange' : '#ff4444';
-
+    // ✅ BINARY THRESHOLD
+    // Target: ~9 tokens/sec = ~111ms/token
+    // Green: < 110ms (Comfortable reading)
+    // Red: >= 110ms (Slower than reading)
+    
+    const isFastEnough = generationSpeed < 110;
+    const speedColor = isFastEnough ? '' : '#ff4444';
+    
     const speedDisplay = generationSpeed < 1 ? '<1' : Math.round(generationSpeed);
+    
+    // Dynamic Icon: Lightning for fast, Turtle for slow
+    const speedIcon = isFastEnough ? '⚡' : '🐢';
 
+    // Calculate Cache Metrics
     const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
+    const hitRate = numberOfRequests > 0 ? 100 - invalidationRate : 0;
     const hasCacheData = numberOfRequests > 0;
-    const costSavings = costWithoutCacheMisses - totalCost;
-    const efficiency = totalCost > 0 ? Math.round((costSavings / costWithoutCacheMisses) * 100) : 0;
+
+    // Calculate Cost Metrics
+    const costSavings = Math.max(0, costWithoutCacheMisses - totalCost);
+    const efficiency = costWithoutCacheMisses > 0 ? Math.round((costSavings / costWithoutCacheMisses) * 100) : 0;
 
     const formatCost = (cost: number) => {
+        if (cost === 0) return '0.0000';
         return cost.toFixed(4);
+    };
+
+    const formatNumber = (num: number) => {
+        return num.toLocaleString();
     };
 
     return (
         <div 
             className={`chat-stats-bar ${isCritical ? 'chat-stats-critical' : isNearLimit ? 'chat-stats-warning' : ''} ${className}`}
             onClick={() => setShowDetails(!showDetails)}
+            title="Click to toggle details"
+            style={{ cursor: 'pointer' }}
         >
             <div className="chat-stats-items">
                 {/* Generation Speed */}
-                <div className="chat-stat-item">
-                    <span className="chat-stat-label">⚡</span>
+                <div className="chat-stat-item" title={`Generation Speed: ${generationSpeed.toFixed(2)} ms/token`}>
+                    <span className="chat-stat-label">{speedIcon}</span>
                     <span className="chat-stat-speed-value" style={{ color: speedColor }}>
                         {speedDisplay}ms
                     </span>
                 </div>
 
-                {/* Cache Invalidation Count */}
-                <div className="chat-stat-item">
-                    <span className="chat-stat-label">🔄</span>
-                    <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
-                </div>
+                {/* Cache Invalidation Count (Only show if > 0) */}
+                {numberOfCacheInvalidations > 0 && (
+                    <div className="chat-stat-item" title={`${numberOfCacheInvalidations} cache invalidations`}>
+                        <span className="chat-stat-label">🔄</span>
+                        <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
+                    </div>
+                )}
                 
-                {/* Token Usage */}
-                <div className="chat-stat-item chat-stat-token-usage">
+                {/* Token Usage Bar */}
+                <div className="chat-stat-item chat-stat-token-usage" title={`${tokenCount} / ${maximumNumberOfTokens} tokens`}>
                     <span className="chat-stat-label">📊</span>
                     <span className="chat-stat-context-bar">
                         <span 
                             className="chat-stat-context-fill" 
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                            style={{ width: `${percentage}%` }}
                         />
+                    </span>
+                    <span className="chat-stat-value" style={{ fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
+                        {percentage}%
                     </span>
                 </div>
 
-                {/* Total Cost */}
-                <div className="chat-stat-item">
-                    <span className="chat-stat-label">💰</span>
-                    <span className="chat-stat-value">${formatCost(totalCost)}</span>
-                </div>
+                {/* Total Cost (Always show if > 0) */}
+                {totalCost > 0 && (
+                    <div className="chat-stat-item" title={`Total Cost: $${formatCost(totalCost)}`}>
+                        <span className="chat-stat-label">💰</span>
+                        <span className="chat-stat-value">${formatCost(totalCost)}</span>
+                    </div>
+                )}
             </div>
 
             {showDetails && (
                 <div className="chat-stats-details">
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Context Used:</span>
-                        <span className="chat-stat-detail-value">{tokenCount.toLocaleString()} / {maximumNumberOfTokens.toLocaleString()} ({percentage}%)</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Generation Speed:</span>
-                        <span className="chat-stat-detail-value">{generationSpeed.toFixed(2)} ms/token</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Message Count:</span>
-                        <span className="chat-stat-detail-value">{messageCount} messages</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
-                        <span className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(2) : 0} tokens</span>
-                    </div>
-                    
-                    {/* Cache Details */}
-                    <div className="chat-stat-detail-row" style={{ marginTop: '4px' }}>
-                        <span className="chat-stat-detail-label">Cache Invalidations:</span>
-                        <span className="chat-stat-detail-value">{numberOfCacheInvalidations.toLocaleString()}</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Total Requests:</span>
-                        <span className="chat-stat-detail-value">{numberOfRequests.toLocaleString()}</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Cache Hit Rate:</span>
-                        <span className="chat-stat-detail-value">{hasCacheData ? `${100 - invalidationRate}%` : 'N/A'}</span>
+                    {/* --- Context & Performance --- */}
+                    <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Context Used:</span>
+                            <span className="chat-stat-detail-value">{formatNumber(tokenCount)} / {formatNumber(maximumNumberOfTokens)} ({percentage}%)</span>
+                        </div>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Generation Speed:</span>
+                            <span className="chat-stat-detail-value" style={{ color: speedColor }}>
+                                {generationSpeed > 0 ? (1000/generationSpeed).toFixed(1) : '∞'} tokens/s
+                            </span>
+                        </div>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Messages:</span>
+                            <span className="chat-stat-detail-value">{formatNumber(messageCount)}</span>
+                        </div>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Avg Tokens/Msg:</span>
+                            <span className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(1) : '0'} tokens</span>
+                        </div>
                     </div>
 
-                    {/* Cost Details */}
-                    <div className="chat-stat-detail-row" style={{ marginTop: '4px' }}>
-                        <span className="chat-stat-detail-label">Total Cost:</span>
-                        <span className="chat-stat-detail-value">${formatCost(totalCost)}</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Cost Without Cache Misses:</span>
-                        <span className="chat-stat-detail-value">${formatCost(costWithoutCacheMisses)}</span>
-                    </div>
-                    <div className="chat-stat-detail-row">
-                        <span className="chat-stat-detail-label">Cost Savings:</span>
-                        <span className="chat-stat-detail-value" style={{ color: costSavings > 0 ? 'var(--accent)' : '#ff4444' }}>
-                            ${formatCost(costSavings)} ({efficiency}% saved)
-                        </span>
-                    </div>
+                    {/* --- Cache Statistics --- */}
+                    {hasCacheData && (
+                        <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Cache Hit Rate:</span>
+                                <span className="chat-stat-detail-value" style={{ color: hitRate > 80 ? '' : '#ff4444' }}>
+                                    {hitRate}%
+                                </span>
+                            </div>
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Invalidations:</span>
+                                <span className="chat-stat-detail-value">{formatNumber(numberOfCacheInvalidations)} ({invalidationRate}%)</span>
+                            </div>
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Total Requests:</span>
+                                <span className="chat-stat-detail-value">{formatNumber(numberOfRequests)}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- Cost Breakdown --- */}
+                    {totalCost > 0 && (
+                        <div>
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Total Cost:</span>
+                                <span className="chat-stat-detail-value">${formatCost(totalCost)}</span>
+                            </div>
+                            {costWithoutCacheMisses > 0 && (
+                                <>
+                                    <div className="chat-stat-detail-row">
+                                        <span className="chat-stat-detail-label">Cost (No Cache):</span>
+                                        <span className="chat-stat-detail-value" style={{ opacity: 0.6 }}>${formatCost(costWithoutCacheMisses)}</span>
+                                    </div>
+                                    <div className="chat-stat-detail-row">
+                                        <span className="chat-stat-detail-label">Savings:</span>
+                                        <span className="chat-stat-detail-value" style={{ color: costSavings > 0 ? '' : '#ff4444' }}>
+                                            ${formatCost(costSavings)} ({efficiency}%)
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
