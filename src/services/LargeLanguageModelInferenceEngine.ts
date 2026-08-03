@@ -34,7 +34,6 @@ export class LargeLanguageModelInferenceEngine {
     const decoder = new TextDecoder("utf-8");
     let fullContent = "";
     
-    // ⏱️ Timing Variables
     let firstTokenTime = 0;
     let tokenCount = 0;
 
@@ -70,7 +69,6 @@ export class LargeLanguageModelInferenceEngine {
 
                 fullContent += token;
 
-                // 🚀 Calculate live stats
                 const totalTime = lastTokenTime - firstTokenTime;
                 const msPerToken = tokenCount > 0 ? totalTime / tokenCount : 0;
                 const tokensPerSecond = totalTime > 0 ? (tokenCount / totalTime) * 1000 : 0;

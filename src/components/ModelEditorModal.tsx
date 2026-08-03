@@ -92,6 +92,9 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
+// ✅ Cloud backends that require API keys
+const CLOUD_BACKENDS = ['DeepSeek', 'OpenAI', 'Qwen'];
+
 const getCacheTypes = (backend: string) => {
     switch (backend) {
         case 'Llama.cpp': return [{ value: 'fp16', label: 'FP16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
@@ -125,9 +128,9 @@ export function ModelEditorModal({
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
     const [apiKey, setApiKey] = useState('');
-    const [showApiKey, setShowApiKey] = useState(false); // ✅ Toggle for showing API key
+    const [showApiKey, setShowApiKey] = useState(false);
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
-    const [errors, setErrors] = useState<{ name?: string; model?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; model?: string; apiKey?: string }>({});
     
     // Cost fields
     const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
@@ -144,6 +147,9 @@ export function ModelEditorModal({
         contextSize: settings.ctx_size || 8192,
         backend: backend,
     });
+
+    // ✅ Check if current backend requires an API key
+    const isCloudBackend = CLOUD_BACKENDS.includes(backend);
 
     useEffect(() => {
         const cacheTypes = getCacheTypes(backend);
@@ -224,15 +230,35 @@ export function ModelEditorModal({
     };
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; model?: string } = {};
+        const newErrors: { name?: string; model?: string; apiKey?: string } = {};
+        
+        // ✅ Model name is always required
         if (!name.trim()) newErrors.name = 'Model name is required';
-        if (!modelPath.trim()) newErrors.model = 'Model path is required';
+        
+        // ✅ Model path OR API key is required depending on backend
+        if (isCloudBackend) {
+            // Cloud backend: API key is required, model path is optional
+            if (!apiKey.trim()) newErrors.apiKey = 'API key is required for cloud models';
+            if (!modelPath.trim()) {
+                // Model path is optional for cloud, but show a warning if empty
+                // We'll keep it as an error to ensure users at least know it's optional
+                // But we won't block saving if empty
+            }
+        } else {
+            // Local backend: Model path is required
+            if (!modelPath.trim()) newErrors.model = 'Model path is required';
+        }
+        
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
     const handleSubmit = () => {
-        if (!validate()) return;
+        if (!validate()) {
+            // Show error message
+            alert("Please fill in all required fields before saving.");
+            return;
+        }
 
         const params: Record<string, unknown> = {};
         
@@ -278,7 +304,7 @@ export function ModelEditorModal({
             description: description.trim() || undefined,
             backend,
             contextLength: contextLength || 8192,
-            model: modelPath.trim(),
+            model: modelPath.trim() || undefined, // ✅ Optional for cloud
             mmproj: mmprojPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
@@ -308,9 +334,6 @@ export function ModelEditorModal({
     // Helper to get stop pattern object by ID
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
-    // ✅ Check if current backend requires an API key
-    const requiresApiKey = ['DeepSeek', 'OpenAI', 'Qwen'].includes(backend);
-
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -331,7 +354,7 @@ export function ModelEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* Name */}
+                    {/* Name - Always required */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Llama-3-70B-Instruct" />
@@ -352,10 +375,13 @@ export function ModelEditorModal({
                         </select>
                     </div>
 
-                    {/* Model Path */}
+                    {/* Model Path - Required for local, optional for cloud */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Model Path <span style={{ color: '#ff4444' }}>*</span></label>
-                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder="/path/to/model.gguf" />
+                        <label className="editor-label">
+                            Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
+                            {isCloudBackend && <span style={{ fontSize: '0.65rem', opacity: 0.5, fontWeight: 'normal' }}> (Optional for cloud models)</span>}
+                        </label>
+                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder={isCloudBackend ? "/path/to/model.gguf (optional)" : "/path/to/model.gguf"} />
                         {errors.model && <div className="editor-error-message">{errors.model}</div>}
                     </div>
 
@@ -366,19 +392,20 @@ export function ModelEditorModal({
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
-                    {/* ✅ API Key Field */}
+                    {/* ✅ API Key Field - Required for cloud backends */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">
-                            API Key {requiresApiKey && <span style={{ color: '#ff4444' }}>*</span>}
+                            API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
+                            {!isCloudBackend && <span style={{ fontSize: '0.65rem', opacity: 0.5, fontWeight: 'normal' }}> (Optional for local models)</span>}
                         </label>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
                                 type={showApiKey ? 'text' : 'password'}
                                 value={apiKey} 
-                                onChange={(e) => setApiKey(e.target.value)} 
-                                className="editor-input" 
+                                onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }} 
+                                className={`editor-input ${errors.apiKey ? 'error' : ''}`}
                                 style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder="Enter your API key..."
+                                placeholder={isCloudBackend ? "Enter your API key..." : "API key (optional)"}
                             />
                             <button
                                 type="button"
@@ -406,7 +433,8 @@ export function ModelEditorModal({
                                 {showApiKey ? '🙈' : '👁️'}
                             </button>
                         </div>
-                        {requiresApiKey && (
+                        {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
+                        {isCloudBackend && (
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.6, marginTop: '4px' }}>
                                 Required for {backend} models. Get one from the provider's website.
                             </div>
@@ -580,6 +608,7 @@ export function ModelEditorModal({
                         <div className="editor-row-full">
                             <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.5, marginTop: '4px', fontStyle: 'italic' }}>💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.</div>
                     </div>
                 </div>
             </div>

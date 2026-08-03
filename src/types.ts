@@ -76,7 +76,7 @@ export interface LanguageModel extends ObjectData {
 
   backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | 'OpenAI' | 'Other';
   contextLength: number;
-  model: string;
+  model?: string;
   mmproj?: string;
   apiKey?: string;
   parameters?: Record<string, unknown>;
@@ -86,11 +86,11 @@ export interface LanguageModel extends ObjectData {
 
 }
 
-export interface LanguageModel extends RawData {
+export interface RawLanguageModel extends RawData {
 
   backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | 'OpenAI' | 'Other';
   contextLength: number;
-  model: string;
+  model?: string;
   mmproj?: string;
   apiKey?: string;
   parameters?: Record<string, unknown>;

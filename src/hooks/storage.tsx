@@ -1,7 +1,8 @@
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
-  BudgetStrategy, RawBudgetStrategy
+  BudgetStrategy, RawBudgetStrategy,
+  RawLanguageModel
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -224,6 +225,7 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         description: rawContext.description, 
         text: rawContext.text,
         images: rawContext.images,
+        useBase64Encoding: rawContext.useBase64Encoding,
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
@@ -259,9 +261,25 @@ export async function loadRawModelManifest(): Promise<string[]> {
 }
 
 export async function loadRawModel(id: string): Promise<LanguageModel | null> {
-    const rawModel = await fetchJson<LanguageModel>(`${PATHS.models}/${id}.json`);
+    const rawModel = await fetchJson<RawLanguageModel>(`${PATHS.models}/${id}.json`);
     if (!rawModel) return null;
-    return rawModel;
+    
+    return {
+        id,
+        name: rawModel.name,
+        description: rawModel.description,
+        backend: rawModel.backend,
+        contextLength: rawModel.contextLength,
+        model: rawModel.model,
+        mmproj: rawModel.mmproj,
+        apiKey: rawModel.apiKey,
+        parameters: rawModel.parameters,
+        cacheHitCostPerOneMillionOfTokens: rawModel.cacheHitCostPerOneMillionOfTokens,
+        cacheMissCostPerOneMillionOfTokens: rawModel.cacheMissCostPerOneMillionOfTokens,
+        outputGenerationCostPerOneMillionOfTokens: rawModel.outputGenerationCostPerOneMillionOfTokens,
+        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
+    };
 }
 
 export async function loadAllRawModels(): Promise<LanguageModel[]> {
@@ -272,7 +290,7 @@ export async function loadAllRawModels(): Promise<LanguageModel[]> {
 
 export async function saveRawModel(model: LanguageModel): Promise<void> {
     const { id, ...rawModel } = model;
-    const payload = {
+    const payload: RawLanguageModel = {
         ...rawModel,
         lastUpdatedTimestamp: Date.now(),
     };
