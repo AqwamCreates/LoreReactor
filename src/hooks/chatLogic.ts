@@ -52,9 +52,25 @@ function filterArrayBasedOnContext(
 
     if (contextType === "local") {
         let targetIndex = -1;
-        // Find the MOST RECENT message by THIS character BEFORE the current turn
-        for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] === currentCharacterId) {
+
+        const endIndex = length - 1
+
+        for (let i = endIndex; i >= 0; i--) {
+
+            // To avoid grabbing previous current character message if nobody has spoken to the current character.
+            // This effectively makes it local memory between current character's response.
+
+            if ((characterIdArray[i] === currentCharacterId) && (i === endIndex)) {continue}
+
+            if ((characterIdArray[i] !== currentCharacterId) && (i === endIndex)) {
+
+                targetIndex = i;
+                break;
+
+            }
+
+            if ((characterIdArray[i] === currentCharacterId) && (characterIdArray[i + 1] !== currentCharacterId)) {
+
                 targetIndex = i;
                 break;
             }
