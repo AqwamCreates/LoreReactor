@@ -1,4 +1,5 @@
-import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
+// src/hooks/messageLogic.ts
+import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData, branchRawChatData } from './storage';
 import { deleteChatMessage as calculateDelete, editChatMessageInChatData, branchChatMessage } from './chatLogic';
 import type { ChatData } from '../types';
 
@@ -68,9 +69,35 @@ export async function massDeleteMessages(currentChat: ChatData, startIndex: numb
 }
 
 export async function branchMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
-    const branchedChat = branchChatMessage(currentChat, messageId);
-    branchedChat.parentChatDataId = currentChat.id;
-    branchedChat.parentChatMessageId = messageId;
+    // Find the branch point
+    const branchIndex = currentChat.chatMessageHistory.findIndex(m => m.id === messageId);
+    if (branchIndex === -1) {
+        throw new Error("Message not found");
+    }
+
+    // Create a deep copy of the chat data up to the branch point
+    const branchedChat: ChatData = {
+        ...currentChat,
+        id: crypto.randomUUID(), // New ID for the branch
+        title: `${currentChat.title || 'Untitled Chat'} (Branch)`,
+        // ✅ Copy all contexts and participants from the source
+        contexts: [...(currentChat.contexts || [])],
+        participants: [...currentChat.participants],
+        protagonist: currentChat.protagonist,
+        // ✅ Only keep messages up to the branch point
+        chatMessageHistory: currentChat.chatMessageHistory.slice(0, branchIndex + 1),
+        parentChatDataId: currentChat.id,
+        parentChatMessageId: messageId,
+        firstCreatedTimestamp: Date.now(),
+        lastUpdatedTimestamp: Date.now(),
+    };
+
+    // Save the new branch chat
     await saveRawChatData(branchedChat);
+    
+    // Also update the manifest via branchRawChatData to ensure it appears in the chat list
+    // Note: branchRawChatData will create another copy, so we need to handle this carefully
+    // Using saveRawChatData already handles the manifest update via updateManifest
+    
     return branchedChat;
 }

@@ -265,7 +265,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     
-    promptLines.push(`[Complete the reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character.]`);
+    promptLines.push(`[You must reply as ${getCharacterPromptId(character, chatData.participants)} / ${character.name}. Your response must be in character.]`);
     
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
