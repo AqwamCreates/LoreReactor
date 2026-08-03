@@ -4,6 +4,7 @@ import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useContextManager } from '../hooks/useContextManager';
+import { useSamplerManager } from '../hooks/useSamplerManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
 import { useModelManager } from '../hooks/useModelManager';
 import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
@@ -13,10 +14,7 @@ import { useToast } from '../context/ToastContext';
 
 import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel, BudgetStrategy } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { 
-  saveRawChatData, saveRawCharacter, deleteRawSampler,
-  saveRawContext, saveRawStopPattern, loadAllRawSamplers
-} from '../hooks/storage';
+import { saveRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -71,17 +69,16 @@ function App() {
   const { chats: allChats, deleteChat: deleteChatFromList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
+  const { samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager()
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
   const { models: allModels, saveModel, deleteModel } = useModelManager();
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
-  const [allSamplers, setAllSamplers] = useState<Sampler[]>([]);
 
   // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
-  const [isContextListOpen, setIsContextListOpen] = useState(false);
-  const [isContextManageMode, setIsContextManageMode] = useState(false);
+  const [isContextListMode, setIsContextListMode] = useState(false);
   const [isSampListOpen, setIsSampListOpen] = useState(false);
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isModelListOpen, setIsModelListOpen] = useState(false);
@@ -102,6 +99,7 @@ function App() {
   // --- Generic Modal Hooks ---
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
+  const sampleModal = useEntityModal<Context>(saveSampler, deleteSampler, 'Sampler');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
@@ -121,17 +119,13 @@ function App() {
     const loadData = async () => {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
-      const storedDefaultInsts = localStorage.getItem('defaultContextIds');
-      if (storedDefaultInsts) {
-        try { setDefaultContextIds(JSON.parse(storedDefaultInsts)); } catch (e) { console.error(e); }
-      }
-      if (isSampListOpen || isSamplerEditorOpen || allSamplers.length === 0) {
-        const samps = await loadAllRawSamplers();
-        setAllSamplers(samps);
+      const storedDefaultContexts = localStorage.getItem('defaultContextIds');
+      if (storedDefaultContexts) {
+        try { setDefaultContextIds(JSON.parse(storedDefaultContexts)); } catch (e) { console.error(e); }
       }
     };
     loadData();
-  }, [isSampListOpen, isSamplerEditorOpen, allSamplers.length]);
+  });
 
   useEffect(() => {
       if(defaultCharacterId) {
@@ -232,7 +226,7 @@ function App() {
     
     const updatedChat = { ...chatData, contexts: newContexts };
     setChatData(updatedChat);
-    addToast("Active contexts updated (Session Only).", "info");
+    addToast("Contexts updated (Session Only).", "info");
   };
 
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
@@ -258,27 +252,6 @@ function App() {
     setSamplerToEdit(sampler || null);
     setIsSamplerEditorOpen(true);
     setIsSampListOpen(false);
-  };
-
-  const handleSaveSampler = async (sampler: Sampler) => {
-    try {
-      await saveRawSampler(sampler);
-      const freshSamplers = await loadAllRawSamplers();
-      setAllSamplers(freshSamplers);
-      addToast("Sampler saved!", "success");
-      setIsSamplerEditorOpen(false);
-    } catch (err) {
-      console.error(err);
-      addToast("Failed to save sampler.", "error");
-    }
-  };
-
-  const handleDeleteSampler = async (id: string) => {
-    if (!window.confirm("Delete this sampler?")) return;
-    await deleteRawSampler(id);
-    const freshSamplers = await loadAllRawSamplers();
-    setAllSamplers(freshSamplers);
-    addToast("Sampler deleted.", "info");
   };
 
   const handleActivateBudgetStrategy = (strategyId: string) => {
@@ -689,7 +662,7 @@ function App() {
       <div className="context-bar">
         <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
         <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
-        <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextManageMode(true); setIsContextListOpen(false); }} />
+        <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true) }} />
         <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
         <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
         <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
@@ -745,21 +718,21 @@ function App() {
       {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} isLoadingSamplers={allSamplers.length === 0} />)}
       
       {/* ✅ Contexts modal - always shows active contexts functionality when in a chat */}
-      {(contextModal.isOpen || isContextManageMode) && (
+      {(contextModal.isOpen || isContextListMode) && (
         <ManagerModal 
-          title={isContextManageMode ? "Active Contexts" : "Contexts"} 
+          title={"Contexts"} 
           items={allContexts} 
-          isOpen={isContextListOpen || isContextManageMode} 
-          onClose={() => { setIsContextListOpen(false); setIsContextManageMode(false); }} 
+          isOpen={isContextListMode} 
+          onClose={() => { setIsContextListMode(false); }} 
           onSelect={(context) => contextModal.open(context)} 
           onDelete={contextModal.handleDelete} 
           onCreateNew={() => contextModal.open()} 
           renderSubtext={(i) => { const contentPreview = i.text?.substring(0, 50) || ''; const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌'; const hasImages = i.images && i.images.length > 0 ? '🖼️' : ''; return `${hasRegex} ${hasImages} ${contentPreview}...`; }} 
           emptyMessage="No contexts found." 
           actionLabel="Delete" 
-          orderedListMode={isContextManageMode} 
-          currentOrderIds={isContextManageMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} 
-          onToggleOrder={isContextManageMode ? handleToggleChatContext : handleToggleDefaultContext} 
+          orderedListMode={isContextListMode} 
+          currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} 
+          onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} 
         />
       )}
       {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} />)}
@@ -767,8 +740,8 @@ function App() {
       {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={modelModal.handleDelete} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓" onSpecialAction={(id) => { const model = allModels.find(m => m.id === id); if (model) handleSelectModel(model); }} specialActionTooltip={(m) => `Use ${m.name}`} />)}
       {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
       
-      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => handleOpenSamplerEditor(sampler)} onDelete={handleDeleteSampler} onCreateNew={() => handleOpenSamplerEditor()} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}, Tokens: ${s.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-      {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
+      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => handleOpenSamplerEditor(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => handleOpenSamplerEditor()} renderSubtext={(s) => `Temp: ${s.parameters?.temperature}, TopP: ${s.parameters?.top_p}, Tokens: ${s.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
+      {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
       
       {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
       {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
