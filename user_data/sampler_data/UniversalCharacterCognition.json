@@ -1,0 +1,39 @@
+{
+    "name": "Universal Character Cognition",
+
+    "description": "Good foor a wide variety of characters, including those with complex personalities and motivations. It is designed to understand and respond to a wide range of character traits, emotions, and behaviors.",
+
+    "parameters": {
+
+        "temperature": 0.6,
+        "top_k": 50,
+        "top_p": 0.9,
+        "min_p": 0.1,
+        
+        "mirostat": 2,
+        "mirostat_tau": 3.0,
+        "mirostat_eta": 0.2,
+        
+        "typical_p": 0.95,
+        
+        "top_n_sigma": 4.5,
+        
+        "dry_multiplier": 0.35,
+        "dry_base": 1.35,
+        "dry_allowed_length": 2,
+        "dry_penalty_last_n": 4096,
+        
+        "repetition_penalty": 1.1,
+        "repetition_penalty_range": 4096,
+
+        "samplers": ["temperature", "top_k", "top_p", "mirostat", "typical_p", "min_p", "top_n_sigma", "dry", "repetition_penalty"]
+
+    },
+
+    "stopPatternIds": [],
+    
+    "maximumNumberOfTokens": 64
+
+}
+
+
