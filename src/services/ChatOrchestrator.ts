@@ -69,12 +69,12 @@ export async function runTurnSequence(
         // If resultData is null (e.g., empty text), stop the loop
         if (!resultData) break;
 
-        const newMsg = resultData.chatMessageHistory[resultData.chatMessageHistory.length - 1];
-        const currentStamina = staminaMap.get(selectedSpeaker.id) || 0;
-        const newStamina = Math.max(0, currentStamina - 1);
-        staminaMap.set(selectedSpeaker.id, newStamina);
+        const newMessage = resultData.chatMessageHistory[resultData.chatMessageHistory.length - 1];
+        const currentChatStamina = staminaMap.get(selectedSpeaker.id) || 0;
+        const newCurrentChatStamina = Math.max(0, currentChatStamina - 1);
+        staminaMap.set(selectedSpeaker.id, newCurrentChatStamina);
 
-        const msgWithStamina = { ...newMsg, remainingChatStamina: newStamina };
+        const msgWithStamina = { ...newMessage, remainingChatStamina: newCurrentChatStamina };
 
         workingData = {
         ...resultData,

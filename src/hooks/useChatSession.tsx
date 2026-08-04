@@ -12,6 +12,16 @@ const engine = new LargeLanguageModelInferenceEngine();
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
+// ✅ Helper to convert File to Base64
+const convertFileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
+
 function getDefaultCharacter(): Character {
     const now = Date.now();
     return {
@@ -46,7 +56,6 @@ export function useChatSession() {
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
-    // ✅ Stats State
     const [stats, setStats] = useState({
         numberOfCacheInvalidations: 0,
         numberOfRequests: 0,
@@ -77,7 +86,8 @@ export function useChatSession() {
         data: ChatData, 
         character: Character, 
         signal: AbortSignal, 
-        onToken?: (text: string) => void
+        onToken?: (text: string) => void,
+        userImagesBase64?: string[] // ✅ Accept user images
     ): Promise<ChatData | null> => {
         let imageData: string | null = null;
         if (character.image) {
@@ -85,15 +95,14 @@ export function useChatSession() {
             if (url) imageData = await getImageBase64(url);
         }
 
-        const requestBody = await prepareRequestBody(data, character, imageData);
+        // ✅ Pass user images to request builder
+        const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
 
-        // ✅ Extract Pricing (Default to 0 if not defined in your types yet)
         const pricing: ModelPricing = {
             cacheHitPerMillion: 0, 
             cacheMissPerMillion: 0, 
             outputPerMillion: 0
         };
-        // TODO: Populate these from character.sampler or model config if available
 
         try {
             const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
@@ -102,11 +111,9 @@ export function useChatSession() {
                     if (onToken) onToken(stats.fullText);
                 },
                 onFinish: (responseStats) => {
-                    // ✅ Calculate Costs
                     const promptTokens = responseStats.promptTokens || 0;
                     const completionTokens = responseStats.completionTokens || 0;
                     const isCacheMiss = responseStats.cacheMiss || false;
-
                     const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
 
                     setStats(prev => ({
@@ -125,27 +132,12 @@ export function useChatSession() {
             return addMessageToChatData(data, aiMessage);
         } catch (error) {
             const err = error as Error;
-            
-            if (err.name === 'AbortError') {
-                return null;
-            }
+            if (err.name === 'AbortError') return null;
 
-            const isNetworkError = err.message.includes('Failed to fetch') || 
-                                    err.message.includes('NetworkError') ||
-                                    err.message.includes('ERR_ABORTED') ||
-                                    err.message.includes('502') ||
-                                    err.message.includes('503') ||
-                                    err.message.includes('504');
+            const isNetworkError = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_ABORTED') || err.message.includes('502') || err.message.includes('503') || err.message.includes('504');
 
             if (isNetworkError) {
-                alert(
-                    "⚠️ Backend Connection Failed\n\n" +
-                    "Could not connect to the AI backend at /api/completion.\n\n" +
-                    "Please ensure:\n" +
-                    "1. Your backend server (llama.cpp, Oobabooga, etc.) is running.\n" +
-                    "2. The server address in your configuration is correct.\n" +
-                    "3. There are no firewall issues blocking the connection."
-                );
+                alert("⚠️ Backend Connection Failed\n\nCould not connect to the AI backend.\nPlease ensure your server is running.");
                 setIsLoading(false);
                 return null;
             }
@@ -156,55 +148,33 @@ export function useChatSession() {
         }
     }, []);
 
-    // ✅ New function: Send action and get AI response
-    const sendActionAndGetResponse = useCallback(async (
-        actionText: string,
-        targetChar: Character
-    ): Promise<void> => {
+    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter || isLoading) return;
-
         try {
-            // 1. Create and add the action message
             const actionMsg = createChatMessage(chatData, currentCharacter, actionText);
             const updatedData = addMessageToChatData(chatData, actionMsg);
-            
-            // 2. Save immediately
             await saveRawChatData(updatedData);
             setChatData(updatedData);
-            
-            // 3. Wait for save to complete
             await new Promise(resolve => setTimeout(resolve, 50));
             
-            // 4. Trigger AI response
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setIsLoading(true);
-            
-            // ✅ FIX: Clear streaming text before starting
             setStreamingText("");
             setStreamingCharacter(targetChar);
             setGenerationSpeed(0);
             
             try {
-                const result = await handleServerResponse(
-                    updatedData,
-                    targetChar,
-                    controller.signal,
-                    setStreamingText
-                );
-                
+                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText);
                 if (!controller.signal.aborted && result) {
                     await saveRawChatData(result);
                     setChatData(result);
                 }
             } catch (err) {
-                if ((err as Error).name !== 'AbortError') {
-                    console.error("AI response failed:", err);
-                }
+                if ((err as Error).name !== 'AbortError') console.error("AI response failed:", err);
             } finally {
                 if (abortControllerRef.current === controller) abortControllerRef.current = null;
                 setIsLoading(false);
-                // ✅ FIX: Clear streaming text after completion
                 setStreamingText("");
                 setStreamingCharacter(null);
             }
@@ -221,7 +191,6 @@ export function useChatSession() {
             setIsInitialImageProcessed(true);
             return;
         }
-
         const sampler = character.sampler;
         const silentCharacter: Character = {
             ...character,
@@ -236,7 +205,6 @@ export function useChatSession() {
                 lastUpdatedTimestamp: Date.now(),
             }
         };
-
         try {
             const controller = new AbortController();
             await handleServerResponse(data, silentCharacter, controller.signal, undefined);
@@ -251,12 +219,10 @@ export function useChatSession() {
         const init = async () => {
             const arr = await loadAllRawChatData();
             const validChats = arr.filter((c): c is ChatData => c !== null);
-            
             let charToUse: Character | null = null;
             let chatToLoad: ChatData | null = null;
 
             if (validChats.length > 0) {
-                // ✅ Try to load the most recent chat first
                 const sortedChats = [...validChats].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
                 const firstChat = sortedChats[0];
                 if (firstChat.protagonist && firstChat.protagonist.id !== 'default-user') {
@@ -265,22 +231,12 @@ export function useChatSession() {
                 }
             }
 
-            if (!charToUse) {
-                charToUse = getDefaultCharacter();
-                chatToLoad = null; 
-            }
-
-            if (!currentCharacter && charToUse) {
-                setCurrentCharacter(charToUse);
-            }
+            if (!charToUse) charToUse = getDefaultCharacter();
+            if (!currentCharacter && charToUse) setCurrentCharacter(charToUse);
 
             if (!chatData && charToUse) {
-                if (chatToLoad) {
-                    setChatData(chatToLoad);
-                } else {
-                    const newDraft = createNewChatData(charToUse);
-                    setChatData(newDraft);
-                }
+                if (chatToLoad) setChatData(chatToLoad);
+                else setChatData(createNewChatData(charToUse));
             }
 
             const dataToProcess = chatToLoad || (charToUse ? createNewChatData(charToUse) : null);
@@ -294,23 +250,18 @@ export function useChatSession() {
                     const allChats = await loadAllRawChatData();
                     const points = new Set<string>();
                     for (const c of allChats) {
-                        if (c && c.parentChatDataId === activeChat.id && c.parentChatMessageId) {
-                            points.add(c.parentChatMessageId);
-                        }
+                        if (c && c.parentChatDataId === activeChat.id && c.parentChatMessageId) points.add(c.parentChatMessageId);
                     }
                     setParentChatMessageIds(points);
                 }
             }
         };
         init();
-    }, []); // ✅ Empty dependency array to run only once on mount
+    }, []);
 
     useEffect(() => {
-        if (isLoading && streamingText && messageEndRef.current) {
-            messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        } else if (messageEndRef.current) {
-            messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (isLoading && streamingText && messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'auto' });
+        else if (messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
 
     const stopGeneration = useCallback(() => {
@@ -333,23 +284,31 @@ export function useChatSession() {
         saveRawChatData(newChat).catch(err => console.error("Failed to save new chat:", err));
     }, []);
 
-    const sendMessage = useCallback(async (text: string) => {
-        if (!chatData || !currentCharacter || !text.trim() || isLoading) return;
+    // ✅ UPDATED: Accept files array
+    const sendMessage = useCallback(async (text: string, files?: File[]) => {
+        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoading) return;
+        
         const controller = new AbortController();
         abortControllerRef.current = controller;
         setIsLoading(true);
-        
-        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
         
         try {
+            // ✅ Convert files to Base64 if present
+            let userImagesBase64: string[] | undefined = undefined;
+            if (files && files.length > 0) {
+                userImagesBase64 = await Promise.all(files.map(f => convertFileToBase64(f)));
+            }
+
             const userMsg = createChatMessage(chatData, currentCharacter, text);
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
+            
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-                handleServerResponse(data, char, signal, onToken);
+                handleServerResponse(data, char, signal, onToken, userImagesBase64);
+            
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             if (updatedData) {
                 await saveRawChatData(updatedData);
@@ -360,7 +319,6 @@ export function useChatSession() {
         } finally {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             setIsLoading(false);
-            // ✅ FIX: Clear streaming text after completion
             setStreamingText("");
             setStreamingCharacter(null);
         }
@@ -374,15 +332,9 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
         const oldMessages = history.slice(trimIndex);
         try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        const trimmedData = { 
-            ...chatData, 
-            chatMessageHistory: history.slice(0, trimIndex), 
-            lastUpdatedTimestamp: Date.now() 
-        };
+        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), lastUpdatedTimestamp: Date.now() };
         setChatData(trimmedData);
         setIsLoading(true);
-        
-        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
@@ -407,7 +359,6 @@ export function useChatSession() {
         finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             setIsLoading(false); 
-            // ✅ FIX: Clear streaming text after completion
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
@@ -421,15 +372,9 @@ export function useChatSession() {
         if (trimIndex === 0 || trimIndex === history.length) return;
         const oldMessages = history.slice(trimIndex);
         try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        const trimmedData = { 
-            ...chatData, 
-            chatMessageHistory: history.slice(0, trimIndex), 
-            lastUpdatedTimestamp: Date.now() 
-        };
+        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), lastUpdatedTimestamp: Date.now() };
         setChatData(trimmedData);
         setIsLoading(true);
-        
-        // ✅ FIX: Clear streaming text before starting
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
@@ -447,7 +392,6 @@ export function useChatSession() {
         finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             setIsLoading(false); 
-            // ✅ FIX: Clear streaming text after completion
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }

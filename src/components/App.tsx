@@ -12,7 +12,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 
-import type { ChatData, Character, Context, Sampler, StopPattern, Extension, LanguageModel, BudgetStrategy } from '../types';
+import type { Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
 import { saveRawChatData, loadRawChatData } from '../hooks/storage';
 import { getCharacterImageUrl } from '../hooks/storage';
@@ -27,7 +27,6 @@ import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import './main.css';
 
-// ✅ 1. Define the Action Labels - these are displayed as-is
 const ACTION_LABELS = [
   'Hug', 'Kiss', 'Slap', 'Push Away', 'Touch', 'Grab',
   'Wave', 'Poke', 'Fish', 'Dance', 'Sing', 'Whisper',
@@ -65,7 +64,6 @@ function App() {
 
   const { addToast } = useToast();
 
-  // --- Data Managers ---
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
@@ -75,7 +73,6 @@ function App() {
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
-  // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isContextListMode, setIsContextListMode] = useState(false);
@@ -92,11 +89,8 @@ function App() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
-
-  // ✅ 2. Action Menu State - use message ID to uniquely identify which avatar was clicked
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
 
-  // --- Generic Modal Hooks ---
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
   const sampleModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
@@ -114,10 +108,8 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- State for branch source chat title
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
 
-  // --- Load Non-Hook Data ---
   useEffect(() => {
     const loadData = async () => {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
@@ -126,14 +118,13 @@ function App() {
     loadData();
   }, []);
 
-  // ✅ Load branch source chat title when chatData changes
   useEffect(() => {
     const loadBranchSource = async () => {
       if (chatData?.parentChatDataId) {
         try {
           const sourceChat = await loadRawChatData(chatData.parentChatDataId);
           if (sourceChat) {
-            setBranchSourceTitle(sourceChat.title || 'Untitled Chat');
+            setBranchSourceTitle(sourceChat.name || 'Untitled Chat');
           } else {
             setBranchSourceTitle(null);
           }
@@ -154,8 +145,6 @@ function App() {
           if(char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
       }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
-
-  // --- Handlers ---
 
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
@@ -290,7 +279,7 @@ function App() {
 
   const handleStartEditTitle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditTitleValue(chatData?.title || '');
+    setEditTitleValue(chatData?.name || '');
     setIsEditingTitle(true);
   };
 
@@ -360,22 +349,19 @@ function App() {
     }
   };
 
-  // ✅ In-app branch switching - no page reload
   const handleBranch = async (id: string) => {
     if (!chatData) return;
     try { 
       const branchedChat = await branchMessage(chatData, id);
-      // ✅ Switch in-app
       setChatData(branchedChat);
       setCurrentCharacter(branchedChat.protagonist);
       refreshChatList();
-      addToast(`Branched to "${branchedChat.title}"`, "success");
+      addToast(`Branched to "${branchedChat.name}"`, "success");
     } catch (err) { 
       addToast("Failed to branch chat.", "error");
     }
   };
 
-  // ✅ In-app navigation back to source chat - no page reload
   const handleNavigateToSource = async () => {
     if (!chatData?.parentChatDataId) return;
     try {
@@ -384,7 +370,7 @@ function App() {
         setChatData(sourceChat);
         setCurrentCharacter(sourceChat.protagonist);
         refreshChatList();
-        addToast(`Navigated back to "${sourceChat.title || 'Untitled Chat'}"`, "info");
+        addToast(`Navigated back to "${sourceChat.name || 'Untitled Chat'}"`, "info");
       } else {
         addToast("Source chat not found.", "error");
       }
@@ -394,37 +380,29 @@ function App() {
     }
   };
 
-  const handleSend = () => { if (!inputText.trim()) return; sendMessage(inputText); setInputText(''); setPendingFiles([]); };
+  // ✅ UPDATED: Pass pendingFiles to sendMessage
+  const handleSend = () => { 
+    if (!inputText.trim() && pendingFiles.length === 0) return; 
+    sendMessage(inputText, pendingFiles); 
+    setInputText(''); 
+    setPendingFiles([]); 
+  };
 
-  // ✅ 3. Action Interjection Handler - uses the label directly
   const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
-    setActionMenuTarget(null); // Close menu
-
+    setActionMenuTarget(null);
     if (!chatData || !currentCharacter) return;
-
     const actionText = `*${actionLabel} ${targetChar.name}.*`;
-
-    // Scenario A: Mid-Sentence Interruption - AI is currently generating
     if (isLoading && streamingCharacter && streamingCharacter.id === targetChar.id) {
-      // 1. Stop the generation immediately
       stopGeneration();
-      
-      // 2. Wait for the stream to fully stop
       await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // 3. Send the action and get AI response
       await sendActionAndGetResponse(actionText, targetChar);
     } else {
-      // Scenario B: Idle State (Normal Action)
-      // Just send the action as a normal message
       sendMessage(actionText);
     }
   };
 
-  // ✅ 4. Avatar Click Handler - uses message ID to uniquely identify which avatar was clicked
   const handleAvatarClick = (e: React.MouseEvent, messageId: string, char: Character) => {
     e.stopPropagation();
-    // Toggle menu if clicking same message, else open new
     if (actionMenuTarget?.messageId === messageId) {
       setActionMenuTarget(null);
     } else {
@@ -437,68 +415,20 @@ function App() {
     }
   };
 
-  // ✅ 5. Render Action Menu Component (reusable) - with scrollable action list
   const renderActionMenu = (messageId: string, character: Character) => {
     if (!actionMenuTarget || actionMenuTarget.messageId !== messageId) return null;
-    
     return (
       <div style={{
-        position: 'absolute',
-        left: '100%',
-        top: '0',
-        marginLeft: '10px',
-        width: '180px',
-        maxHeight: '400px',
-        background: 'var(--bg)',
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
+        position: 'absolute', left: '100%', top: '0', marginLeft: '10px', width: '180px', maxHeight: '400px',
+        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden'
       }}>
-        <div style={{ 
-          padding: '6px 10px', 
-          fontSize: '0.65rem', 
-          fontWeight: 'bold', 
-          borderBottom: '1px solid var(--border)', 
-          opacity: 0.7, 
-          background: 'var(--social-bg)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexShrink: 0
-        }}>
-          <span>{'INTERJECT ACTION'}</span>
-        </div>
-        <div style={{
-          overflowY: 'auto',
-          maxHeight: '340px',
-          flexShrink: 1
-        }}>
+        <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 'bold', borderBottom: '1px solid var(--border)', opacity: 0.7, background: 'var(--social-bg)', flexShrink: 0 }}>INTERJECT ACTION</div>
+        <div style={{ overflowY: 'auto', maxHeight: '340px', flexShrink: 1 }}>
           {ACTION_LABELS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => handleActionInterject(label, character)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: '1px solid var(--border)',
-                padding: '8px 10px',
-                textAlign: 'left',
-                cursor: 'pointer',
-                color: 'var(--text-h)',
-                fontSize: '0.8rem',
-                transition: 'all 0.2s',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                width: '100%'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--social-bg)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            <button key={label} type="button" onClick={() => handleActionInterject(label, character)}
+              style={{ background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', padding: '8px 10px', textAlign: 'left', cursor: 'pointer', color: 'var(--text-h)', fontSize: '0.8rem', transition: 'all 0.2s', width: '100%' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--social-bg)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               <span>{label}</span>
             </button>
@@ -508,25 +438,11 @@ function App() {
     );
   };
 
-  // ✅ 6. Helper function to check if a message is a stem (locked) message
   const isStemMessage = (messageId: string): boolean => {
-    // If there's no parent chat message, there's no branch
     if (!chatData?.parentChatMessageId) return false;
-    
-    // Find the index of the branch point
-    const branchIndex = chatData.chatMessageHistory.findIndex(
-      m => m.id === chatData.parentChatMessageId
-    );
-    
-    // If branch point not found, nothing is a stem
+    const branchIndex = chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId);
     if (branchIndex === -1) return false;
-    
-    // Find the index of the current message
-    const currentIndex = chatData.chatMessageHistory.findIndex(
-      m => m.id === messageId
-    );
-    
-    // Messages from index 0 to branchIndex (inclusive) are stems
+    const currentIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
     return currentIndex !== -1 && currentIndex <= branchIndex;
   };
 
@@ -549,10 +465,8 @@ function App() {
   };
 
   const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => {
-    const isActive = selectedBudgetStrategyId === strategy.id;
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-        {isActive && <span style={{ fontSize: '0.7rem', background: '#ffd700', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>Active</span>}
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
       </span>
     );
@@ -565,39 +479,14 @@ function App() {
           <div className="header-top">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'flex-start' }}>
               {isEditingTitle ? (
-                <input
-                  type="text"
-                  value={editTitleValue}
-                  onChange={(e) => setEditTitleValue(e.target.value)}
-                  onBlur={handleSaveTitle}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveTitle();
-                    if (e.key === 'Escape') setIsEditingTitle(false);
-                  }}
-                  autoFocus
-                  style={{
-                    background: 'var(--social-bg)',
-                    border: '1px solid var(--accent)',
-                    color: 'var(--text-h)',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '1rem',
-                    fontWeight: 'bold',
-                    flexGrow: 1,
-                    maxWidth: '300px',
-                    outline: 'none',
-                  }}
-                />
+                <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '300px', outline: 'none' }} />
               ) : (
                 <>
-                  <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
-                    {chatData?.name || "Untitled Chat"}
-                  </div>
+                  <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
                   <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.5, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}>✎</span>
                 </>
               )}
             </div>
-
             <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
           </div>
         </div>
@@ -614,10 +503,7 @@ function App() {
           const isEditing = editingId === message.id;
           const isMassStart = message.id === massDeleteId;
           const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-          
-          // ✅ Use the helper function to check if this message is a stem
           const isStem = isStemMessage(message.id);
-          
           const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
           return (
@@ -627,20 +513,9 @@ function App() {
                   <div className="avatar-column">
                     <div style={{ position: 'relative' }}>
                       {avatarSrc ? (
-                        <img 
-                          src={avatarSrc} 
-                          alt={displayName} 
-                          className="character-avatar" 
-                          onClick={(e) => handleAvatarClick(e, message.id, message.character)}
-                          onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} 
-                          style={{ cursor: 'pointer' }}
-                        />
+                        <img src={avatarSrc} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
                       ) : (
-                        <div 
-                          className="character-avatar placeholder" 
-                          onClick={(e) => handleAvatarClick(e, message.id, message.character)}
-                          style={{ cursor: 'pointer' }}
-                        />
+                        <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
                       )}
                       {renderActionMenu(message.id, message.character)}
                     </div>
@@ -660,9 +535,7 @@ function App() {
                     <>
                       <span className="message-text">{message.textContent}</span>
                       <div className="message-toolbar">
-                        {isStem ? (
-                          <span className="toolbar-lock">🔒 Locked</span>
-                        ) : !isMassActive ? (
+                        {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                           <>
                             <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                             {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
@@ -683,17 +556,10 @@ function App() {
                 </div>
               </div>
               {isJustBeforeBranchOff && (
-                <div 
-                  className="branch-separator-line clickable" 
-                  onClick={handleNavigateToSource}
-                  title={`Click to go back to "${branchSourceTitle || 'source chat'}"`}
-                  style={{ cursor: 'pointer' }}
-                >
+                <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}>
                   <div className="branch-separator-content">
                     <span className="branch-separator-icon">🌿</span>
-                    <span className="branch-separator-text">
-                      {branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}
-                    </span>
+                    <span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span>
                     <span className="branch-separator-icon">🌿</span>
                   </div>
                 </div>
@@ -706,19 +572,9 @@ function App() {
             <div className="avatar-column">
               <div style={{ position: 'relative' }}>
                 {streamingCharacter.image ? (
-                  <img 
-                    src={getCharacterImageUrl(streamingCharacter.image)!} 
-                    alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} 
-                    className="character-avatar" 
-                    onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
-                    style={{ cursor: 'pointer' }}
-                  />
+                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
                 ) : (
-                  <div 
-                    className="character-avatar placeholder" 
-                    onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
-                    style={{ cursor: 'pointer' }}
-                  />
+                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
                 )}
                 {renderActionMenu('streaming-message', streamingCharacter)}
               </div>
@@ -736,7 +592,6 @@ function App() {
         <div ref={messageEndRef} style={{ height: '1px' }} />
       </div>
 
-      {/* ✅ Bottom Bar - All navigation buttons moved here */}
       <div className="context-bar">
         <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
         <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
@@ -768,50 +623,15 @@ function App() {
         </div>
       </div>
 
-      {/* Modals */}
       {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
       
-      {/* ✅ Characters modal - always shows participants functionality when in a chat */}
       {isCharListOpen && (
-        <ManagerModal 
-          title="Characters" 
-          items={allCharacters} 
-          isOpen={isCharListOpen} 
-          onClose={() => setIsCharListOpen(false)} 
-          onSelect={(char) => charModal.open(char)} 
-          onDelete={deleteCharacter} 
-          onCreateNew={() => charModal.open()} 
-          renderSubtext={(c) => c.description || "No description"} 
-          emptyMessage="No characters found." 
-          actionLabel="Delete" 
-          orderedListMode={!!chatData} 
-          currentOrderIds={chatData?.participants.map(p => p.id) || []} 
-          onToggleOrder={handleToggleParticipant} 
-          specialActionIcon="★" 
-          onSpecialAction={handleSetChatProtagonist} 
-          specialActionTooltip={(c) => `set ${c.name} as the protagonist`} 
-          activeSpecialActionId={chatData?.protagonist.id} 
-        />
+        <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />
       )}
       {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
       
-      {/* ✅ Contexts modal - always shows active contexts functionality when in a chat */}
       {(contextModal.isOpen || isContextListMode) && (
-        <ManagerModal 
-          title={"Contexts"} 
-          items={allContexts} 
-          isOpen={isContextListMode} 
-          onClose={() => { setIsContextListMode(false); }} 
-          onSelect={(context) => contextModal.open(context)} 
-          onDelete={contextModal.handleDelete} 
-          onCreateNew={() => contextModal.open()} 
-          renderSubtext={(i) => { const contentPreview = i.text?.substring(0, 50) || ''; const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌'; const hasImages = i.images && i.images.length > 0 ? '🖼️' : ''; return `${hasRegex} ${hasImages} ${contentPreview}...`; }} 
-          emptyMessage="No contexts found." 
-          actionLabel="Delete" 
-          orderedListMode={isContextListMode} 
-          currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} 
-          onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} 
-        />
+        <ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => { setIsContextListMode(false); }} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const contentPreview = i.text?.substring(0, 50) || ''; const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌'; const hasImages = i.images && i.images.length > 0 ? '🖼️' : ''; return `${hasRegex} ${hasImages} ${contentPreview}...`; }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />
       )}
       {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} />)}
       
@@ -825,23 +645,7 @@ function App() {
       {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
       
       {isBudgetStrategyListOpen && (
-        <ManagerModal 
-          title="Budget Strategies" 
-          items={allBudgetStrategies} 
-          isOpen={isBudgetStrategyListOpen} 
-          onClose={() => setIsBudgetStrategyListOpen(false)} 
-          onSelect={(strategy) => budgetModal.open(strategy)} 
-          onDelete={budgetModal.handleDelete} 
-          onCreateNew={() => budgetModal.open()} 
-          renderSubtext={renderBudgetStrategySubtext} 
-          emptyMessage="No budget strategies found." 
-          actionLabel="Delete" 
-          orderedListMode={false} 
-          activeSpecialActionId={selectedBudgetStrategyId || undefined} 
-          specialActionIcon="★" 
-          onSpecialAction={handleActivateBudgetStrategy} 
-          specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
-        />
+        <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={(strategy) => budgetModal.open(strategy)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />
       )}
       {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
       
