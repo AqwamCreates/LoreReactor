@@ -647,9 +647,14 @@ function App() {
   };
 
   return (
-    
     <>
-    {viewMode === 'cinematic' && centerAvatar && (
+      <div 
+        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
+        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
+      >
+        
+        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
+        {viewMode === 'cinematic' && centerAvatar && (
           <div 
             className={`cinematic-stage active`}
             onClick={(e) => {
@@ -666,13 +671,6 @@ function App() {
             />
         </div>
         )}
-      <div 
-        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
-        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
-      >
-        
-        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
-
 
         <header className="app-header">
           <div className="header-content">

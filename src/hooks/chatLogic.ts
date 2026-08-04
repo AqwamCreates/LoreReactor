@@ -31,9 +31,9 @@ export function getFatigueContext(participantId: string, characterName: string, 
     const initialString = `${contextStartString}Character ${participantId} (${characterName})`
 
     if (ratio > 0.5) return `${initialString} is starting to feel slightly winded, but still have plenty of energy to speak.${contextEndString}`;
-    if (ratio > 0.3) return `${initialString} is somewhat exhausted, but somewhat have the energy to speak.${contextEndString}`;
-    if (ratio > 0.1) return `${initialString} is quite drained and barely have the energy to speak.${contextEndString}`;
-    return `${initialString} have no energy left to do anything.${contextEndString}`;
+    if (ratio > 0.3) return `${initialString} is somewhat exhausted from talking, but somewhat have the energy to speak.${contextEndString}`;
+    if (ratio > 0.1) return `${initialString} is quite drained from talking and barely have the energy to speak.${contextEndString}`;
+    return `${initialString} have no energy left to speak.${contextEndString}`;
 }
 
 export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
@@ -190,8 +190,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     }
 
     const participantId = getParticipantId(character, chatData.participants);
-    if (character.systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${character.name}) Prompt: ${character.systemPrompt}${contextStartString}`);
-
+    
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
@@ -201,7 +200,10 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         if (fatigue) promptLines.push(fatigue);
     }
 
-    promptLines.push(`${contextStartString}This is a conversation between a group of characters. You must reply as ${participantId} (${character.name}). Your response must be in character.${contextEndString}`);
+     if (character.systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${character.name}) Prompt: ${character.systemPrompt}${contextStartString}`);
+
+
+    promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
 
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
