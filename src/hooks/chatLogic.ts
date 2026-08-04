@@ -25,9 +25,9 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
-    if (ratio > 0.5) return "[You are starting to feel slightly winded. You still have plenty of energy to speak.]";
-    if (ratio > 0.3) return "[You are somewhat exhausted. You somewhat have the energy to speak.]";
-    if (ratio > 0.1) return "[You are quite drained. You barely have the energy to speak.]";
+    if (ratio > 0.5) return `${contextStartString}You are starting to feel slightly winded. You still have plenty of energy to speak.]${contextEndString}`;
+    if (ratio > 0.3) return `${contextStartString}You are somewhat exhausted. You somewhat have the energy to speak.${contextEndString}`;
+    if (ratio > 0.1) return `${contextStartString}You are quite drained. You barely have the energy to speak.${contextEndString}`;
     return "[You have no energy left to do anything.]";
 }
 
