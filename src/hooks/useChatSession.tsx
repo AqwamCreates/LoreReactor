@@ -3,12 +3,11 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
-import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { v4 as uuidv4 } from 'uuid';
-import { useToast } from '../context/ToastContext'; // ✅ Import Toast Hook
+import { useToast } from '../context/ToastContext';
 
 const baseEngine = new LargeLanguageModelInferenceEngine();
 
@@ -55,10 +54,10 @@ export function useChatSession() {
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
+    // Removed parentChatMessageIds if not needed for this specific logic, but kept for compatibility
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
-    // ✅ Add state for Globally Selected Model (synced from App.tsx)
     const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
 
     const [stats, setStats] = useState({
@@ -71,7 +70,6 @@ export function useChatSession() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     
-    // ✅ Initialize Toast
     const { addToast } = useToast();
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -115,7 +113,6 @@ export function useChatSession() {
             let rawText: string;
 
             if (strategy) {
-                // ✅ Use Budget Strategy Engine (Handles model selection internally)
                 const strategyEngine = new BudgetStrategyEngine(strategy);
                 const wrappedCallbacks = onToken ? {
                     onToken: (stats: any) => {
@@ -141,7 +138,6 @@ export function useChatSession() {
                 }
 
             } else {
-                // ✅ Use Global Selected Model
                 if (!selectedModel) {
                     addToast("No model selected. Please select a model from the Models list.", "error");
                     setIsLoading(false);
@@ -190,7 +186,16 @@ export function useChatSession() {
         } catch (error) {
             const err = error as Error;
             
-            if (err.name === 'AbortError') return null;
+            // ✅ FIX: Handle AbortError by saving partial generation
+            if (err.name === 'AbortError') {
+                if (streamingText && streamingText.trim().length > 0) {
+                    const displayText = convertIdsToDisplayNames(streamingText, data);
+                    const aiMessage = createChatMessage(data, character, displayText);
+                    const result = addMessageToChatData(data, aiMessage);
+                    return result;
+                }
+                return null;
+            }
 
             const isNetworkError = err.message.includes('Failed to fetch') || 
                                     err.message.includes('NetworkError') ||
@@ -200,10 +205,7 @@ export function useChatSession() {
                                     err.message.includes('504');
 
             if (isNetworkError) {
-                addToast(
-                    "⚠️ Backend Connection Failed. Could not connect to the AI server.", 
-                    "error"
-                );
+                addToast("⚠️ Backend Connection Failed. Could not connect to the AI server.", "error");
                 setIsLoading(false);
                 return null;
             }
@@ -212,7 +214,7 @@ export function useChatSession() {
             addToast(`❌ Inference Error: ${err.message}`, "error");
             return null;
         }
-    }, [addToast, selectedModel]); // ✅ Added selectedModel to dependencies
+    }, [addToast, selectedModel, streamingText]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter || isLoading) return;
@@ -232,7 +234,7 @@ export function useChatSession() {
             
             try {
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, activeStrategy);
-                if (!controller.signal.aborted && result) {
+                if (result) {
                     await saveRawChatData(result);
                     setChatData(result);
                 }
@@ -337,7 +339,6 @@ export function useChatSession() {
         }
         setIsLoading(false);
         setStreamingCharacter(null);
-        setStreamingText("");
         setGenerationSpeed(0);
     }, []);
 
@@ -354,7 +355,6 @@ export function useChatSession() {
         setActiveStrategy(strategy);
     }, []);
 
-    // ✅ Expose setter for Global Model Selection
     const setSelectedGlobalModel = useCallback((model: LanguageModel | null) => {
         setSelectedModel(model);
     }, []);
@@ -379,13 +379,12 @@ export function useChatSession() {
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
             
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-                handleServerResponse(data, char, signal, onToken, userImagesBase64, activeStrategy);
+            // Simple direct call, no turn sequence
+            const result = await handleServerResponse(tempData, currentCharacter, controller.signal, setStreamingText, userImagesBase64, activeStrategy);
             
-            const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
-            if (updatedData) {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
+            if (result) {
+                await saveRawChatData(result);
+                setChatData(result);
             }
         } catch (err) {
             if ((err as Error).name !== 'AbortError') console.error("Send failed:", err);
@@ -397,15 +396,44 @@ export function useChatSession() {
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
 
+    // ✅ SIMPLIFIED REGENERATE: Only regenerates the specific AI message clicked
     const regenerateLastAI = useCallback(async () => {
         if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
+        
         const history = chatData.chatMessageHistory;
-        let trimIndex = history.length;
-        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) trimIndex--;
-        if (trimIndex === 0 || trimIndex === history.length) return;
-        const oldMessages = history.slice(trimIndex);
-        try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), lastUpdatedTimestamp: Date.now() };
+        
+        // Find the LAST AI message in the history
+        let lastAiIndex = -1;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].character.id !== chatData.protagonist.id) {
+                lastAiIndex = i;
+                break;
+            }
+        }
+
+        if (lastAiIndex === -1) return; // No AI message found
+
+        const aiMessageToDelete = history[lastAiIndex];
+        
+        // Delete ONLY this specific AI message from storage
+        try { 
+            await deleteRawChatMessage(aiMessageToDelete.id); 
+        } catch (err) { 
+            console.error(err); 
+        }
+
+        // Create new history without this specific message
+        const newHistory = [
+            ...history.slice(0, lastAiIndex),
+            ...history.slice(lastAiIndex + 1)
+        ];
+
+        const trimmedData = { 
+            ...chatData, 
+            chatMessageHistory: newHistory, 
+            lastUpdatedTimestamp: Date.now() 
+        };
+        
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -414,22 +442,27 @@ export function useChatSession() {
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        
         try {
-            let currentData = trimmedData;
-            const responders = oldMessages.map(m => m.character).filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
-            for (const responder of responders) {
-                if (controller.signal.aborted) break;
-                setStreamingCharacter(responder);
-                const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText, undefined, activeStrategy);
-                if (!result) break;
-                currentData = result;
+            // Regenerate using the SAME character that originally sent the message
+            const characterToRegenerate = aiMessageToDelete.character;
+            
+            const result = await handleServerResponse(
+                trimmedData, 
+                characterToRegenerate, 
+                controller.signal, 
+                setStreamingText, 
+                undefined, 
+                activeStrategy
+            );
+
+            if (result) {
+                await saveRawChatData(result);
+                setChatData(result);
             }
-            if (!controller.signal.aborted && currentData) {
-                await saveRawChatData(currentData);
-                setChatData(currentData);
-            }
-        } catch (err) { if ((err as Error).name !== 'AbortError') console.error(err); }
-        finally { 
+        } catch (err) { 
+            if ((err as Error).name !== 'AbortError') console.error(err); 
+        } finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             setIsLoading(false); 
             setStreamingText(""); 
@@ -437,14 +470,17 @@ export function useChatSession() {
         }
     }, [chatData, isLoading, handleServerResponse, activeStrategy]);
 
+    // Keep regenerateLastProtagonist simple too if needed, or leave as is
     const regenerateLastProtagonist = useCallback(async () => {
         if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
         const history = chatData.chatMessageHistory;
         let trimIndex = history.length;
         while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) trimIndex--;
         if (trimIndex === 0 || trimIndex === history.length) return;
+        
         const oldMessages = history.slice(trimIndex);
         try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
+        
         const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), lastUpdatedTimestamp: Date.now() };
         setChatData(trimmedData);
         setIsLoading(true);
@@ -455,11 +491,11 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
         try {
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
-            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
-            if (!controller.signal.aborted && updatedData) {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
+            // Direct call instead of runTurnSequence
+            const result = await handleServerResponse(trimmedData, currentCharacter!, controller.signal, setStreamingText, undefined, activeStrategy);
+            if (result) {
+                await saveRawChatData(result);
+                setChatData(result);
             }
         } catch (err) { if ((err as Error).name !== 'AbortError') console.error(err); }
         finally { 
@@ -468,7 +504,7 @@ export function useChatSession() {
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse, activeStrategy]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = 4096; 
@@ -480,7 +516,7 @@ export function useChatSession() {
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,
         setActiveBudgetStrategy,
-        setSelectedGlobalModel, // ✅ Exposed for App.tsx
+        setSelectedGlobalModel,
         numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,
