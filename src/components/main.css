@@ -237,7 +237,7 @@
 }
 
 /* =============================================================================
-   3. CHAT HISTORY & MESSAGES
+   3. CHAT HISTORY & MESSAGES (FIXED BOTTOM ALIGNMENT)
    ============================================================================= */
 .chat-history {
   flex: 1;
@@ -251,6 +251,9 @@
   -ms-overflow-style: none;
   min-height: 0;
   transition: padding 0.4s ease;
+  
+  /* ✅ FIX: Forces messages to start from the bottom */
+  justify-content: flex-end; 
 }
 
 .chat-history::-webkit-scrollbar { display: none; }
@@ -1185,10 +1188,12 @@ select {
   scroll-behavior: smooth;
   mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
-  pointer-events: auto;
+  
+  /* ✅ CRITICAL FIX: Allow clicks to pass through empty areas to the stage below */
+  pointer-events: none; 
 }
 
-/* ✅ 3. Message Rows */
+/* ✅ 3. Message Rows - Re-enable pointer events for interaction */
 .mode-cinematic .message-row {
   max-width: 100% !important;
   margin-left: 0 !important;
@@ -1202,7 +1207,7 @@ select {
   opacity: 1;
   filter: none;
   transform: scale(1);
-  pointer-events: auto;
+  pointer-events: auto; /* Re-enable clicks on rows */
 }
 
 .mode-cinematic .message-row.message-left,
