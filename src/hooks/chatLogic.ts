@@ -21,14 +21,17 @@ export function getParticipantId(character: Character, participants: Character[]
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
+export function getFatigueContext(characterId: number, participantId: number, characterName: string, currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
-    if (ratio > 0.5) return `${contextStartString}You are starting to feel slightly winded. You still have plenty of energy to speak.]${contextEndString}`;
-    if (ratio > 0.3) return `${contextStartString}You are somewhat exhausted. You somewhat have the energy to speak.${contextEndString}`;
-    if (ratio > 0.1) return `${contextStartString}You are quite drained. You barely have the energy to speak.${contextEndString}`;
-    return "[You have no energy left to do anything.]";
+
+    const initialString = `${contextStartString}Character ${participantId} (${characterName})`
+
+    if (ratio > 0.5) return `${initialString} is starting to feel slightly winded, but still have plenty of energy to speak.${contextEndString}`;
+    if (ratio > 0.3) return `${initialString} is somewhat exhausted, but somewhat have the energy to speak.${contextEndString}`;
+    if (ratio > 0.1) return `${initialString} is quite drained and barely have the energy to speak.${contextEndString}`;
+    return `${initialString}You have no energy left to do anything.${contextEndString}`;
 }
 
 export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
