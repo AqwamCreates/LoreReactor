@@ -14,7 +14,6 @@
 .counter:hover { border-color: var(--accent-border); }
 .counter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ... [Keep Hero/Center/Next-Steps CSS as is] ... */
 .hero { position: relative; }
 .hero .base, .hero .framework, .hero .vite { inset-inline: 0; margin: 0 auto; }
 .hero .base { width: 170px; position: relative; z-index: 0; }
@@ -57,7 +56,7 @@
 .ticks::after { right: 0; border-right-color: var(--border); }
 
 /* =============================================================================
-   2. APP LAYOUT & HEADER (WITH ANIMATIONS)
+   2. APP LAYOUT & HEADER
    ============================================================================= */
 .chat-container {
   display: flex;
@@ -161,9 +160,8 @@
 }
 
 /* =============================================================================
-   NEW: HEADER CONTROLS GROUPING (Stats + Toggle)
+   HEADER CONTROLS GROUPING
    ============================================================================= */
-
 .header-controls-group {
   display: flex;
   align-items: center;
@@ -181,7 +179,6 @@
   border-color: var(--accent-border);
 }
 
-/* Refined Toggle Button Styling */
 .view-mode-toggle {
   background: transparent;
   border: none;
@@ -216,7 +213,6 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
-/* Icon animation for the toggle */
 .view-mode-toggle span:first-child {
   font-size: 1rem;
   line-height: 1;
@@ -227,7 +223,6 @@
   transform: scale(1.2) rotate(5deg);
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .header-controls-group {
     gap: 4px;
@@ -242,7 +237,7 @@
 }
 
 /* =============================================================================
-   3. CHAT HISTORY & MESSAGES (LADDER UI)
+   3. CHAT HISTORY & MESSAGES
    ============================================================================= */
 .chat-history {
   flex: 1;
@@ -354,7 +349,6 @@
   box-sizing: border-box;
 }
 
-/* --- Toolbars & Editing --- */
 .message-toolbar {
   position: absolute; top: -10px; right: -4px;
   display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s;
@@ -398,7 +392,6 @@
 .edit-btn-cancel { background: transparent; color: var(--text-h); }
 .edit-btn:hover { opacity: 0.85; }
 
-/* --- Mass Delete States --- */
 .message-fading-out .message-text,
 .message-fading-out .avatar-column {
   opacity: 0.4; transition: opacity 0.2s ease; pointer-events: none;
@@ -461,7 +454,6 @@
 }
 .message-row.removing { animation: fadeOutUp 0.3s forwards; }
 
-/* --- Branching --- */
 .branch-origin-header {
   text-align: center; padding: 10px; background: var(--social-bg);
   border-bottom: 1px dashed var(--border); color: var(--text-h);
@@ -498,7 +490,7 @@
 .branch-icon { font-size: 1rem; }
 
 /* =============================================================================
-   4. INPUT AREA & CONTEXT BAR (WITH ANIMATIONS)
+   4. INPUT AREA & CONTEXT BAR
    ============================================================================= */
 .context-bar {
   display: flex; gap: 10px;
@@ -525,13 +517,6 @@
 .context-btn:hover {
   border-color: var(--accent-border); background: var(--bg);
   color: var(--accent); transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.context-btn-search {
-  background: rgba(0, 255, 127, 0.05); border-color: rgba(0, 255, 127, 0.2);
-}
-.context-btn-search:hover {
-  background: rgba(0, 255, 127, 0.1); border-color: #00ff7f; color: #00ff7f;
 }
 
 .input-wrapper {
@@ -597,7 +582,7 @@
 }
 
 /* =============================================================================
-   5. MODALS & MANAGER LISTS (RENAMED FOR REUSE)
+   5. MODALS & MANAGER LISTS
    ============================================================================= */
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -627,7 +612,6 @@
 
 .modal-body { padding: 20px; overflow-y: auto; }
 
-/* ✅ RENAMED: Generic Manager List Styles */
 .manager-list { 
   list-style: none; padding: 0; margin: 0; 
   display: flex; flex-direction: column; gap: 8px; 
@@ -669,9 +653,6 @@
 
 .empty-state { text-align: center; color: var(--text-h); opacity: 0.6; padding: 20px; }
 
-.modal-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-
-/* ✅ RENAMED: Generic Create Button */
 .create-new-btn {
   background: var(--accent-bg); color: var(--accent);
   border: 1px solid var(--accent-border); padding: 6px 12px;
@@ -772,7 +753,7 @@
 .chat-stats-bar.chat-stats-critical .chat-stat-context-fill { background: #ff4444; }
 
 /* =============================================================================
-   7. GENERIC EDITOR COMPONENTS (REUSABLE)
+   7. GENERIC EDITOR COMPONENTS
    ============================================================================= */
 .editor-modal-content {
     max-width: 600px; max-height: 90vh;
@@ -796,7 +777,6 @@
     font-size: 0.75rem; font-weight: bold; color: var(--text-h);
     display: block; margin-bottom: 4px; letter-spacing: 0.5px; opacity: 0.8;
 }
-.editor-label-small { font-size: 0.65rem; }
 
 .editor-input, .editor-textarea, .editor-select {
     width: 100%; box-sizing: border-box; font-size: 0.85rem;
@@ -858,15 +838,6 @@
 }
 .editor-image-remove-btn:hover { background: #ff4444; }
 
-.editor-tester-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.editor-test-result-container { height: 24px; margin-top: 4px; display: flex; align-items: center; justify-content: center; }
-
-.editor-toggle-section {
-    margin-top: 16px; padding: 12px; border: 1px solid var(--border);
-    border-radius: 8px; background: rgba(0, 0, 0, 0.02);
-    display: flex; align-items: center;
-}
-
 .editor-checkbox-label {
   display: flex;
   align-items: center;
@@ -922,10 +893,6 @@
   outline-offset: 2px;
 }
 
-.editor-checkbox-label span {
-    display: inline-block; line-height: 1; transform: translateY(0);
-}
-
 .editor-modal-actions { display: flex; gap: 8px; align-items: center; }
 
 .editor-btn {
@@ -941,30 +908,11 @@
 .editor-btn-save:hover { opacity: 0.9; transform: translateY(-1px); }
 .editor-btn-save:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
-.editor-btn-test {
-    background: var(--accent-bg); color: var(--accent);
-    border: 1px solid var(--accent-border); padding: 6px 16px;
-    white-space: nowrap; font-size: 0.75rem;
-}
-.editor-btn-test:hover { background: var(--accent); color: #fff; }
-
 /* =============================================================================
    8. UTILITIES & SELECT FIXES
    ============================================================================= */
 .loading-screen { padding: 2rem; text-align: center; color: var(--text-h); font-family: monospace; }
 .typing-indicator { font-style: italic; opacity: 0.7; font-size: 0.85rem; padding-left: 80px; }
-
-.whitespace-visible {
-    white-space: pre-wrap;
-    position: relative;
-}
-.whitespace-visible::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    background-image: 
-        linear-gradient(transparent 95%, rgba(255, 0, 0, 0.1) 95%),
-        linear-gradient(90deg, transparent 95%, rgba(255, 0, 0, 0.1) 95%);
-    background-size: 1em 1em; pointer-events: none; opacity: 0.3;
-}
 
 select, select option {
   background: var(--social-bg); color: var(--text-h); border: 1px solid var(--border);
@@ -972,29 +920,11 @@ select, select option {
 select:focus { border-color: var(--accent); outline: none; }
 select option { background: var(--bg); color: var(--text-h); }
 
-select::-webkit-listbox, select::-webkit-calendar-picker-indicator {
-  filter: invert(0.8); cursor: pointer;
-}
-
-select:-moz-focusring {
-  color: transparent; text-shadow: 0 0 0 var(--text-h);
-}
-
 select {
   appearance: auto; -webkit-appearance: auto;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 12px center;
   padding-right: 32px; background-color: var(--social-bg);
-}
-
-select option:hover, select option:focus, select option:active, select option:checked {
-  background: var(--accent-bg); color: var(--accent);
-}
-
-@media (prefers-color-scheme: dark) {
-  select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23aaa' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  }
 }
 
 .toast-container {
@@ -1058,151 +988,8 @@ select option:hover, select option:focus, select option:active, select option:ch
 }
 
 /* =============================================================================
-   9. SAMPLER EDITOR SPECIFIC STYLES
+   9. ACTION MENU STYLES
    ============================================================================= */
-
-.sampler-param-item {
-    display: flex;
-    align-items: stretch;
-    gap: 2px;
-    padding: 8px;
-    border-radius: 6px;
-    background: transparent;
-    border: 2px solid transparent;
-    transition: all 0.2s;
-    opacity: 1;
-}
-
-.sampler-param-item.dragging {
-    background: var(--accent-bg);
-    border: 2px dashed var(--accent);
-    opacity: 0.5;
-}
-
-.sampler-param-item.disabled-item {
-    opacity: 0.5;
-}
-
-.sampler-drag-handle {
-    cursor: grab;
-    opacity: 0.3;
-    font-size: 0.8rem;
-    padding: 4px 6px;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.2s;
-    margin-left: -20px; 
-    margin-right: 0; 
-    min-width: 24px;
-    flex-shrink: 0;
-}
-
-.sampler-enable-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    user-select: none;
-    flex-shrink: 0;
-    height: 28px;
-}
-
-.sampler-checkbox {
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
-    border: 2px solid var(--border);
-    background: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-    flex-shrink: 0;
-}
-
-.sampler-checkbox.checked {
-    border-color: var(--accent);
-    background: var(--accent);
-}
-
-.sampler-label {
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: var(--text-h);
-    opacity: 0.5;
-    transition: all 0.2s;
-}
-
-.sampler-label.enabled {
-    color: var(--accent);
-    opacity: 1;
-}
-
-.stop-pattern-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    border-radius: 6px;
-    background: transparent;
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.stop-pattern-item.selected {
-    background: var(--accent-bg);
-    border-color: var(--accent);
-}
-
-.stop-pattern-checkbox {
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    border: 2px solid var(--border);
-    background: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.2s;
-}
-
-.stop-pattern-checkbox.checked {
-    border-color: var(--accent);
-    background: var(--accent);
-}
-
-.stop-pattern-name {
-    font-size: 0.8rem;
-    font-weight: bold;
-    color: var(--text-h);
-}
-
-.stop-pattern-desc {
-    font-size: 0.7rem;
-    opacity: 0.6;
-    color: var(--text-h);
-}
-
-.stop-pattern-code {
-    font-size: 0.65rem;
-    font-family: monospace;
-    opacity: 0.5;
-    color: var(--text-h);
-    margin-top: 2px;
-    word-break: break-all;
-}
-
-.editor-input.disabled {
-    background: var(--social-bg);
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* --- Action Menu Styles --- */
 .action-menu-container {
   position: fixed;
   background: var(--bg);
@@ -1321,7 +1108,7 @@ select option:hover, select option:focus, select option:active, select option:ch
 }
 
 /* =============================================================================
-   CINEMATIC MODE: Forced Centering & Layering (FIXED SCROLLING)
+   CINEMATIC MODE: FIXED CLICKABILITY & LOGIC
    ============================================================================= */
 
 .mode-cinematic {
@@ -1334,6 +1121,7 @@ select option:hover, select option:focus, select option:active, select option:ch
   height: 100vh;
 }
 
+/* ✅ 1. Central Avatar - CLICKABLE NOW */
 .cinematic-stage {
   position: absolute;
   top: 50%;
@@ -1346,8 +1134,12 @@ select option:hover, select option:focus, select option:active, select option:ch
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  pointer-events: none;
-  z-index: 0;
+  
+  /* CRITICAL FIX: Enable clicks and set Z-Index above chat history bg but below bubbles */
+  pointer-events: auto; 
+  cursor: pointer;
+  z-index: 5; 
+  
   transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
   opacity: 0;
   filter: blur(25px) brightness(0.2) grayscale(1);
@@ -1360,36 +1152,43 @@ select option:hover, select option:focus, select option:active, select option:ch
   transform: translate(-50%, -50%) scale(1.0);
 }
 
+/* Hover effect to indicate clickability */
+.cinematic-stage:hover .cinematic-avatar-img {
+  transform: scale(1.02);
+  filter: brightness(1.1);
+}
+
 .cinematic-avatar-img {
   object-fit: contain;
   width: 100%;
   height: 100%;
   max-height: none;
   max-width: none;
+  /* Allow clicks */
+  pointer-events: auto; 
   mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  transition: transform 0.3s ease, filter 0.3s ease;
 }
 
+/* ✅ 2. Chat History - Higher Z-Index so it sits ON TOP of avatar */
 .mode-cinematic .chat-history {
   display: block; 
   flex: 1;
   width: 100%;
   max-width: 100%;
   padding: 60px 20px 20px 20px;
-  z-index: 10;
+  z-index: 10; /* Must be higher than cinematic-stage (5) */
+  position: relative; 
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
   mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
+  pointer-events: auto;
 }
 
-.cinematic-spacer {
-  display: block;
-  min-height: calc(100vh - 200px); 
-  width: 100%;
-}
-
+/* ✅ 3. Message Rows */
 .mode-cinematic .message-row {
   max-width: 100% !important;
   margin-left: 0 !important;
@@ -1403,6 +1202,7 @@ select option:hover, select option:focus, select option:active, select option:ch
   opacity: 1;
   filter: none;
   transform: scale(1);
+  pointer-events: auto;
 }
 
 .mode-cinematic .message-row.message-left,
@@ -1415,6 +1215,7 @@ select option:hover, select option:focus, select option:active, select option:ch
   display: none !important;
 }
 
+/* ✅ 4. Bubble Overrides */
 .mode-cinematic .message-bubble {
   border-top-left-radius: 18px !important;
   border-top-right-radius: 18px !important;
@@ -1431,7 +1232,8 @@ select option:hover, select option:focus, select option:active, select option:ch
   padding: 24px 32px;
   text-align: left;
   position: relative;
-  z-index: 1;
+  z-index: 11; /* Above stage */
+  pointer-events: auto;
 }
 
 .cinematic-bubble-header {
@@ -1448,7 +1250,7 @@ select option:hover, select option:focus, select option:active, select option:ch
   letter-spacing: 2px;
 }
 
-/* Input Area - CINEMATIC TRANSPARENCY */
+/* Input Area */
 .mode-cinematic .input-wrapper {
   align-self: center;
   width: 100%;
@@ -1461,6 +1263,7 @@ select option:hover, select option:focus, select option:active, select option:ch
   flex-shrink: 0;
   padding-top: 10px;
   box-shadow: none;
+  pointer-events: auto;
 }
 
 .mode-cinematic .input-area {
@@ -1536,12 +1339,14 @@ select option:hover, select option:focus, select option:active, select option:ch
   max-width: 80%;
 }
 
-/* Cinematic Header Animation Overrides - FIXED BORDER */
+/* Cinematic Header */
 .mode-cinematic .app-header {
   background: transparent !important;
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid transparent !important; /* Force border to be invisible */
+  border-bottom: 1px solid transparent !important;
   padding: 10px 20px;
+  z-index: 50;
+  pointer-events: auto;
 }
 
 .mode-cinematic .context-bar {

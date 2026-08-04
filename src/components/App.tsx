@@ -179,44 +179,56 @@ function App() {
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
   // ✅ Refined Observer: Strictly Bottom-Focused
-    // ✅ Simplified Observer: Only for Avatar Tracking
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
       setCenterAvatar(null);
       return;
     }
 
-  const options = {
-    root: chatHistoryRef.current,
-    threshold: [0.5, 0.8, 1.0],
-    // Bias towards the bottom so the avatar matches the clearest message
-    rootMargin: '-10% 0px -60% 0px', 
-  };
+    const options = {
+      root: chatHistoryRef.current,
+      threshold: [0.5, 0.8, 1.0],
+      rootMargin: '-10% 0px -60% 0px', 
+    };
 
-  const observer = new IntersectionObserver((entries) => {
-    const mostVisible = entries.reduce((prev, current) => {
-      return (prev.intersectionRatio > current.intersectionRatio) ? prev : current;
-    });
+    const observer = new IntersectionObserver((entries) => {
+      const mostVisible = entries.reduce((prev, current) => {
+        return (prev.intersectionRatio > current.intersectionRatio) ? prev : current;
+      });
 
-    if (mostVisible && mostVisible.intersectionRatio > 0.5) {
-      const messageId = mostVisible.target.getAttribute('data-message-id');
-      const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
-      
-      if (msg && msg.character) {
-        setCenterAvatar(msg.character);
+      if (mostVisible && mostVisible.intersectionRatio > 0.5) {
+        const messageId = mostVisible.target.getAttribute('data-message-id');
+        const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
         
-        // Optional: Add a subtle 'active' class just for scaling if desired
-        document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
-        (mostVisible.target as HTMLElement).classList.add('is-active');
+        if (msg && msg.character) {
+          // Default: Set avatar to the speaker
+          let avatarToShow = msg.character;
+
+          // ✅ LOGIC FIX: If protagonist is speaking, show the person they replied to
+          if (msg.character.id === currentCharacter.id) {
+            const prevMessage = chatData.chatMessageHistory[chatData.chatMessageHistory.indexOf(msg) - 1];
+            if (prevMessage && prevMessage.character.id !== currentCharacter.id) {
+              avatarToShow = prevMessage.character;
+            } else {
+              // If no previous message or previous was also protagonist, hide avatar or keep default?
+              // Let's hide it if there's no one to talk to yet
+              avatarToShow = null; 
+            }
+          }
+
+          setCenterAvatar(avatarToShow);
+          
+          document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+          (mostVisible.target as HTMLElement).classList.add('is-active');
+        }
       }
-    }
-  }, options);
+    }, options);
 
-  const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
-  messages.forEach((msg) => observer.observe(msg));
+    const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
+    messages.forEach((msg) => observer.observe(msg));
 
-  return () => observer.disconnect();
-}, [viewMode, chatData?.chatMessageHistory.length]);
+    return () => observer.disconnect();
+  }, [viewMode, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
@@ -579,24 +591,28 @@ function App() {
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
         
-        {/* ✅ Central Avatar (No Text) */}
-        {viewMode === 'cinematic' && (
-          <div className={`cinematic-stage ${centerAvatar ? 'active' : ''}`}>
-            {centerAvatar && (
-              <img 
-                src={getCharacterImageUrl(centerAvatar.image) || ''} 
-                alt={centerAvatar.name} 
-                className="cinematic-avatar-img"
-                onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
-              />
-            )}
+        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
+        {viewMode === 'cinematic' && centerAvatar && (
+          <div 
+            className={`cinematic-stage active`}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar);
+            }}
+            title="Click character to interject action"
+          >
+            <img 
+              src={getCharacterImageUrl(centerAvatar.image) || ''} 
+              alt={centerAvatar.name} 
+              className="cinematic-avatar-img"
+              onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+            />
           </div>
         )}
 
         <header className="app-header">
           <div className="header-content">
             <div className="header-top">
-              {/* Left Side: Title */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                 {isEditingTitle ? (
                   <input 
@@ -637,7 +653,6 @@ function App() {
                 )}
               </div>
               
-              {/* Right Side: Unified Control Group (Toggle LEFT of Stats) */}
               <div className="header-controls-group">
                   <button 
                     onClick={toggleViewMode} 
@@ -680,7 +695,6 @@ function App() {
 
             return (
               <React.Fragment key={message.id}>
-                {/* ✅ Row is now Flex Centered via CSS */}
                 <div 
                   className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`}
                   data-message-id={message.id}
@@ -850,7 +864,8 @@ function App() {
            className="action-menu-container"
            style={{
              left: `${actionMenuTarget.x + 10}px`,
-             top: `${actionMenuTarget.y}px`
+             top: `${actionMenuTarget.y}px`,
+             zIndex: 9999
            }}
          >
            <div className="action-menu-header">
