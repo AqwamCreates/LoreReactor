@@ -1,18 +1,18 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData } from '../types';
+import type { Character, ChatData, BudgetStrategy } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
+import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { v4 as uuidv4 } from 'uuid';
 
-const engine = new LargeLanguageModelInferenceEngine();
+const baseEngine = new LargeLanguageModelInferenceEngine();
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-// ✅ Helper to convert File to Base64
 const convertFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -56,6 +56,8 @@ export function useChatSession() {
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
+    const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
+
     const [stats, setStats] = useState({
         numberOfCacheInvalidations: 0,
         numberOfRequests: 0,
@@ -65,6 +67,14 @@ export function useChatSession() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
+
+    // ✅ Inject Toast Context directly here or pass it down if preferred
+    // Since this is a hook, we assume the component using it has access to Toasts via context
+    // But to keep it clean, we will return a handler that the App can use, 
+    // OR we import useToast here if your project structure allows hooks inside hooks files.
+    // For simplicity, let's assume we can import useToast here since it's a React hook file.
+    import { useToast } from '../context/ToastContext';
+    const { addToast } = useToast(); 
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
@@ -87,16 +97,15 @@ export function useChatSession() {
         character: Character, 
         signal: AbortSignal, 
         onToken?: (text: string) => void,
-        userImagesBase64?: string[] // ✅ Accept user images
+        userImagesBase64?: string[],
+        strategy?: BudgetStrategy | null
     ): Promise<ChatData | null> => {
+        
         let imageData: string | null = null;
         if (character.image) {
             const url = getCharacterImageUrl(character.image);
             if (url) imageData = await getImageBase64(url);
         }
-
-        // ✅ Pass user images to request builder
-        const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
 
         const pricing: ModelPricing = {
             cacheHitPerMillion: 0, 
@@ -105,25 +114,67 @@ export function useChatSession() {
         };
 
         try {
-            const rawText = await engine.generateStream(requestBody, { signal } as AbortController, {
-                onToken: (stats) => {
-                    setGenerationSpeed(stats.msPerToken);
-                    if (onToken) onToken(stats.fullText);
-                },
-                onFinish: (responseStats) => {
-                    const promptTokens = responseStats.promptTokens || 0;
-                    const completionTokens = responseStats.completionTokens || 0;
-                    const isCacheMiss = responseStats.cacheMiss || false;
-                    const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+            let rawText: string;
 
+            if (strategy) {
+                const strategyEngine = new BudgetStrategyEngine(strategy);
+                const wrappedCallbacks = onToken ? {
+                    onToken: (stats: any) => {
+                        setGenerationSpeed(stats.msPerToken);
+                        onToken(stats.fullText);
+                    }
+                } : undefined;
+
+                rawText = await strategyEngine.generateStream(
+                    data,
+                    character,
+                    { signal } as AbortController,
+                    wrappedCallbacks,
+                    userImagesBase64
+                );
+
+                if (strategyEngine.currentCost > 0) {
                     setStats(prev => ({
+                        ...prev,
                         numberOfRequests: prev.numberOfRequests + 1,
-                        numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                        totalCost: prev.totalCost + costResult.totalCost,
-                        costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                        totalCost: prev.totalCost + strategyEngine.currentCost,
                     }));
                 }
-            });
+
+            } else {
+                const requestBody = await import('../hooks/chatLogic').then(m => m.prepareRequestBody(data, character, imageData, userImagesBase64));
+                
+                const modelContext = character.sampler?.associatedModel ? {
+                    apiKey: character.sampler.associatedModel.apiKey,
+                    backend: character.sampler.associatedModel.backend,
+                    modelPath: character.sampler.associatedModel.model
+                } : undefined;
+
+                rawText = await baseEngine.generateStream(
+                    requestBody,
+                    { signal } as AbortController,
+                    {
+                        onToken: (stats) => {
+                            setGenerationSpeed(stats.msPerToken);
+                            if (onToken) onToken(stats.fullText);
+                        },
+                        onFinish: (responseStats) => {
+                            const promptTokens = responseStats.promptTokens || 0;
+                            const completionTokens = responseStats.completionTokens || 0;
+                            const isCacheMiss = responseStats.cacheMiss || false;
+                            const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+
+                            setStats(prev => ({
+                                numberOfRequests: prev.numberOfRequests + 1,
+                                numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                                totalCost: prev.totalCost + costResult.totalCost,
+                                costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                            }));
+                        }
+                    },
+                    modelContext
+                );
+            }
             
             if (!rawText) return null;
 
@@ -132,21 +183,33 @@ export function useChatSession() {
             return addMessageToChatData(data, aiMessage);
         } catch (error) {
             const err = error as Error;
+            
+            // ✅ Handle Abort Silently
             if (err.name === 'AbortError') return null;
 
-            const isNetworkError = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_ABORTED') || err.message.includes('502') || err.message.includes('503') || err.message.includes('504');
+            // ✅ Replace Alert with Toast
+            const isNetworkError = err.message.includes('Failed to fetch') || 
+                                   err.message.includes('NetworkError') ||
+                                   err.message.includes('ERR_ABORTED') ||
+                                   err.message.includes('502') ||
+                                   err.message.includes('503') ||
+                                   err.message.includes('504');
 
             if (isNetworkError) {
-                alert("⚠️ Backend Connection Failed\n\nCould not connect to the AI backend.\nPlease ensure your server is running.");
+                addToast(
+                    "⚠️ Backend Connection Failed. Could not connect to the AI server. Please check if your backend (KoboldCPP/llama.cpp) is running.", 
+                    "error"
+                );
                 setIsLoading(false);
                 return null;
             }
 
+            // ✅ Generic Error Toast
             console.error("Inference failed:", err);
-            alert(`❌ Inference Error\n\n${err.message}`);
+            addToast(`❌ Inference Error: ${err.message}`, "error");
             return null;
         }
-    }, []);
+    }, [addToast]); // ✅ Added addToast to dependencies
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter || isLoading) return;
@@ -165,7 +228,7 @@ export function useChatSession() {
             setGenerationSpeed(0);
             
             try {
-                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText);
+                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, activeStrategy);
                 if (!controller.signal.aborted && result) {
                     await saveRawChatData(result);
                     setChatData(result);
@@ -184,7 +247,7 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -207,13 +270,13 @@ export function useChatSession() {
         };
         try {
             const controller = new AbortController();
-            await handleServerResponse(data, silentCharacter, controller.signal, undefined);
+            await handleServerResponse(data, silentCharacter, controller.signal, undefined, undefined, activeStrategy);
             setIsInitialImageProcessed(true);
         } catch (error) {
             console.warn("Silent image processing failed:", error);
             setIsInitialImageProcessed(true);
         }
-    }, [handleServerResponse]);
+    }, [handleServerResponse, activeStrategy]);
 
     useEffect(() => {
         const init = async () => {
@@ -284,7 +347,10 @@ export function useChatSession() {
         saveRawChatData(newChat).catch(err => console.error("Failed to save new chat:", err));
     }, []);
 
-    // ✅ UPDATED: Accept files array
+    const setActiveBudgetStrategy = useCallback((strategy: BudgetStrategy | null) => {
+        setActiveStrategy(strategy);
+    }, []);
+
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoading) return;
         
@@ -296,7 +362,6 @@ export function useChatSession() {
         setGenerationSpeed(0);
         
         try {
-            // ✅ Convert files to Base64 if present
             let userImagesBase64: string[] | undefined = undefined;
             if (files && files.length > 0) {
                 userImagesBase64 = await Promise.all(files.map(f => convertFileToBase64(f)));
@@ -307,7 +372,7 @@ export function useChatSession() {
             setChatData(tempData);
             
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-                handleServerResponse(data, char, signal, onToken, userImagesBase64);
+                handleServerResponse(data, char, signal, onToken, userImagesBase64, activeStrategy);
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             if (updatedData) {
@@ -322,7 +387,7 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
 
     const regenerateLastAI = useCallback(async () => {
         if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
@@ -347,7 +412,7 @@ export function useChatSession() {
             for (const responder of responders) {
                 if (controller.signal.aborted) break;
                 setStreamingCharacter(responder);
-                const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText);
+                const result = await handleServerResponse(currentData, responder, controller.signal, setStreamingText, undefined, activeStrategy);
                 if (!result) break;
                 currentData = result;
             }
@@ -362,7 +427,7 @@ export function useChatSession() {
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse]);
+    }, [chatData, isLoading, handleServerResponse, activeStrategy]);
 
     const regenerateLastProtagonist = useCallback(async () => {
         if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
@@ -382,7 +447,7 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
         try {
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => handleServerResponse(data, char, signal, onToken);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             if (!controller.signal.aborted && updatedData) {
                 await saveRawChatData(updatedData);
@@ -395,7 +460,7 @@ export function useChatSession() {
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse]);
+    }, [chatData, isLoading, handleServerResponse, activeStrategy]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = 4096; 
@@ -406,6 +471,7 @@ export function useChatSession() {
         generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,
+        setActiveBudgetStrategy,
         numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,
