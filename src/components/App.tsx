@@ -51,7 +51,7 @@ function App() {
   const { 
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
-    regenerateLastAI, regenerateLastProtagonist, messageEndRef,
+    regenerateFromMessage, messageEndRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel
@@ -756,8 +756,9 @@ function App() {
                 .map(p => p.id)
             );
 
+            // Check if this is the LAST message of its type in the entire history
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
-            const isLastProtag = isProtagonist;
+            const isLastProtag = isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => m.character.id === currentCharacter?.id);
             
             const isEditing = editingId === message.id;
             const isMassStart = message.id === massDeleteId;
@@ -809,16 +810,29 @@ function App() {
                           {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                             <>
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                              {(isLastAI || isLastProtag) && (
+                              
+                              {/* ✅ FIX: Pass message.id to regenerateFromMessage */}
+                              {!isProtagonist && (
                                 <button 
                                   type="button" 
-                                  onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} 
+                                  onClick={() => regenerateFromMessage(message.id, 'ai')} 
                                   className="toolbar-btn"
-                                  title={isLastAI ? "Regenerate Response" : "Regenerate Your Input"}
+                                  title="Regenerate this Response"
                                 >
                                   ↻
                                 </button>
                               )}
+                              {isProtagonist && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => regenerateFromMessage(message.id, 'user')} 
+                                  className="toolbar-btn"
+                                  title="Regenerate Your Input"
+                                >
+                                  ↻
+                                </button>
+                              )}
+
                               <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
                               <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
                               <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
@@ -908,7 +922,7 @@ function App() {
           <div className="input-area">
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
             <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Add characters to the chat and start chatting as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
+            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Chat as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
             <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
           </div>
         </div>
