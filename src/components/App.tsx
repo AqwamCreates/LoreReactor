@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -13,10 +13,13 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { loadInterjectableActions, saveInterjectableActions, type InterjectableAction } from '../hooks/storage';
 
-import type { Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy } from '../types';
+import type { 
+  Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
+  ChatData, RawChatData, Extension, RawExtension 
+} from '../types';
+
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
-import { saveRawChatData, loadRawChatData } from '../hooks/storage';
-import { getCharacterImageUrl } from '../hooks/storage';
+import { saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
@@ -33,6 +36,7 @@ interface NavButtonProps {
   label: string;
   onClick: () => void;
 }
+
 function NavButton({ icon, label, onClick }: NavButtonProps) {
   return (
     <button type="button" className="nav-btn" onClick={onClick}>
@@ -43,18 +47,14 @@ function NavButton({ icon, label, onClick }: NavButtonProps) {
 }
 
 function App() {
+  // --- Session & Managers ---
   const { 
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
     regenerateLastAI, regenerateLastProtagonist, messageEndRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
-    numberOfCacheInvalidations,
-    numberOfRequests,
-    totalCost,
-    costWithoutCacheMisses,
-    sendActionAndGetResponse,
-    setActiveBudgetStrategy,
-    setSelectedGlobalModel
+    numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
+    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -68,6 +68,7 @@ function App() {
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
+  // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isContextListMode, setIsContextListMode] = useState(false);
@@ -85,16 +86,17 @@ function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   
-  // ✅ Action Menu State
+  // --- Action Menu State ---
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [actions, setActions] = useState<InterjectableAction[]>([]);
 
-  // ✅ Cinematic View State
+  // --- Cinematic View State ---
   const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
+  // --- Modals ---
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
   const sampleModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
@@ -105,6 +107,7 @@ function App() {
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   
+  // --- Input & Editing State ---
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -113,6 +116,8 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
+
+  // --- Effects ---
 
   useEffect(() => {
     loadInterjectableActions().then(setActions);
@@ -128,6 +133,15 @@ function App() {
     const loadData = async () => {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
+      
+      const storedDefaultContexts = localStorage.getItem('defaultContextIds');
+      if (storedDefaultContexts) {
+        try {
+          setDefaultContextIds(JSON.parse(storedDefaultContexts));
+        } catch (e) {
+          console.error("Failed to parse default contexts", e);
+        }
+      }
     };
     loadData();
   }, []);
@@ -154,9 +168,11 @@ function App() {
   }, [chatData?.parentChatDataId]);
 
   useEffect(() => {
-      if(defaultCharacterId) {
+      if(defaultCharacterId && allCharacters.length > 0) {
           const char = allCharacters.find(c => c.id === defaultCharacterId);
-          if(char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
+          if(char && currentCharacter?.id !== char.id) {
+              setCurrentCharacter(char);
+          }
       }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
@@ -178,7 +194,7 @@ function App() {
     }
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
-  // ✅ Refined Observer: Strictly Bottom-Focused
+  // ✅ Refined Observer: Strictly Bottom-Focused (Cinematic Mode)
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
       setCenterAvatar(null);
@@ -201,10 +217,8 @@ function App() {
         const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
         
         if (msg && msg.character) {
-          // Default: Set avatar to the speaker
           let avatarToShow: Character | null = msg.character;
 
-          // ✅ LOGIC FIX: If protagonist is speaking, show the person they replied to
           if (msg.character.id === currentCharacter?.id) {
             const currentIndex = chatData.chatMessageHistory.indexOf(msg);
             const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
@@ -212,7 +226,6 @@ function App() {
             if (prevMessage && prevMessage.character?.id !== currentCharacter?.id) {
               avatarToShow = prevMessage.character;
             } else {
-              // If no previous message or previous was also protagonist, hide avatar
               avatarToShow = null; 
             }
           }
@@ -229,28 +242,31 @@ function App() {
     messages.forEach((msg) => observer.observe(msg));
 
     return () => observer.disconnect();
-  }, [viewMode, chatData?.chatMessageHistory.length, currentCharacter?.id]);
+  }, [viewMode, chatData?.chatMessageHistory.length, currentCharacter?.id, chatData]);
 
-  const handleSwitchChat = (id: string) => {
+  // --- Handlers ---
+
+  const handleSwitchChat = useCallback((id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) { 
       setChatData(selected); 
-      setCurrentCharacter(selected.protagonist);
+      if(selected.protagonist) setCurrentCharacter(selected.protagonist);
       refreshChatList();
       setIsChatListOpen(false);
     }
-  };
+  }, [allChats, setChatData, setCurrentCharacter, refreshChatList]);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     let charToUse = currentCharacter;
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
+    
     if (charToUse) { 
       startNewChat(charToUse);
       refreshChatList();
       setIsChatListOpen(false);
     }
-  };
+  }, [currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -258,7 +274,7 @@ function App() {
     const success = await deleteChatFromList(id);
     if (success) {
       addToast("Chat session deleted.", "info");
-      if (chatData?.id === id) startNewChat(currentCharacter!);
+      if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter);
     } else {
       addToast("Failed to delete chat.", "error");
     }
@@ -274,9 +290,7 @@ function App() {
     }
   };
 
-  const handleOpenCharacterManager = () => {
-    setIsCharListOpen(true);
-  };
+  const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
@@ -287,12 +301,18 @@ function App() {
     const currentIds = chatData.participants.map(p => p.id);
     let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
-    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
+    
+    // Ensure protagonist is always in participants list
+    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
+        newParticipants.unshift(chatData.protagonist);
+    }
     
     const updatedChat = { ...chatData, participants: newParticipants };
     setChatData(updatedChat);
     
-    if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
+    if (!newIds.includes(currentCharacter?.id)) {
+        setCurrentCharacter(updatedChat.protagonist);
+    }
     addToast("Participants updated (Session Only).", "info");
   };
 
@@ -300,8 +320,11 @@ function App() {
     if (!chatData) return;
     const char = allCharacters.find(c => c.id === charId);
     if (!char) return;
+    
     const updatedChat = { ...chatData, protagonist: char };
-    if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
+    if (!updatedChat.participants.find(p => p.id === charId)) {
+        updatedChat.participants = [char, ...updatedChat.participants];
+    }
     
     setChatData(updatedChat);
     setCurrentCharacter(char);
@@ -309,7 +332,9 @@ function App() {
   };
 
   const handleToggleDefaultContext = (contextId: string) => {
-    let newIds = defaultContextIds.includes(contextId) ? defaultContextIds.filter(id => id !== contextId) : [...defaultContextIds, contextId];
+    let newIds = defaultContextIds.includes(contextId) 
+        ? defaultContextIds.filter(id => id !== contextId) 
+        : [...defaultContextIds, contextId];
     setDefaultContextIds(newIds);
     localStorage.setItem('defaultContextIds', JSON.stringify(newIds));
     addToast("Default contexts updated.", "info");
@@ -318,7 +343,9 @@ function App() {
   const handleToggleChatContext = async (contextId: string) => {
     if (!chatData) return;
     const currentIds = chatData.contexts?.map(i => i.id) || [];
-    let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
+    let newIds = currentIds.includes(contextId) 
+        ? currentIds.filter(id => id !== contextId) 
+        : [...currentIds, contextId];
     const newContexts = allContexts.filter(i => newIds.includes(i.id));
     
     const updatedChat = { ...chatData, contexts: newContexts };
@@ -326,17 +353,33 @@ function App() {
     addToast("Contexts updated (Session Only).", "info");
   };
 
+  // Safe extension handling
+  const getChatExtensions = (): string[] => {
+      if (!chatData) return [];
+      // Try to access extensions via index signature if not strictly typed in state yet
+      const dataWithExtensions = chatData as unknown as { extensions?: { id: string }[] };
+      return dataWithExtensions.extensions?.map(e => e.id) || [];
+  };
+
   const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
+  
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
-    const currentIds = (chatData as any).extensions?.map((e: any) => e.id) || [];
-    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
+    const currentIds = getChatExtensions();
+    let newIds = currentIds.includes(extId) 
+        ? currentIds.filter(id => id !== extId) 
+        : [...currentIds, extId];
+    
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
     
-    const updatedChat = { ...chatData, extensions: newExtensions } as any;
+    // Update state carefully
+    const updatedChat = { ...chatData } as any;
+    updatedChat.extensions = newExtensions;
+    
     setChatData(updatedChat);
     addToast("Extensions updated (Session Only).", "info");
   };
+
   const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
   
   const handleSelectModel = (model: LanguageModel) => {
@@ -371,8 +414,16 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    const updatedChat = { ...chatData, title: newTitle };
-    setChatData(updatedChat);
+    // Create a raw version to save, preserving other fields
+    const updatedChat: RawChatData = {
+        ...chatData,
+        name: newTitle,
+        // Ensure we map complex objects to IDs if saving raw, 
+        // but here we assume setChatData handles the live state and saveRawChatData persists it.
+        // For simplicity in this fix, we cast to RawChatData assuming structure match for name update
+    } as RawChatData;
+    
+    setChatData({ ...chatData, name: newTitle } as ChatData);
     saveRawChatData(updatedChat);
     refreshChatList();
     setIsEditingTitle(false);
@@ -393,8 +444,9 @@ function App() {
       setEditDraft(''); 
       addToast("Message edited.", "success");
     } catch (err) { 
-      if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-        addToast((err as Error).message, "error");
+      const errorMsg = (err as Error).message;
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
       } else {
         addToast("Failed to edit message.", "error");
       }
@@ -408,8 +460,9 @@ function App() {
       setChatData(updated); 
       addToast("Message deleted.", "info");
     } catch (err) { 
-      if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-        addToast((err as Error).message, "error");
+      const errorMsg = (err as Error).message;
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
       } else {
         addToast("Failed to delete message.", "error");
       }
@@ -426,8 +479,9 @@ function App() {
       setMassDeleteId(null); 
       addToast("Messages deleted.", "info");
     } catch (err) { 
-      if ((err as Error).message.includes("branch") || (err as Error).message.includes("stem")) {
-        addToast((err as Error).message, "error");
+      const errorMsg = (err as Error).message;
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
       } else {
         addToast("Failed to delete messages.", "error");
       }
@@ -439,7 +493,7 @@ function App() {
     try { 
       const branchedChat = await branchMessage(chatData, id);
       setChatData(branchedChat);
-      setCurrentCharacter(branchedChat.protagonist);
+      if(branchedChat.protagonist) setCurrentCharacter(branchedChat.protagonist);
       refreshChatList();
       addToast(`Branched to "${branchedChat.name}"`, "success");
     } catch (err) { 
@@ -452,8 +506,11 @@ function App() {
     try {
       const sourceChat = await loadRawChatData(chatData.parentChatDataId);
       if (sourceChat) {
-        setChatData(sourceChat);
-        setCurrentCharacter(sourceChat.protagonist);
+        // Convert RawChatData to ChatData roughly for the session switch
+        // Ideally use a dedicated loader hook, but this works for navigation
+        const fullChat = sourceChat as unknown as ChatData; 
+        setChatData(fullChat);
+        if(fullChat.protagonist) setCurrentCharacter(fullChat.protagonist);
         refreshChatList();
         addToast(`Navigated back to "${sourceChat.name || 'Untitled Chat'}"`, "info");
       } else {
@@ -590,7 +647,10 @@ function App() {
 
   return (
     <>
-      <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
+      <div 
+        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
+        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
+      >
         
         {/* ✅ Central Avatar (Smart Logic + Clickable) */}
         {viewMode === 'cinematic' && centerAvatar && (
@@ -681,14 +741,20 @@ function App() {
 
         <div className="chat-history" ref={chatHistoryRef}>
           {chatData?.chatMessageHistory.map((message, index) => {
-            // ✅ Safety Check: Ensure message.character exists
             if (!message.character) return null;
 
             const isProtagonist = message.character.id === currentCharacter?.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter?.id).map(p => p.id));
+            
+            const aiParticipantIds = new Set(
+              chatData.participants
+                .filter(p => p.id !== currentCharacter?.id)
+                .map(p => p.id)
+            );
+
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isLastProtag = isProtagonist;
+            
             const isEditing = editingId === message.id;
             const isMassStart = message.id === massDeleteId;
             const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
@@ -739,7 +805,16 @@ function App() {
                           {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                             <>
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                              {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
+                              {(isLastAI || isLastProtag) && (
+                                <button 
+                                  type="button" 
+                                  onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} 
+                                  className="toolbar-btn"
+                                  title={isLastAI ? "Regenerate Response" : "Regenerate Your Input"}
+                                >
+                                  ↻
+                                </button>
+                              )}
                               <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
                               <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
                               <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
@@ -769,11 +844,8 @@ function App() {
             );
           })}
           
-          {/* ✅ FIX: Added Avatar Column for Streaming Message in Ladder Mode */}
           {isLoading && streamingCharacter && (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-              
-              {/* Show avatar in Ladder mode if the streaming character is NOT the protagonist */}
               {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
                 <div className="avatar-column">
                   <div style={{ position: 'relative' }}>
@@ -855,7 +927,6 @@ function App() {
         
         {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
         
-        {/* ✅ FIX: Actually render the Sampler Editor Modal when open */}
         {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => setIsSamplerEditorOpen(false)} onSave={(s) => { saveSampler(s); setIsSamplerEditorOpen(false); }} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
         
         {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
@@ -882,7 +953,7 @@ function App() {
         )}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
         
-        {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />)}
+        {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
       </div>
 
       {/* ✅ Floating Action Menu */}
@@ -894,6 +965,7 @@ function App() {
              top: `${actionMenuTarget.y}px`,
              zIndex: 9999
            }}
+           onClick={(e) => e.stopPropagation()} 
          >
            <div className="action-menu-header">
              <span>Interject Action</span>

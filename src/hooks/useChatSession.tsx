@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
+import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
@@ -54,7 +55,6 @@ export function useChatSession() {
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     const [generationSpeed, setGenerationSpeed] = useState<number>(0);
-    // Removed parentChatMessageIds if not needed for this specific logic, but kept for compatibility
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
@@ -139,7 +139,10 @@ export function useChatSession() {
 
             } else {
                 if (!selectedModel) {
-                    addToast("No model selected. Please select a model from the Models list.", "error");
+                    // Only toast if not aborting, to avoid spam during regeneration cancellations
+                    if (!signal.aborted) {
+                        addToast("No model selected. Please select a model from the Models list.", "error");
+                    }
                     setIsLoading(false);
                     return null;
                 }
@@ -178,7 +181,12 @@ export function useChatSession() {
                 );
             }
             
-            if (!rawText) return null;
+            if (!rawText) {
+                if (!signal.aborted) {
+                    console.warn("Generated empty text");
+                }
+                return null;
+            }
 
             const displayText = convertIdsToDisplayNames(rawText, data);
             const aiMessage = createChatMessage(data, character, displayText);
@@ -186,7 +194,6 @@ export function useChatSession() {
         } catch (error) {
             const err = error as Error;
             
-            // ✅ FIX: Handle AbortError by saving partial generation
             if (err.name === 'AbortError') {
                 if (streamingText && streamingText.trim().length > 0) {
                     const displayText = convertIdsToDisplayNames(streamingText, data);
@@ -205,13 +212,17 @@ export function useChatSession() {
                                     err.message.includes('504');
 
             if (isNetworkError) {
-                addToast("⚠️ Backend Connection Failed. Could not connect to the AI server.", "error");
+                if (!signal.aborted) {
+                    addToast("⚠️ Backend Connection Failed. Could not connect to the AI server.", "error");
+                }
                 setIsLoading(false);
                 return null;
             }
 
             console.error("Inference failed:", err);
-            addToast(`❌ Inference Error: ${err.message}`, "error");
+            if (!signal.aborted) {
+                addToast(`❌ Inference Error: ${err.message}`, "error");
+            }
             return null;
         }
     }, [addToast, selectedModel, streamingText]);
@@ -233,8 +244,12 @@ export function useChatSession() {
             setGenerationSpeed(0);
             
             try {
+                // Pass the explicitly updated data to handleServerResponse
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, activeStrategy);
-                if (result) {
+                if (!controller.signal.aborted && result) {
+                    await saveRawChatData(result);
+                    setChatData(result);
+                } else if (controller.signal.aborted && result) {
                     await saveRawChatData(result);
                     setChatData(result);
                 }
@@ -379,61 +394,72 @@ export function useChatSession() {
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
             
-            // Simple direct call, no turn sequence
-            const result = await handleServerResponse(tempData, currentCharacter, controller.signal, setStreamingText, userImagesBase64, activeStrategy);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
+                handleServerResponse(data, char, signal, onToken, userImagesBase64, activeStrategy);
             
-            if (result) {
-                await saveRawChatData(result);
-                setChatData(result);
+            const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
+            
+            if (updatedData) {
+                await saveRawChatData(updatedData);
+                setChatData(updatedData);
+            } else if (!controller.signal.aborted) {
+                addToast("Generation failed to produce output.", "error");
             }
         } catch (err) {
-            if ((err as Error).name !== 'AbortError') console.error("Send failed:", err);
+            if ((err as Error).name !== 'AbortError') {
+                console.error("Send failed:", err);
+                addToast(`Send failed: ${(err as Error).message}`, "error");
+            }
         } finally {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             setIsLoading(false);
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy, addToast]);
 
-    // ✅ SIMPLIFIED REGENERATE: Only regenerates the specific AI message clicked
+    // ✅ FIXED: Regenerate Last AI
     const regenerateLastAI = useCallback(async () => {
-        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
-        
+        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) {
+            if(isLoading) addToast("Already generating...", "info");
+            else addToast("No messages to regenerate.", "info");
+            return;
+        }
+
         const history = chatData.chatMessageHistory;
         
-        // Find the LAST AI message in the history
-        let lastAiIndex = -1;
-        for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].character.id !== chatData.protagonist.id) {
-                lastAiIndex = i;
-                break;
-            }
+        // 1. Find the last message by the Protagonist
+        let trimIndex = history.length;
+        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+            trimIndex--;
         }
 
-        if (lastAiIndex === -1) return; // No AI message found
+        // Safety check
+        if (trimIndex === 0 || trimIndex === history.length) {
+            addToast("Cannot regenerate: No valid turn structure found.", "error");
+            return;
+        }
 
-        const aiMessageToDelete = history[lastAiIndex];
+        // 2. Identify messages to delete
+        const oldMessages = history.slice(trimIndex);
         
-        // Delete ONLY this specific AI message from storage
+        // 3. Delete them from storage immediately
         try { 
-            await deleteRawChatMessage(aiMessageToDelete.id); 
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); 
         } catch (err) { 
-            console.error(err); 
+            console.error("Failed to delete old messages:", err); 
+            addToast("Failed to clean up history.", "error");
+            // Continue anyway, as state will be overwritten
         }
 
-        // Create new history without this specific message
-        const newHistory = [
-            ...history.slice(0, lastAiIndex),
-            ...history.slice(lastAiIndex + 1)
-        ];
-
-        const trimmedData = { 
+        // 4. Create trimmed data state EXPLICITLY
+        const trimmedData: ChatData = { 
             ...chatData, 
-            chatMessageHistory: newHistory, 
+            chatMessageHistory: history.slice(0, trimIndex), 
             lastUpdatedTimestamp: Date.now() 
         };
         
+        // Update UI state immediately so the user sees the deletion
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -442,46 +468,73 @@ export function useChatSession() {
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
-        
-        try {
-            // Regenerate using the SAME character that originally sent the message
-            const characterToRegenerate = aiMessageToDelete.character;
-            
-            const result = await handleServerResponse(
-                trimmedData, 
-                characterToRegenerate, 
-                controller.signal, 
-                setStreamingText, 
-                undefined, 
-                activeStrategy
-            );
 
-            if (result) {
-                await saveRawChatData(result);
-                setChatData(result);
+        try {
+            // 5. Define executor using the EXPLICIT trimmedData context if needed, 
+            // but primarily relying on the arguments passed by runTurnSequence
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
+                // Ensure we use the data passed by the orchestrator (which should be trimmedData initially)
+                return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
+            };
+
+            // Pass trimmedData explicitly as the starting point
+            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
+
+            if (updatedData) {
+                await saveRawChatData(updatedData);
+                setChatData(updatedData);
+            } else if (!controller.signal.aborted) {
+                addToast("Regeneration failed: No output generated.", "error");
+                // Optional: Restore previous state if critical? Usually better to leave trimmed.
             }
         } catch (err) { 
-            if ((err as Error).name !== 'AbortError') console.error(err); 
+            const errorMsg = (err as Error).message;
+            if (errorMsg !== 'AbortError') {
+                console.error("Regeneration failed:", err); 
+                addToast(`Regeneration error: ${errorMsg}`, "error");
+            }
         } finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             setIsLoading(false); 
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse, activeStrategy]);
+    }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
 
-    // Keep regenerateLastProtagonist simple too if needed, or leave as is
+    // ✅ FIXED: Regenerate Last Protagonist
     const regenerateLastProtagonist = useCallback(async () => {
-        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) return;
+        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) {
+            if(isLoading) addToast("Already generating...", "info");
+            else addToast("No messages to regenerate.", "info");
+            return;
+        }
+
         const history = chatData.chatMessageHistory;
         let trimIndex = history.length;
-        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) trimIndex--;
-        if (trimIndex === 0 || trimIndex === history.length) return;
         
+        // Find last protagonist message
+        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
+            trimIndex--;
+        }
+
+        if (trimIndex === 0 || trimIndex === history.length) {
+            addToast("Cannot regenerate: No valid turn structure found.", "error");
+            return;
+        }
+
         const oldMessages = history.slice(trimIndex);
-        try { await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); } catch (err) { console.error(err); }
-        
-        const trimmedData = { ...chatData, chatMessageHistory: history.slice(0, trimIndex), lastUpdatedTimestamp: Date.now() };
+        try { 
+            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); 
+        } catch (err) { 
+            console.error(err); 
+        }
+
+        const trimmedData: ChatData = { 
+            ...chatData, 
+            chatMessageHistory: history.slice(0, trimIndex), 
+            lastUpdatedTimestamp: Date.now() 
+        };
+
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -490,21 +543,32 @@ export function useChatSession() {
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
+
         try {
-            // Direct call instead of runTurnSequence
-            const result = await handleServerResponse(trimmedData, currentCharacter!, controller.signal, setStreamingText, undefined, activeStrategy);
-            if (result) {
-                await saveRawChatData(result);
-                setChatData(result);
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
+                return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
+            };
+
+            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
+
+            if (updatedData) {
+                await saveRawChatData(updatedData);
+                setChatData(updatedData);
+            } else if (!controller.signal.aborted) {
+                addToast("Regeneration failed: No output generated.", "error");
             }
-        } catch (err) { if ((err as Error).name !== 'AbortError') console.error(err); }
-        finally { 
+        } catch (err) { 
+            if ((err as Error).name !== 'AbortError') {
+                console.error(err); 
+                addToast(`Regeneration error: ${(err as Error).message}`, "error");
+            }
+        } finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             setIsLoading(false); 
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
+    }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = 4096; 

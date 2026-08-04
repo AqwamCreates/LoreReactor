@@ -237,7 +237,7 @@
 }
 
 /* =============================================================================
-   3. CHAT HISTORY & MESSAGES (FIXED BOTTOM ALIGNMENT)
+   3. CHAT HISTORY & MESSAGES (FIXED SCROLLING)
    ============================================================================= */
 .chat-history {
   flex: 1;
@@ -252,8 +252,7 @@
   min-height: 0;
   transition: padding 0.4s ease;
   
-  /* ✅ FIX: Forces messages to start from the bottom */
-  justify-content: flex-end; 
+  /* ✅ FIX: Removed justify-content: flex-end for Ladder Mode to allow natural scrolling */
 }
 
 .chat-history::-webkit-scrollbar { display: none; }
@@ -1178,42 +1177,20 @@ select {
 .mode-cinematic .chat-history {
   display: flex; /* Ensure it's flex */
   flex-direction: column;
-  justify-content: flex-end; /* 👈 This pushes content to the bottom */
+  justify-content: flex-end; /* 👈 This pushes content to the bottom ONLY in Cinematic Mode */
   
   flex: 1;
   width: 100%;
   max-width: 100%;
   padding: 60px 20px 20px 20px;
-  z-index: 10;
-  position: relative;
+  z-index: 10; /* Must be higher than cinematic-stage (5) */
+  position: relative; 
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
   mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   pointer-events: none; /* Allow clicks to pass through to avatar */
-}
-
-.mode-cinematic .chat-history > div:last-child {
-  margin-bottom: 0; 
-}
-
-/* Re-enable pointer events for the rows themselves so they are clickable */
-.mode-cinematic .message-row {
-  pointer-events: auto;
-  /* ... keep your existing message-row styles ... */
-  max-width: 100% !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  width: 100%;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: flex-start;
-  margin-bottom: 40px;
-  transition: transform 0.3s ease;
-  opacity: 1;
-  filter: none;
-  transform: scale(1);
 }
 
 /* ✅ 3. Message Rows - Re-enable pointer events for interaction */
