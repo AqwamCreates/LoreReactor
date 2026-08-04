@@ -414,13 +414,9 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    // Create a raw version to save, preserving other fields
     const updatedChat: RawChatData = {
         ...chatData,
         name: newTitle,
-        // Ensure we map complex objects to IDs if saving raw, 
-        // but here we assume setChatData handles the live state and saveRawChatData persists it.
-        // For simplicity in this fix, we cast to RawChatData assuming structure match for name update
     } as RawChatData;
     
     setChatData({ ...chatData, name: newTitle } as ChatData);
@@ -506,8 +502,6 @@ function App() {
     try {
       const sourceChat = await loadRawChatData(chatData.parentChatDataId);
       if (sourceChat) {
-        // Convert RawChatData to ChatData roughly for the session switch
-        // Ideally use a dedicated loader hook, but this works for navigation
         const fullChat = sourceChat as unknown as ChatData; 
         setChatData(fullChat);
         if(fullChat.protagonist) setCurrentCharacter(fullChat.protagonist);
@@ -739,7 +733,16 @@ function App() {
           </div>
         </header>
 
-        <div className="chat-history" ref={chatHistoryRef}>
+        {/* 
+           ✅ FIX: Inline style to force scrollability in Cinematic Mode.
+           The CSS class has pointer-events: none to allow clicking the background,
+           but we must override it here to allow wheel scrolling.
+        */}
+        <div 
+          className="chat-history" 
+          ref={chatHistoryRef}
+          style={viewMode === 'cinematic' ? { pointerEvents: 'auto' } : {}}
+        >
           {chatData?.chatMessageHistory.map((message, index) => {
             if (!message.character) return null;
 
