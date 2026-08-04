@@ -203,7 +203,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
      if (character.systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${character.name}) Prompt: ${character.systemPrompt}${contextStartString}`);
 
 
-    promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
+    //promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
 
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
@@ -213,7 +213,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
             const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
-            historyLines.push(`${turnStartString}Character ${participantId} (${displayName}): ${msg.textContent}${turnEndString}`);
+            historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
         }
         promptLines.push(historyLines.join('\n'));
     }
