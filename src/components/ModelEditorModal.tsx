@@ -93,7 +93,7 @@ const SPEC_TYPE_OPTIONS = [
 ];
 
 // ✅ Cloud backends that require API keys
-const CLOUD_BACKENDS = ['DeepSeek', 'OpenAI', 'Qwen'];
+const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld'];
 
 const getCacheTypes = (backend: string) => {
     switch (backend) {
@@ -235,17 +235,12 @@ export function ModelEditorModal({
         // ✅ Model name is always required
         if (!name.trim()) newErrors.name = 'Model name is required';
         
-        // ✅ Model path OR API key is required depending on backend
+        // ✅ Dynamic Validation based on Backend
         if (isCloudBackend) {
-            // Cloud backend: API key is required, model path is optional
-            if (!apiKey.trim()) newErrors.apiKey = 'API key is required for cloud models';
-            if (!modelPath.trim()) {
-                // Model path is optional for cloud, but show a warning if empty
-                // We'll keep it as an error to ensure users at least know it's optional
-                // But we won't block saving if empty
-            }
+            // Cloud: API Key REQUIRED, Model Path OPTIONAL
+            if (!apiKey.trim()) newErrors.apiKey = 'API key is required';
         } else {
-            // Local backend: Model path is required
+            // Local: Model Path REQUIRED, API Key OPTIONAL
             if (!modelPath.trim()) newErrors.model = 'Model path is required';
         }
         
@@ -255,7 +250,6 @@ export function ModelEditorModal({
 
     const handleSubmit = () => {
         if (!validate()) {
-            // Show error message
             alert("Please fill in all required fields before saving.");
             return;
         }
@@ -304,7 +298,7 @@ export function ModelEditorModal({
             description: description.trim() || undefined,
             backend,
             contextLength: contextLength || 8192,
-            model: modelPath.trim() || undefined, // ✅ Optional for cloud
+            model: modelPath.trim() || undefined,
             mmproj: mmprojPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
@@ -375,13 +369,12 @@ export function ModelEditorModal({
                         </select>
                     </div>
 
-                    {/* Model Path - Required for local, optional for cloud */}
+                    {/* Model Path - Dynamic Asterisk */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">
                             Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
-                            {isCloudBackend && <span style={{ fontSize: '0.65rem', opacity: 0.5, fontWeight: 'normal' }}> (Optional for cloud models)</span>}
                         </label>
-                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder={isCloudBackend ? "/path/to/model.gguf (optional)" : "/path/to/model.gguf"} />
+                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder="/path/to/model.gguf" />
                         {errors.model && <div className="editor-error-message">{errors.model}</div>}
                     </div>
 
@@ -392,11 +385,10 @@ export function ModelEditorModal({
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
-                    {/* ✅ API Key Field - Required for cloud backends */}
+                    {/* API Key Field - Dynamic Asterisk */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">
                             API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
-                            {!isCloudBackend && <span style={{ fontSize: '0.65rem', opacity: 0.5, fontWeight: 'normal' }}> (Optional for local models)</span>}
                         </label>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
@@ -405,7 +397,7 @@ export function ModelEditorModal({
                                 onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }} 
                                 className={`editor-input ${errors.apiKey ? 'error' : ''}`}
                                 style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder={isCloudBackend ? "Enter your API key..." : "API key (optional)"}
+                                placeholder="Enter your API key"
                             />
                             <button
                                 type="button"
@@ -434,11 +426,6 @@ export function ModelEditorModal({
                             </button>
                         </div>
                         {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
-                        {isCloudBackend && (
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.6, marginTop: '4px' }}>
-                                Required for {backend} models. Get one from the provider's website.
-                            </div>
-                        )}
                     </div>
 
                     {/* Main Options */}
@@ -608,7 +595,6 @@ export function ModelEditorModal({
                         <div className="editor-row-full">
                             <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.5, marginTop: '4px', fontStyle: 'italic' }}>💡 These costs will be used to calculate API usage costs. Leave at 0 for local models.</div>
                     </div>
                 </div>
             </div>
