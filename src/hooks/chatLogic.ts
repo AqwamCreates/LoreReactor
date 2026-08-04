@@ -3,15 +3,18 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
-// Apparently tokens like "<" and ">" (without the quotation marks) works quite well!.
+// Apparently tokens like "{" and "}" (without the quotation marks) works quite well!.
+// "{" and "}" (without the quotation marks) is basically common in programming languages. Very often, for a code to work, the syntax must be correct. As a result, there is an implicit assumption that the words must be selected to certain rules in roleplay.
+// "<" and ">" (without the quotation marks) also works nicely.
+// "[" and "]" (without the quotation marks) somewhat works.
 
-const contextStartString = "<"
+const contextStartString = "{"
 
-const contextEndString = ">"
+const contextEndString = "}"
 
-const turnStartString = "<"
+const turnStartString = "{"
 
-const turnEndString = ">"
+const turnEndString = "}"
 
 export function getParticipantId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
