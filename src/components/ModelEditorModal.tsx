@@ -19,6 +19,7 @@ interface ModelSettings {
     ctx_size: number;
     cache_type_k: string;
     cache_type_v: string;
+    cache_type: string; // Combined KV dropdown value
     split_mode: string;
     ik: boolean;
     spec_type: string;
@@ -46,6 +47,7 @@ const DEFAULT_SETTINGS: ModelSettings = {
     ctx_size: 0,
     cache_type_k: 'f16',
     cache_type_v: 'f16',
+    cache_type: 'f16',
     split_mode: 'layer',
     ik: false,
     spec_type: 'none',
@@ -115,6 +117,11 @@ const getCacheTypes = (backend: string) => {
     }
 };
 
+// Helper to sync individual K/V from combined value
+const syncKVFromCombined = (combinedValue: string): { k: string; v: string } => {
+    return { k: combinedValue, v: combinedValue };
+};
+
 export function ModelEditorModal({
     isOpen,
     onClose,
@@ -149,16 +156,9 @@ export function ModelEditorModal({
     });
 
     const isCloudBackend = CLOUD_BACKENDS.includes(backend);
+    const isLlamaCpp = backend === 'Llama.cpp';
 
-    useEffect(() => {
-        const cacheTypes = getCacheTypes(backend);
-        const currentCacheTypeExists = cacheTypes.some(ct => ct.value === settings.cache_type_k);
-        if (!currentCacheTypeExists && cacheTypes.length > 0) {
-            handleSettingChange('cache_type_k', cacheTypes[0].value);
-            handleSettingChange('cache_type_v', cacheTypes[0].value);
-        }
-    }, [backend]);
-
+    // Load existing model data
     useEffect(() => {
         if (isOpen) {
             if (existingModel) {
@@ -178,11 +178,18 @@ export function ModelEditorModal({
 
                 if (existingModel.parameters) {
                     const params = existingModel.parameters;
+                    
+                    // Determine cache values
+                    const cacheK = (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k;
+                    const cacheV = (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v;
+                    const cacheCombined = (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type;
+                    
                     setSettings({
                         gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
                         ctx_size: (params.ctx_size as number) ?? DEFAULT_SETTINGS.ctx_size,
-                        cache_type_k: (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k,
-                        cache_type_v: (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v,
+                        cache_type_k: cacheK,
+                        cache_type_v: cacheV,
+                        cache_type: cacheCombined,
                         split_mode: (params.split_mode as string) ?? DEFAULT_SETTINGS.split_mode,
                         ik: (params.ik as boolean) ?? DEFAULT_SETTINGS.ik,
                         spec_type: (params.spec_type as string) ?? DEFAULT_SETTINGS.spec_type,
@@ -225,8 +232,44 @@ export function ModelEditorModal({
         }
     }, [isOpen, existingModel]);
 
+    // Reset cache types when backend changes
+    useEffect(() => {
+        const cacheTypes = getCacheTypes(backend);
+        if (cacheTypes.length > 0) {
+            const defaultVal = cacheTypes[0].value;
+            if (isLlamaCpp) {
+                // For Llama.cpp, use combined dropdown with default
+                setSettings(prev => ({
+                    ...prev,
+                    cache_type: defaultVal,
+                    cache_type_k: defaultVal,
+                    cache_type_v: defaultVal,
+                }));
+            } else {
+                // For non-Llama.cpp, only use the combined dropdown
+                setSettings(prev => ({
+                    ...prev,
+                    cache_type: defaultVal,
+                    cache_type_k: defaultVal,
+                    cache_type_v: defaultVal,
+                }));
+            }
+        }
+    }, [backend, isLlamaCpp]);
+
     const handleSettingChange = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => {
-        setSettings(prev => ({ ...prev, [key]: value }));
+        setSettings(prev => {
+            const newSettings = { ...prev, [key]: value };
+            
+            // If combined cache_type changes for Llama.cpp, sync K and V
+            if (key === 'cache_type' && isLlamaCpp) {
+                const { k, v } = syncKVFromCombined(value as string);
+                newSettings.cache_type_k = k;
+                newSettings.cache_type_v = v;
+            }
+            
+            return newSettings;
+        });
     };
 
     const validate = (): boolean => {
@@ -250,8 +293,18 @@ export function ModelEditorModal({
         const params: Record<string, unknown> = {};
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
         if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
-        if (settings.cache_type_k !== DEFAULT_SETTINGS.cache_type_k) params.cache_type_k = settings.cache_type_k;
-        if (settings.cache_type_v !== DEFAULT_SETTINGS.cache_type_v) params.cache_type_v = settings.cache_type_v;
+        
+        // Key-Value Cache handling
+        if (isLlamaCpp) {
+            // For Llama.cpp: store individual K and V, plus combined
+            if (settings.cache_type_k !== DEFAULT_SETTINGS.cache_type_k) params.cache_type_k = settings.cache_type_k;
+            if (settings.cache_type_v !== DEFAULT_SETTINGS.cache_type_v) params.cache_type_v = settings.cache_type_v;
+            if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+        } else {
+            // For non-Llama.cpp: only store combined
+            if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+        }
+        
         if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
         if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
@@ -308,7 +361,6 @@ export function ModelEditorModal({
     if (!isOpen) return null;
 
     const cacheTypes = getCacheTypes(backend);
-    const isLlamaCpp = backend === 'Llama.cpp';
     const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
@@ -436,29 +488,61 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
-                    {/* Cache Type Section - Only for Llama.cpp */}
-                    {isLlamaCpp && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">KV Cache Quantization</span>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7, marginBottom: '12px' }}>
-                                Separate quantization for Key and Value caches. Lower = less VRAM, slightly lower quality.
-                            </div>
-                            <div className="editor-row">
-                                <div>
-                                    <label className="editor-label editor-label-small">K Cache Type</label>
-                                    <select value={settings.cache_type_k} onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} className="editor-select">
+                    {/* Cache Type Section */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Key-Value Cache Quantization</span>
+                        {isLlamaCpp ? (
+                            <>
+                                {/* Combined dropdown for Llama.cpp */}
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
+                                    <select 
+                                        value={settings.cache_type} 
+                                        onChange={(e) => handleSettingChange('cache_type', e.target.value)} 
+                                        className="editor-select"
+                                    >
                                         {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">V Cache Type</label>
-                                    <select value={settings.cache_type_v} onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} className="editor-select">
-                                        {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                    </select>
+                                
+                                {/* Individual K and V for Llama.cpp */}
+                                <div className="editor-row">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Key Cache Type</label>
+                                        <select 
+                                            value={settings.cache_type_k} 
+                                            onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} 
+                                            className="editor-select"
+                                        >
+                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Value Cache Type</label>
+                                        <select 
+                                            value={settings.cache_type_v} 
+                                            onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} 
+                                            className="editor-select"
+                                        >
+                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                    </div>
                                 </div>
+                            </>
+                        ) : (
+                            /* Single dropdown for non-Llama.cpp backends */
+                            <div>
+                                <label className="editor-label editor-label-small">Cache Type</label>
+                                <select 
+                                    value={settings.cache_type} 
+                                    onChange={(e) => handleSettingChange('cache_type', e.target.value)} 
+                                    className="editor-select"
+                                >
+                                    {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                </select>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     <div className="editor-section">
                         <span className="editor-section-title">Speculative Decoding</span>
