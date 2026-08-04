@@ -1,6 +1,5 @@
 // src/components/ManagerModal.tsx
 import React from 'react';
-import type { Character, Context, StopPattern, Extension, LanguageModel, BudgetStrategy, ChatData } from '../types';
 import './main.css';
 
 interface ManagerModalProps<T> {
@@ -68,16 +67,27 @@ export function ManagerModal<T extends { id: string; name?: string }>({
         <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
             <h2>{title}</h2>
-            <div className="modal-header-actions">
+            
+            {/* ✅ FIX: Improved Header Actions Layout */}
+            <div className="modal-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button 
                 type="button" 
                 className="create-new-btn" 
-                onClick={onCreateNew} 
+                onClick={(e) => { e.stopPropagation(); onCreateNew(); }} 
                 title={`Create New ${singularTitle}`}
+                style={{ whiteSpace: 'nowrap' }}
                 >
                 ➕ New {singularTitle}
                 </button>
-                <button type="button" className="close-btn" onClick={onClose}>×</button>
+                
+                <button 
+                    type="button" 
+                    className="close-btn" 
+                    onClick={onClose}
+                    style={{ marginLeft: '4px' }}
+                >
+                    ×
+                </button>
             </div>
             </div>
 
@@ -105,13 +115,13 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                         </div>
 
                         {/* ✅ Button Order: Number Order → Star → Delete */}
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
                             
                             {/* 1. Number Order Button (Optional) */}
                             {orderedListMode && onToggleOrder && (
                                 <button
                                 type="button"
-                                onClick={() => onToggleOrder(item.id)}
+                                onClick={(e) => { e.stopPropagation(); onToggleOrder(item.id); }}
                                 className="toolbar-btn"
                                 title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
                                 style={{ 
@@ -124,7 +134,8 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                     fontWeight: 'bold',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: 'center',
+                                    flexShrink: 0
                                 }}
                                 >
                                 {isInCurrentOrder ? orderNumber : '+'}
@@ -135,7 +146,7 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                             {specialActionIcon && onSpecialAction && (
                                 <button
                                 type="button"
-                                onClick={() => onSpecialAction(item.id)}
+                                onClick={(e) => { e.stopPropagation(); onSpecialAction(item.id); }}
                                 className="toolbar-btn"
                                 title={specialActionTooltip?.(item) || "Action"}
                                 style={{ 
@@ -144,7 +155,8 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                     fontSize: '0.85rem',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: 'center',
+                                    flexShrink: 0
                                 }}
                                 >
                                 {isActive ? '⭐' : '☆'}
@@ -158,6 +170,7 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                 onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
                                 className="delete-item-btn"
                                 title={actionLabel}
+                                style={{ flexShrink: 0 }}
                                 >
                                 🗑️
                                 </button>
