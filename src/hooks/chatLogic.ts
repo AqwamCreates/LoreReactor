@@ -3,6 +3,16 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
+// Apparently tokens like "<" and ">" (without the quotation marks) works quite well!.
+
+const contextStartString = "<"
+
+const contextEndString = ">"
+
+const turnStartString = "<"
+
+const turnEndString = ">"
+
 export function getParticipantId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
@@ -146,7 +156,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
 
         if (shouldInject) {
-            if (context.text) promptLines.push(`[Context: ${context.text}]`);
+            if (context.text) promptLines.push(`${contextStartString}${context.text}${contextEndString}`);
             if (context.images && context.images.length > 0 && context.useBase64Encoding) activeContextsForImages.push(context);
         }
     }
@@ -171,7 +181,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     }
 
     const participantId = getParticipantId(character, chatData.participants);
-    if (character.systemPrompt) promptLines.push(`[${participantId} (${character.name} Prompt: ${character.systemPrompt}]`);
+    if (character.systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${character.name}) Prompt: ${character.systemPrompt}${contextStartString}`);
 
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
@@ -182,7 +192,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         if (fatigue) promptLines.push(fatigue);
     }
 
-    promptLines.push(`[This is a conversation between a group of characters. You must reply as ${participantId} (${character.name}). Your response must be in character.]`);
+    promptLines.push(`${contextStartString}This is a conversation between a group of characters. You must reply as ${participantId} (${character.name}). Your response must be in character.${contextEndString}`);
 
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
@@ -192,12 +202,12 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
             const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
-            historyLines.push(`Character ${participantId} (${displayName}): ${msg.textContent}`);
+            historyLines.push(`${turnStartString}Character ${participantId} (${displayName}): ${msg.textContent}${turnEndString}`);
         }
         promptLines.push(historyLines.join('\n'));
     }
 
-    promptLines.push(`${participantId} (${character.name}:`);
+    promptLines.push(`${turnStartString}${participantId} (${character.name}):`);
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
 }
@@ -222,8 +232,8 @@ export async function prepareRequestBody(
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
     
     const finalStops = [
-        '<|end_of_turn|>',
-        '<|start_of_turn|>',
+        turnEndString,
+        turnStartString,
         ...roleplayStops,
         ...(Array.isArray(paramStops) ? paramStops : []),
         ...activeStopPatterns.map(sp => sp.pattern),
