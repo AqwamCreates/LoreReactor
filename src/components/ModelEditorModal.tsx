@@ -76,7 +76,13 @@ const BACKEND_OPTIONS = [
     { value: 'Ollama', label: 'Ollama' },
     { value: 'DeepSeek', label: 'DeepSeek' },
     { value: 'Qwen', label: 'Qwen' },
+    { value: 'Kimi', label: 'Kimi' },
+    { value: 'GLM', label: 'GLM' },
+    { value: 'MiMo', label: 'MiMo' },
     { value: 'OpenAI', label: 'OpenAI' },
+    { value: 'Mistral', label: 'Mistral' },
+    { value: 'Groq', label: 'Groq' },
+    { value: 'YandexGPT', label: 'YandexGPT' },
     { value: 'Other', label: 'Other' },
 ];
 

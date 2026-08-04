@@ -776,8 +776,13 @@ function App() {
           }}>
             <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 'bold', borderBottom: '1px solid var(--border)', opacity: 0.7, background: 'var(--social-bg)', display: 'flex', justifyContent: 'space-between' }}>
               <span>INTERJECT ACTION</span>
+              {/* ✅ FIXED: Close menu THEN open manager */}
               <span 
-                onClick={(e) => { e.stopPropagation(); setIsActionManagerOpen(true); }}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setActionMenuTarget(null); // Close the floating menu
+                  setIsActionManagerOpen(true); // Open the manager modal
+                }}
                 style={{ cursor: 'pointer', opacity: 0.6 }}
                 title="Manage Actions"
               >
