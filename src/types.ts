@@ -72,9 +72,11 @@ export interface RawContext extends RawData  {
 
 }
 
+export type backend = 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | `Kimi` | 'GLM' | 'MiMo' |'OpenAI' | 'Mistral' | 'Groq'| 'YandexGPT' |'OpenRouter' | 'Inworld' | 'Other'
+
 export interface LanguageModel extends ObjectData {
 
-  backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | `Kimi` | 'GLM' | 'MiMo' |'OpenAI' | 'Mistral' | 'Groq'| 'YandexGPT' |'OpenRouter' | 'Inworld' | 'Other';
+  backend?: backend;
   contextLength: number;
   model?: string;
   mmproj?: string;
@@ -88,7 +90,7 @@ export interface LanguageModel extends ObjectData {
 
 export interface RawLanguageModel extends RawData {
 
-  backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | `Kimi` | 'GLM' | 'MiMo' |'OpenAI' | 'Mistral' | 'Groq'| 'Yandex' | 'OpenRouter' | 'Inworld' | 'Other';
+  backend?: backend;
   contextLength: number;
   model?: string;
   mmproj?: string;
