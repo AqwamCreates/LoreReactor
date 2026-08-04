@@ -768,23 +768,61 @@
 }
 
 .editor-checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    user-select: none;
-    font-size: 0.65rem;
-    color: var(--text-h);
-    font-weight: bold;
-    margin: 0;
-    width: 100%;
-    line-height: 1;
+  display: flex;
+  align-items: center; /* Perfect vertical alignment */
+  gap: 10px;           /* Consistent spacing between box and text */
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-h);
+  user-select: none;   /* Prevents highlighting text when clicking rapidly */
+  padding: 4px 0;      /* Adds a little breathing room vertically */
 }
 
+
 .editor-checkbox-input {
-    width: 16px; height: 16px; accent-color: var(--accent);
-    cursor: pointer; margin: 0; flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--bg);
+  margin: 0;
+  padding: 0;
+  display: grid;
+  place-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0; /* Prevents the checkbox from squishing */
 }
+
+.editor-checkbox-label:hover .editor-checkbox-input {
+  border-color: var(--accent);
+  background-color: var(--social-bg);
+}
+
+.editor-checkbox-input:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.editor-checkbox-input:checked::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(1);
+  background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform 0.2s ease;
+}
+
+.editor-checkbox-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 
 .editor-checkbox-label span {
     display: inline-block; line-height: 1; transform: translateY(0);

@@ -67,23 +67,9 @@ const DEFAULT_SETTINGS: ModelSettings = {
 };
 
 const BACKEND_OPTIONS = [
-    { value: 'Llama.cpp', label: 'Llama.cpp' },
-    { value: 'Transformers', label: 'Transformers' },
-    { value: 'ExLlamaV3', label: 'ExLlamaV3' },
-    { value: 'ExLlamaV3 HF', label: 'ExLlamaV3 HF' },
-    { value: 'ExLlamaV2', label: 'ExLlamaV2' },
-    { value: 'TensorRT-LLM', label: 'TensorRT-LLM' },
-    { value: 'Ollama', label: 'Ollama' },
-    { value: 'DeepSeek', label: 'DeepSeek' },
-    { value: 'Qwen', label: 'Qwen' },
-    { value: 'Kimi', label: 'Kimi' },
-    { value: 'GLM', label: 'GLM' },
-    { value: 'MiMo', label: 'MiMo' },
-    { value: 'OpenAI', label: 'OpenAI' },
-    { value: 'Mistral', label: 'Mistral' },
-    { value: 'Groq', label: 'Groq' },
-    { value: 'YandexGPT', label: 'YandexGPT' },
-    { value: 'Other', label: 'Other' },
+    'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2',
+    'TensorRT-LLM', 'Ollama', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo',
+    'OpenAI', 'Mistral', 'Groq', 'YandexGPT', 'Other',
 ];
 
 const SPLIT_MODE_OPTIONS = [
@@ -98,7 +84,6 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
-// ✅ Cloud backends that require API keys
 const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'GLM', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld'];
 
 const getCacheTypes = (backend: string) => {
@@ -138,12 +123,10 @@ export function ModelEditorModal({
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
     const [errors, setErrors] = useState<{ name?: string; model?: string; apiKey?: string }>({});
     
-    // Cost fields
     const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
     const [cacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
     const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
 
-    // ✅ Stop Pattern State (Stores IDs)
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
@@ -154,7 +137,6 @@ export function ModelEditorModal({
         backend: backend,
     });
 
-    // ✅ Check if current backend requires an API key
     const isCloudBackend = CLOUD_BACKENDS.includes(backend);
 
     useEffect(() => {
@@ -179,7 +161,6 @@ export function ModelEditorModal({
                 setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
                 setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
                 
-                // ✅ Load Stop Patterns from parameters
                 const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
                 setSelectedStopPatternIds(storedIds);
 
@@ -237,19 +218,12 @@ export function ModelEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; model?: string; apiKey?: string } = {};
-        
-        // ✅ Model name is always required
         if (!name.trim()) newErrors.name = 'Model name is required';
-        
-        // ✅ Dynamic Validation based on Backend
         if (isCloudBackend) {
-            // Cloud: API Key REQUIRED, Model Path OPTIONAL
             if (!apiKey.trim()) newErrors.apiKey = 'API key is required';
         } else {
-            // Local: Model Path REQUIRED, API Key OPTIONAL
             if (!modelPath.trim()) newErrors.model = 'Model path is required';
         }
-        
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -261,8 +235,6 @@ export function ModelEditorModal({
         }
 
         const params: Record<string, unknown> = {};
-        
-        // Only include non-default values
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
         if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
         if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
@@ -287,15 +259,8 @@ export function ModelEditorModal({
         if (settings.mlock !== DEFAULT_SETTINGS.mlock) params.mlock = settings.mlock;
         if (settings.numa !== DEFAULT_SETTINGS.numa) params.numa = settings.numa;
 
-        // ✅ Save Stop Pattern IDs
-        if (selectedStopPatternIds.length > 0) {
-            params.stop_pattern_ids = selectedStopPatternIds;
-        }
-
-        // ✅ Save API Key
-        if (apiKey.trim()) {
-            params.api_key = apiKey.trim();
-        }
+        if (selectedStopPatternIds.length > 0) params.stop_pattern_ids = selectedStopPatternIds;
+        if (apiKey.trim()) params.api_key = apiKey.trim();
 
         const now = Date.now();
         const model: LanguageModel = {
@@ -330,8 +295,6 @@ export function ModelEditorModal({
 
     const cacheTypes = getCacheTypes(backend);
     const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
-
-    // Helper to get stop pattern object by ID
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
     return (
@@ -339,14 +302,15 @@ export function ModelEditorModal({
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>{existingModel ? 'Edit Model' : 'Create New Model'}</h2>
-                    <div className="editor-modal-actions">
+                    {/* ✅ Fixed Header Actions with Gap */}
+                    <div className="editor-modal-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {backend === 'Llama.cpp' && (
                             <div style={{ fontSize: '0.7rem', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', fontWeight: 'bold' }}>
                                 💾 {displayVRAM} GB
                             </div>
                         )}
                         {existingModel && onDelete && (
-                            <button type="button" className="editor-btn" onClick={handleDelete} style={{ background: 'transparent', color: '#ff4444', border: '1px solid #ff4444' }}>🗑️ Delete</button>
+                            <button type="button" className="editor-btn" onClick={handleDelete} style={{ borderColor: '#ff4444', color: '#ff4444' }}>🗑️ Delete</button>
                         )}
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingModel ? 'Update' : 'Create'}</button>
@@ -354,48 +318,39 @@ export function ModelEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* Name - Always required */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Llama-3-70B-Instruct" />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
-                    {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Description</label>
                         <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe the model's strengths, use cases, etc." rows={2} />
                     </div>
 
-                    {/* Backend */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Backend</label>
                         <select value={backend} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
-                            {BACKEND_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                            {BACKEND_OPTIONS.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                         </select>
                     </div>
 
-                    {/* Model Path - Dynamic Asterisk */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">
-                            Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
-                        </label>
+                        <label className="editor-label">Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
                         <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder="/path/to/model.gguf" />
                         {errors.model && <div className="editor-error-message">{errors.model}</div>}
                     </div>
 
-                    {/* MMProj Path */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">MMProj Path</label>
                         <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/mmproj.gguf" />
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
-                    {/* API Key Field - Dynamic Asterisk */}
                     <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">
-                            API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}
-                        </label>
+                        <label className="editor-label">API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
+                        {/* ✅ Fixed Input Group with Gap */}
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
                                 type={showApiKey ? 'text' : 'password'}
@@ -408,25 +363,28 @@ export function ModelEditorModal({
                             <button
                                 type="button"
                                 onClick={() => setShowApiKey(!showApiKey)}
+                                className="editor-btn" 
                                 style={{ 
-                                    padding: '4px 8px', 
-                                    fontSize: '1rem',
-                                    background: 'transparent',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    color: 'var(--text-h)',
-                                    opacity: 0.7,
-                                    transition: 'opacity 0.2s',
-                                    width: '36px',
-                                    height: '36px',
+                                    padding: '6px 10px', 
+                                    width: 'auto', 
+                                    minWidth: '40px',
+                                    color: 'var(--accent)', // ✅ Changed from var(--text-h) to var(--accent)
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: 'center',
+                                    background: 'transparent', // Ensure background is transparent so only icon shows
+                                    border: '1px solid var(--border)', // Keep the border for consistency
+                                    transition: 'all 0.2s'
                                 }}
                                 title={showApiKey ? 'Hide API key' : 'Show API key'}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'var(--accent-bg)';
+                                    e.currentTarget.style.borderColor = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                }}
                             >
                                 {showApiKey ? '🙈' : '👁️'}
                             </button>
@@ -434,9 +392,9 @@ export function ModelEditorModal({
                         {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
                     </div>
 
-                    {/* Main Options */}
                     <div className="editor-section">
                         <span className="editor-section-title">Main Options</span>
+                        {/* ✅ Use editor-row for consistent spacing */}
                         <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">GPU Layers</label>
@@ -472,10 +430,9 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
-                    {/* Speculative Decoding */}
                     <div className="editor-section">
                         <span className="editor-section-title">Speculative Decoding</span>
-                        <div className="editor-row-full">
+                        <div className="editor-row-full" style={{ marginBottom: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Draft Model</label>
                                 <input type="text" value={settings.draft_model} onChange={(e) => handleSettingChange('draft_model', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/draft/model.gguf" />
@@ -505,7 +462,6 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
-                    {/* Other Options */}
                     <div className="editor-section">
                         <span className="editor-section-title">Other Options</span>
                         <div className="editor-row">
@@ -520,30 +476,25 @@ export function ModelEditorModal({
                             <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
                             <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
                         </div>
-                        <div className="editor-row-full"><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
-                        <div className="editor-row-full"><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
+                        <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
+                        <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
                         
-                        <div style={{ marginTop: '8px' }}>
+                        {/* ✅ Consistent Checkbox Spacing */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
-                        </div>
-                        <div style={{ marginTop: '8px' }}>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
-                        </div>
-                        <div style={{ marginTop: '8px' }}>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
                         </div>
                     </div>
 
-                    {/* ✅ STOP PATTERNS SECTION */}
                     <div className="editor-section">
                         <span className="editor-section-title">Model Stop Patterns</span>
                         <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
                             These stop patterns will be automatically applied when using this model.
                         </div>
                         
-                        {/* List of Assigned Patterns */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
                             {selectedStopPatternIds.length === 0 && (
                                 <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No stop patterns assigned.</div>
@@ -570,7 +521,6 @@ export function ModelEditorModal({
                             })}
                         </div>
 
-                        {/* Add New Pattern Dropdown */}
                         <div style={{ display: 'flex', gap: '8px' }}>
                             <select 
                                 onChange={(e) => {
@@ -578,7 +528,7 @@ export function ModelEditorModal({
                                     if (val && !selectedStopPatternIds.includes(val)) {
                                         setSelectedStopPatternIds(prev => [...prev, val]);
                                     }
-                                    e.target.value = ""; // Reset dropdown
+                                    e.target.value = "";
                                 }}
                                 className="editor-select"
                                 defaultValue=""
@@ -591,14 +541,13 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
-                    {/* Cost */}
                     <div className="editor-section">
                         <span className="editor-section-title">Cost</span>
                         <div className="editor-row">
                             <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                             <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
-                        <div className="editor-row-full">
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
                             <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
                     </div>
