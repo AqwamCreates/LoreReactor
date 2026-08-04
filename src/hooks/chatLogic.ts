@@ -207,13 +207,21 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
-        for (const msg of chatMessageHistory) {
+        for (const msg of chatMessageHistory) { // Do not remove the participant ID as the names would be unknown in the past text and the ID is the only way to identify people.
             const otherCharacter = msg.character;
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
             const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
-            historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
+            if (isRevealed){
+
+                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
+
+            } else{
+
+                historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${msg.textContent}${turnEndString}`);
+
+            }
         }
         promptLines.push(historyLines.join('\n'));
     }
