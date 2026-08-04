@@ -17,7 +17,8 @@ interface ModelEditorModalProps {
 interface ModelSettings {
     gpu_layers: number;
     ctx_size: number;
-    cache_type: string;
+    cache_type_k: string;
+    cache_type_v: string;
     split_mode: string;
     ik: boolean;
     spec_type: string;
@@ -43,7 +44,8 @@ interface ModelSettings {
 const DEFAULT_SETTINGS: ModelSettings = {
     gpu_layers: -1,
     ctx_size: 0,
-    cache_type: 'fp16',
+    cache_type_k: 'f16',
+    cache_type_v: 'f16',
     split_mode: 'layer',
     ik: false,
     spec_type: 'none',
@@ -88,7 +90,16 @@ const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'GLM', 'OpenAI', 'Mistral', 
 
 const getCacheTypes = (backend: string) => {
     switch (backend) {
-        case 'Llama.cpp': return [{ value: 'fp16', label: 'FP16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
+        case 'Llama.cpp': return [
+            { value: 'f32', label: 'F32' },
+            { value: 'bf16', label: 'BF16' },
+            { value: 'f16', label: 'F16' },
+            { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q5_0', label: 'Q5_0' },
+            { value: 'q5_1', label: 'Q5_1' },
+            { value: 'iq4_nl', label: 'IQ4_NL' },
+            { value: 'q4_1', label: 'Q4_1' },
+            { value: 'q4_0', label: 'Q4_0' },];
         case 'Ollama': return [{ value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
         case 'ExLlamaV3': case 'ExLlamaV3 HF':
             return [{ value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' }, { value: 'q8', label: 'Q8' }, { value: 'q7', label: 'Q7' }, { value: 'q6', label: 'Q6' }, { value: 'q5', label: 'Q5' }, { value: 'q4', label: 'Q4' }, { value: 'q3', label: 'Q3' }, { value: 'q2', label: 'Q2' }, { value: 'q4_q8', label: 'Q4_Q8' }];
@@ -132,7 +143,7 @@ export function ModelEditorModal({
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
-        cacheType: settings.cache_type,
+        cacheType: settings.cache_type_k, // Use K for estimation
         contextSize: settings.ctx_size || 8192,
         backend: backend,
     });
@@ -141,9 +152,10 @@ export function ModelEditorModal({
 
     useEffect(() => {
         const cacheTypes = getCacheTypes(backend);
-        const currentCacheTypeExists = cacheTypes.some(ct => ct.value === settings.cache_type);
+        const currentCacheTypeExists = cacheTypes.some(ct => ct.value === settings.cache_type_k);
         if (!currentCacheTypeExists && cacheTypes.length > 0) {
-            handleSettingChange('cache_type', cacheTypes[0].value);
+            handleSettingChange('cache_type_k', cacheTypes[0].value);
+            handleSettingChange('cache_type_v', cacheTypes[0].value);
         }
     }, [backend]);
 
@@ -169,7 +181,8 @@ export function ModelEditorModal({
                     setSettings({
                         gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
                         ctx_size: (params.ctx_size as number) ?? DEFAULT_SETTINGS.ctx_size,
-                        cache_type: (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type,
+                        cache_type_k: (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k,
+                        cache_type_v: (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v,
                         split_mode: (params.split_mode as string) ?? DEFAULT_SETTINGS.split_mode,
                         ik: (params.ik as boolean) ?? DEFAULT_SETTINGS.ik,
                         spec_type: (params.spec_type as string) ?? DEFAULT_SETTINGS.spec_type,
@@ -237,7 +250,8 @@ export function ModelEditorModal({
         const params: Record<string, unknown> = {};
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
         if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
-        if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+        if (settings.cache_type_k !== DEFAULT_SETTINGS.cache_type_k) params.cache_type_k = settings.cache_type_k;
+        if (settings.cache_type_v !== DEFAULT_SETTINGS.cache_type_v) params.cache_type_v = settings.cache_type_v;
         if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
         if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
@@ -294,6 +308,7 @@ export function ModelEditorModal({
     if (!isOpen) return null;
 
     const cacheTypes = getCacheTypes(backend);
+    const isLlamaCpp = backend === 'Llama.cpp';
     const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
@@ -302,7 +317,6 @@ export function ModelEditorModal({
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>{existingModel ? 'Edit Model' : 'Create New Model'}</h2>
-                    {/* ✅ Fixed Header Actions with Gap */}
                     <div className="editor-modal-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {backend === 'Llama.cpp' && (
                             <div style={{ fontSize: '0.7rem', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', fontWeight: 'bold' }}>
@@ -347,7 +361,6 @@ export function ModelEditorModal({
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
-                        {/* ✅ Fixed Input Group with Gap */}
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
                                 type={showApiKey ? 'text' : 'password'}
@@ -365,12 +378,12 @@ export function ModelEditorModal({
                                     padding: '6px 10px', 
                                     width: 'auto', 
                                     minWidth: '40px',
-                                    color: 'var(--accent)', // ✅ Changed from var(--text-h) to var(--accent)
+                                    color: 'var(--accent)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    background: 'transparent', // Ensure background is transparent so only icon shows
-                                    border: '1px solid var(--border)', // Keep the border for consistency
+                                    background: 'transparent',
+                                    border: '1px solid var(--border)',
                                     transition: 'all 0.2s'
                                 }}
                                 title={showApiKey ? 'Hide API key' : 'Show API key'}
@@ -391,7 +404,6 @@ export function ModelEditorModal({
 
                     <div className="editor-section">
                         <span className="editor-section-title">Main Options</span>
-                        {/* ✅ Use editor-row for consistent spacing */}
                         <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">GPU Layers</label>
@@ -404,28 +416,49 @@ export function ModelEditorModal({
                         </div>
                         <div className="editor-row">
                             <div>
-                                <label className="editor-label editor-label-small">Cache Type</label>
-                                <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
-                                    {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
-                            </div>
-                            <div>
                                 <label className="editor-label editor-label-small">Split Mode</label>
                                 <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
                                     {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
-                        </div>
-                        <div style={{ marginTop: '8px' }}>
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
-                                <span>Use IK Llama.cpp</span>
-                            </label>
+                            <div>
+                                <label className="editor-label editor-label-small">Use IK</label>
+                                <div style={{ paddingTop: '6px' }}>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
+                                        <span>IK Llama.cpp</span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
                             ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
                         </div>
                     </div>
+
+                    {/* Cache Type Section - Only for Llama.cpp */}
+                    {isLlamaCpp && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">KV Cache Quantization</span>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7, marginBottom: '12px' }}>
+                                Separate quantization for Key and Value caches. Lower = less VRAM, slightly lower quality.
+                            </div>
+                            <div className="editor-row">
+                                <div>
+                                    <label className="editor-label editor-label-small">K Cache Type</label>
+                                    <select value={settings.cache_type_k} onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} className="editor-select">
+                                        {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">V Cache Type</label>
+                                    <select value={settings.cache_type_v} onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} className="editor-select">
+                                        {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="editor-section">
                         <span className="editor-section-title">Speculative Decoding</span>
@@ -476,7 +509,6 @@ export function ModelEditorModal({
                         <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
                         <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
                         
-                        {/* ✅ Consistent Checkbox Spacing */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
