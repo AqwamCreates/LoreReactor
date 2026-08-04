@@ -59,7 +59,8 @@ function App() {
     numberOfRequests,
     totalCost,
     costWithoutCacheMisses,
-    sendActionAndGetResponse
+    sendActionAndGetResponse,
+    setActiveBudgetStrategy // ✅ Extracted from hook
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -145,6 +146,16 @@ function App() {
           if(char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
       }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
+
+  // ✅ Sync Active Strategy with Hook
+  useEffect(() => {
+    if (selectedBudgetStrategyId) {
+      const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
+      setActiveBudgetStrategy(strategy || null);
+    } else {
+      setActiveBudgetStrategy(null);
+    }
+  }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
@@ -380,7 +391,6 @@ function App() {
     }
   };
 
-  // ✅ UPDATED: Pass pendingFiles to sendMessage
   const handleSend = () => { 
     if (!inputText.trim() && pendingFiles.length === 0) return; 
     sendMessage(inputText, pendingFiles); 
@@ -645,7 +655,23 @@ function App() {
       {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
       
       {isBudgetStrategyListOpen && (
-        <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={(strategy) => budgetModal.open(strategy)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />
+        <ManagerModal 
+          title="Budget Strategies" 
+          items={allBudgetStrategies} 
+          isOpen={isBudgetStrategyListOpen} 
+          onClose={() => setIsBudgetStrategyListOpen(false)} 
+          onSelect={(strategy) => budgetModal.open(strategy)} 
+          onDelete={budgetModal.handleDelete} 
+          onCreateNew={() => budgetModal.open()} 
+          renderSubtext={renderBudgetStrategySubtext} 
+          emptyMessage="No budget strategies found." 
+          actionLabel="Delete" 
+          orderedListMode={false} 
+          activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+          specialActionIcon="★" 
+          onSpecialAction={handleActivateBudgetStrategy} 
+          specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
+        />
       )}
       {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
       
