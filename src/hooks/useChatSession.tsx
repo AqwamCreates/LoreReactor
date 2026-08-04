@@ -139,7 +139,6 @@ export function useChatSession() {
 
             } else {
                 if (!selectedModel) {
-                    // Only toast if not aborting, to avoid spam during regeneration cancellations
                     if (!signal.aborted) {
                         addToast("No model selected. Please select a model from the Models list.", "error");
                     }
@@ -244,7 +243,6 @@ export function useChatSession() {
             setGenerationSpeed(0);
             
             try {
-                // Pass the explicitly updated data to handleServerResponse
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, activeStrategy);
                 if (!controller.signal.aborted && result) {
                     await saveRawChatData(result);
@@ -393,7 +391,8 @@ export function useChatSession() {
             const userMsg = createChatMessage(chatData, currentCharacter, text);
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
-            
+            await saveRawChatData(tempData);
+
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
                 handleServerResponse(data, char, signal, onToken, userImagesBase64, activeStrategy);
             
@@ -418,48 +417,62 @@ export function useChatSession() {
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy, addToast]);
 
-    // ✅ FIXED: Regenerate Last AI
-    const regenerateLastAI = useCallback(async () => {
-        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) {
+    // ✅ FIXED: Regenerate from a Specific Message ID (Simplified Logic)
+    const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
+        if (!chatData || isLoading) {
             if(isLoading) addToast("Already generating...", "info");
-            else addToast("No messages to regenerate.", "info");
             return;
         }
-
+        
         const history = chatData.chatMessageHistory;
-        
-        // 1. Find the last message by the Protagonist
-        let trimIndex = history.length;
-        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
-            trimIndex--;
-        }
+        const targetIndex = history.findIndex(m => m.id === messageId);
 
-        // Safety check
-        if (trimIndex === 0 || trimIndex === history.length) {
-            addToast("Cannot regenerate: No valid turn structure found.", "error");
+        if (targetIndex === -1) {
+            addToast("Message not found.", "error");
             return;
         }
 
-        // 2. Identify messages to delete
-        const oldMessages = history.slice(trimIndex);
-        
-        // 3. Delete them from storage immediately
-        try { 
-            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); 
-        } catch (err) { 
-            console.error("Failed to delete old messages:", err); 
-            addToast("Failed to clean up history.", "error");
-            // Continue anyway, as state will be overwritten
+        const targetMessage = history[targetIndex];
+        const isTargetAI = targetMessage.character.id !== chatData.protagonist.id;
+
+        let trimIndex: number;
+        let messagesToDelete: ChatMessage[] = [];
+
+        if (type === 'ai' && isTargetAI) {
+            // CASE 1: Regenerating an AI message.
+            // Delete THIS AI message and anything after it.
+            trimIndex = targetIndex;
+            messagesToDelete = history.slice(trimIndex);
+        } else if (type === 'user' && !isTargetAI) {
+            // CASE 2: Regenerating a User message.
+            // KEEP this user message. Delete only responses AFTER it.
+            trimIndex = targetIndex + 1;
+            messagesToDelete = history.slice(trimIndex);
+            
+            // ✅ FIX: Removed the "No subsequent messages" check.
+            // If there are no messages to delete, we simply proceed to generate a NEW response
+            // based on the current history (which ends with this user message).
+        } else {
+            addToast("Mismatched regeneration type.", "error");
+            return;
         }
 
-        // 4. Create trimmed data state EXPLICITLY
+        // Delete from storage if there are messages to delete
+        if (messagesToDelete.length > 0) {
+            try { 
+                await Promise.all(messagesToDelete.map(m => deleteRawChatMessage(m.id))); 
+            } catch (err) { 
+                console.error("Failed to delete old messages:", err); 
+            }
+        }
+
+        // Create trimmed data state
         const trimmedData: ChatData = { 
             ...chatData, 
             chatMessageHistory: history.slice(0, trimIndex), 
             lastUpdatedTimestamp: Date.now() 
         };
         
-        // Update UI state immediately so the user sees the deletion
         setChatData(trimmedData);
         setIsLoading(true);
         setStreamingText("");
@@ -470,14 +483,13 @@ export function useChatSession() {
         abortControllerRef.current = controller;
 
         try {
-            // 5. Define executor using the EXPLICIT trimmedData context if needed, 
-            // but primarily relying on the arguments passed by runTurnSequence
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
-                // Ensure we use the data passed by the orchestrator (which should be trimmedData initially)
                 return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
             };
 
-            // Pass trimmedData explicitly as the starting point
+            // Run the turn sequence starting from the trimmed state
+            // The Orchestrator will see the last message is a User message (in Case 2)
+            // and automatically trigger an AI response.
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
 
             if (updatedData) {
@@ -485,7 +497,6 @@ export function useChatSession() {
                 setChatData(updatedData);
             } else if (!controller.signal.aborted) {
                 addToast("Regeneration failed: No output generated.", "error");
-                // Optional: Restore previous state if critical? Usually better to leave trimmed.
             }
         } catch (err) { 
             const errorMsg = (err as Error).message;
@@ -501,81 +512,12 @@ export function useChatSession() {
         }
     }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
 
-    // ✅ FIXED: Regenerate Last Protagonist
-    const regenerateLastProtagonist = useCallback(async () => {
-        if (!chatData || isLoading || chatData.chatMessageHistory.length === 0) {
-            if(isLoading) addToast("Already generating...", "info");
-            else addToast("No messages to regenerate.", "info");
-            return;
-        }
-
-        const history = chatData.chatMessageHistory;
-        let trimIndex = history.length;
-        
-        // Find last protagonist message
-        while (trimIndex > 0 && history[trimIndex - 1].character.id !== chatData.protagonist.id) {
-            trimIndex--;
-        }
-
-        if (trimIndex === 0 || trimIndex === history.length) {
-            addToast("Cannot regenerate: No valid turn structure found.", "error");
-            return;
-        }
-
-        const oldMessages = history.slice(trimIndex);
-        try { 
-            await Promise.all(oldMessages.map(m => deleteRawChatMessage(m.id))); 
-        } catch (err) { 
-            console.error(err); 
-        }
-
-        const trimmedData: ChatData = { 
-            ...chatData, 
-            chatMessageHistory: history.slice(0, trimIndex), 
-            lastUpdatedTimestamp: Date.now() 
-        };
-
-        setChatData(trimmedData);
-        setIsLoading(true);
-        setStreamingText("");
-        setStreamingCharacter(null);
-        setGenerationSpeed(0);
-        
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        try {
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
-                return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
-            };
-
-            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
-
-            if (updatedData) {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
-            } else if (!controller.signal.aborted) {
-                addToast("Regeneration failed: No output generated.", "error");
-            }
-        } catch (err) { 
-            if ((err as Error).name !== 'AbortError') {
-                console.error(err); 
-                addToast(`Regeneration error: ${(err as Error).message}`, "error");
-            }
-        } finally { 
-            if (abortControllerRef.current === controller) abortControllerRef.current = null; 
-            setIsLoading(false); 
-            setStreamingText(""); 
-            setStreamingCharacter(null); 
-        }
-    }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
-
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = 4096; 
 
     return {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
-        sendMessage, stopGeneration, regenerateLastAI, regenerateLastProtagonist, messageEndRef, parentChatMessageIds,
+        sendMessage, stopGeneration, regenerateFromMessage, messageEndRef, parentChatMessageIds,
         generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,

@@ -237,7 +237,7 @@
 }
 
 /* =============================================================================
-   3. CHAT HISTORY & MESSAGES (FIXED SCROLLING)
+   3. CHAT HISTORY & MESSAGES (FIXED SCROLLING & EDIT SHAPE)
    ============================================================================= */
 .chat-history {
   flex: 1;
@@ -251,8 +251,6 @@
   -ms-overflow-style: none;
   min-height: 0;
   transition: padding 0.4s ease;
-  
-  /* ✅ FIX: Removed justify-content: flex-end for Ladder Mode to allow natural scrolling */
 }
 
 .chat-history::-webkit-scrollbar { display: none; }
@@ -318,6 +316,7 @@
 
 .message-bubble {
   position: relative; 
+  /* ✅ FIX: Consistent Padding defined here */
   padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.5rem, 1.5vw, 1rem); 
   border-radius: 50px;
   font-size: clamp(0.75rem, 1.8vw, 0.875rem);
@@ -328,6 +327,8 @@
   gap: 0.5rem;
   width: 100%;
   box-sizing: border-box;
+  /* Ensure smooth transition for hover effects only, not layout shifts */
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; 
 }
 
 .message-bubble:hover .message-toolbar { opacity: 1; }
@@ -373,18 +374,44 @@
   background: var(--social-bg); border-radius: 4px; border: 1px solid var(--border);
 }
 
+/* ✅ FIX: Edit Mode Layout - No Negative Margins to Prevent Jumping */
 .edit-mode {
-  display: flex; flex-direction: column; gap: 6px;
-  width: 100%; margin: -0.75rem -1rem; padding: 0.75rem 1rem;
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px;
+  width: 100%;
+  /* Remove negative margins that caused shape shifting */
+  margin: 0; 
+  padding: 0; 
 }
 
 .edit-textarea {
-  width: 100%; font-family: inherit; font-size: 0.875rem; line-height: 1.5;
-  padding: 0.5rem; border-radius: 6px; border: 1px solid var(--accent-border);
-  background: var(--bg); color: var(--text-h); outline: none; resize: vertical; box-sizing: border-box;
+  width: 100%; 
+  font-family: inherit; 
+  font-size: inherit; 
+  line-height: inherit;
+  /* Match the bubble's internal spacing roughly, but let it fill width */
+  padding: 4px 0; 
+  border: none;
+  border-bottom: 1px solid var(--accent-border);
+  background: transparent; 
+  color: var(--text-h); 
+  outline: none; 
+  resize: vertical; 
+  box-sizing: border-box;
+  min-height: 3em;
 }
 
-.edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.edit-textarea:focus {
+  border-bottom-color: var(--accent);
+}
+
+.edit-actions { 
+  display: flex; 
+  justify-content: flex-end; 
+  gap: 6px; 
+  margin-top: 4px;
+}
 
 .edit-btn {
   font-size: 0.75rem; padding: 4px 12px; border-radius: 4px;

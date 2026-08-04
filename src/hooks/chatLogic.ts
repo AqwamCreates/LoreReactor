@@ -8,6 +8,8 @@ import { detectName } from './nameDetection';
 // "<" and ">" (without the quotation marks) also works nicely.
 // "[" and "]" (without the quotation marks) somewhat works.
 
+// When you combine this pattern "{ : }" (without the quotation marks), it looks like a JSON-file to be processed.
+
 const contextStartString = "{"
 
 const contextEndString = "}"
