@@ -33,7 +33,7 @@ export function getFatigueContext(participantId: string, characterName: string, 
     if (ratio > 0.5) return `${initialString} is starting to feel slightly winded, but still have plenty of energy to speak.${contextEndString}`;
     if (ratio > 0.3) return `${initialString} is somewhat exhausted, but somewhat have the energy to speak.${contextEndString}`;
     if (ratio > 0.1) return `${initialString} is quite drained and barely have the energy to speak.${contextEndString}`;
-    return `${initialString}You have no energy left to do anything.${contextEndString}`;
+    return `${initialString} have no energy left to do anything.${contextEndString}`;
 }
 
 export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
