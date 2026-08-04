@@ -15,7 +15,7 @@ import { loadInterjectableActions, saveInterjectableActions, type InterjectableA
 
 import type { 
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
-  ChatData, RawChatData 
+  ChatData, RawChatData, Extension, RawExtension 
 } from '../types';
 
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
@@ -58,6 +58,7 @@ function App() {
   } = useChatSession();
 
   const { addToast } = useToast();
+
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
@@ -90,13 +91,9 @@ function App() {
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [actions, setActions] = useState<InterjectableAction[]>([]);
 
-  // --- Cinematic View State & Sync Logic ---
+  // --- Cinematic View State ---
   const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
-  
-  // ✅ SYNC STATE: Tracks which message the user is currently looking at
-  const [visibleMessageId, setVisibleMessageId] = useState<string | null>(null);
-  
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   // --- Modals ---
@@ -127,16 +124,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (actions.length > 0) saveInterjectableActions(actions);
+    if (actions.length > 0) {
+      saveInterjectableActions(actions);
+    }
   }, [actions]);
 
   useEffect(() => {
     const loadData = async () => {
       const storedDefaultChar = localStorage.getItem('defaultCharacterId');
       if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
+      
       const storedDefaultContexts = localStorage.getItem('defaultContextIds');
       if (storedDefaultContexts) {
-        try { setDefaultContextIds(JSON.parse(storedDefaultContexts)); } catch (e) { console.error(e); }
+        try {
+          setDefaultContextIds(JSON.parse(storedDefaultContexts));
+        } catch (e) {
+          console.error("Failed to parse default contexts", e);
+        }
       }
     };
     loadData();
@@ -147,9 +151,18 @@ function App() {
       if (chatData?.parentChatDataId) {
         try {
           const sourceChat = await loadRawChatData(chatData.parentChatDataId);
-          setBranchSourceTitle(sourceChat ? (sourceChat.name || 'Untitled Chat') : null);
-        } catch (err) { setBranchSourceTitle(null); }
-      } else { setBranchSourceTitle(null); }
+          if (sourceChat) {
+            setBranchSourceTitle(sourceChat.name || 'Untitled Chat');
+          } else {
+            setBranchSourceTitle(null);
+          }
+        } catch (err) {
+          console.error("Failed to load branch source:", err);
+          setBranchSourceTitle(null);
+        }
+      } else {
+        setBranchSourceTitle(null);
+      }
     };
     loadBranchSource();
   }, [chatData?.parentChatDataId]);
@@ -157,7 +170,9 @@ function App() {
   useEffect(() => {
       if(defaultCharacterId && allCharacters.length > 0) {
           const char = allCharacters.find(c => c.id === defaultCharacterId);
-          if(char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
+          if(char && currentCharacter?.id !== char.id) {
+              setCurrentCharacter(char);
+          }
       }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
@@ -165,49 +180,60 @@ function App() {
     if (selectedBudgetStrategyId) {
       const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
       setActiveBudgetStrategy(strategy || null);
-    } else { setActiveBudgetStrategy(null); }
+    } else {
+      setActiveBudgetStrategy(null);
+    }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
     if (selectedModelId) {
       const model = allModels.find(m => m.id === selectedModelId);
       setSelectedGlobalModel(model || null);
-    } else { setSelectedGlobalModel(null); }
+    } else {
+      setSelectedGlobalModel(null);
+    }
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
-  // ✅ SYNC OBSERVER: Tracks what the user is seeing
+  // ✅ Refined Observer: Strictly Bottom-Focused (Cinematic Mode)
   useEffect(() => {
-    if (!chatHistoryRef.current || !chatData) return;
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
+      setCenterAvatar(null);
+      return;
+    }
 
     const options = {
       root: chatHistoryRef.current,
       threshold: [0.5, 0.8, 1.0],
-      rootMargin: '-20% 0px -20% 0px', // Focus on the middle 60% of the screen
+      rootMargin: '-10% 0px -60% 0px', 
     };
 
     const observer = new IntersectionObserver((entries) => {
-      const mostVisible = entries.reduce((prev, current) => 
-        (prev.intersectionRatio > current.intersectionRatio) ? prev : current
-      );
+      const mostVisible = entries.reduce((prev, current) => {
+        return (prev.intersectionRatio > current.intersectionRatio) ? prev : current;
+      });
 
       if (mostVisible && mostVisible.intersectionRatio > 0.5) {
-        const id = mostVisible.target.getAttribute('data-message-id');
-        if (id) {
-          setVisibleMessageId(id);
-          
-          // Update Cinematic Avatar if in cinematic mode
-          if (viewMode === 'cinematic') {
-            const msg = chatData.chatMessageHistory.find(m => m.id === id);
-            if (msg && msg.character) {
-              let avatarToShow: Character | null = msg.character;
-              if (msg.character.id === currentCharacter?.id) {
-                const idx = chatData.chatMessageHistory.indexOf(msg);
-                const prev = idx > 0 ? chatData.chatMessageHistory[idx - 1] : null;
-                avatarToShow = (prev && prev.character?.id !== currentCharacter?.id) ? prev.character : null;
-              }
-              setCenterAvatar(avatarToShow);
+        const messageId = mostVisible.target.getAttribute('data-message-id');
+        const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
+        
+        if (msg && msg.character) {
+          let avatarToShow: Character | null = msg.character;
+
+          if (msg.character.id === currentCharacter?.id) {
+            const currentIndex = chatData.chatMessageHistory.indexOf(msg);
+            const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
+            
+            if (prevMessage && prevMessage.character?.id !== currentCharacter?.id) {
+              avatarToShow = prevMessage.character;
+            } else {
+              avatarToShow = null; 
             }
           }
+
+          setCenterAvatar(avatarToShow);
+          
+          document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+          (mostVisible.target as HTMLElement).classList.add('is-active');
         }
       }
     }, options);
@@ -218,22 +244,8 @@ function App() {
     return () => observer.disconnect();
   }, [viewMode, chatData?.chatMessageHistory.length, currentCharacter?.id, chatData]);
 
-  // ✅ SCROLL SYNC HANDLER: Moves the view when mode changes
-  useEffect(() => {
-    if (!visibleMessageId || !chatHistoryRef.current) return;
-    
-    // Small delay to allow DOM to render the new mode
-    const timer = setTimeout(() => {
-      const target = chatHistoryRef.current?.querySelector(`[data-message-id="${visibleMessageId}"]`);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [viewMode, visibleMessageId]);
-
   // --- Handlers ---
+
   const handleSwitchChat = useCallback((id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (selected) { 
@@ -248,6 +260,7 @@ function App() {
     let charToUse = currentCharacter;
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
+    
     if (charToUse) { 
       startNewChat(charToUse);
       refreshChatList();
@@ -262,28 +275,44 @@ function App() {
     if (success) {
       addToast("Chat session deleted.", "info");
       if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter);
-    } else { addToast("Failed to delete chat.", "error"); }
+    } else {
+      addToast("Failed to delete chat.", "error");
+    }
   };
 
   const handleSetDefaultCharacter = (charId: string) => {
     setDefaultCharacterId(charId);
     localStorage.setItem('defaultCharacterId', charId);
     const char = allCharacters.find(c => c.id === charId);
-    if (char) { setCurrentCharacter(char); addToast(`Default character set to ${char.name}`, "info"); }
+    if (char) {
+      setCurrentCharacter(char);
+      addToast(`Default character set to ${char.name}`, "info");
+    }
   };
 
   const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
-    if (charId === chatData.protagonist.id) { addToast("Cannot remove the protagonist.", "error"); return; }
+    if (charId === chatData.protagonist.id) { 
+      addToast("Cannot remove the protagonist.", "error"); 
+      return; 
+    }
     const currentIds = chatData.participants.map(p => p.id);
     let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
-    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
+    
+    // Ensure protagonist is always in participants list
+    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
+        newParticipants.unshift(chatData.protagonist);
+    }
+    
     const updatedChat = { ...chatData, participants: newParticipants };
     setChatData(updatedChat);
-    if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
+    
+    if (!newIds.includes(currentCharacter?.id)) {
+        setCurrentCharacter(updatedChat.protagonist);
+    }
     addToast("Participants updated (Session Only).", "info");
   };
 
@@ -291,15 +320,21 @@ function App() {
     if (!chatData) return;
     const char = allCharacters.find(c => c.id === charId);
     if (!char) return;
+    
     const updatedChat = { ...chatData, protagonist: char };
-    if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
+    if (!updatedChat.participants.find(p => p.id === charId)) {
+        updatedChat.participants = [char, ...updatedChat.participants];
+    }
+    
     setChatData(updatedChat);
     setCurrentCharacter(char);
     addToast("Protagonist switched (Session Only).", "info");
   };
 
   const handleToggleDefaultContext = (contextId: string) => {
-    let newIds = defaultContextIds.includes(contextId) ? defaultContextIds.filter(id => id !== contextId) : [...defaultContextIds, contextId];
+    let newIds = defaultContextIds.includes(contextId) 
+        ? defaultContextIds.filter(id => id !== contextId) 
+        : [...defaultContextIds, contextId];
     setDefaultContextIds(newIds);
     localStorage.setItem('defaultContextIds', JSON.stringify(newIds));
     addToast("Default contexts updated.", "info");
@@ -308,14 +343,20 @@ function App() {
   const handleToggleChatContext = async (contextId: string) => {
     if (!chatData) return;
     const currentIds = chatData.contexts?.map(i => i.id) || [];
-    let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
+    let newIds = currentIds.includes(contextId) 
+        ? currentIds.filter(id => id !== contextId) 
+        : [...currentIds, contextId];
     const newContexts = allContexts.filter(i => newIds.includes(i.id));
-    setChatData({ ...chatData, contexts: newContexts });
+    
+    const updatedChat = { ...chatData, contexts: newContexts };
+    setChatData(updatedChat);
     addToast("Contexts updated (Session Only).", "info");
   };
 
+  // Safe extension handling
   const getChatExtensions = (): string[] => {
       if (!chatData) return [];
+      // Try to access extensions via index signature if not strictly typed in state yet
       const dataWithExtensions = chatData as unknown as { extensions?: { id: string }[] };
       return dataWithExtensions.extensions?.map(e => e.id) || [];
   };
@@ -325,10 +366,16 @@ function App() {
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
     const currentIds = getChatExtensions();
-    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
+    let newIds = currentIds.includes(extId) 
+        ? currentIds.filter(id => id !== extId) 
+        : [...currentIds, extId];
+    
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
+    
+    // Update state carefully
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = newExtensions;
+    
     setChatData(updatedChat);
     addToast("Extensions updated (Session Only).", "info");
   };
@@ -367,7 +414,15 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    const updatedChat: RawChatData = { ...chatData, name: newTitle } as RawChatData;
+    // Create a raw version to save, preserving other fields
+    const updatedChat: RawChatData = {
+        ...chatData,
+        name: newTitle,
+        // Ensure we map complex objects to IDs if saving raw, 
+        // but here we assume setChatData handles the live state and saveRawChatData persists it.
+        // For simplicity in this fix, we cast to RawChatData assuming structure match for name update
+    } as RawChatData;
+    
     setChatData({ ...chatData, name: newTitle } as ChatData);
     saveRawChatData(updatedChat);
     refreshChatList();
@@ -384,10 +439,17 @@ function App() {
     if (!chatData || !editingId) return;
     try { 
       const updated = await editMessage(chatData, editingId, editDraft); 
-      setChatData(updated); setEditingId(null); setEditDraft(''); addToast("Message edited.", "success");
+      setChatData(updated); 
+      setEditingId(null); 
+      setEditDraft(''); 
+      addToast("Message edited.", "success");
     } catch (err) { 
       const errorMsg = (err as Error).message;
-      addToast(errorMsg.includes("branch") || errorMsg.includes("stem") ? errorMsg : "Failed to edit message.", "error");
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
+      } else {
+        addToast("Failed to edit message.", "error");
+      }
     }
   };
 
@@ -395,10 +457,15 @@ function App() {
     if (!chatData) return;
     try { 
       const updated = await deleteMessage(chatData, id); 
-      setChatData(updated); addToast("Message deleted.", "info");
+      setChatData(updated); 
+      addToast("Message deleted.", "info");
     } catch (err) { 
       const errorMsg = (err as Error).message;
-      addToast(errorMsg.includes("branch") || errorMsg.includes("stem") ? errorMsg : "Failed to delete message.", "error");
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
+      } else {
+        addToast("Failed to delete message.", "error");
+      }
     }
   };
 
@@ -408,10 +475,16 @@ function App() {
     if (idx === -1) return;
     try { 
       const updated = await massDeleteMessages(chatData, idx); 
-      setChatData(updated); setMassDeleteId(null); addToast("Messages deleted.", "info");
+      setChatData(updated); 
+      setMassDeleteId(null); 
+      addToast("Messages deleted.", "info");
     } catch (err) { 
       const errorMsg = (err as Error).message;
-      addToast(errorMsg.includes("branch") || errorMsg.includes("stem") ? errorMsg : "Failed to delete messages.", "error");
+      if (errorMsg.includes("branch") || errorMsg.includes("stem")) {
+        addToast(errorMsg, "error");
+      } else {
+        addToast("Failed to delete messages.", "error");
+      }
     }
   };
 
@@ -423,7 +496,9 @@ function App() {
       if(branchedChat.protagonist) setCurrentCharacter(branchedChat.protagonist);
       refreshChatList();
       addToast(`Branched to "${branchedChat.name}"`, "success");
-    } catch (err) { addToast("Failed to branch chat.", "error"); }
+    } catch (err) { 
+      addToast("Failed to branch chat.", "error");
+    }
   };
 
   const handleNavigateToSource = async () => {
@@ -431,14 +506,18 @@ function App() {
     try {
       const sourceChat = await loadRawChatData(chatData.parentChatDataId);
       if (sourceChat) {
+        // Convert RawChatData to ChatData roughly for the session switch
+        // Ideally use a dedicated loader hook, but this works for navigation
         const fullChat = sourceChat as unknown as ChatData; 
         setChatData(fullChat);
         if(fullChat.protagonist) setCurrentCharacter(fullChat.protagonist);
         refreshChatList();
         addToast(`Navigated back to "${sourceChat.name || 'Untitled Chat'}"`, "info");
-      } else { addToast("Source chat not found.", "error"); }
+      } else {
+        addToast("Source chat not found.", "error");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load source chat:", err);
       addToast("Failed to navigate to source chat.", "error");
     }
   };
@@ -446,21 +525,33 @@ function App() {
   const handleSend = () => { 
     if (!inputText.trim() && pendingFiles.length === 0) return; 
     sendMessage(inputText, pendingFiles); 
-    setInputText(''); setPendingFiles([]); 
+    setInputText(''); 
+    setPendingFiles([]); 
   };
 
   const handleAvatarClick = (e: React.MouseEvent, messageId: string, char: Character) => {
     e.stopPropagation();
-    if (actionMenuTarget?.messageId === messageId) setActionMenuTarget(null);
-    else setActionMenuTarget({ messageId, charId: char.id, x: e.clientX, y: e.clientY });
+    if (actionMenuTarget?.messageId === messageId) {
+      setActionMenuTarget(null);
+    } else {
+      setActionMenuTarget({
+        messageId: messageId,
+        charId: char.id,
+        x: e.clientX,
+        y: e.clientY
+      });
+    }
   };
 
   const incrementActionCount = async (label: string) => {
     setActions(prev => {
       const exists = prev.find(a => a.label === label);
-      const newActions = exists 
-        ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a)
-        : [...prev, { label, count: 1 }];
+      let newActions;
+      if (exists) {
+        newActions = prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a);
+      } else {
+        newActions = [...prev, { label, count: 1 }];
+      }
       saveInterjectableActions(newActions);
       return newActions;
     });
@@ -470,7 +561,8 @@ function App() {
     const trimmed = label.trim();
     if (!trimmed) return;
     if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
-      addToast(`Action "${trimmed}" already exists.`, "info"); return;
+      addToast(`Action "${trimmed}" already exists.`, "info");
+      return;
     }
     const newActions = [...actions, { label: trimmed, count: 0 }];
     setActions(newActions);
@@ -487,9 +579,12 @@ function App() {
   };
 
   const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
-    setActionMenuTarget(null); setMenuSearchQuery('');
+    setActionMenuTarget(null);
+    setMenuSearchQuery('');
     if (!chatData || !currentCharacter) return;
+    
     await incrementActionCount(actionLabel);
+
     const actionText = `*${actionLabel} ${targetChar.name}.*`;
     if (isLoading && streamingCharacter && streamingCharacter.id === targetChar.id) {
       stopGeneration();
@@ -503,7 +598,10 @@ function App() {
   const getFilteredActions = () => {
     return actions
       .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
-      .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.label.localeCompare(b.label);
+      });
   };
 
   const isStemMessage = (messageId: string): boolean => {
@@ -516,7 +614,9 @@ function App() {
 
   const toggleViewMode = () => {
     setViewMode(prev => prev === 'ladder' ? 'cinematic' : 'ladder');
-    // visibleMessageId effect will handle the scroll sync
+    if (viewMode === 'ladder') {
+       setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
   };
 
   if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
@@ -537,21 +637,22 @@ function App() {
     );
   };
 
-  const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
-    </span>
-  );
+  const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => {
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
+      </span>
+    );
+  };
 
   return (
     <>
-      {/* ✅ DYNAMIC CSS FOR SCROLL FIX */}
       <div 
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
         onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
       >
         
-        {/* ✅ Central Avatar */}
+        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
         {viewMode === 'cinematic' && centerAvatar && (
           <div 
             className={`cinematic-stage active`}
@@ -576,50 +677,90 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                 {isEditingTitle ? (
                   <input 
-                    type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} 
-                    onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} 
-                    autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} 
+                    type="text" 
+                    value={editTitleValue} 
+                    onChange={(e) => setEditTitleValue(e.target.value)} 
+                    onBlur={handleSaveTitle} 
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} 
+                    autoFocus 
+                    style={{ 
+                      background: 'var(--social-bg)', 
+                      border: '1px solid var(--accent)', 
+                      color: 'var(--text-h)', 
+                      padding: '4px 8px', 
+                      borderRadius: '4px', 
+                      fontSize: '1rem', 
+                      fontWeight: 'bold', 
+                      flexGrow: 1, 
+                      maxWidth: '200px', 
+                      outline: 'none' 
+                    }} 
                   />
                 ) : (
                   <>
-                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
-                    <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}>✎</span>
+                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                      {chatData?.name || "Untitled Chat"}
+                    </div>
+                    <span 
+                      onClick={handleStartEditTitle} 
+                      title="Edit Title" 
+                      style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} 
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} 
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
+                    >
+                      ✎
+                    </span>
                   </>
                 )}
               </div>
               
               <div className="header-controls-group">
-                  <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode">
+                  <button 
+                    onClick={toggleViewMode} 
+                    className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} 
+                    title="Switch View Mode"
+                  >
                     <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
                     <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
                   </button>
-                  <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+                  
+                  <ChatStatisticsBar 
+                    generationSpeed={generationSpeed} 
+                    messageCount={messageCount} 
+                    tokenCount={tokenCount} 
+                    maximumNumberOfTokens={maximumNumberOfTokens} 
+                    numberOfCacheInvalidations={numberOfCacheInvalidations} 
+                    numberOfRequests={numberOfRequests} 
+                    totalCost={totalCost} 
+                    costWithoutCacheMisses={costWithoutCacheMisses} 
+                  />
               </div>
             </div>
           </div>
         </header>
 
-        {/* 
-           ✅ FIXED SCROLL CONTAINER 
-           We apply the special class ONLY in cinematic mode to enable scrolling 
-           while keeping the layout intact.
-        */}
-        <div 
-          className={`chat-history ${viewMode === 'cinematic' ? 'cinematic-scroll-active' : ''}`} 
-          ref={chatHistoryRef}
-        >
+        <div className="chat-history" ref={chatHistoryRef}>
           {chatData?.chatMessageHistory.map((message, index) => {
             if (!message.character) return null;
+
             const isProtagonist = message.character.id === currentCharacter?.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter?.id).map(p => p.id));
+            
+            const aiParticipantIds = new Set(
+              chatData.participants
+                .filter(p => p.id !== currentCharacter?.id)
+                .map(p => p.id)
+            );
+
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isLastProtag = isProtagonist;
+            
             const isEditing = editingId === message.id;
             const isMassStart = message.id === massDeleteId;
             const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
             const isStem = isStemMessage(message.id);
             const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
+
             const showSideAvatar = viewMode === 'ladder' && !isProtagonist;
 
             return (
@@ -642,9 +783,13 @@ function App() {
                   )}
                   
                   <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                    
                     {viewMode === 'cinematic' && (
-                      <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, index, message.character.id)}</span></div>
+                      <div className="cinematic-bubble-header">
+                        <span>{getDelayedDisplayName(chatData, index, message.character.id)}</span>
+                      </div>
                     )}
+
                     {isEditing ? (
                       <div className="edit-mode">
                         <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
@@ -661,7 +806,14 @@ function App() {
                             <>
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                               {(isLastAI || isLastProtag) && (
-                                <button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn" title={isLastAI ? "Regenerate Response" : "Regenerate Your Input"}>↻</button>
+                                <button 
+                                  type="button" 
+                                  onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} 
+                                  className="toolbar-btn"
+                                  title={isLastAI ? "Regenerate Response" : "Regenerate Your Input"}
+                                >
+                                  ↻
+                                </button>
                               )}
                               <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
                               <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
@@ -698,7 +850,12 @@ function App() {
                 <div className="avatar-column">
                   <div style={{ position: 'relative' }}>
                     {getCharacterImageUrl(streamingCharacter.image) ? (
-                      <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer' }} />
+                      <img 
+                        src={getCharacterImageUrl(streamingCharacter.image)!} 
+                        alt={streamingCharacter.name} 
+                        className="character-avatar" 
+                        style={{ cursor: 'pointer' }} 
+                      />
                     ) : (
                       <div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />
                     )}
@@ -706,6 +863,7 @@ function App() {
                   <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
                 </div>
               )}
+
               <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
                 {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
                 <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
@@ -746,7 +904,7 @@ function App() {
           <div className="input-area">
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
             <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Chat as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
+            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Add characters to the chat and start chatting as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
             <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
           </div>
         </div>
@@ -775,7 +933,23 @@ function App() {
         {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
         
         {isBudgetStrategyListOpen && (
-          <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={(strategy) => budgetModal.open(strategy)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />
+          <ManagerModal 
+            title="Budget Strategies" 
+            items={allBudgetStrategies} 
+            isOpen={isBudgetStrategyListOpen} 
+            onClose={() => setIsBudgetStrategyListOpen(false)} 
+            onSelect={(strategy) => budgetModal.open(strategy)} 
+            onDelete={budgetModal.handleDelete} 
+            onCreateNew={() => budgetModal.open()} 
+            renderSubtext={renderBudgetStrategySubtext} 
+            emptyMessage="No budget strategies found." 
+            actionLabel="Delete" 
+            orderedListMode={false} 
+            activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+            specialActionIcon="★" 
+            onSpecialAction={handleActivateBudgetStrategy} 
+            specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
+          />
         )}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
         
@@ -784,16 +958,52 @@ function App() {
 
       {/* ✅ Floating Action Menu */}
       {actionMenuTarget && (
-         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
-           <div className="action-menu-header"><span>Interject Action</span></div>
-           <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
-           <div className="action-menu-list">
+         <div 
+           className="action-menu-container"
+           style={{
+             left: `${actionMenuTarget.x + 10}px`,
+             top: `${actionMenuTarget.y}px`,
+             zIndex: 9999
+           }}
+           onClick={(e) => e.stopPropagation()} 
+         >
+           <div className="action-menu-header">
+             <span>Interject Action</span>
+           </div>
+           <input 
+              className="action-menu-search"
+              type="text" 
+              value={menuSearchQuery}
+              onChange={(e) => setMenuSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleAddAction(menuSearchQuery);
+                }
+              }}
+              placeholder="Filter or type new & Enter..."
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="action-menu-list">
               {getFilteredActions().map((action) => (
-                <button key={action.label} className="action-menu-item" onClick={(e) => { e.stopPropagation(); const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); if (targetChar) handleActionInterject(action.label, targetChar); }}>
+                <button key={action.label} className="action-menu-item" onClick={(e) => {
+                  e.stopPropagation();
+                  const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
+                  if (targetChar) handleActionInterject(action.label, targetChar);
+                }}>
                   <span>{action.label}</span>
                   <div className="action-meta-container">
                     {action.count > 0 && <span className="action-count-badge">{action.count}</span>}
-                    <button type="button" className="action-delete-btn" onClick={(e) => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Remove action">×</button>
+                    <button
+                      type="button"
+                      className="action-delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAction(action.label);
+                      }}
+                      title="Remove action"
+                    >
+                      ×
+                    </button>
                   </div>
                 </button>
               ))}
