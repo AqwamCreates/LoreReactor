@@ -195,6 +195,7 @@ function App() {
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
   // ✅ Refined Observer: Strictly Bottom-Focused (Cinematic Mode)
+  // This ensures the .is-active class is applied ONLY to the bottom-most visible message
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
       setCenterAvatar(null);
@@ -232,6 +233,7 @@ function App() {
 
           setCenterAvatar(avatarToShow);
           
+          // ✅ CRITICAL: Clean up old active classes and set new one
           document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
           (mostVisible.target as HTMLElement).classList.add('is-active');
         }
@@ -580,17 +582,12 @@ function App() {
     const actionText = `*${actionLabel} ${targetChar.name}.*`;
 
     // 4. CRITICAL FIX: Always Stop Current Generation First
-    // This ensures we don't have two streams fighting, and clears the "isLoading" lock
     if (isLoading) {
       stopGeneration();
-      // Small delay to ensure state updates and abort signal propagates
-      // This is crucial for the "interject while generating" feature
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // 5. Force Trigger Response from Target Character
-    // We bypass the "is it the same character?" check by directly calling sendActionAndGetResponse
-    // which is designed to make a SPECIFIC character speak next.
     try {
       await sendActionAndGetResponse(actionText, targetChar);
     } catch (error) {
@@ -756,7 +753,6 @@ function App() {
                 .map(p => p.id)
             );
 
-            // Check if this is the LAST message of its type in the entire history
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isLastProtag = isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => m.character.id === currentCharacter?.id);
             
@@ -811,7 +807,6 @@ function App() {
                             <>
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                               
-                              {/* ✅ FIX: Pass message.id to regenerateFromMessage */}
                               {!isProtagonist && (
                                 <button 
                                   type="button" 
@@ -1003,7 +998,6 @@ function App() {
             />
             <div className="action-menu-list">
               {getFilteredActions().map((action) => (
-                // FIX: Changed from <button> to <div role="button"> to allow nested buttons
                 <div 
                   key={action.label} 
                   className="action-menu-item" 
@@ -1029,7 +1023,7 @@ function App() {
                       type="button"
                       className="action-delete-btn"
                       onClick={(e) => {
-                        e.stopPropagation(); // Prevent triggering the parent div click
+                        e.stopPropagation();
                         handleDeleteAction(action.label);
                       }}
                       title="Remove action"
