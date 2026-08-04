@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
 import { detectName } from './nameDetection';
 
-// Apparently tokens like "{" and "}" (without the quotation marks) works quite well!.
+// Apparently tokens like "{" and "}" (without the quotation marks) works quite well!
 // "{" and "}" (without the quotation marks) is basically common in programming languages. Very often, for a code to work, the syntax must be correct. As a result, there is an implicit assumption that the words must be selected to certain rules in roleplay.
 // "<" and ">" (without the quotation marks) also works nicely.
 // "[" and "]" (without the quotation marks) somewhat works.
@@ -21,7 +21,7 @@ export function getParticipantId(character: Character, participants: Character[]
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-export function getFatigueContext(characterId: number, participantId: number, characterName: string, currentChatStamina: number, maximumChatStamina: number): string {
+export function getFatigueContext(participantId: string, characterName: string, currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
@@ -112,6 +112,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const sampler = character.sampler;
     const allStopPatterns = sampler?.stopPatterns || [];
     const currentCharacterId = character.id;
+    const characterName = character.name
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -194,7 +195,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
-        const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
+        const fatigue = getFatigueContext(participantId, characterName, currentChatStamina, maximumChatStamina);
         if (fatigue) promptLines.push(fatigue);
     }
 
@@ -226,21 +227,14 @@ export async function prepareRequestBody(
     userImageBase64s?: string[]
 ): Promise<any> {
     const sampler = character.sampler;
-    const participants = chatData.participants;
     
     const { prompt, activeStopPatterns, activeContextsForImages } = buildPromptAndStopPatterns(chatData, character);
-
-    const roleplayStops = participants.flatMap(p => {
-        const id = getParticipantId(p, participants);
-        return [`\n${id}:`, `\n${p.name}:`];
-    });
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
     
     const finalStops = [
         turnEndString,
         turnStartString,
-        ...roleplayStops,
         ...(Array.isArray(paramStops) ? paramStops : []),
         ...activeStopPatterns.map(sp => sp.pattern),
     ];
