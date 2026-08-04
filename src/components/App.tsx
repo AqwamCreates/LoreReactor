@@ -11,6 +11,7 @@ import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
+import { loadInterjectableActions, saveInterjectableActions, type InterjectableAction } from '../hooks/storage';
 
 import type { Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
@@ -26,14 +27,6 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import './main.css';
-
-const ACTION_LABELS = [
-  'Hug', 'Kiss', 'Slap', 'Push Away', 'Touch', 'Grab',
-  'Wave', 'Poke', 'Fish', 'Dance', 'Sing', 'Whisper',
-  'Shout', 'Whistle', 'Cough', 'Sneeze', 'Laugh', 'Cry',
-  'Sigh', 'Stretch', 'Yawn', 'Bow', 'Nod', 'Shake',
-  'Point', 'Wink', 'Blush', 'Frown', 'Smile', 'Grin', 'Pout'
-];
 
 interface NavButtonProps {
   icon: string;
@@ -60,7 +53,8 @@ function App() {
     totalCost,
     costWithoutCacheMisses,
     sendActionAndGetResponse,
-    setActiveBudgetStrategy // ✅ Extracted from hook
+    setActiveBudgetStrategy,
+    setSelectedGlobalModel
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -90,7 +84,15 @@ function App() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
+  
+  // ✅ Action Menu State (Floating)
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
+  const [menuSearchQuery, setMenuSearchQuery] = useState(''); // Separate search for menu
+
+  // ✅ Action Manager State (Modal)
+  const [actions, setActions] = useState<InterjectableAction[]>([]);
+  const [isActionManagerOpen, setIsActionManagerOpen] = useState(false);
+  const [actionSearchQuery, setActionSearchQuery] = useState(''); // Separate search for manager
 
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
@@ -110,6 +112,16 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadInterjectableActions().then(setActions);
+  }, []);
+
+  useEffect(() => {
+    if (actions.length > 0) {
+      saveInterjectableActions(actions);
+    }
+  }, [actions]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -147,7 +159,6 @@ function App() {
       }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
-  // ✅ Sync Active Strategy with Hook
   useEffect(() => {
     if (selectedBudgetStrategyId) {
       const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
@@ -156,6 +167,15 @@ function App() {
       setActiveBudgetStrategy(null);
     }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
+
+  useEffect(() => {
+    if (selectedModelId) {
+      const model = allModels.find(m => m.id === selectedModelId);
+      setSelectedGlobalModel(model || null);
+    } else {
+      setSelectedGlobalModel(null);
+    }
+  }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
@@ -398,19 +418,6 @@ function App() {
     setPendingFiles([]); 
   };
 
-  const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
-    setActionMenuTarget(null);
-    if (!chatData || !currentCharacter) return;
-    const actionText = `*${actionLabel} ${targetChar.name}.*`;
-    if (isLoading && streamingCharacter && streamingCharacter.id === targetChar.id) {
-      stopGeneration();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await sendActionAndGetResponse(actionText, targetChar);
-    } else {
-      sendMessage(actionText);
-    }
-  };
-
   const handleAvatarClick = (e: React.MouseEvent, messageId: string, char: Character) => {
     e.stopPropagation();
     if (actionMenuTarget?.messageId === messageId) {
@@ -425,27 +432,76 @@ function App() {
     }
   };
 
-  const renderActionMenu = (messageId: string, character: Character) => {
-    if (!actionMenuTarget || actionMenuTarget.messageId !== messageId) return null;
-    return (
-      <div style={{
-        position: 'absolute', left: '100%', top: '0', marginLeft: '10px', width: '180px', maxHeight: '400px',
-        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden'
-      }}>
-        <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 'bold', borderBottom: '1px solid var(--border)', opacity: 0.7, background: 'var(--social-bg)', flexShrink: 0 }}>INTERJECT ACTION</div>
-        <div style={{ overflowY: 'auto', maxHeight: '340px', flexShrink: 1 }}>
-          {ACTION_LABELS.map((label) => (
-            <button key={label} type="button" onClick={() => handleActionInterject(label, character)}
-              style={{ background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', padding: '8px 10px', textAlign: 'left', cursor: 'pointer', color: 'var(--text-h)', fontSize: '0.8rem', transition: 'all 0.2s', width: '100%' }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--social-bg)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
+  const incrementActionCount = async (label: string) => {
+    setActions(prev => {
+      const exists = prev.find(a => a.label === label);
+      let newActions;
+      if (exists) {
+        newActions = prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a);
+      } else {
+        newActions = [...prev, { label, count: 1 }];
+      }
+      saveInterjectableActions(newActions);
+      return newActions;
+    });
+  };
+
+  const handleAddAction = (label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
+      addToast(`Action "${trimmed}" already exists.`, "info");
+      return;
+    }
+    const newActions = [...actions, { label: trimmed, count: 0 }];
+    setActions(newActions);
+    saveInterjectableActions(newActions);
+    setActionSearchQuery('');
+    addToast(`Added action "${trimmed}".`, "success");
+  };
+
+  const handleDeleteAction = (label: string) => {
+    const newActions = actions.filter(a => a.label !== label);
+    setActions(newActions);
+    saveInterjectableActions(newActions);
+    addToast(`Removed action "${label}".`, "info");
+  };
+
+  const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
+    setActionMenuTarget(null);
+    setMenuSearchQuery(''); // Clear menu search on use
+    if (!chatData || !currentCharacter) return;
+    
+    await incrementActionCount(actionLabel);
+
+    const actionText = `*${actionLabel} ${targetChar.name}.*`;
+    if (isLoading && streamingCharacter && streamingCharacter.id === targetChar.id) {
+      stopGeneration();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await sendActionAndGetResponse(actionText, targetChar);
+    } else {
+      sendMessage(actionText);
+    }
+  };
+
+  // ✅ Separate Filter/Sort for Floating Menu
+  const getMenuActions = () => {
+    return actions
+      .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.label.localeCompare(b.label);
+      });
+  };
+
+  // ✅ Separate Filter/Sort for Manager Modal
+  const getManagerActions = () => {
+    return actions
+      .filter(a => a.label.toLowerCase().includes(actionSearchQuery.toLowerCase()))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.label.localeCompare(b.label);
+      });
   };
 
   const isStemMessage = (messageId: string): boolean => {
@@ -483,7 +539,7 @@ function App() {
   };
 
   return (
-    <div className="chat-container" onClick={() => setActionMenuTarget(null)}>
+    <div className="chat-container" onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
       <header className="app-header">
         <div className="header-content">
           <div className="header-top">
@@ -527,7 +583,6 @@ function App() {
                       ) : (
                         <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
                       )}
-                      {renderActionMenu(message.id, message.character)}
                     </div>
                     <span className="avatar-name">{displayName}</span>
                   </div>
@@ -586,7 +641,6 @@ function App() {
                 ) : (
                   <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
                 )}
-                {renderActionMenu('streaming-message', streamingCharacter)}
               </div>
               <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
             </div>
@@ -632,6 +686,138 @@ function App() {
           <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
         </div>
       </div>
+
+      {/* ✅ Action Manager Modal */}
+      {isActionManagerOpen && (
+        <div className="modal-overlay" onClick={() => setIsActionManagerOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+              <h2>Manage Actions</h2>
+              <div className="modal-header-actions">
+                 <input
+                  type="text"
+                  value={actionSearchQuery}
+                  onChange={(e) => setActionSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAddAction(actionSearchQuery);
+                    }
+                  }}
+                  placeholder="Search or type new & Enter"
+                  style={{
+                    background: 'var(--social-bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-h)',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.85rem',
+                    width: '200px',
+                    outline: 'none'
+                  }}
+                />
+                <button type="button" className="close-btn" onClick={() => setIsActionManagerOpen(false)}>×</button>
+              </div>
+            </div>
+            <div className="modal-body">
+              <ul className="manager-list">
+                {getManagerActions().length === 0 ? (
+                   <li className="empty-state">No actions found.</li>
+                ) : (
+                  getManagerActions().map((action) => (
+                    <li key={action.label} className="manager-item">
+                      <div className="manager-item-main">
+                        <div className="manager-item-info">
+                          <div className="manager-item-title">
+                            {action.label}
+                            {action.count > 0 && (
+                              <span style={{ fontSize: '0.75rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>
+                                Used {action.count}x
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAction(action.label)}
+                        className="delete-item-btn"
+                        title="Remove action"
+                      >
+                        🗑️
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+              <div style={{ fontSize: '0.75rem', opacity: 0.6, textAlign: 'center', marginTop: '10px' }}>
+                Tip: Type a new name in the search bar above and press <strong>Enter</strong> to add it.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Floating Action Menu (Independent State) */}
+      {actionMenuTarget && (
+          <div style={{
+            position: 'fixed',
+            left: actionMenuTarget.x + 10,
+            top: actionMenuTarget.y,
+            width: '200px',
+            maxHeight: '400px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 2000,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 'bold', borderBottom: '1px solid var(--border)', opacity: 0.7, background: 'var(--social-bg)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>INTERJECT ACTION</span>
+              <span 
+                onClick={(e) => { e.stopPropagation(); setIsActionManagerOpen(true); }}
+                style={{ cursor: 'pointer', opacity: 0.6 }}
+                title="Manage Actions"
+              >
+                ⚙️
+              </span>
+            </div>
+            {/* Optional Mini Search in Menu */}
+            <input 
+                type="text" 
+                value={menuSearchQuery}
+                onChange={(e) => setMenuSearchQuery(e.target.value)}
+                placeholder="Filter..."
+                style={{
+                  background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
+                  padding: '6px 10px', fontSize: '0.75rem', color: 'var(--text-h)', outline: 'none'
+                }}
+                onClick={(e) => e.stopPropagation()}
+            />
+            <div style={{ overflowY: 'auto', flexShrink: 1 }}>
+              {getMenuActions().map((action) => (
+                <button key={action.label} type="button" onClick={(e) => {
+                  e.stopPropagation();
+                  const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
+                  if (targetChar) handleActionInterject(action.label, targetChar);
+                }}
+                  style={{
+                    background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
+                    padding: '8px 10px', textAlign: 'left', cursor: 'pointer', color: 'var(--text-h)',
+                    fontSize: '0.8rem', transition: 'all 0.2s', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--social-bg)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>{action.label}</span>
+                  {action.count > 0 && <span style={{fontSize: '0.65rem', opacity: 0.5, background: 'var(--social-bg)', padding: '2px 4px', borderRadius: '4px'}}>{action.count}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+      )}
 
       {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
       

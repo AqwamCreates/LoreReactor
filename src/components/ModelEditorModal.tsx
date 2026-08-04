@@ -93,7 +93,7 @@ const SPEC_TYPE_OPTIONS = [
 ];
 
 // ✅ Cloud backends that require API keys
-const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld'];
+const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'GLM', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld'];
 
 const getCacheTypes = (backend: string) => {
     switch (backend) {

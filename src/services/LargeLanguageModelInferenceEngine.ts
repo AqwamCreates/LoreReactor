@@ -15,6 +15,7 @@ const CLOUD_ENDPOINTS: Record<string, string> = {
   'DeepSeek': 'https://api.deepseek.com/chat/completions',
   'Qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
   'Kimi': 'https://api.moonshot.ai/v1/chat/completions',
+  'GLM': 'https://api.z.ai/api/paas/v4/chat/completions',
   'OpenAI': 'https://api.openai.com/v1/chat/completions',
   'Mistral': 'https://api.mistral.ai/v1/chat/completions',
   'Groq': 'https://api.groq.com/openai/v1/chat/completions',
