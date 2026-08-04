@@ -769,15 +769,36 @@ function App() {
             );
           })}
           
+          {/* ✅ FIX: Added Avatar Column for Streaming Message in Ladder Mode */}
           {isLoading && streamingCharacter && (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-                <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
-                  {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
-                  <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                    <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                    <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+              
+              {/* Show avatar in Ladder mode if the streaming character is NOT the protagonist */}
+              {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
+                <div className="avatar-column">
+                  <div style={{ position: 'relative' }}>
+                    {getCharacterImageUrl(streamingCharacter.image) ? (
+                      <img 
+                        src={getCharacterImageUrl(streamingCharacter.image)!} 
+                        alt={streamingCharacter.name} 
+                        className="character-avatar" 
+                        style={{ cursor: 'pointer' }} 
+                      />
+                    ) : (
+                      <div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />
+                    )}
                   </div>
+                  <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
                 </div>
+              )}
+
+              <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
+                {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+                <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                  <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                  <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+                </div>
+              </div>
             </div>
           )}
 
