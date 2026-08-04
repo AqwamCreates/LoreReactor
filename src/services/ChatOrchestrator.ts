@@ -74,11 +74,11 @@ export async function runTurnSequence(
         const newCurrentChatStamina = Math.max(0, currentChatStamina - 1);
         staminaMap.set(selectedSpeaker.id, newCurrentChatStamina);
 
-        const msgWithStamina = { ...newMessage, remainingChatStamina: newCurrentChatStamina };
+        const messageWithNewCurrentChatStamina = { ...newMessage, remainingChatStamina: newCurrentChatStamina };
 
         workingData = {
         ...resultData,
-        chatMessageHistory: [...resultData.chatMessageHistory.slice(0, -1), msgWithStamina]
+        chatMessageHistory: [...resultData.chatMessageHistory.slice(0, -1), messageWithNewCurrentChatStamina]
         };
 
         hasActivity = true;
