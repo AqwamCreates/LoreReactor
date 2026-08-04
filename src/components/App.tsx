@@ -647,14 +647,9 @@ function App() {
   };
 
   return (
+    
     <>
-      <div 
-        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
-        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
-      >
-        
-        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
-        {viewMode === 'cinematic' && centerAvatar && (
+    {viewMode === 'cinematic' && centerAvatar && (
           <div 
             className={`cinematic-stage active`}
             onClick={(e) => {
@@ -669,8 +664,15 @@ function App() {
               className="cinematic-avatar-img"
               onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
             />
-          </div>
+        </div>
         )}
+      <div 
+        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
+        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
+      >
+        
+        {/* ✅ Central Avatar (Smart Logic + Clickable) */}
+
 
         <header className="app-header">
           <div className="header-content">
