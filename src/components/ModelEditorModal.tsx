@@ -309,9 +309,6 @@ export function ModelEditorModal({
                                 💾 {displayVRAM} GB
                             </div>
                         )}
-                        {existingModel && onDelete && (
-                            <button type="button" className="editor-btn" onClick={handleDelete} style={{ borderColor: '#ff4444', color: '#ff4444' }}>🗑️ Delete</button>
-                        )}
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingModel ? 'Update' : 'Create'}</button>
                     </div>

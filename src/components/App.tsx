@@ -46,7 +46,7 @@ function App() {
   const { 
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
-    regenerateLastAI, regenerateLastProtagonist, messageEndRef, parentChatMessageIds,
+    regenerateLastAI, regenerateLastProtagonist, messageEndRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations,
     numberOfRequests,
@@ -202,16 +202,17 @@ function App() {
         
         if (msg && msg.character) {
           // Default: Set avatar to the speaker
-          let avatarToShow = msg.character;
+          let avatarToShow: Character | null = msg.character;
 
           // ✅ LOGIC FIX: If protagonist is speaking, show the person they replied to
-          if (msg.character.id === currentCharacter.id) {
-            const prevMessage = chatData.chatMessageHistory[chatData.chatMessageHistory.indexOf(msg) - 1];
-            if (prevMessage && prevMessage.character.id !== currentCharacter.id) {
+          if (msg.character.id === currentCharacter?.id) {
+            const currentIndex = chatData.chatMessageHistory.indexOf(msg);
+            const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
+            
+            if (prevMessage && prevMessage.character?.id !== currentCharacter?.id) {
               avatarToShow = prevMessage.character;
             } else {
-              // If no previous message or previous was also protagonist, hide avatar or keep default?
-              // Let's hide it if there's no one to talk to yet
+              // If no previous message or previous was also protagonist, hide avatar
               avatarToShow = null; 
             }
           }
@@ -680,9 +681,12 @@ function App() {
 
         <div className="chat-history" ref={chatHistoryRef}>
           {chatData?.chatMessageHistory.map((message, index) => {
-            const isProtagonist = message.character.id === currentCharacter.id;
+            // ✅ Safety Check: Ensure message.character exists
+            if (!message.character) return null;
+
+            const isProtagonist = message.character.id === currentCharacter?.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
+            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter?.id).map(p => p.id));
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isLastProtag = isProtagonist;
             const isEditing = editingId === message.id;
@@ -716,7 +720,7 @@ function App() {
                     
                     {viewMode === 'cinematic' && (
                       <div className="cinematic-bubble-header">
-                        <span>{message.character.name}</span>
+                        <span>{getDelayedDisplayName(chatData, index, message.character.id)}</span>
                       </div>
                     )}
 
@@ -768,7 +772,7 @@ function App() {
           {isLoading && streamingCharacter && (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
                 <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
-                  {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{streamingCharacter.name}</span></div>}
+                  {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
                   <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                     <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
                     <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
@@ -777,7 +781,7 @@ function App() {
             </div>
           )}
 
-          {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}.</p></div>)}
+          {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>)}
           <div ref={messageEndRef} style={{ height: '1px' }} />
         </div>
 
@@ -807,7 +811,7 @@ function App() {
           <div className="input-area">
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
             <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
+            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Add characters to the chat and start chatting as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
             <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
           </div>
         </div>
@@ -829,7 +833,9 @@ function App() {
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
         
         {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-        {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={sampleModal.close} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
+        
+        {/* ✅ FIX: Actually render the Sampler Editor Modal when open */}
+        {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => setIsSamplerEditorOpen(false)} onSave={(s) => { saveSampler(s); setIsSamplerEditorOpen(false); }} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
         
         {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
         {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
