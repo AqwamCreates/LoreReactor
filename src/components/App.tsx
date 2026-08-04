@@ -85,14 +85,10 @@ function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   
-  // ✅ Action Menu State (Floating)
+  // ✅ Unified Action Menu State
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
-  const [menuSearchQuery, setMenuSearchQuery] = useState(''); // Separate search for menu
-
-  // ✅ Action Manager State (Modal)
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [actions, setActions] = useState<InterjectableAction[]>([]);
-  const [isActionManagerOpen, setIsActionManagerOpen] = useState(false);
-  const [actionSearchQuery, setActionSearchQuery] = useState(''); // Separate search for manager
 
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
@@ -456,7 +452,7 @@ function App() {
     const newActions = [...actions, { label: trimmed, count: 0 }];
     setActions(newActions);
     saveInterjectableActions(newActions);
-    setActionSearchQuery('');
+    setMenuSearchQuery('');
     addToast(`Added action "${trimmed}".`, "success");
   };
 
@@ -469,7 +465,7 @@ function App() {
 
   const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
     setActionMenuTarget(null);
-    setMenuSearchQuery(''); // Clear menu search on use
+    setMenuSearchQuery('');
     if (!chatData || !currentCharacter) return;
     
     await incrementActionCount(actionLabel);
@@ -484,20 +480,9 @@ function App() {
     }
   };
 
-  // ✅ Separate Filter/Sort for Floating Menu
-  const getMenuActions = () => {
+  const getFilteredActions = () => {
     return actions
       .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
-      .sort((a, b) => {
-        if (b.count !== a.count) return b.count - a.count;
-        return a.label.localeCompare(b.label);
-      });
-  };
-
-  // ✅ Separate Filter/Sort for Manager Modal
-  const getManagerActions = () => {
-    return actions
-      .filter(a => a.label.toLowerCase().includes(actionSearchQuery.toLowerCase()))
       .sort((a, b) => {
         if (b.count !== a.count) return b.count - a.count;
         return a.label.localeCompare(b.label);
@@ -539,335 +524,254 @@ function App() {
   };
 
   return (
-    <div className="chat-container" onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
-      <header className="app-header">
-        <div className="header-content">
-          <div className="header-top">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'flex-start' }}>
-              {isEditingTitle ? (
-                <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '300px', outline: 'none' }} />
-              ) : (
-                <>
-                  <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
-                  <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.5, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}>✎</span>
-                </>
-              )}
-            </div>
-            <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
-          </div>
-        </div>
-      </header>
-
-      <div className="chat-history">
-        {chatData?.chatMessageHistory.map((message, index) => {
-          const isProtagonist = message.character.id === currentCharacter.id;
-          const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-          const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
-          const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
-          const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
-          const isLastProtag = isProtagonist;
-          const isEditing = editingId === message.id;
-          const isMassStart = message.id === massDeleteId;
-          const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-          const isStem = isStemMessage(message.id);
-          const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
-
-          return (
-            <React.Fragment key={message.id}>
-              <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
-                {!isProtagonist && (
-                  <div className="avatar-column">
-                    <div style={{ position: 'relative' }}>
-                      {avatarSrc ? (
-                        <img src={avatarSrc} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
-                      ) : (
-                        <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
-                      )}
-                    </div>
-                    <span className="avatar-name">{displayName}</span>
-                  </div>
+    <>
+      <div className="chat-container" onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
+        <header className="app-header">
+          <div className="header-content">
+            <div className="header-top">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'flex-start' }}>
+                {isEditingTitle ? (
+                  <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '300px', outline: 'none' }} />
+                ) : (
+                  <>
+                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
+                    <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.5, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}>✎</span>
+                  </>
                 )}
-                <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
-                  {isEditing ? (
-                    <div className="edit-mode">
-                      <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
-                      <div className="edit-actions">
-                        <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                        <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+              </div>
+              <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+            </div>
+          </div>
+        </header>
+
+        <div className="chat-history">
+          {chatData?.chatMessageHistory.map((message, index) => {
+            const isProtagonist = message.character.id === currentCharacter.id;
+            const displayName = getDelayedDisplayName(chatData, index, message.character.id);
+            const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
+            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
+            const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
+            const isLastProtag = isProtagonist;
+            const isEditing = editingId === message.id;
+            const isMassStart = message.id === massDeleteId;
+            const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
+            const isStem = isStemMessage(message.id);
+            const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
+
+            return (
+              <React.Fragment key={message.id}>
+                <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
+                  {!isProtagonist && (
+                    <div className="avatar-column">
+                      <div style={{ position: 'relative' }}>
+                        {avatarSrc ? (
+                          <img src={avatarSrc} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
+                        ) : (
+                          <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
+                        )}
                       </div>
+                      <span className="avatar-name">{displayName}</span>
                     </div>
-                  ) : (
-                    <>
-                      <span className="message-text">{message.textContent}</span>
-                      <div className="message-toolbar">
-                        {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
-                          <>
-                            <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                            {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
-                            <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
-                            <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
-                            <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
-                          </>
-                        ) : isMassStart ? (
-                          <div className="mass-delete-confirm-bar">
-                            <span>Delete from here?</span>
-                            <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button>
-                            <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button>
-                          </div>
-                        ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
-                      </div>
-                    </>
                   )}
-                </div>
-              </div>
-              {isJustBeforeBranchOff && (
-                <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}>
-                  <div className="branch-separator-content">
-                    <span className="branch-separator-icon">🌿</span>
-                    <span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span>
-                    <span className="branch-separator-icon">🌿</span>
-                  </div>
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
-        {isLoading && streamingCharacter && (
-          <div className="message-row message-left">
-            <div className="avatar-column">
-              <div style={{ position: 'relative' }}>
-                {streamingCharacter.image ? (
-                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                ) : (
-                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                )}
-              </div>
-              <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
-            </div>
-            <div className="message-bubble bubble-ai">
-              <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
-              </div>
-            </div>
-          </div>
-        )}
-        {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}.</p></div>)}
-        <div ref={messageEndRef} style={{ height: '1px' }} />
-      </div>
-
-      <div className="context-bar">
-        <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
-        <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
-        <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true) }} />
-        <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
-        <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
-        <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
-        <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
-        <NavButton icon="🧩" label="Extensions" onClick={handleOpenExtensions} />
-      </div>
-
-      <div className="input-wrapper">
-        {pendingFiles.length > 0 && (
-          <div className="attachment-strip">
-            {pendingFiles.map((file, idx) => (
-              <div key={`${file.name}-${idx}`} className="attachment-chip">
-                <span className="attachment-name">{file.name}</span>
-                <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
-                <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="input-area">
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
-          <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-          <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
-          <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
-        </div>
-      </div>
-
-      {/* ✅ Action Manager Modal */}
-      {isActionManagerOpen && (
-        <div className="modal-overlay" onClick={() => setIsActionManagerOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <div className="modal-header">
-              <h2>Manage Actions</h2>
-              <div className="modal-header-actions">
-                 <input
-                  type="text"
-                  value={actionSearchQuery}
-                  onChange={(e) => setActionSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddAction(actionSearchQuery);
-                    }
-                  }}
-                  placeholder="Search or type new & Enter"
-                  style={{
-                    background: 'var(--social-bg)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-h)',
-                    padding: '6px 10px',
-                    borderRadius: '6px',
-                    fontSize: '0.85rem',
-                    width: '200px',
-                    outline: 'none'
-                  }}
-                />
-                <button type="button" className="close-btn" onClick={() => setIsActionManagerOpen(false)}>×</button>
-              </div>
-            </div>
-            <div className="modal-body">
-              <ul className="manager-list">
-                {getManagerActions().length === 0 ? (
-                   <li className="empty-state">No actions found.</li>
-                ) : (
-                  getManagerActions().map((action) => (
-                    <li key={action.label} className="manager-item">
-                      <div className="manager-item-main">
-                        <div className="manager-item-info">
-                          <div className="manager-item-title">
-                            {action.label}
-                            {action.count > 0 && (
-                              <span style={{ fontSize: '0.75rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>
-                                Used {action.count}x
-                              </span>
-                            )}
-                          </div>
+                  <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                    {isEditing ? (
+                      <div className="edit-mode">
+                        <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
+                        <div className="edit-actions">
+                          <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                          <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAction(action.label)}
-                        className="delete-item-btn"
-                        title="Remove action"
-                      >
-                        🗑️
-                      </button>
-                    </li>
-                  ))
+                    ) : (
+                      <>
+                        <span className="message-text">{message.textContent}</span>
+                        <div className="message-toolbar">
+                          {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
+                            <>
+                              <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
+                              {(isLastAI || isLastProtag) && (<button type="button" onClick={isLastAI ? regenerateLastAI : regenerateLastProtagonist} className="toolbar-btn">↻</button>)}
+                              <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
+                              <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                              <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                            </>
+                          ) : isMassStart ? (
+                            <div className="mass-delete-confirm-bar">
+                              <span>Delete from here?</span>
+                              <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button>
+                              <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button>
+                            </div>
+                          ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {isJustBeforeBranchOff && (
+                  <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}>
+                    <div className="branch-separator-content">
+                      <span className="branch-separator-icon">🌿</span>
+                      <span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span>
+                      <span className="branch-separator-icon">🌿</span>
+                    </div>
+                  </div>
                 )}
-              </ul>
-              <div style={{ fontSize: '0.75rem', opacity: 0.6, textAlign: 'center', marginTop: '10px' }}>
-                Tip: Type a new name in the search bar above and press <strong>Enter</strong> to add it.
+              </React.Fragment>
+            );
+          })}
+          {isLoading && streamingCharacter && (
+            <div className="message-row message-left">
+              <div className="avatar-column">
+                <div style={{ position: 'relative' }}>
+                  {streamingCharacter.image ? (
+                    <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
+                  ) : (
+                    <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
+                  )}
+                </div>
+                <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
+              </div>
+              <div className="message-bubble bubble-ai">
+                <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                  <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                  <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+                </div>
               </div>
             </div>
+          )}
+          {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}.</p></div>)}
+          <div ref={messageEndRef} style={{ height: '1px' }} />
+        </div>
+
+        <div className="context-bar">
+          <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
+          <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
+          <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true) }} />
+          <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
+          <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
+          <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
+          <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
+          <NavButton icon="🧩" label="Extensions" onClick={handleOpenExtensions} />
+        </div>
+
+        <div className="input-wrapper">
+          {pendingFiles.length > 0 && (
+            <div className="attachment-strip">
+              {pendingFiles.map((file, idx) => (
+                <div key={`${file.name}-${idx}`} className="attachment-chip">
+                  <span className="attachment-name">{file.name}</span>
+                  <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
+                  <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="input-area">
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
+            <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
+            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Message as ${currentCharacter.name}...`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
+            <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
           </div>
         </div>
-      )}
 
-      {/* ✅ Floating Action Menu (Independent State) */}
+        {/* Modals */}
+        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
+        
+        {isCharListOpen && (
+          <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />
+        )}
+        {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
+        
+        {(contextModal.isOpen || isContextListMode) && (
+          <ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => { setIsContextListMode(false); }} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const contentPreview = i.text?.substring(0, 50) || ''; const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌'; const hasImages = i.images && i.images.length > 0 ? '🖼️' : ''; return `${hasRegex} ${hasImages} ${contentPreview}...`; }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />
+        )}
+        {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} />)}
+        
+        {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={modelModal.handleDelete} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓" onSpecialAction={(id) => { const model = allModels.find(m => m.id === id); if (model) handleSelectModel(model); }} specialActionTooltip={(m) => `Use ${m.name}`} />)}
+        {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
+        
+        {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
+        {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={sampleModal.close} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
+        
+        {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
+        {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
+        
+        {isBudgetStrategyListOpen && (
+          <ManagerModal 
+            title="Budget Strategies" 
+            items={allBudgetStrategies} 
+            isOpen={isBudgetStrategyListOpen} 
+            onClose={() => setIsBudgetStrategyListOpen(false)} 
+            onSelect={(strategy) => budgetModal.open(strategy)} 
+            onDelete={budgetModal.handleDelete} 
+            onCreateNew={() => budgetModal.open()} 
+            renderSubtext={renderBudgetStrategySubtext} 
+            emptyMessage="No budget strategies found." 
+            actionLabel="Delete" 
+            orderedListMode={false} 
+            activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+            specialActionIcon="★" 
+            onSpecialAction={handleActivateBudgetStrategy} 
+            specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
+          />
+        )}
+        {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
+        
+        {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />)}
+      </div>
+
+      {/* ✅ Floating Action Menu */}
       {actionMenuTarget && (
-          <div style={{
-            position: 'fixed',
-            left: actionMenuTarget.x + 10,
-            top: actionMenuTarget.y,
-            width: '200px',
-            maxHeight: '400px',
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            zIndex: 2000,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 'bold', borderBottom: '1px solid var(--border)', opacity: 0.7, background: 'var(--social-bg)', display: 'flex', justifyContent: 'space-between' }}>
+          <div 
+            className="action-menu-container"
+            style={{
+              left: `${actionMenuTarget.x + 10}px`,
+              top: `${actionMenuTarget.y}px`
+            }}
+          >
+            <div className="action-menu-header">
               <span>INTERJECT ACTION</span>
-              {/* ✅ FIXED: Close menu THEN open manager */}
-              <span 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  setActionMenuTarget(null); // Close the floating menu
-                  setIsActionManagerOpen(true); // Open the manager modal
-                }}
-                style={{ cursor: 'pointer', opacity: 0.6 }}
-                title="Manage Actions"
-              >
-                ⚙️
-              </span>
             </div>
-            {/* Optional Mini Search in Menu */}
             <input 
-                type="text" 
-                value={menuSearchQuery}
-                onChange={(e) => setMenuSearchQuery(e.target.value)}
-                placeholder="Filter..."
-                style={{
-                  background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
-                  padding: '6px 10px', fontSize: '0.75rem', color: 'var(--text-h)', outline: 'none'
-                }}
-                onClick={(e) => e.stopPropagation()}
+              className="action-menu-search"
+              type="text" 
+              value={menuSearchQuery}
+              onChange={(e) => setMenuSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleAddAction(menuSearchQuery);
+                }
+              }}
+              placeholder="Filter or type new & Enter..."
+              onClick={(e) => e.stopPropagation()}
             />
-            <div style={{ overflowY: 'auto', flexShrink: 1 }}>
-              {getMenuActions().map((action) => (
-                <button key={action.label} type="button" onClick={(e) => {
+            <div className="action-menu-list">
+              {getFilteredActions().map((action) => (
+                <button key={action.label} className="action-menu-item" onClick={(e) => {
                   e.stopPropagation();
                   const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
                   if (targetChar) handleActionInterject(action.label, targetChar);
-                }}
-                  style={{
-                    background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
-                    padding: '8px 10px', textAlign: 'left', cursor: 'pointer', color: 'var(--text-h)',
-                    fontSize: '0.8rem', transition: 'all 0.2s', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--social-bg)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
+                }}>
                   <span>{action.label}</span>
-                  {action.count > 0 && <span style={{fontSize: '0.65rem', opacity: 0.5, background: 'var(--social-bg)', padding: '2px 4px', borderRadius: '4px'}}>{action.count}</span>}
+                  <div className="action-meta-container">
+                    {action.count > 0 && <span className="action-count-badge">{action.count}</span>}
+                    <button
+                      type="button"
+                      className="action-delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAction(action.label);
+                      }}
+                      title="Remove action"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
       )}
-
-      {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
-      
-      {isCharListOpen && (
-        <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />
-      )}
-      {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
-      
-      {(contextModal.isOpen || isContextListMode) && (
-        <ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => { setIsContextListMode(false); }} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const contentPreview = i.text?.substring(0, 50) || ''; const hasRegex = i.regularExpressionTrigger ? '🔍' : '📌'; const hasImages = i.images && i.images.length > 0 ? '🖼️' : ''; return `${hasRegex} ${hasImages} ${contentPreview}...`; }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />
-      )}
-      {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} />)}
-      
-      {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={modelModal.handleDelete} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓" onSpecialAction={(id) => { const model = allModels.find(m => m.id === id); if (model) handleSelectModel(model); }} specialActionTooltip={(m) => `Use ${m.name}`} />)}
-      {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
-      
-      {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-      {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={sampleModal.close} onSave={sampleModal.handleSave} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
-      
-      {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
-      {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
-      
-      {isBudgetStrategyListOpen && (
-        <ManagerModal 
-          title="Budget Strategies" 
-          items={allBudgetStrategies} 
-          isOpen={isBudgetStrategyListOpen} 
-          onClose={() => setIsBudgetStrategyListOpen(false)} 
-          onSelect={(strategy) => budgetModal.open(strategy)} 
-          onDelete={budgetModal.handleDelete} 
-          onCreateNew={() => budgetModal.open()} 
-          renderSubtext={renderBudgetStrategySubtext} 
-          emptyMessage="No budget strategies found." 
-          actionLabel="Delete" 
-          orderedListMode={false} 
-          activeSpecialActionId={selectedBudgetStrategyId || undefined} 
-          specialActionIcon="★" 
-          onSpecialAction={handleActivateBudgetStrategy} 
-          specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
-        />
-      )}
-      {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
-      
-      {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />)}
-    </div>
+    </>
   );
 }
 
