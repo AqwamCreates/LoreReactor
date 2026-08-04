@@ -15,7 +15,7 @@ import { loadInterjectableActions, saveInterjectableActions, type InterjectableA
 
 import type { 
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
-  ChatData, RawChatData, Extension, RawExtension 
+  ChatData, RawChatData, Extension 
 } from '../types';
 
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
@@ -302,7 +302,6 @@ function App() {
     let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
     
-    // Ensure protagonist is always in participants list
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
         newParticipants.unshift(chatData.protagonist);
     }
@@ -353,10 +352,8 @@ function App() {
     addToast("Contexts updated (Session Only).", "info");
   };
 
-  // Safe extension handling
   const getChatExtensions = (): string[] => {
       if (!chatData) return [];
-      // Try to access extensions via index signature if not strictly typed in state yet
       const dataWithExtensions = chatData as unknown as { extensions?: { id: string }[] };
       return dataWithExtensions.extensions?.map(e => e.id) || [];
   };
@@ -372,7 +369,6 @@ function App() {
     
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
     
-    // Update state carefully
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = newExtensions;
     
@@ -414,14 +410,7 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    // Create a raw version to save, preserving other fields
-    const updatedChat: RawChatData = {
-        ...chatData,
-        name: newTitle,
-        // Ensure we map complex objects to IDs if saving raw, 
-        // but here we assume setChatData handles the live state and saveRawChatData persists it.
-        // For simplicity in this fix, we cast to RawChatData assuming structure match for name update
-    } as RawChatData;
+    const updatedChat: RawChatData = { ...chatData, name: newTitle } as RawChatData;
     
     setChatData({ ...chatData, name: newTitle } as ChatData);
     saveRawChatData(updatedChat);
@@ -506,8 +495,6 @@ function App() {
     try {
       const sourceChat = await loadRawChatData(chatData.parentChatDataId);
       if (sourceChat) {
-        // Convert RawChatData to ChatData roughly for the session switch
-        // Ideally use a dedicated loader hook, but this works for navigation
         const fullChat = sourceChat as unknown as ChatData; 
         setChatData(fullChat);
         if(fullChat.protagonist) setCurrentCharacter(fullChat.protagonist);
@@ -578,20 +565,37 @@ function App() {
     addToast(`Removed action "${label}".`, "info");
   };
 
+  // ✅ FIXED: Robust Action Interjection Logic
   const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
+    // 1. Close Menu immediately
     setActionMenuTarget(null);
     setMenuSearchQuery('');
+    
     if (!chatData || !currentCharacter) return;
     
+    // 2. Track Usage
     await incrementActionCount(actionLabel);
 
+    // 3. Construct Action Text
     const actionText = `*${actionLabel} ${targetChar.name}.*`;
-    if (isLoading && streamingCharacter && streamingCharacter.id === targetChar.id) {
+
+    // 4. CRITICAL FIX: Always Stop Current Generation First
+    // This ensures we don't have two streams fighting, and clears the "isLoading" lock
+    if (isLoading) {
       stopGeneration();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay to ensure state updates and abort signal propagates
+      // This is crucial for the "interject while generating" feature
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // 5. Force Trigger Response from Target Character
+    // We bypass the "is it the same character?" check by directly calling sendActionAndGetResponse
+    // which is designed to make a SPECIFIC character speak next.
+    try {
       await sendActionAndGetResponse(actionText, targetChar);
-    } else {
-      sendMessage(actionText);
+    } catch (error) {
+      console.error("Interjection failed:", error);
+      addToast("Failed to interject action.", "error");
     }
   };
 
@@ -956,7 +960,7 @@ function App() {
         {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
       </div>
 
-      {/* ✅ Floating Action Menu */}
+      {/* ✅ Floating Action Menu - FIXED HTML STRUCTURE */}
       {actionMenuTarget && (
          <div 
            className="action-menu-container"
@@ -985,11 +989,25 @@ function App() {
             />
             <div className="action-menu-list">
               {getFilteredActions().map((action) => (
-                <button key={action.label} className="action-menu-item" onClick={(e) => {
-                  e.stopPropagation();
-                  const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
-                  if (targetChar) handleActionInterject(action.label, targetChar);
-                }}>
+                // FIX: Changed from <button> to <div role="button"> to allow nested buttons
+                <div 
+                  key={action.label} 
+                  className="action-menu-item" 
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
+                    if (targetChar) handleActionInterject(action.label, targetChar);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId);
+                      if (targetChar) handleActionInterject(action.label, targetChar);
+                    }
+                  }}
+                >
                   <span>{action.label}</span>
                   <div className="action-meta-container">
                     {action.count > 0 && <span className="action-count-badge">{action.count}</span>}
@@ -997,7 +1015,7 @@ function App() {
                       type="button"
                       className="action-delete-btn"
                       onClick={(e) => {
-                        e.stopPropagation();
+                        e.stopPropagation(); // Prevent triggering the parent div click
                         handleDeleteAction(action.label);
                       }}
                       title="Remove action"
@@ -1005,7 +1023,7 @@ function App() {
                       ×
                     </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </div>
