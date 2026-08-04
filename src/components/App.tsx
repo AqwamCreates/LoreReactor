@@ -729,7 +729,7 @@ function App() {
             }}
           >
             <div className="action-menu-header">
-              <span>INTERJECT ACTION</span>
+              <span>Interject Action</span>
             </div>
             <input 
               className="action-menu-search"
