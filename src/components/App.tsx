@@ -302,7 +302,6 @@ function App() {
     let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
     
-    // Ensure protagonist is always in participants list
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
         newParticipants.unshift(chatData.protagonist);
     }
@@ -353,10 +352,8 @@ function App() {
     addToast("Contexts updated (Session Only).", "info");
   };
 
-  // Safe extension handling
   const getChatExtensions = (): string[] => {
       if (!chatData) return [];
-      // Try to access extensions via index signature if not strictly typed in state yet
       const dataWithExtensions = chatData as unknown as { extensions?: { id: string }[] };
       return dataWithExtensions.extensions?.map(e => e.id) || [];
   };
@@ -372,7 +369,6 @@ function App() {
     
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
     
-    // Update state carefully
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = newExtensions;
     
@@ -414,10 +410,7 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    const updatedChat: RawChatData = {
-        ...chatData,
-        name: newTitle,
-    } as RawChatData;
+    const updatedChat: RawChatData = { ...chatData, name: newTitle } as RawChatData;
     
     setChatData({ ...chatData, name: newTitle } as ChatData);
     saveRawChatData(updatedChat);
@@ -734,14 +727,24 @@ function App() {
         </header>
 
         {/* 
-           ✅ FIX: Inline style to force scrollability in Cinematic Mode.
-           The CSS class has pointer-events: none to allow clicking the background,
-           but we must override it here to allow wheel scrolling.
+           ✅ FIX: Complete Scroll Fix for Cinematic Mode 
+           1. Removed pointer-events: none (messages handle their own clicks).
+           2. Ensured overflow-y is auto.
+           3. Added explicit height handling via style.
         */}
         <div 
           className="chat-history" 
           ref={chatHistoryRef}
-          style={viewMode === 'cinematic' ? { pointerEvents: 'auto' } : {}}
+          style={{
+            // Force these styles in cinematic mode to override any CSS conflicts
+            ...(viewMode === 'cinematic' ? {
+              pointerEvents: 'auto', // Allow scroll wheel
+              overflowY: 'auto',     // Ensure scrolling is enabled
+              justifyContent: 'flex-end', // Keep content at bottom initially
+              display: 'flex',       // Ensure flex layout
+              flexDirection: 'column'
+            } : {})
+          }}
         >
           {chatData?.chatMessageHistory.map((message, index) => {
             if (!message.character) return null;
