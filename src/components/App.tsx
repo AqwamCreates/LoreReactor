@@ -85,10 +85,15 @@ function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   
-  // ✅ Unified Action Menu State
+  // ✅ Action Menu State
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [actions, setActions] = useState<InterjectableAction[]>([]);
+
+  // ✅ Cinematic View State
+  const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
+  const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
@@ -172,6 +177,46 @@ function App() {
       setSelectedGlobalModel(null);
     }
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
+
+  // ✅ Refined Observer: Strictly Bottom-Focused
+    // ✅ Simplified Observer: Only for Avatar Tracking
+  useEffect(() => {
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
+      setCenterAvatar(null);
+      return;
+    }
+
+  const options = {
+    root: chatHistoryRef.current,
+    threshold: [0.5, 0.8, 1.0],
+    // Bias towards the bottom so the avatar matches the clearest message
+    rootMargin: '-10% 0px -60% 0px', 
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    const mostVisible = entries.reduce((prev, current) => {
+      return (prev.intersectionRatio > current.intersectionRatio) ? prev : current;
+    });
+
+    if (mostVisible && mostVisible.intersectionRatio > 0.5) {
+      const messageId = mostVisible.target.getAttribute('data-message-id');
+      const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
+      
+      if (msg && msg.character) {
+        setCenterAvatar(msg.character);
+        
+        // Optional: Add a subtle 'active' class just for scaling if desired
+        document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+        (mostVisible.target as HTMLElement).classList.add('is-active');
+      }
+    }
+  }, options);
+
+  const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
+  messages.forEach((msg) => observer.observe(msg));
+
+  return () => observer.disconnect();
+}, [viewMode, chatData?.chatMessageHistory.length]);
 
   const handleSwitchChat = (id: string) => {
     const selected = allChats.find(c => c.id === id);
@@ -497,6 +542,13 @@ function App() {
     return currentIndex !== -1 && currentIndex <= branchIndex;
   };
 
+  const toggleViewMode = () => {
+    setViewMode(prev => prev === 'ladder' ? 'cinematic' : 'ladder');
+    if (viewMode === 'ladder') {
+       setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
+  };
+
   if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
 
   const isMassActive = massDeleteId !== null;
@@ -525,30 +577,96 @@ function App() {
 
   return (
     <>
-      <div className="chat-container" onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
+      <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}>
+        
+        {/* ✅ Central Avatar (No Text) */}
+        {viewMode === 'cinematic' && (
+          <div className={`cinematic-stage ${centerAvatar ? 'active' : ''}`}>
+            {centerAvatar && (
+              <img 
+                src={getCharacterImageUrl(centerAvatar.image) || ''} 
+                alt={centerAvatar.name} 
+                className="cinematic-avatar-img"
+                onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+              />
+            )}
+          </div>
+        )}
+
         <header className="app-header">
           <div className="header-content">
             <div className="header-top">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'flex-start' }}>
+              {/* Left Side: Title */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                 {isEditingTitle ? (
-                  <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '300px', outline: 'none' }} />
+                  <input 
+                    type="text" 
+                    value={editTitleValue} 
+                    onChange={(e) => setEditTitleValue(e.target.value)} 
+                    onBlur={handleSaveTitle} 
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} 
+                    autoFocus 
+                    style={{ 
+                      background: 'var(--social-bg)', 
+                      border: '1px solid var(--accent)', 
+                      color: 'var(--text-h)', 
+                      padding: '4px 8px', 
+                      borderRadius: '4px', 
+                      fontSize: '1rem', 
+                      fontWeight: 'bold', 
+                      flexGrow: 1, 
+                      maxWidth: '200px', 
+                      outline: 'none' 
+                    }} 
+                  />
                 ) : (
                   <>
-                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
-                    <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.5, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}>✎</span>
+                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                      {chatData?.name || "Untitled Chat"}
+                    </div>
+                    <span 
+                      onClick={handleStartEditTitle} 
+                      title="Edit Title" 
+                      style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} 
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} 
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
+                    >
+                      ✎
+                    </span>
                   </>
                 )}
               </div>
-              <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+              
+              {/* Right Side: Unified Control Group (Toggle LEFT of Stats) */}
+              <div className="header-controls-group">
+                  <button 
+                    onClick={toggleViewMode} 
+                    className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} 
+                    title="Switch View Mode"
+                  >
+                    <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
+                    <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
+                  </button>
+                  
+                  <ChatStatisticsBar 
+                    generationSpeed={generationSpeed} 
+                    messageCount={messageCount} 
+                    tokenCount={tokenCount} 
+                    maximumNumberOfTokens={maximumNumberOfTokens} 
+                    numberOfCacheInvalidations={numberOfCacheInvalidations} 
+                    numberOfRequests={numberOfRequests} 
+                    totalCost={totalCost} 
+                    costWithoutCacheMisses={costWithoutCacheMisses} 
+                  />
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="chat-history">
+        <div className="chat-history" ref={chatHistoryRef}>
           {chatData?.chatMessageHistory.map((message, index) => {
             const isProtagonist = message.character.id === currentCharacter.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const avatarSrc = !isProtagonist ? getCharacterImageUrl(message.character.image) : null;
             const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter.id).map(p => p.id));
             const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isLastProtag = isProtagonist;
@@ -558,22 +676,36 @@ function App() {
             const isStem = isStemMessage(message.id);
             const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
 
+            const showSideAvatar = viewMode === 'ladder' && !isProtagonist;
+
             return (
               <React.Fragment key={message.id}>
-                <div className={`message-row ${isProtagonist ? 'message-right' : 'message-left'} ${isInDeletionRange ? 'message-fading-out' : ''}`}>
-                  {!isProtagonist && (
+                {/* ✅ Row is now Flex Centered via CSS */}
+                <div 
+                  className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`}
+                  data-message-id={message.id}
+                >
+                  {showSideAvatar && (
                     <div className="avatar-column">
                       <div style={{ position: 'relative' }}>
-                        {avatarSrc ? (
-                          <img src={avatarSrc} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
-                        ) : (
-                          <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
-                        )}
+                         {getCharacterImageUrl(message.character.image) ? (
+                            <img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
+                         ) : (
+                            <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
+                         )}
                       </div>
                       <span className="avatar-name">{displayName}</span>
                     </div>
                   )}
-                  <div className={`message-bubble ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                  
+                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                    
+                    {viewMode === 'cinematic' && (
+                      <div className="cinematic-bubble-header">
+                        <span>{message.character.name}</span>
+                      </div>
+                    )}
+
                     {isEditing ? (
                       <div className="edit-mode">
                         <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
@@ -618,31 +750,24 @@ function App() {
               </React.Fragment>
             );
           })}
+          
           {isLoading && streamingCharacter && (
-            <div className="message-row message-left">
-              <div className="avatar-column">
-                <div style={{ position: 'relative' }}>
-                  {streamingCharacter.image ? (
-                    <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                  ) : (
-                    <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                  )}
+            <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
+                <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
+                  {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{streamingCharacter.name}</span></div>}
+                  <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                    <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                    <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+                  </div>
                 </div>
-                <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
-              </div>
-              <div className="message-bubble bubble-ai">
-                <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                  <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                  <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
-                </div>
-              </div>
             </div>
           )}
+
           {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Start the conversation as {currentCharacter.name}.</p></div>)}
           <div ref={messageEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div className="context-bar">
+        <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
           <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
           <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
           <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true) }} />
@@ -721,17 +846,17 @@ function App() {
 
       {/* ✅ Floating Action Menu */}
       {actionMenuTarget && (
-          <div 
-            className="action-menu-container"
-            style={{
-              left: `${actionMenuTarget.x + 10}px`,
-              top: `${actionMenuTarget.y}px`
-            }}
-          >
-            <div className="action-menu-header">
-              <span>Interject Action</span>
-            </div>
-            <input 
+         <div 
+           className="action-menu-container"
+           style={{
+             left: `${actionMenuTarget.x + 10}px`,
+             top: `${actionMenuTarget.y}px`
+           }}
+         >
+           <div className="action-menu-header">
+             <span>Interject Action</span>
+           </div>
+           <input 
               className="action-menu-search"
               type="text" 
               value={menuSearchQuery}
