@@ -316,7 +316,6 @@
 
 .message-bubble {
   position: relative; 
-  /* ✅ FIX: Consistent Padding defined here */
   padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.5rem, 1.5vw, 1rem); 
   border-radius: 50px;
   font-size: clamp(0.75rem, 1.8vw, 0.875rem);
@@ -327,7 +326,6 @@
   gap: 0.5rem;
   width: 100%;
   box-sizing: border-box;
-  /* Ensure smooth transition for hover effects only, not layout shifts */
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; 
 }
 
@@ -374,13 +372,11 @@
   background: var(--social-bg); border-radius: 4px; border: 1px solid var(--border);
 }
 
-/* ✅ FIX: Edit Mode Layout - No Negative Margins to Prevent Jumping */
 .edit-mode {
   display: flex; 
   flex-direction: column; 
   gap: 8px;
   width: 100%;
-  /* Remove negative margins that caused shape shifting */
   margin: 0; 
   padding: 0; 
 }
@@ -390,7 +386,6 @@
   font-family: inherit; 
   font-size: inherit; 
   line-height: inherit;
-  /* Match the bubble's internal spacing roughly, but let it fill width */
   padding: 4px 0; 
   border: none;
   border-bottom: 1px solid var(--accent-border);
@@ -1164,7 +1159,6 @@ select {
   align-items: center;
   justify-content: flex-end;
   
-  /* CRITICAL FIX: Enable clicks and set Z-Index above chat history bg but below bubbles */
   pointer-events: auto; 
   cursor: pointer;
   z-index: 5; 
@@ -1181,7 +1175,6 @@ select {
   transform: translate(-50%, -50%) scale(1.0);
 }
 
-/* Hover effect to indicate clickability */
 .cinematic-stage:hover .cinematic-avatar-img {
   transform: scale(1.02);
   filter: brightness(1.1);
@@ -1193,7 +1186,6 @@ select {
   height: 100%;
   max-height: none;
   max-width: none;
-  /* Allow clicks */
   pointer-events: auto; 
   mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
@@ -1202,25 +1194,25 @@ select {
 
 /* ✅ 2. Chat History - Higher Z-Index so it sits ON TOP of avatar */
 .mode-cinematic .chat-history {
-  display: flex; /* Ensure it's flex */
+  display: flex;
   flex-direction: column;
-  justify-content: flex-end; /* 👈 This pushes content to the bottom ONLY in Cinematic Mode */
+  justify-content: flex-end;
   
   flex: 1;
   width: 100%;
   max-width: 100%;
   padding: 60px 20px 20px 20px;
-  z-index: 10; /* Must be higher than cinematic-stage (5) */
+  z-index: 10;
   position: relative; 
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
   mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
-  pointer-events: none; /* Allow clicks to pass through to avatar */
+  pointer-events: none; /* Allow clicks to pass through to avatar BY DEFAULT */
 }
 
-/* ✅ 3. Message Rows - Re-enable pointer events for interaction */
+/* ✅ 3. Message Rows - Re-enable pointer events ONLY for the Active One */
 .mode-cinematic .message-row {
   max-width: 100% !important;
   margin-left: 0 !important;
@@ -1234,7 +1226,14 @@ select {
   opacity: 1;
   filter: none;
   transform: scale(1);
-  pointer-events: auto; /* Re-enable clicks on rows */
+  
+  /* DEFAULT: Disable clicks on ALL rows in cinematic mode */
+  pointer-events: none; 
+}
+
+/* EXCEPTION: Only the .is-active row (bottom-most) gets clicks */
+.mode-cinematic .message-row.is-active {
+  pointer-events: auto;
 }
 
 .mode-cinematic .message-row.message-left,
@@ -1264,8 +1263,8 @@ select {
   padding: 24px 32px;
   text-align: left;
   position: relative;
-  z-index: 11; /* Above stage */
-  pointer-events: auto;
+  z-index: 11;
+  pointer-events: auto; /* Bubbles inside active row are clickable */
 }
 
 .cinematic-bubble-header {
@@ -1358,10 +1357,21 @@ select {
   margin-bottom: 15px;
 }
 
+/* ✅ CRITICAL FIX: Disable text selection and pointer events on ALL text in cinematic mode */
 .mode-cinematic .message-text {
   text-align: center !important;
   display: inline-block;
   max-width: 100%;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  pointer-events: none !important; /* Text itself cannot block clicks */
+}
+
+/* ✅ EXCEPTION: Re-enable selection ONLY for the active message */
+.mode-cinematic .message-row.is-active .message-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 .mode-cinematic .message-bubble {
