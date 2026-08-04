@@ -1,3 +1,4 @@
+// src/hooks/storage.ts
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
@@ -7,6 +8,12 @@ import type {
 
 import { localURL } from '../configurations';
 
+// ✅ New Interface for Interjectable Actions
+export interface InterjectableAction {
+  label: string;
+  count: number;
+}
+
 const DefaultSampler: Sampler = {
   id: "0", name: "Default", description: undefined,
   parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
@@ -14,6 +21,21 @@ const DefaultSampler: Sampler = {
   firstCreatedTimestamp: Date.now(),
   lastUpdatedTimestamp: Date.now(),
 };
+
+// ✅ Actions Repository
+const DEFAULT_ACTIONS: InterjectableAction[] = [
+  { label: 'Hug', count: 0 }, { label: 'Kiss At', count: 0 }, { label: 'Slap', count: 0 },
+  { label: 'Push Away', count: 0 }, { label: 'Touch', count: 0 }, { label: 'Grab', count: 0 },
+  { label: 'Wave At', count: 0 }, { label: 'Poke', count: 0 }, { label: 'Fish', count: 0 },
+  { label: 'Dance Near', count: 0 }, { label: 'Sing', count: 0 }, { label: 'Whisper At', count: 0 },
+  { label: 'Shout At', count: 0 }, { label: 'Whistle', count: 0 }, { label: 'Cough At', count: 0 },
+  { label: 'Sneeze At', count: 0 }, { label: 'Laugh At', count: 0 }, { label: 'Cry At', count: 0 },
+  { label: 'Sigh At', count: 0 }, { label: 'Stretch', count: 0 }, { label: 'Yawn At', count: 0 },
+  { label: 'Bow At', count: 0 }, { label: 'Nod At', count: 0 }, { label: 'Shake At', count: 0 },
+  { label: 'Point At', count: 0 }, { label: 'Wink At', count: 0 }, { label: 'Blush At', count: 0 },
+  { label: 'Frown At', count: 0 }, { label: 'Smile At', count: 0 }, { label: 'Grin At', count: 0 },
+  { label: 'Pout At', count: 0 }
+];
 
 const WRITE_API_URL = localURL; 
 const PATHS = {
@@ -23,6 +45,8 @@ const PATHS = {
   stopPatterns: "/user_data/stop_pattern_data", chatMessages: "/user_data/chat_messages", 
   chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
+  // ✅ Added Actions Path
+  actions: "/user_data/actions.json",
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -312,7 +336,6 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
     const rawStrategy = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
     if (!rawStrategy) return null;
     
-    // Load the referenced models
     const [onlineModel, localModel] = await Promise.all([
         loadRawModel(rawStrategy.onlineModelId),
         loadRawModel(rawStrategy.localModelId)
@@ -468,6 +491,15 @@ export async function deleteRawChatData(id: string): Promise<void> {
   try { await deleteResource(`${PATHS.kvCaches}/${id}`); } catch (e) { console.warn("KV cache cleanup failed", e); }
   await deleteResource(`${PATHS.chatData}/${id}.json`);
   await updateManifest(PATHS.chatData, id, 'remove');
+}
+
+export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
+  const actions = await fetchJson<InterjectableAction[]>(PATHS.actions);
+  return actions || DEFAULT_ACTIONS;
+}
+
+export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {
+  await putJson(PATHS.actions, actions);
 }
 
 // --- Helpers ---

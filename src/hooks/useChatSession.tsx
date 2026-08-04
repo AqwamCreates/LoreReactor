@@ -1,13 +1,14 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, BudgetStrategy } from '../types';
+import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '../context/ToastContext'; // ✅ Import Toast Hook
 
 const baseEngine = new LargeLanguageModelInferenceEngine();
 
@@ -57,6 +58,8 @@ export function useChatSession() {
     const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
 
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
+    // ✅ Add state for Globally Selected Model (synced from App.tsx)
+    const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
 
     const [stats, setStats] = useState({
         numberOfCacheInvalidations: 0,
@@ -67,14 +70,9 @@ export function useChatSession() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
-
-    // ✅ Inject Toast Context directly here or pass it down if preferred
-    // Since this is a hook, we assume the component using it has access to Toasts via context
-    // But to keep it clean, we will return a handler that the App can use, 
-    // OR we import useToast here if your project structure allows hooks inside hooks files.
-    // For simplicity, let's assume we can import useToast here since it's a React hook file.
-    import { useToast } from '../context/ToastContext';
-    const { addToast } = useToast(); 
+    
+    // ✅ Initialize Toast
+    const { addToast } = useToast();
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
@@ -117,6 +115,7 @@ export function useChatSession() {
             let rawText: string;
 
             if (strategy) {
+                // ✅ Use Budget Strategy Engine (Handles model selection internally)
                 const strategyEngine = new BudgetStrategyEngine(strategy);
                 const wrappedCallbacks = onToken ? {
                     onToken: (stats: any) => {
@@ -142,13 +141,20 @@ export function useChatSession() {
                 }
 
             } else {
-                const requestBody = await import('../hooks/chatLogic').then(m => m.prepareRequestBody(data, character, imageData, userImagesBase64));
+                // ✅ Use Global Selected Model
+                if (!selectedModel) {
+                    addToast("No model selected. Please select a model from the Models list.", "error");
+                    setIsLoading(false);
+                    return null;
+                }
+
+                const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
-                const modelContext = character.sampler?.associatedModel ? {
-                    apiKey: character.sampler.associatedModel.apiKey,
-                    backend: character.sampler.associatedModel.backend,
-                    modelPath: character.sampler.associatedModel.model
-                } : undefined;
+                const modelContext = {
+                    apiKey: selectedModel.apiKey,
+                    backend: selectedModel.backend,
+                    modelPath: selectedModel.model
+                };
 
                 rawText = await baseEngine.generateStream(
                     requestBody,
@@ -184,32 +190,29 @@ export function useChatSession() {
         } catch (error) {
             const err = error as Error;
             
-            // ✅ Handle Abort Silently
             if (err.name === 'AbortError') return null;
 
-            // ✅ Replace Alert with Toast
             const isNetworkError = err.message.includes('Failed to fetch') || 
-                                   err.message.includes('NetworkError') ||
-                                   err.message.includes('ERR_ABORTED') ||
-                                   err.message.includes('502') ||
-                                   err.message.includes('503') ||
-                                   err.message.includes('504');
+                                    err.message.includes('NetworkError') ||
+                                    err.message.includes('ERR_ABORTED') ||
+                                    err.message.includes('502') ||
+                                    err.message.includes('503') ||
+                                    err.message.includes('504');
 
             if (isNetworkError) {
                 addToast(
-                    "⚠️ Backend Connection Failed. Could not connect to the AI server. Please check if your backend (KoboldCPP/llama.cpp) is running.", 
+                    "⚠️ Backend Connection Failed. Could not connect to the AI server.", 
                     "error"
                 );
                 setIsLoading(false);
                 return null;
             }
 
-            // ✅ Generic Error Toast
             console.error("Inference failed:", err);
             addToast(`❌ Inference Error: ${err.message}`, "error");
             return null;
         }
-    }, [addToast]); // ✅ Added addToast to dependencies
+    }, [addToast, selectedModel]); // ✅ Added selectedModel to dependencies
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter || isLoading) return;
@@ -351,6 +354,11 @@ export function useChatSession() {
         setActiveStrategy(strategy);
     }, []);
 
+    // ✅ Expose setter for Global Model Selection
+    const setSelectedGlobalModel = useCallback((model: LanguageModel | null) => {
+        setSelectedModel(model);
+    }, []);
+
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoading) return;
         
@@ -472,6 +480,7 @@ export function useChatSession() {
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,
         setActiveBudgetStrategy,
+        setSelectedGlobalModel, // ✅ Exposed for App.tsx
         numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,

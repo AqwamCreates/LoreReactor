@@ -74,7 +74,7 @@ export interface RawContext extends RawData  {
 
 export interface LanguageModel extends ObjectData {
 
-  backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | `Kimi` | 'OpenAI' | 'Groq'| 'OpenRouter' | 'Inworld' | 'Other';
+  backend?: 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | `Kimi` | 'GLM' | 'OpenAI' | 'Groq'| 'OpenRouter' | 'Inworld' | 'Other';
   contextLength: number;
   model?: string;
   mmproj?: string;
