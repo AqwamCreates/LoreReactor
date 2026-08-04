@@ -17,11 +17,8 @@ const CLOUD_ENDPOINTS: Record<string, string> = {
   'Kimi': 'https://api.moonshot.ai/v1/chat/completions',
   'OpenAI': 'https://api.openai.com/v1/chat/completions',
   'Mistral': 'https://api.mistral.ai/v1/chat/completions',
-  // ✅ Added Groq
   'Groq': 'https://api.groq.com/openai/v1/chat/completions',
-  // ✅ Added OpenRouter
   'OpenRouter': 'https://openrouter.ai/api/v1/chat/completions',
-  // ✅ Added Inworld AI
   'Inworld': 'https://api.inworld.ai/v1/chat/completions',
   // 'Other' is handled dynamically via the model path (used as URL)
 };
@@ -43,7 +40,7 @@ export class LargeLanguageModelInferenceEngine {
     ].includes(backend);
 
     let url = '/api/completion';
-    let headers: HeadersInit = { 'Content-Type': 'application/json' };
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
     let body = JSON.stringify(requestBody);
 
     // ✅ 1. Handle Cloud Backends
@@ -60,7 +57,7 @@ export class LargeLanguageModelInferenceEngine {
         // Use predefined endpoint for known providers
         const defaultUrl = CLOUD_ENDPOINTS[backend];
         if (!defaultUrl) {
-           throw new Error(`Unsupported cloud backend: ${backend}`);
+          throw new Error(`Unsupported cloud backend: ${backend}`);
         }
         // Allow overriding default URL via parameters if needed
         url = requestBody.api_url || defaultUrl;
@@ -69,9 +66,9 @@ export class LargeLanguageModelInferenceEngine {
       // Set Cloud Headers
       // ✅ Special Handling for Inworld (Basic Auth) vs Others (Bearer)
       if (backend === 'Inworld') {
-        headers['Authorization'] = `Basic ${apiKey}`;
+        headers.Authorization = `Basic ${apiKey}`;
       } else {
-        headers['Authorization'] = `Bearer ${apiKey}`;
+        headers.Authorization = `Bearer ${apiKey}`;
       }
 
       // --- Determine Model Name & Transform Request ---
@@ -101,7 +98,7 @@ export class LargeLanguageModelInferenceEngine {
           ...requestBody.extra_cloud_params 
         });
       } else if (requestBody.messages) {
-         body = JSON.stringify({
+          body = JSON.stringify({
           model: payloadModelName,
           ...requestBody,
           stream: true
