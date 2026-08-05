@@ -1,5 +1,4 @@
 // src/components/ModelEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';

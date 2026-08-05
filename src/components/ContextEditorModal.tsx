@@ -27,7 +27,6 @@ export function ContextEditorModal({
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     
-    // ✅ State: User preference for Base64 encoding
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
 
     const [regexTrigger, setRegexTrigger] = useState('');
@@ -57,7 +56,6 @@ export function ContextEditorModal({
                 setRegexContext(existingContext.regularExpressionContext || 'global');
                 setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
                 
-                // ✅ Load the user's preference
                 setUseBase64Encoding(existingContext.useBase64Encoding ?? false);
             } else {
                 setName('');
@@ -120,45 +118,55 @@ export function ContextEditorModal({
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = async () => {
-        if (!validate()) return;
+    // ✅ Shared logic to build a context object from current form state
+    const buildContextFromForm = async (isNewClone: boolean): Promise<Context | null> => {
+        if (!validate()) return null;
 
-        let finalImageFilenames: string[] | undefined = existingContext?.images || [];
+        let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingContext?.images || []);
 
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
                 const uploadPromises = imageFiles.map(file => uploadContextImage(file));
                 const uploadedFilenames = await Promise.all(uploadPromises);
-                finalImageFilenames = [...(existingContext?.images || []), ...uploadedFilenames];
+                finalImageFilenames = [...(isNewClone ? [] : (existingContext?.images || [])), ...uploadedFilenames];
             } catch (err) {
                 console.error("Failed to upload images:", err);
                 alert("Failed to upload images. Context not saved.");
                 setIsUploading(false);
-                return;
+                return null;
             }
             setIsUploading(false);
         }
 
         const now = Date.now();
-        const context: Context = {
-            id: existingContext?.id || crypto.randomUUID(),
-            name: name.trim(),
+        return {
+            id: isNewClone ? crypto.randomUUID() : (existingContext?.id || crypto.randomUUID()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
-            
-            // ✅ SAVE THE USER PREFERENCE
-            useBase64Encoding: useBase64Encoding, 
-            
-            firstCreatedTimestamp: existingContext?.firstCreatedTimestamp || now,
+            useBase64Encoding: useBase64Encoding,
+            firstCreatedTimestamp: isNewClone ? now : (existingContext?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = async () => {
+        const context = await buildContextFromForm(false);
+        if (!context) return;
         onSave(context);
+        onClose();
+    };
+
+    // ✅ Clone: save as new context with a new ID and "(Clone)" suffix
+    const handleClone = async () => {
+        const clonedContext = await buildContextFromForm(true);
+        if (!clonedContext) return;
+        onSave(clonedContext);
         onClose();
     };
 
@@ -183,8 +191,14 @@ export function ContextEditorModal({
                     <h2>{existingContext ? 'Edit Context' : 'Create New Context'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {/* ✅ Clone button — only shown when editing an existing context */}
+                        {existingContext && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>
+                                Clone
+                            </button>
+                        )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>
-                            {isUploading ? 'Saving...' : (existingContext ? 'Update' : 'Create')}
+                            {isUploading ? 'Saving...' : 'Save'}
                         </button>
                     </div>
                 </div>
@@ -268,9 +282,8 @@ export function ContextEditorModal({
                             </div>
                         )}
                     </div>
-                    {/* ✅ END OF REGEX SECTION */}
 
-                    {/* ✅ TOGGLE PLACEMENT: Directly BELOW the Regex Section div */}
+                    {/* Base64 Encoding Toggle */}
                     <div className="editor-toggle-section">
                         <label className="editor-checkbox-label">
                             <input
