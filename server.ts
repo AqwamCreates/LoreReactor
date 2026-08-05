@@ -2,88 +2,318 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
+import { spawn, ChildProcess } from 'node:child_process';
+import net from 'node:net';
 
+// --- Configuration ---
 const app = express();
 const PORT = 3001;
-const ROOT_DIR = process.cwd(); 
+const ROOT_DIR = process.cwd();
+const APP_NAME = "LoreReactor";
 
+// Path to your llama-server executable
+const LLAMA_SERVER_PATH = path.join(ROOT_DIR, 'llama', 'llama-server.exe');
+
+// Store active model processes
+interface ModelInstance {
+  id: string;
+  process: ChildProcess;
+  port: number;
+  status: 'starting' | 'ready' | 'error';
+  modelPath: string;
+  startTime: number;
+}
+
+const activeModels: Map<string, ModelInstance> = new Map();
+
+// --- Color Codes for Console ---
+const Colors = {
+  Reset: "\x1b[0m",
+  Bright: "\x1b[1m",
+  Dim: "\x1b[2m",
+  FgBlue: "\x1b[34m",
+  FgGreen: "\x1b[32m",
+  FgRed: "\x1b[31m",
+  FgYellow: "\x1b[33m",
+  FgCyan: "\x1b[36m",
+  FgMagenta: "\x1b[35m",
+  BgBlue: "\x1b[44m",
+  BgWhite: "\x1b[47m",
+};
+
+const log = {
+  info: (msg: string) => console.log(`${Colors.FgBlue}[INFO]${Colors.Reset} ${msg}`),
+  success: (msg: string) => console.log(`${Colors.FgGreen}[OK]${Colors.Reset} ${msg}`),
+  warn: (msg: string) => console.log(`${Colors.FgYellow}[WARN]${Colors.Reset} ${msg}`),
+  error: (msg: string) => console.log(`${Colors.FgRed}[ERR]${Colors.Reset} ${msg}`),
+  req: (method: string, url: string) => console.log(`${Colors.Dim}${Colors.FgCyan}↙ ${method}${Colors.Reset} ${url}`),
+  llama: (msg: string) => console.log(`${Colors.FgMagenta}[LLAMA]${Colors.Reset} ${msg}`)
+};
+
+// --- Middleware ---
 app.use(cors());
-// Increase limit to handle large base64 image strings
 app.use(express.json({ limit: '50mb' }));
 
+// --- Helper: Find Free Port ---
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close(() => resolve(port));
+    });
+    server.on('error', reject);
+  });
+}
+
+// --- Helper: Wait for Model to be Ready ---
+async function waitForModelReady(port: number, timeoutMs: number = 60000): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      await fetch(`http://localhost:${port}/health`);
+      return true;
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retry
+    }
+  }
+  return false;
+}
+
+// --- Main Route Handler ---
 app.use('/user_data', (req, res) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
-  const filePath = path.join(ROOT_DIR, 'user_data', relativePath || '');
+  
+  if (!relativePath || relativePath.includes('..')) {
+    log.warn(`Blocked suspicious path attempt: ${relativePath}`);
+    return res.status(403).json({ error: 'Invalid path structure' });
+  }
+
+  const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
   const dir = path.dirname(filePath);
 
-  console.log(`📥 Request: ${req.method} ${req.url}`);
-  console.log(`💾 Target: ${filePath}`);
+  log.req(req.method || 'UNKNOWN', req.url || '/');
+
+  if (req.method === 'GET') {
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Resource not found' });
+    fs.stat(filePath, (err, stats) => {
+      if (err) return res.status(500).json({ error: 'FS Error' });
+      if (stats.isDirectory()) {
+        fs.readdir(filePath, (err, files) => err ? res.status(500).json({ error: 'Dir Read Error' }) : res.json(files));
+      } else {
+        fs.readFile(filePath, 'utf8', (err, data) => {
+          if (err) return res.status(500).json({ error: 'Read Error' });
+          const ext = path.extname(filePath).toLowerCase();
+          if (ext === '.json') { res.setHeader('Content-Type', 'application/json'); res.send(data); }
+          else if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+            const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+            res.setHeader('Content-Type', mime);
+            fs.readFile(filePath, (ie, buf) => ie ? res.status(500).send('Img Error') : res.send(buf));
+          } else { res.send(data); }
+        });
+      }
+    });
+    return;
+  }
 
   if (req.method === 'PUT') {
     if (!fs.existsSync(dir)) {
-      try {
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`📁 Created dir: ${dir}`);
-      } catch (err: any) {
-        return res.status(500).json({ error: 'Failed to create directory', details: err.message });
-      }
+      try { fs.mkdirSync(dir, { recursive: true }); log.success(`Created dir: ${dir}`); }
+      catch (e: any) { return res.status(500).json({ error: 'Mkdir Failed', details: e.message }); }
     }
-
-    // ✅ IMAGE HANDLING: Detect base64 image uploads
-    const isImageUpload = relativePath?.startsWith('character_images/');
     const body = req.body as any;
-
-    if (isImageUpload && body && typeof body.base64 === 'string') {
+    const isImage = relativePath.includes('character_images/') || relativePath.includes('context_data/');
+    
+    if (isImage && body?.base64) {
       try {
-        const buffer = Buffer.from(body.base64, 'base64');
-        fs.writeFile(filePath, buffer, (err: any) => {
-          if (err) {
-            console.error(`❌ Image write failed: ${err.message}`);
-            return res.status(500).json({ error: 'Failed to write image', details: err.message });
-          }
-          console.log(`✅ Saved image: ${filePath} (${buffer.length} bytes)`);
-          res.status(200).json({ success: true, path: filePath });
-        });
+        const buffer = Buffer.from(body.base64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+        fs.writeFile(filePath, buffer, (err: any) => err ? res.status(500).json({ error: 'Write Img Failed' }) : res.json({ success: true }));
         return;
-      } catch (err: any) {
-        return res.status(400).json({ error: 'Invalid base64 data', details: err.message });
-      }
+      } catch (e: any) { return res.status(400).json({ error: 'Invalid Base64' }); }
     }
 
-    // Standard JSON handling for everything else
-    fs.writeFile(filePath, JSON.stringify(req.body, null, 2), (err: any) => {
-      if (err) {
-        console.error(`❌ Write failed: ${err.message}`);
-        return res.status(500).json({ error: 'Failed to write file', details: err.message });
-      }
-      console.log(`✅ Saved: ${filePath}`);
-      res.status(200).json({ success: true, path: filePath });
-    });
+    fs.writeFile(filePath, JSON.stringify(req.body, null, 2), (err: any) => err ? res.status(500).json({ error: 'Write JSON Failed' }) : res.json({ success: true }));
+    return;
   } 
-  else if (req.method === 'DELETE') {
+  
+  if (req.method === 'DELETE') {
     fs.unlink(filePath, (err: any) => {
-      if (err && err.code !== 'ENOENT') {
-        console.error(`❌ Delete failed: ${err.message}`);
-        return res.status(500).json({ error: 'Failed to delete file', details: err.message });
-      }
-      if (err && err.code === 'ENOENT') {
-        console.warn(`⚠️ File not found: ${filePath}`);
-        return res.status(200).json({ success: true, message: 'File not found' });
-      }
-      console.log(`✅ Deleted: ${filePath}`);
-      res.status(200).json({ success: true });
+      if (err && err.code !== 'ENOENT') return res.status(500).json({ error: 'Delete Failed' });
+      res.json({ success: true });
     });
+    return;
   } 
-  else {
-    res.status(405).json({ error: 'Method not allowed on this middleware' });
+
+  res.status(405).json({ error: 'Method Not Allowed' });
+});
+
+// --- NEW: Model Management Routes ---
+
+// GET /models/status - List all loaded models
+app.get('/models/status', (req, res) => {
+  const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
+    id,
+    port: instance.port,
+    status: instance.status,
+    modelPath: instance.modelPath,
+    uptime: Date.now() - instance.startTime
+  }));
+  res.json({ activeModels: status, count: status.length });
+});
+
+// POST /models/load - Load a model
+app.post('/models/load', async (req, res) => {
+  const { id, modelPath, port: requestedPort, args = [] } = req.body;
+
+  if (!id || !modelPath) {
+    return res.status(400).json({ error: 'Missing id or modelPath' });
+  }
+
+  if (activeModels.has(id)) {
+    return res.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
+  }
+
+  if (!fs.existsSync(LLAMA_SERVER_PATH)) {
+    return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
+  }
+  
+  if (!fs.existsSync(modelPath)) {
+    return res.status(404).json({ error: `Model file not found at ${modelPath}` });
+  }
+
+  const port = requestedPort || await getFreePort();
+  log.info(`Starting model ${id} on port ${port}...`);
+
+  // Construct arguments
+  const launchArgs = [
+    '-m', modelPath,
+    '--port', port.toString(),
+    '--host', '127.0.0.1',
+    '--cont-batch-gpu', // Example optimization flag
+    ...args
+  ];
+
+  const proc = spawn(LLAMA_SERVER_PATH, launchArgs, {
+    cwd: path.dirname(LLAMA_SERVER_PATH),
+    stdio: ['ignore', 'pipe', 'pipe'] // Capture logs
+  });
+
+  const instance: ModelInstance = {
+    id,
+    process: proc,
+    port,
+    status: 'starting',
+    modelPath,
+    startTime: Date.now()
+  };
+
+  activeModels.set(id, instance);
+
+  // Handle Process Output
+  proc.stdout?.on('data', (data) => {
+    const str = data.toString().trim();
+    if (str) log.llama(`[${id}] ${str}`);
+    // Simple heuristic to detect readiness if health check fails
+    if (str.includes("HTTP server listening")) {
+      instance.status = 'ready';
+    }
+  });
+
+  proc.stderr?.on('data', (data) => {
+    log.error(`[${id}] ${data.toString().trim()}`);
+  });
+
+  proc.on('exit', (code) => {
+    log.warn(`[${id}] Process exited with code ${code}`);
+    activeModels.delete(id);
+  });
+
+  // Wait for health check
+  const isReady = await waitForModelReady(port);
+  
+  if (isReady) {
+    instance.status = 'ready';
+    log.success(`Model ${id} loaded successfully on port ${port}`);
+    res.json({ success: true, id, port, status: 'ready' });
+  } else {
+    instance.status = 'error';
+    log.error(`Model ${id} failed to start within timeout. Killing process.`);
+    proc.kill();
+    activeModels.delete(id);
+    res.status(504).json({ error: 'Model failed to initialize within timeout' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log("-----------------------------------------");
-  console.log(`✅ Storage API Running on http://localhost:${PORT}`);
-  console.log(`📂 Root Directory: ${ROOT_DIR}`);
-  console.log("📝 Handling all /user_data/* requests");
-  console.log("🖼️  Base64 image uploads supported at /user_data/character_images/");
-  console.log("-----------------------------------------");
+// POST /models/unload - Unload a model
+app.post('/models/unload', (req, res) => {
+  const { id } = req.body;
+  
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+  
+  const instance = activeModels.get(id);
+  if (!instance) {
+    return res.status(404).json({ error: `Model ${id} not found` });
+  }
+
+  log.info(`Unloading model ${id}...`);
+  
+  // Graceful shutdown
+  instance.process.kill('SIGTERM');
+  
+  // Force kill after 2 seconds if still running
+  setTimeout(() => {
+    if (instance.process.pid) {
+      try { process.kill(instance.process.pid, 'SIGKILL'); } catch(e) {}
+    }
+  }, 2000);
+
+  activeModels.delete(id);
+  log.success(`Model ${id} unloaded`);
+  res.json({ success: true, message: 'Model unloaded' });
 });
+
+// Proxy requests to loaded models (Optional but useful)
+// Usage: GET /proxy/{modelId}/completion
+app.all('/proxy/:modelId/*', (req, res) => {
+  const { modelId } = req.params;
+  const instance = activeModels.get(modelId);
+  
+  if (!instance || instance.status !== 'ready') {
+    return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
+  }
+
+  const targetUrl = `http://127.0.0.1:${instance.port}${req.path}`;
+  
+  // Simple proxy using fetch
+  fetch(targetUrl, {
+    method: req.method,
+    headers: req.headers as any,
+    body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
+  })
+  .then(response => response.json())
+  .then(data => res.json(data))
+  .catch(err => res.status(502).json({ error: 'Proxy error', details: err.message }));
+});
+
+// --- Startup Banner ---
+const startServer = () => {
+  const border = "────────────────────────────────────────";
+  const title = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Core${Colors.Reset}`;
+  
+  console.clear();
+  console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
+  console.log(border);
+  console.log(`  ${title}`);
+  console.log(`  🤖 Llama Path: ${Colors.Dim}${LLAMA_SERVER_PATH}${Colors.Reset}`);
+  console.log(border);
+  console.log(`  📡 API Port:  ${Colors.FgGreen}http://localhost:${PORT}${Colors.Reset}`);
+  console.log(`  💾 Data Path: ${Colors.Dim}/user_data/${Colors.Reset}`);
+  console.log(border);
+  console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
+  console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Model Control Enabled.`);
+  console.log("");
+
+  app.listen(PORT, () => {});
+};
+
+startServer();
