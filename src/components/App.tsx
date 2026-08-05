@@ -75,15 +75,19 @@ function App() {
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
-  // ✅ Model readiness: determines if the user can actually send messages
+  // ✅ Model readiness: requires BOTH running AND idle (slots available)
   const isModelReady = selectedModelId 
-    ? runningModels[selectedModelId]?.isRunning === true 
+    ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true
+    : false;
+  
+  const isModelLoading = selectedModelId
+    ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true
     : false;
   
   const modelStatusMessage = !selectedModelId 
     ? "No model selected — open Models to load one"
-    : !runningModels[selectedModelId]?.isRunning
-      ? "Model is loading... please wait"
+    : isModelLoading
+      ? "Model is warming up... please wait"
       : "";
 
   // --- UI State ---
@@ -117,7 +121,7 @@ function App() {
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
 
-  // ✅ FIXED: Sampler editor uses dedicated state instead of broken entity modal
+  // ✅ Sampler editor uses dedicated state instead of broken entity modal
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   
@@ -366,7 +370,7 @@ function App() {
     }
   };
 
-  // ✅ FIXED: Sampler editor handlers using dedicated state
+  // ✅ Sampler editor handlers using dedicated state
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => {
     setSamplerToEdit(sampler || null);
     setIsSamplerEditorOpen(true);
@@ -725,11 +729,11 @@ function App() {
         </div>
 
         <div className="input-wrapper">
-          {/* ✅ Model readiness banner */}
+          {/* ✅ Model readiness banner — now gates on idle state */}
           {!isModelReady && (
             <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
               {!selectedModelId && <span className="model-status-icon">🤖</span>}
-              {selectedModelId && !runningModels[selectedModelId]?.isRunning && (
+              {isModelLoading && (
                 <span className="model-status-spinner" />
               )}
               <span className="model-status-text">{modelStatusMessage}</span>
@@ -763,7 +767,7 @@ function App() {
               value={inputText} 
               onChange={(e) => setInputText(e.target.value)} 
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
-              placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : "Load a model to start chatting..."} 
+              placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? "Warming up... please wait" : "Load a model to start chatting..."} 
               rows={3} 
               className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} 
               disabled={isLoading || !chatData || !isModelReady} 
@@ -820,7 +824,7 @@ function App() {
         )}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
         
-        {/* ✅ FIXED: Samplers now use dedicated editor state instead of broken entity modal */}
+        {/* ✅ Samplers use dedicated editor state */}
         {isSampListOpen && (
           <ManagerModal 
             title="Samplers" 

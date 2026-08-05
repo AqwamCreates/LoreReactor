@@ -60,8 +60,6 @@ export function useChatSession() {
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
     const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
 
-    // ✅ Store runningModels ref so handleServerResponse always reads fresh port data
-    // without depending on useEffect injection timing
     const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
 
     const [stats, setStats] = useState({
@@ -148,13 +146,10 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
-                // ✅ FIX: Read runtime port DIRECTLY from runningModelsMap at call time
-                // This eliminates the race condition where useEffect hasn't injected _runtimePort yet
                 const runtimePort = selectedModel?.id 
                     ? runningModelsMap[selectedModel.id]?.port 
                     : undefined;
                 
-                // Also check _runtimePort as fallback for backward compatibility
                 const effectivePort = runtimePort || (selectedModel.parameters as any)?._runtimePort;
                 
                 const modelContext = {
@@ -233,7 +228,6 @@ export function useChatSession() {
         }
     }, [addToast, selectedModel, streamingText, runningModelsMap]);
 
-    // ✅ NEW: Expose a method for App.tsx to push runningModels updates into this hook
     const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
         setRunningModelsMap(models);
     }, []);
@@ -511,7 +505,9 @@ export function useChatSession() {
     }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
-    const maxContextTokens = 4096; 
+
+    // ✅ FIXED: Derive max context from selected model instead of hardcoded 4096
+    const maxContextTokens = selectedModel?.contextLength || 4096;
 
     return {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
