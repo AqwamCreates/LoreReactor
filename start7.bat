@@ -1,5 +1,5 @@
 .\llama\llama-server.exe ^
-    -m "user_data\models\Qwen3.5-9B-Q3_K_S.gguf" ^
+    -m "user_data\models\granite-4.1-8b-Abliterated-AND-Disinhibited.Q4_K_M.gguf" ^
     -c 131072 ^
     --cache-type-k iq4_nl ^
     --cache-type-v iq4_nl ^
@@ -7,8 +7,6 @@
     --port 8080 ^
     --host 0.0.0.0 ^
     -ngl 99 ^
-    --cache-reuse 256 ^
-    --chat-template-kwargs "{\"enable_thinking\": false}" ^
+    --cache-reuse 1 ^
     -fa on ^
     --reasoning off
-    
