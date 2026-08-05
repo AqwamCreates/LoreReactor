@@ -54,6 +54,15 @@ const log = {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// --- Helper: Resolve Relative URL to Absolute FS Path ---
+function resolveModelPath(inputPath: string): string {
+  if (path.isAbsolute(inputPath)) {
+    return inputPath;
+  }
+  const cleanPath = inputPath.startsWith('/') ? inputPath.slice(1) : inputPath;
+  return path.join(ROOT_DIR, cleanPath);
+}
+
 // --- Helper: Find Free Port ---
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -74,13 +83,13 @@ async function waitForModelReady(port: number, timeoutMs: number = 60000): Promi
       await fetch(`http://localhost:${port}/health`);
       return true;
     } catch (e) {
-      await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retry
+      await new Promise(r => setTimeout(r, 500));
     }
   }
   return false;
 }
 
-// --- Main Route Handler ---
+// --- Main Route Handler (/user_data) ---
 app.use('/user_data', (req, res) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   
@@ -147,9 +156,9 @@ app.use('/user_data', (req, res) => {
   res.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- NEW: Model Management Routes ---
+// --- Model Management Routes ---
 
-// GET /models/status - List all loaded models
+// GET /models/status
 app.get('/models/status', (req, res) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
     id,
@@ -161,7 +170,7 @@ app.get('/models/status', (req, res) => {
   res.json({ activeModels: status, count: status.length });
 });
 
-// POST /models/load - Load a model
+// POST /models/load
 app.post('/models/load', async (req, res) => {
   const { id, modelPath, port: requestedPort, args = [] } = req.body;
 
@@ -173,29 +182,30 @@ app.post('/models/load', async (req, res) => {
     return res.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
   }
 
+  const absoluteModelPath = resolveModelPath(modelPath);
+
   if (!fs.existsSync(LLAMA_SERVER_PATH)) {
     return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
   }
   
-  if (!fs.existsSync(modelPath)) {
-    return res.status(404).json({ error: `Model file not found at ${modelPath}` });
+  if (!fs.existsSync(absoluteModelPath)) {
+    return res.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
   }
 
   const port = requestedPort || await getFreePort();
   log.info(`Starting model ${id} on port ${port}...`);
+  log.info(`Model Path: ${absoluteModelPath}`);
 
-  // Construct arguments
   const launchArgs = [
-    '-m', modelPath,
+    '-m', absoluteModelPath,
     '--port', port.toString(),
     '--host', '127.0.0.1',
-    '--cont-batch-gpu', // Example optimization flag
     ...args
   ];
 
   const proc = spawn(LLAMA_SERVER_PATH, launchArgs, {
     cwd: path.dirname(LLAMA_SERVER_PATH),
-    stdio: ['ignore', 'pipe', 'pipe'] // Capture logs
+    stdio: ['ignore', 'pipe', 'pipe']
   });
 
   const instance: ModelInstance = {
@@ -203,17 +213,15 @@ app.post('/models/load', async (req, res) => {
     process: proc,
     port,
     status: 'starting',
-    modelPath,
+    modelPath: absoluteModelPath,
     startTime: Date.now()
   };
 
   activeModels.set(id, instance);
 
-  // Handle Process Output
   proc.stdout?.on('data', (data) => {
     const str = data.toString().trim();
     if (str) log.llama(`[${id}] ${str}`);
-    // Simple heuristic to detect readiness if health check fails
     if (str.includes("HTTP server listening")) {
       instance.status = 'ready';
     }
@@ -228,7 +236,6 @@ app.post('/models/load', async (req, res) => {
     activeModels.delete(id);
   });
 
-  // Wait for health check
   const isReady = await waitForModelReady(port);
   
   if (isReady) {
@@ -244,7 +251,7 @@ app.post('/models/load', async (req, res) => {
   }
 });
 
-// POST /models/unload - Unload a model
+// POST /models/unload
 app.post('/models/unload', (req, res) => {
   const { id } = req.body;
   
@@ -256,11 +263,8 @@ app.post('/models/unload', (req, res) => {
   }
 
   log.info(`Unloading model ${id}...`);
-  
-  // Graceful shutdown
   instance.process.kill('SIGTERM');
   
-  // Force kill after 2 seconds if still running
   setTimeout(() => {
     if (instance.process.pid) {
       try { process.kill(instance.process.pid, 'SIGKILL'); } catch(e) {}
@@ -272,19 +276,20 @@ app.post('/models/unload', (req, res) => {
   res.json({ success: true, message: 'Model unloaded' });
 });
 
-// Proxy requests to loaded models (Optional but useful)
-// Usage: GET /proxy/{modelId}/completion
-app.all('/proxy/:modelId/*', (req, res) => {
-  const { modelId } = req.params;
+// ✅ FIXED: Express v5 compatible named wildcard syntax
+// Uses /*path instead of /* or :splat(*)
+app.all('/proxy/:modelId/*path', (req, res) => {
+  const { modelId, path: remainingPath } = req.params;
+  
   const instance = activeModels.get(modelId);
   
   if (!instance || instance.status !== 'ready') {
     return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
   }
 
-  const targetUrl = `http://127.0.0.1:${instance.port}${req.path}`;
+  // remainingPath contains everything after /proxy/:modelId/
+  const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath || ''}`;
   
-  // Simple proxy using fetch
   fetch(targetUrl, {
     method: req.method,
     headers: req.headers as any,
@@ -298,7 +303,7 @@ app.all('/proxy/:modelId/*', (req, res) => {
 // --- Startup Banner ---
 const startServer = () => {
   const border = "────────────────────────────────────────";
-  const title = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Core${Colors.Reset}`;
+  const title = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
   
   console.clear();
   console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
