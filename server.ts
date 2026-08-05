@@ -35,7 +35,7 @@ const log = {
   info: (msg: string) => console.log(`${Colors.FgBlue}[INFO]${Colors.Reset} ${msg}`),
   success: (msg: string) => console.log(`${Colors.FgGreen}[OK]${Colors.Reset} ${msg}`),
   warn: (msg: string) => console.log(`${Colors.FgYellow}[WARN]${Colors.Reset} ${msg}`),
-  error: (msg: string) => console.log(`${Colors.FgRed}[ERR]${Colors.Reset} ${msg}`),
+  error: (msg: string) => console.log(`${Colors.FgRed}[ERROR]${Colors.Reset} ${msg}`),
   req: (method: string, url: string) => console.log(`${Colors.Dim}${Colors.FgCyan}↙ ${method}${Colors.Reset} ${url}`),
   llama: (msg: string) => console.log(`${Colors.FgMagenta}[LLAMA]${Colors.Reset} ${msg}`)
 };
@@ -215,9 +215,10 @@ app.post('/models/unload', (req, res) => {
   res.json({ success: true, message: 'Model unloaded' });
 });
 
-app.all('/proxy/:modelId/*', (req, res) => {
+// ✅ FIXED: Express 5 requires named wildcard parameter {*path} instead of bare *
+app.all('/proxy/:modelId/{*path}', (req, res) => {
   const modelId = req.params.modelId;
-  const remainingPath = (req.params as any)[0] || '';
+  const remainingPath = req.params.path || '';
   const instance = activeModels.get(modelId);
   if (!instance || instance.status !== 'ready') return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
 
