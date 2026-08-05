@@ -206,7 +206,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     if (thinkPrompt) promptLines.push(`${contextStartString}<think>${thinkPrompt}</think>${contextStartString}`);
 
-    promptLines.push(`${contextStartString}<think>I have figured out on how to complete the response as Character ${participantId} (${characterName}) without repeating phrases and with proper formatting.</think>${contextStartString}`) // Uhm... Thinking hijacking worked a little too well.
+    promptLines.push(`${contextStartString}<think>I have figured out on how to complete the response as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting.</think>${contextStartString}`) // Uhm... Thinking hijacking worked a little too well. Also do not use "perfect" before the word "formatting" as it will cause over-correction.
 
     //promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
 
