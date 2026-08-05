@@ -1,8 +1,8 @@
 .\llama\llama-server.exe ^
     -m "user_data\models\gemma4-E4B-it-Abliterated-AND-Disinhibited-USE-THIS.Q8_0.gguf" ^
     -c 131072 ^
-    --cache-type-k f16 ^
-    --cache-type-v f16 ^
+    --cache-type-k q4_0 ^
+    --cache-type-v q4_0 ^
     -np 1 ^
     --port 8080 ^
     --host 0.0.0.0 ^

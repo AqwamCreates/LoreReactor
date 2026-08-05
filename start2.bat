@@ -7,8 +7,6 @@
     --port 8080 ^
     --host 0.0.0.0 ^
     -ngl 99 ^
-    --cache-reuse 256 ^
-    --chat-template-kwargs "{\"enable_thinking\": false}" ^
+    --cache-reuse 0 ^
     -fa on ^
     --reasoning off
-    
