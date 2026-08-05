@@ -94,7 +94,7 @@ function App() {
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isContextListMode, setIsContextListMode] = useState(false);
-  const [isSampListOpen, setIsSampListOpen] = useState(false);
+  const [isSamplerListOpen, setIsSampListOpen] = useState(false);
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
@@ -839,12 +839,11 @@ function App() {
         )}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
         
-        {/* ✅ Samplers use dedicated editor state */}
-        {isSampListOpen && (
+        {isSamplerListOpen && (
           <ManagerModal 
             title="Samplers" 
             items={allSamplers} 
-            isOpen={isSampListOpen} 
+            isOpen={isSamplerListOpen} 
             onClose={() => setIsSampListOpen(false)} 
             onSelect={(sampler) => handleOpenSamplerEditor(sampler)} 
             onDelete={deleteSampler} 

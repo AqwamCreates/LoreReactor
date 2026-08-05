@@ -1,5 +1,4 @@
 // src/components/StopPatternEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { StopPattern } from '../types';
 import './main.css';
@@ -16,7 +15,6 @@ export function StopPatternEditorModal({
     isOpen,
     onClose,
     onSave,
-    onDelete, // Unused in UI now
     existingStopPattern,
 }: StopPatternEditorModalProps) {
     const [name, setName] = useState('');

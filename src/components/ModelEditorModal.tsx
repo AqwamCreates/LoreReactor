@@ -169,7 +169,6 @@ export function ModelEditorModal({
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
-    // ✅ Track whether we're loading an existing model to prevent cache reset
     const isLoadingExistingRef = useRef(false);
 
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
@@ -183,11 +182,9 @@ export function ModelEditorModal({
     const isCloudBackend = CLOUD_BACKENDS.includes(backend);
     const isLlamaCpp = backend === 'Llama.cpp';
 
-    // Load existing model data
     useEffect(() => {
         if (isOpen) {
             if (existingModel) {
-                // ✅ Mark that we're loading existing data so cache reset doesn't overwrite
                 isLoadingExistingRef.current = true;
 
                 setName(existingModel.name || '');
@@ -260,7 +257,6 @@ export function ModelEditorModal({
         }
     }, [isOpen, existingModel]);
 
-    // ✅ FIXED: Only reset cache types when appropriate
     useEffect(() => {
         const cacheTypes = getCacheTypes(backend);
         if (cacheTypes.length === 0) return;
@@ -269,18 +265,15 @@ export function ModelEditorModal({
         const defaultVal = cacheTypes[0].value;
 
         if (isLoadingExistingRef.current) {
-            // ✅ Editing existing model: only reset if current value is INVALID for this backend
             setSettings(prev => {
                 const needsResetK = !validValues.includes(prev.cache_type_k);
                 const needsResetV = !validValues.includes(prev.cache_type_v);
                 const needsResetCombined = !validValues.includes(prev.cache_type);
 
-                // If all values are valid for this backend, preserve them entirely
                 if (!needsResetK && !needsResetV && !needsResetCombined) {
                     return prev;
                 }
 
-                // Only reset the specific values that are invalid
                 return {
                     ...prev,
                     cache_type_k: needsResetK ? defaultVal : prev.cache_type_k,
@@ -289,10 +282,8 @@ export function ModelEditorModal({
                 };
             });
 
-            // ✅ Clear the flag after processing so future backend changes behave normally
             isLoadingExistingRef.current = false;
         } else {
-            // ✅ New model or user manually changed backend: reset to defaults
             setSettings(prev => ({
                 ...prev,
                 cache_type: defaultVal,
@@ -306,7 +297,6 @@ export function ModelEditorModal({
         setSettings(prev => {
             const newSettings = { ...prev, [key]: value };
 
-            // If combined cache_type changes, sync K and V
             if (key === 'cache_type') {
                 const { k, v } = syncKVFromCombined(value as string);
                 newSettings.cache_type_k = k;
@@ -329,24 +319,22 @@ export function ModelEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
+    // ✅ Shared logic to build a model object from current form state
+    const buildModelFromForm = (isNewClone: boolean): LanguageModel | null => {
         if (!validate()) {
             alert("Please fill in all required fields before saving.");
-            return;
+            return null;
         }
 
         const params: Record<string, unknown> = {};
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
         if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
 
-        // ✅ FIXED: Always store cache values explicitly so they persist correctly
-        // Store individual K and V for Llama.cpp
         if (isLlamaCpp) {
             params.cache_type_k = settings.cache_type_k;
             params.cache_type_v = settings.cache_type_v;
             params.cache_type = settings.cache_type;
         } else {
-            // For non-Llama.cpp: store combined value
             params.cache_type = settings.cache_type;
         }
 
@@ -375,9 +363,9 @@ export function ModelEditorModal({
         if (apiKey.trim()) params.api_key = apiKey.trim();
 
         const now = Date.now();
-        const model: LanguageModel = {
-            id: existingModel?.id || crypto.randomUUID(),
-            name: name.trim(),
+        return {
+            id: isNewClone ? crypto.randomUUID() : (existingModel?.id || crypto.randomUUID()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             backend,
             contextLength: contextLength || 8192,
@@ -388,11 +376,23 @@ export function ModelEditorModal({
             cacheHitCostPerOneMillionOfTokens: cacheHitCostPerMillion,
             cacheMissCostPerOneMillionOfTokens: cacheMissCostPerMillion,
             outputGenerationCostPerOneMillionOfTokens: outputGenerationCostPerMillion,
-            firstCreatedTimestamp: existingModel?.firstCreatedTimestamp || now,
+            firstCreatedTimestamp: isNewClone ? now : (existingModel?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = () => {
+        const model = buildModelFromForm(false);
+        if (!model) return;
         onSave(model);
+        onClose();
+    };
+
+    // ✅ Clone: save as new model with a new ID and "(Clone)" suffix
+    const handleClone = () => {
+        const clonedModel = buildModelFromForm(true);
+        if (!clonedModel) return;
+        onSave(clonedModel);
         onClose();
     };
 
@@ -421,7 +421,13 @@ export function ModelEditorModal({
                             </div>
                         )}
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingModel ? 'Update' : 'Create'}</button>
+                        {/* ✅ Clone button — only shown when editing an existing model */}
+                        {existingModel && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                                Clone
+                            </button>
+                        )}
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 

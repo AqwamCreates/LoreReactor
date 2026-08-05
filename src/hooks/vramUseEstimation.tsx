@@ -116,6 +116,8 @@ const calculateVRAM = (modelName: string, gpuLayers: number, cacheType: string, 
         cacheMultiplier = 0.5;
     } else if (cacheLower === 'q4_0' || cacheLower === 'q4') {
         cacheMultiplier = 0.25;
+    } else if (cacheLower === 'q4_nl') {
+        cacheMultiplier = 0.3;
     } else if (cacheLower === 'q6') {
         cacheMultiplier = 0.375;
     } else if (cacheLower === 'q3') {
