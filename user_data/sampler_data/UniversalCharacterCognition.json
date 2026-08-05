@@ -1,39 +1,62 @@
 {
-    "name": "Universal Character Cognition",
-
-    "description": "Good foor a wide variety of characters, including those with complex personalities and motivations. It is designed to understand and respond to a wide range of character traits, emotions, and behaviors.",
-
-    "parameters": {
-
-        "temperature": 0.6,
-        "top_k": 50,
-        "top_p": 0.9,
-        "min_p": 0.1,
-        
-        "mirostat": 2,
-        "mirostat_tau": 3.0,
-        "mirostat_eta": 0.2,
-        
-        "typical_p": 0.95,
-        
-        "top_n_sigma": 4.5,
-        
-        "dry_multiplier": 0.35,
-        "dry_base": 1.35,
-        "dry_allowed_length": 2,
-        "dry_penalty_last_n": 4096,
-        
-        "repetition_penalty": 1.1,
-        "repetition_penalty_range": 4096,
-
-        "samplers": ["temperature", "top_k", "top_p", "mirostat", "typical_p", "min_p", "top_n_sigma", "dry", "repetition_penalty"]
-
-    },
-
-    "stopPatternIds": [],
-    
-    "maximumNumberOfTokens": 64
-
+  "name": "Universal Character Cognition",
+  "description": "Good foor a wide variety of characters, including those with complex personalities and motivations. It is designed to understand and respond to a wide range of character traits, emotions, and behaviors.",
+  "parameters": {
+    "temperature": 0.6,
+    "top_k": 50,
+    "top_p": 0.9,
+    "repeat_penalty": 1.15,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "min_p": 0.1,
+    "typical_p": 0.95,
+    "tfs_z": 1,
+    "top_a": 0,
+    "mirostat": 2,
+    "mirostat_tau": 3,
+    "mirostat_eta": 0.2,
+    "rep_penalty_range": 1024,
+    "rep_penalty_slope": 0,
+    "encoder_repetition_penalty": 1,
+    "no_repeat_ngram_size": 0,
+    "penalty_alpha": 0,
+    "smoothing_factor": 0,
+    "smoothing_curve": 1,
+    "dry_allowed_length": 2,
+    "dry_penalty_last_n": 4096,
+    "dry_base": 1.35,
+    "dry_multiplier": 0.35,
+    "dry_sequence_breaker": "\n",
+    "ignore_eos": false,
+    "_enabled_temperature": true,
+    "_enabled_top_k": true,
+    "_enabled_top_p": true,
+    "_enabled_repeat_penalty": true,
+    "_enabled_frequency_penalty": false,
+    "_enabled_presence_penalty": false,
+    "_enabled_min_p": false,
+    "_enabled_typical_p": false,
+    "_enabled_tfs_z": false,
+    "_enabled_top_a": false,
+    "_enabled_mirostat": false,
+    "_enabled_mirostat_tau": false,
+    "_enabled_mirostat_eta": false,
+    "_enabled_rep_penalty_range": false,
+    "_enabled_rep_penalty_slope": false,
+    "_enabled_encoder_repetition_penalty": false,
+    "_enabled_no_repeat_ngram_size": false,
+    "_enabled_penalty_alpha": false,
+    "_enabled_smoothing_factor": false,
+    "_enabled_smoothing_curve": false,
+    "_enabled_dry_allowed_length": false,
+    "_enabled_dry_penalty_last_n": false,
+    "_enabled_dry_base": false,
+    "_enabled_dry_multiplier": false,
+    "_enabled_dry_sequence_breaker": false,
+    "_enabled_ignore_eos": false
+  },
+  "maximumNumberOfTokens": 128,
+  "firstCreatedTimestamp": 1785954158610,
+  "lastUpdatedTimestamp": 1785954982430,
+  "stopPatternIds": []
 }
-
-

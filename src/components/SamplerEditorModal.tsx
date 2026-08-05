@@ -131,85 +131,33 @@ const DEFAULT_ENABLED: EnabledParams = {
     ignore_eos: false,
 };
 
-const PARAMETER_CONFIGS = {
-    temperature: { 
-        min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 
-    },
-    top_k: { 
-        min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 
-    },
-    top_p: { 
-        min: 0, max: 1, step: 0.05, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 
-    },
-    repeat_penalty: { 
-        min: 1, max: 2, step: 0.05, description: 'Penalizes repetition', label: 'Repeat Penalty', category: 'Core', defaultEnabled: true, decimals: 2 
-    },
-    frequency_penalty: { 
-        min: 0, max: 2, step: 0.05, description: 'Penalizes frequent tokens', label: 'Frequency Penalty', category: 'Core', defaultEnabled: false, decimals: 2 
-    },
-    presence_penalty: { 
-        min: 0, max: 2, step: 0.05, description: 'Penalizes tokens that have appeared before', label: 'Presence Penalty', category: 'Core', defaultEnabled: false, decimals: 2 
-    },
-    min_p: { 
-        min: 0, max: 1, step: 0.05, description: 'Minimum probability threshold', label: 'Min P', category: 'Advanced', defaultEnabled: false, decimals: 2 
-    },
-    typical_p: { 
-        min: 0, max: 1, step: 0.05, description: 'Typical sampling', label: 'Typical P', category: 'Advanced', defaultEnabled: false, decimals: 2 
-    },
-    tfs_z: { 
-        min: 0, max: 2, step: 0.05, description: 'Tail-free sampling', label: 'TFS Z', category: 'Advanced', defaultEnabled: false, decimals: 2 
-    },
-    top_a: { 
-        min: 0, max: 1, step: 0.05, description: 'Top-A sampling', label: 'Top A', category: 'Advanced', defaultEnabled: false, decimals: 2 
-    },
-    mirostat: { 
-        min: 0, max: 2, step: 1, description: 'Mirostat mode', label: 'Mirostat Mode', category: 'Advanced', defaultEnabled: false, decimals: 0 
-    },
-    mirostat_tau: { 
-        min: 0, max: 10, step: 0.1, description: 'Mirostat target entropy', label: 'Mirostat Tau', category: 'Advanced', defaultEnabled: false, decimals: 1 
-    },
-    mirostat_eta: { 
-        min: 0, max: 1, step: 0.05, description: 'Mirostat learning rate', label: 'Mirostat Eta', category: 'Advanced', defaultEnabled: false, decimals: 2 
-    },
-    rep_penalty_range: { 
-        min: 0, max: 4096, step: 64, description: 'Tokens to consider for repetition penalty', label: 'Rep Penalty Range', category: 'Repetition', defaultEnabled: false, decimals: 0 
-    },
-    rep_penalty_slope: { 
-        min: 0, max: 2, step: 0.05, description: 'Slope for repetition penalty curve', label: 'Rep Penalty Slope', category: 'Repetition', defaultEnabled: false, decimals: 2 
-    },
-    encoder_repetition_penalty: { 
-        min: 1, max: 2, step: 0.05, description: 'Penalty for tokens from the prompt', label: 'Encoder Rep Penalty', category: 'Repetition', defaultEnabled: false, decimals: 2 
-    },
-    no_repeat_ngram_size: { 
-        min: 0, max: 20, step: 1, description: 'Size of n-grams to prevent repetition', label: 'No Repeat N-Gram Size', category: 'Repetition', defaultEnabled: false, decimals: 0 
-    },
-    penalty_alpha: { 
-        min: 0, max: 2, step: 0.05, description: 'Penalty alpha for contrastive search', label: 'Penalty Alpha', category: 'Repetition', defaultEnabled: false, decimals: 2 
-    },
-    smoothing_factor: { 
-        min: 0, max: 1, step: 0.05, description: 'Smoothing factor', label: 'Smoothing Factor', category: 'Smoothing', defaultEnabled: false, decimals: 2 
-    },
-    smoothing_curve: { 
-        min: 0.1, max: 5, step: 0.1, description: 'Curve shape for smoothing', label: 'Smoothing Curve', category: 'Smoothing', defaultEnabled: false, decimals: 1 
-    },
-    dry_allowed_length: { 
-        min: 0, max: 20, step: 1, description: 'Maximum allowed repetition length', label: 'DRY Allowed Length', category: 'DRY', defaultEnabled: false, decimals: 0 
-    },
-    dry_penalty_last_n: { 
-        min: -1, max: 4096, step: 64, description: 'Tokens to consider for DRY penalty', label: 'DRY Penalty Last N', category: 'DRY', defaultEnabled: false, decimals: 0 
-    },
-    dry_base: { 
-        min: 1, max: 3, step: 0.05, description: 'Base for DRY exponential penalty', label: 'DRY Base', category: 'DRY', defaultEnabled: false, decimals: 2 
-    },
-    dry_multiplier: { 
-        min: 0, max: 2, step: 0.05, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 
-    },
-    dry_sequence_breaker: { 
-        min: 0, max: 0, step: 0, description: 'Characters that break DRY sequence', label: 'DRY Sequence Breaker', category: 'DRY', defaultEnabled: false, isString: true 
-    },
-    ignore_eos: { 
-        min: 0, max: 1, step: 1, description: 'Ignore End-Of-Sequence token', label: 'Ignore EOS', category: 'Other', defaultEnabled: false, isBoolean: true 
-    },
+const PARAMETER_CONFIGS: Record<string, { min: number; max: number; step: number; description: string; label: string; category: string; defaultEnabled: boolean; decimals?: number; isString?: boolean; isBoolean?: boolean }> = {
+    temperature: { min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 },
+    top_k: { min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 },
+    top_p: { min: 0, max: 1, step: 0.05, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 },
+    repeat_penalty: { min: 1, max: 2, step: 0.05, description: 'Penalizes repetition', label: 'Repeat Penalty', category: 'Core', defaultEnabled: true, decimals: 2 },
+    frequency_penalty: { min: 0, max: 2, step: 0.05, description: 'Penalizes frequent tokens', label: 'Frequency Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
+    presence_penalty: { min: 0, max: 2, step: 0.05, description: 'Penalizes tokens that have appeared before', label: 'Presence Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
+    min_p: { min: 0, max: 1, step: 0.05, description: 'Minimum probability threshold', label: 'Min P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    typical_p: { min: 0, max: 1, step: 0.05, description: 'Typical sampling', label: 'Typical P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    tfs_z: { min: 0, max: 2, step: 0.05, description: 'Tail-free sampling', label: 'TFS Z', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    top_a: { min: 0, max: 1, step: 0.05, description: 'Top-A sampling', label: 'Top A', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    mirostat: { min: 0, max: 2, step: 1, description: 'Mirostat mode', label: 'Mirostat Mode', category: 'Advanced', defaultEnabled: false, decimals: 0 },
+    mirostat_tau: { min: 0, max: 10, step: 0.1, description: 'Mirostat target entropy', label: 'Mirostat Tau', category: 'Advanced', defaultEnabled: false, decimals: 1 },
+    mirostat_eta: { min: 0, max: 1, step: 0.05, description: 'Mirostat learning rate', label: 'Mirostat Eta', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    rep_penalty_range: { min: 0, max: 4096, step: 64, description: 'Tokens to consider for repetition penalty', label: 'Rep Penalty Range', category: 'Repetition', defaultEnabled: false, decimals: 0 },
+    rep_penalty_slope: { min: 0, max: 2, step: 0.05, description: 'Slope for repetition penalty curve', label: 'Rep Penalty Slope', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    encoder_repetition_penalty: { min: 1, max: 2, step: 0.05, description: 'Penalty for tokens from the prompt', label: 'Encoder Rep Penalty', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    no_repeat_ngram_size: { min: 0, max: 20, step: 1, description: 'Size of n-grams to prevent repetition', label: 'No Repeat N-Gram Size', category: 'Repetition', defaultEnabled: false, decimals: 0 },
+    penalty_alpha: { min: 0, max: 2, step: 0.05, description: 'Penalty alpha for contrastive search', label: 'Penalty Alpha', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    smoothing_factor: { min: 0, max: 1, step: 0.05, description: 'Smoothing factor', label: 'Smoothing Factor', category: 'Smoothing', defaultEnabled: false, decimals: 2 },
+    smoothing_curve: { min: 0.1, max: 5, step: 0.1, description: 'Curve shape for smoothing', label: 'Smoothing Curve', category: 'Smoothing', defaultEnabled: false, decimals: 1 },
+    dry_allowed_length: { min: 0, max: 20, step: 1, description: 'Maximum allowed repetition length', label: 'DRY Allowed Length', category: 'DRY', defaultEnabled: false, decimals: 0 },
+    dry_penalty_last_n: { min: -1, max: 4096, step: 64, description: 'Tokens to consider for DRY penalty', label: 'DRY Penalty Last N', category: 'DRY', defaultEnabled: false, decimals: 0 },
+    dry_base: { min: 1, max: 3, step: 0.05, description: 'Base for DRY exponential penalty', label: 'DRY Base', category: 'DRY', defaultEnabled: false, decimals: 2 },
+    dry_multiplier: { min: 0, max: 2, step: 0.05, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 },
+    dry_sequence_breaker: { min: 0, max: 0, step: 0, description: 'Characters that break DRY sequence', label: 'DRY Sequence Breaker', category: 'DRY', defaultEnabled: false, isString: true },
+    ignore_eos: { min: 0, max: 1, step: 1, description: 'Ignore End-Of-Sequence token', label: 'Ignore EOS', category: 'Other', defaultEnabled: false, isBoolean: true },
 };
 
 const getParamValue = (params: Record<string, unknown> | undefined, key: string, defaultValue: number | string | boolean): number | string | boolean => {
@@ -288,12 +236,6 @@ export function SamplerEditorModal({
         setEnabledParams(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const handleStopPatternToggle = (id: string) => {
-        setSelectedStopPatternIds(prev => 
-            prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
-        );
-    };
-
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
         if (!name.trim()) {
@@ -303,7 +245,6 @@ export function SamplerEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    // ✅ Shared logic to build a sampler object from current form state
     const buildSamplerFromForm = (isNewClone: boolean): Sampler | null => {
         if (!validate()) return null;
 
@@ -334,7 +275,6 @@ export function SamplerEditorModal({
         onClose();
     };
 
-    // ✅ Clone: save as new sampler with a new ID and "(Clone)" suffix
     const handleClone = () => {
         const clonedSampler = buildSamplerFromForm(true);
         if (!clonedSampler) return;
@@ -374,33 +314,6 @@ export function SamplerEditorModal({
 
     if (!isOpen) return null;
 
-    const renderParameterInput = (key: string, config: any, paramKey: keyof SamplerParameters) => {
-        const isEnabled = enabledParams[paramKey as keyof EnabledParams] ?? false;
-        
-        if (config.isString) {
-            return (
-                <input
-                    type="text"
-                    value={parameters[paramKey] as string}
-                    onChange={(e) => handleParameterChange(paramKey, e.target.value)}
-                    disabled={!isEnabled}
-                    className={`editor-input ${!isEnabled ? 'disabled' : ''}`}
-                    style={{ fontFamily: 'monospace', fontSize: '0.75rem', padding: '4px 8px' }}
-                />
-            );
-        }
-        if (config.isBoolean) return null;
-
-        const decimals = config.decimals || 2;
-        return (
-            <SliderInput
-                label="" value={parameters[paramKey] as number} minimumValue={config.min} maximumValue={config.max}
-                stepValue={config.step} decimals={decimals} onChange={(value) => handleParameterChange(paramKey, value)}
-                description={config.description} disabled={!isEnabled}
-            />
-        );
-    };
-
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -408,7 +321,6 @@ export function SamplerEditorModal({
                     <h2>{existingSampler ? 'Edit Sampler' : 'Create New Sampler'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing sampler */}
                         {existingSampler && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
                                 Clone
@@ -420,7 +332,7 @@ export function SamplerEditorModal({
 
                 <div className="modal-body editor-modal-body">
                     <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label"> Name <span style={{ color: '#ff4444' }}>*</span></label>
+                        <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input 
                             type="text" 
                             value={name} 
@@ -455,14 +367,15 @@ export function SamplerEditorModal({
                         />
                     </div>
 
+                    {/* ✅ Sampling Parameters — CSS-driven layout */}
                     <div className="editor-section">
-                        <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="editor-section-title sampler-section-header">
                             <span>Sampling Parameters ({parameterOrder.length})</span>
-                            <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', marginLeft: '16px', textTransform: 'none' }}>↕ Drag To Reorder</span>
+                            <span className="sampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="sampler-param-list">
                             {parameterOrder.map((key, index) => {
-                                const config = PARAMETER_CONFIGS[key as keyof typeof PARAMETER_CONFIGS];
+                                const config = PARAMETER_CONFIGS[key];
                                 if (!config) return null;
                                 
                                 const paramKey = key as keyof SamplerParameters;
@@ -477,29 +390,59 @@ export function SamplerEditorModal({
                                         onDragEnd={handleDragEnd}
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, index)}
-                                        className={`sampler-param-item ${isDragging ? 'dragging' : ''} ${!isEnabled ? 'disabled-item' : ''}`}
+                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''} ${!isEnabled ? 'sampler-param-disabled' : ''}`}
                                     >
-                                        <div 
-                                            className="sampler-drag-handle"
-                                            onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.opacity = '0.8'}
-                                            onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.opacity = '0.3'}
-                                            title="Drag to reorder"
+                                        {/* Drag handle — leftmost */}
+                                        <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+
+                                        {/* Enable toggle + label — same row, same font size */}
+                                        <div
+                                            className="sampler-param-label-area"
+                                            onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
                                         >
-                                            ⋮⋮
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1px', marginBottom: '4px' }}>
-                                                <div
-                                                    onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
-                                                    className="sampler-enable-toggle"
-                                                >
-                                                    <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
-                                                        {isEnabled && <span style={{ color: '#fff', fontSize: '10px' }}>✓</span>}
-                                                    </div>
-                                                    <span className={`sampler-label ${isEnabled ? 'enabled' : ''}`}>{config.label}</span>
-                                                </div>
+                                            <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
+                                                {isEnabled && <span className="sampler-checkbox-tick">✓</span>}
                                             </div>
-                                            {renderParameterInput(key, config, paramKey)}
+                                            <span className={`sampler-param-name ${isEnabled ? 'sampler-param-name-enabled' : ''}`}>
+                                                {config.label}
+                                            </span>
+                                        </div>
+
+                                        {/* Input area — right side */}
+                                        <div className="sampler-param-input-area">
+                                            {config.isBoolean ? (
+                                                <div className="sampler-boolean-toggle">
+                                                    <button
+                                                        type="button"
+                                                        className={`editor-btn ${parameters[paramKey] ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                                        onClick={() => handleParameterChange(paramKey, !parameters[paramKey])}
+                                                        disabled={!isEnabled}
+                                                        style={{ padding: '2px 12px', fontSize: '0.7rem' }}
+                                                    >
+                                                        {parameters[paramKey] ? 'ON' : 'OFF'}
+                                                    </button>
+                                                </div>
+                                            ) : config.isString ? (
+                                                <input
+                                                    type="text"
+                                                    value={parameters[paramKey] as string}
+                                                    onChange={(e) => handleParameterChange(paramKey, e.target.value)}
+                                                    disabled={!isEnabled}
+                                                    className={`editor-input sampler-string-input ${!isEnabled ? 'disabled' : ''}`}
+                                                />
+                                            ) : (
+                                                <SliderInput
+                                                    label=""
+                                                    value={parameters[paramKey] as number}
+                                                    minimumValue={config.min}
+                                                    maximumValue={config.max}
+                                                    stepValue={config.step}
+                                                    decimals={config.decimals || 2}
+                                                    onChange={(value) => handleParameterChange(paramKey, value)}
+                                                    description={config.description}
+                                                    disabled={!isEnabled}
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -507,32 +450,58 @@ export function SamplerEditorModal({
                         </div>
                     </div>
 
-                    {allStopPatterns.length > 0 && (
-                        <div className="editor-section">
-                            <div className="editor-section-title">Stop Patterns</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {allStopPatterns.map(sp => {
-                                    const isSelected = selectedStopPatternIds.includes(sp.id);
-                                    return (
-                                        <div
-                                            key={sp.id}
-                                            onClick={() => handleStopPatternToggle(sp.id)}
-                                            className={`stop-pattern-item ${isSelected ? 'selected' : ''}`}
-                                        >
-                                            <div className={`stop-pattern-checkbox ${isSelected ? 'checked' : ''}`}>
-                                                {isSelected && <span style={{ color: '#fff', fontSize: '12px' }}>✓</span>}
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div className="stop-pattern-name">{sp.name}</div>
-                                                {sp.description && <div className="stop-pattern-desc">{sp.description}</div>}
-                                                <div className="stop-pattern-code">{sp.pattern}</div>
-                                            </div>
+                    {/* ✅ Stop Patterns — proper add/remove with dropdown */}
+                    <div className="editor-section">
+                        <div className="editor-section-title">Stop Patterns</div>
+
+                        {/* Selected stop patterns list */}
+                        <div className="sampler-stop-patterns-list">
+                            {selectedStopPatternIds.length === 0 && (
+                                <div className="sampler-stop-empty">No stop patterns assigned.</div>
+                            )}
+                            {selectedStopPatternIds.map(id => {
+                                const sp = allStopPatterns.find(p => p.id === id);
+                                if (!sp) return null;
+                                return (
+                                    <div key={id} className="sampler-stop-item">
+                                        <div className="sampler-stop-info">
+                                            <span className="sampler-stop-name">{sp.name}</span>
+                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
+                                            className="sampler-stop-remove-btn"
+                                            title="Remove stop pattern"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
-                    )}
+
+                        {/* Add stop pattern dropdown */}
+                        <select
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val && !selectedStopPatternIds.includes(val)) {
+                                    setSelectedStopPatternIds(prev => [...prev, val]);
+                                }
+                                e.target.value = '';
+                            }}
+                            className="editor-select"
+                            defaultValue=""
+                        >
+                            <option value="" disabled>+ Add a stop pattern</option>
+                            {allStopPatterns
+                                .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                .map(sp => (
+                                    <option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>
+                                ))
+                            }
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
