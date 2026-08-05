@@ -998,7 +998,7 @@ function App() {
             />
             <div className="action-menu-list">
               {getFilteredActions().map((action) => (
-                <div 
+              <div 
                   key={action.label} 
                   className="action-menu-item" 
                   role="button"
@@ -1016,20 +1016,19 @@ function App() {
                     }
                   }}
                 >
-                  <span>{action.label}</span>
+                  <span className="action-menu-item-label">{action.label}</span>
                   <div className="action-meta-container">
-                    {action.count > 0 && <span className="action-count-badge">{action.count}</span>}
-                    <button
-                      type="button"
-                      className="action-delete-btn"
+                    <span 
+                      className="action-count-badge"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteAction(action.label);
                       }}
-                      title="Remove action"
+                      title="Click to remove action"
                     >
-                      ×
-                    </button>
+                      <span className="badge-count">{action.count || 0}</span>
+                      <span className="badge-delete">×</span>
+                    </span>
                   </div>
                 </div>
               ))}

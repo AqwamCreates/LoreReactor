@@ -1030,7 +1030,7 @@ select {
 }
 
 .action-menu-header {
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-size: 0.65rem;
   font-weight: bold;
   border-bottom: 1px solid var(--border);
@@ -1046,7 +1046,7 @@ select {
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-size: 0.75rem;
   color: var(--text-h);
   outline: none;
@@ -1058,6 +1058,7 @@ select {
   overflow-y: auto;
   flex-shrink: 1;
   scrollbar-width: none;
+  padding: 4px 0;
 }
 
 .action-menu-list::-webkit-scrollbar {
@@ -1068,7 +1069,7 @@ select {
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
+  padding: 8px 12px;
   text-align: left;
   cursor: pointer;
   color: var(--text-h);
@@ -1078,57 +1079,88 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   position: relative;
+  box-sizing: border-box;
+}
+
+.action-menu-item:last-child {
+  border-bottom: none;
 }
 
 .action-menu-item:hover {
   background: var(--social-bg);
 }
 
+.action-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .action-meta-container {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-width: 24px;
+  gap: 0px;
+  flex-shrink: 0;
 }
 
+/* ✅ Badge that shows count AND delete on hover */
 .action-count-badge {
-  font-size: 0.65rem;
-  opacity: 0.5;
-  background: var(--social-bg);
-  padding: 2px 4px;
-  border-radius: 4px;
-  white-space: nowrap;
-  transition: opacity 0.2s;
-}
-
-.action-delete-btn {
-  background: transparent;
-  border: none;
-  color: #ff4444;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0 4px;
-  line-height: 1;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s;
+  gap: 4px;
+  font-size: 0.6rem;
+  background: var(--social-bg);
+  padding: 2px 6px;
+  min-width: 18px;
+  height: 18px; /* Fixed height */
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  text-align: center;
+  color: var(--text-h);
+  cursor: default;
+  position: relative;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+/* ✅ On hover: hide count, show X */
+.action-count-badge .badge-count {
+  display: inline-block;
+  transition: all 0.2s ease;
+}
+
+.action-count-badge .badge-delete {
+  display: none;
+  font-size: 0.7rem;
+  color: #ff4444;
+  font-weight: bold;
+  line-height: 1;
+  transition: all 0.2s ease;
 }
 
 .action-menu-item:hover .action-count-badge {
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.2);
+  cursor: pointer;
+}
+
+.action-menu-item:hover .action-count-badge .badge-count {
   display: none;
 }
 
-.action-menu-item:hover .action-delete-btn {
-  display: flex;
-  opacity: 0.6;
+.action-menu-item:hover .action-count-badge .badge-delete {
+  display: inline-block;
 }
 
-.action-delete-btn:hover {
-  opacity: 1 !important;
-  transform: scale(1.1);
+/* ✅ Standalone delete button is gone - using badge as the delete trigger */
+.action-delete-btn {
+  display: none !important;
 }
 
 /* =============================================================================
