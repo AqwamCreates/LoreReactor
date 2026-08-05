@@ -42,6 +42,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     activeSpecialActionId,
 }: ManagerModalProps<T>) {
     const [searchQuery, setSearchQuery] = useState('');
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     if (!isOpen) return null;
 
@@ -65,8 +66,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     // ✅ SORTING: Priority order → lastUpdatedTimestamp → firstCreatedTimestamp
     const sortedItems = useMemo(() => {
         const sorted = [...items].sort((a, b) => {
-            // Priority 1: Position in currentOrderIds (lower index = higher priority)
-            // Items not in the list sort after items that are in the list
             if (orderedListMode && currentOrderIds.length > 0) {
                 const aIndex = currentOrderIds.indexOf(a.id);
                 const bIndex = currentOrderIds.indexOf(b.id);
@@ -76,19 +75,16 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 if (aInOrder && bInOrder) {
                     if (aIndex !== bIndex) return aIndex - bIndex;
                 } else if (aInOrder && !bInOrder) {
-                    return -1; // a comes first
+                    return -1;
                 } else if (!aInOrder && bInOrder) {
-                    return 1; // b comes first
+                    return 1;
                 }
-                // Both not in order → fall through to timestamp sorting
             }
 
-            // Priority 2: Most recently updated first
             const aUpdated = a.lastUpdatedTimestamp ?? 0;
             const bUpdated = b.lastUpdatedTimestamp ?? 0;
             if (aUpdated !== bUpdated) return bUpdated - aUpdated;
 
-            // Priority 3: Most recently created first
             const aCreated = a.firstCreatedTimestamp ?? 0;
             const bCreated = b.firstCreatedTimestamp ?? 0;
             return bCreated - aCreated;
@@ -118,6 +114,22 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             return nameMatch || subtextMatch;
         });
     }, [sortedItems, searchQuery, renderSubtext]);
+
+    const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setConfirmDeleteId(id);
+    };
+
+    const handleConfirmDelete = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        onDelete?.(id);
+        setConfirmDeleteId(null);
+    };
+
+    const handleCancelDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setConfirmDeleteId(null);
+    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -170,6 +182,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 const isActive = activeSpecialActionId === item.id;
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
                                 const orderNumber = getOrderNumber(item.id);
+                                const isConfirmingDelete = confirmDeleteId === item.id;
 
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''}`}>
@@ -230,16 +243,66 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                 </button>
                                             )}
 
+                                            {/* ✅ DELETE WITH INLINE CONFIRMATION */}
                                             {onDelete && (
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-                                                    className="delete-item-btn"
-                                                    title={actionLabel}
-                                                    style={{ flexShrink: 0 }}
-                                                >
-                                                    🗑️
-                                                </button>
+                                                isConfirmingDelete ? (
+                                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => handleConfirmDelete(e, item.id)}
+                                                            className="toolbar-btn"
+                                                            title="Confirm delete"
+                                                            style={{
+                                                                width: '28px',
+                                                                height: '28px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 'bold',
+                                                                background: '#ef4444',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                flexShrink: 0
+                                                            }}
+                                                        >
+                                                            ✓
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCancelDelete}
+                                                            className="toolbar-btn"
+                                                            title="Cancel"
+                                                            style={{
+                                                                width: '28px',
+                                                                height: '28px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 'bold',
+                                                                background: 'transparent',
+                                                                color: 'var(--text-h)',
+                                                                border: '1px solid var(--border)',
+                                                                borderRadius: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                flexShrink: 0
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleDeleteClick(e, item.id)}
+                                                        className="delete-item-btn"
+                                                        title={actionLabel}
+                                                        style={{ flexShrink: 0 }}
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                )
                                             )}
                                         </div>
                                     </li>

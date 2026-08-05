@@ -9,6 +9,7 @@ interface ModelState {
   isRunning: boolean;
   port?: number;
   status?: 'starting' | 'ready' | 'error';
+  isIdle?: boolean;
 }
 
 export function useModelManager() {
@@ -30,10 +31,14 @@ export function useModelManager() {
             const newStatus: Record<string, ModelState> = {};
             
             for (const m of data.activeModels || []) {
+                // Preserve existing idle state as default
+                const existingIdle = runningModels[m.id]?.isIdle ?? false;
+                
                 newStatus[m.id] = {
                     isRunning: true,
                     port: m.port,
-                    status: m.status
+                    status: m.status,
+                    isIdle: existingIdle,
                 };
 
                 if (m.status === 'ready' && m.port) {
@@ -47,6 +52,8 @@ export function useModelManager() {
                             slots.length > 0 && 
                             slots.every((s: any) => !s.busy && !s.processing);
                         
+                        newStatus[m.id].isIdle = allIdle;
+                        
                         if (allIdle && !idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.add(m.id);
                             addToast(`✅ Model idle and ready`, "success");
@@ -54,7 +61,7 @@ export function useModelManager() {
                             idleNotifiedRef.current.delete(m.id);
                         }
                     } catch (e) {
-                        // Network error, CORS, or invalid JSON — ignore silently
+                        // Network error, CORS, or invalid JSON — preserve existing idle state
                     }
                 }
             }
@@ -113,7 +120,6 @@ export function useModelManager() {
         }
     };
 
-    // ✅ Internal helper to unload a model without triggering re-entrant toggleModelLoad
     const unloadModelInternal = async (id: string): Promise<boolean> => {
         try {
             const res = await fetch(`${API_BASE}/models/unload`, {
@@ -142,7 +148,6 @@ export function useModelManager() {
         const isCurrentlyRunning = runningModels[id]?.isRunning;
         
         if (isCurrentlyRunning && !forceUnload) {
-            // Unload this model
             try {
                 addToast(`Stopping model...`, "info");
                 const success = await unloadModelInternal(id);
@@ -150,7 +155,6 @@ export function useModelManager() {
                 if (success) {
                     addToast(`Model stopped successfully`, "success");
                     
-                    // Deselect if this was the selected model
                     if (selectedModelId === id) {
                         setSelectedModelId(null);
                     }
@@ -166,7 +170,7 @@ export function useModelManager() {
             const model = models.find(m => m.id === id);
             if (!model) return;
 
-            // ✅ ENFORCE SINGLE MODEL: Unload any other running model first
+            // Enforce single model: unload any other running model first
             const otherRunningIds = Object.entries(runningModels)
                 .filter(([rid, state]) => rid !== id && state.isRunning)
                 .map(([rid]) => rid);
@@ -194,12 +198,12 @@ export function useModelManager() {
                 if (res.ok) {
                     const data = await res.json();
                     addToast(`Model loaded on port ${data.port}`, "success");
+                    // ✅ Model is running but NOT idle yet — isIdle starts as false
                     setRunningModels(prev => ({
                         ...prev,
-                        [id]: { isRunning: true, port: data.port, status: 'ready' }
+                        [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false }
                     }));
                     
-                    // Auto-select when model loads successfully
                     setSelectedModelId(id);
                 } else {
                     const errData = await res.json();
