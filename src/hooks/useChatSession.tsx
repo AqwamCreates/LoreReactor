@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
+import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
@@ -122,11 +122,7 @@ export function useChatSession() {
                 } : undefined;
 
                 rawText = await strategyEngine.generateStream(
-                    data,
-                    character,
-                    { signal } as AbortController,
-                    wrappedCallbacks,
-                    userImagesBase64
+                    data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
                 );
 
                 if (strategyEngine.currentCost > 0) {
@@ -148,10 +144,14 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
+                // ✅ Pass runtimePort from _runtimePort injected by App.tsx
+                const runtimePort = (selectedModel.parameters as any)?._runtimePort;
+                
                 const modelContext = {
                     apiKey: selectedModel.apiKey,
                     backend: selectedModel.backend,
-                    modelPath: selectedModel.model
+                    modelPath: selectedModel.model,
+                    runtimePort: runtimePort
                 };
 
                 rawText = await baseEngine.generateStream(
@@ -181,9 +181,7 @@ export function useChatSession() {
             }
             
             if (!rawText) {
-                if (!signal.aborted) {
-                    console.warn("Generated empty text");
-                }
+                if (!signal.aborted) console.warn("Generated empty text");
                 return null;
             }
 
@@ -197,8 +195,7 @@ export function useChatSession() {
                 if (streamingText && streamingText.trim().length > 0) {
                     const displayText = convertIdsToDisplayNames(streamingText, data);
                     const aiMessage = createChatMessage(data, character, displayText);
-                    const result = addMessageToChatData(data, aiMessage);
-                    return result;
+                    return addMessageToChatData(data, aiMessage);
                 }
                 return null;
             }
@@ -417,7 +414,6 @@ export function useChatSession() {
         }
     }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy, addToast]);
 
-    // ✅ FIXED: Regenerate from a Specific Message ID (Simplified Logic)
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData || isLoading) {
             if(isLoading) addToast("Already generating...", "info");
@@ -439,25 +435,16 @@ export function useChatSession() {
         let messagesToDelete: ChatMessage[] = [];
 
         if (type === 'ai' && isTargetAI) {
-            // CASE 1: Regenerating an AI message.
-            // Delete THIS AI message and anything after it.
             trimIndex = targetIndex;
             messagesToDelete = history.slice(trimIndex);
         } else if (type === 'user' && !isTargetAI) {
-            // CASE 2: Regenerating a User message.
-            // KEEP this user message. Delete only responses AFTER it.
             trimIndex = targetIndex + 1;
             messagesToDelete = history.slice(trimIndex);
-            
-            // ✅ FIX: Removed the "No subsequent messages" check.
-            // If there are no messages to delete, we simply proceed to generate a NEW response
-            // based on the current history (which ends with this user message).
         } else {
             addToast("Mismatched regeneration type.", "error");
             return;
         }
 
-        // Delete from storage if there are messages to delete
         if (messagesToDelete.length > 0) {
             try { 
                 await Promise.all(messagesToDelete.map(m => deleteRawChatMessage(m.id))); 
@@ -466,7 +453,6 @@ export function useChatSession() {
             }
         }
 
-        // Create trimmed data state
         const trimmedData: ChatData = { 
             ...chatData, 
             chatMessageHistory: history.slice(0, trimIndex), 
@@ -487,9 +473,6 @@ export function useChatSession() {
                 return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
             };
 
-            // Run the turn sequence starting from the trimmed state
-            // The Orchestrator will see the last message is a User message (in Case 2)
-            // and automatically trigger an AI response.
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
 
             if (updatedData) {

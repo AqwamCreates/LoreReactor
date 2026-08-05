@@ -11,10 +11,8 @@ const PORT = 3001;
 const ROOT_DIR = process.cwd();
 const APP_NAME = "LoreReactor";
 
-// Path to your llama-server executable
 const LLAMA_SERVER_PATH = path.join(ROOT_DIR, 'llama', 'llama-server.exe');
 
-// Store active model processes
 interface ModelInstance {
   id: string;
   process: ChildProcess;
@@ -26,19 +24,11 @@ interface ModelInstance {
 
 const activeModels: Map<string, ModelInstance> = new Map();
 
-// --- Color Codes for Console ---
 const Colors = {
-  Reset: "\x1b[0m",
-  Bright: "\x1b[1m",
-  Dim: "\x1b[2m",
-  FgBlue: "\x1b[34m",
-  FgGreen: "\x1b[32m",
-  FgRed: "\x1b[31m",
-  FgYellow: "\x1b[33m",
-  FgCyan: "\x1b[36m",
-  FgMagenta: "\x1b[35m",
-  BgBlue: "\x1b[44m",
-  BgWhite: "\x1b[47m",
+  Reset: "\x1b[0m", Bright: "\x1b[1m", Dim: "\x1b[2m",
+  FgBlue: "\x1b[34m", FgGreen: "\x1b[32m", FgRed: "\x1b[31m",
+  FgYellow: "\x1b[33m", FgCyan: "\x1b[36m", FgMagenta: "\x1b[35m",
+  BgBlue: "\x1b[44m", BgWhite: "\x1b[47m",
 };
 
 const log = {
@@ -50,20 +40,15 @@ const log = {
   llama: (msg: string) => console.log(`${Colors.FgMagenta}[LLAMA]${Colors.Reset} ${msg}`)
 };
 
-// --- Middleware ---
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// --- Helper: Resolve Relative URL to Absolute FS Path ---
 function resolveModelPath(inputPath: string): string {
-  if (path.isAbsolute(inputPath)) {
-    return inputPath;
-  }
+  if (path.isAbsolute(inputPath)) return inputPath;
   const cleanPath = inputPath.startsWith('/') ? inputPath.slice(1) : inputPath;
   return path.join(ROOT_DIR, cleanPath);
 }
 
-// --- Helper: Find Free Port ---
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -75,7 +60,6 @@ function getFreePort(): Promise<number> {
   });
 }
 
-// --- Helper: Wait for Model to be Ready ---
 async function waitForModelReady(port: number, timeoutMs: number = 60000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
@@ -89,10 +73,9 @@ async function waitForModelReady(port: number, timeoutMs: number = 60000): Promi
   return false;
 }
 
-// --- Main Route Handler (/user_data) ---
+// --- /user_data routes ---
 app.use('/user_data', (req, res) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
-  
   if (!relativePath || relativePath.includes('..')) {
     log.warn(`Blocked suspicious path attempt: ${relativePath}`);
     return res.status(403).json({ error: 'Invalid path structure' });
@@ -100,7 +83,6 @@ app.use('/user_data', (req, res) => {
 
   const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
   const dir = path.dirname(filePath);
-
   log.req(req.method || 'UNKNOWN', req.url || '/');
 
   if (req.method === 'GET') {
@@ -114,9 +96,9 @@ app.use('/user_data', (req, res) => {
           if (err) return res.status(500).json({ error: 'Read Error' });
           const ext = path.extname(filePath).toLowerCase();
           if (ext === '.json') { res.setHeader('Content-Type', 'application/json'); res.send(data); }
-          else if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-            const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-            res.setHeader('Content-Type', mime);
+          else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+            const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+            res.setHeader('Content-Type', mimeMap[ext]);
             fs.readFile(filePath, (ie, buf) => ie ? res.status(500).send('Img Error') : res.send(buf));
           } else { res.send(data); }
         });
@@ -132,7 +114,6 @@ app.use('/user_data', (req, res) => {
     }
     const body = req.body as any;
     const isImage = relativePath.includes('character_images/') || relativePath.includes('context_data/');
-    
     if (isImage && body?.base64) {
       try {
         const buffer = Buffer.from(body.base64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
@@ -140,104 +121,73 @@ app.use('/user_data', (req, res) => {
         return;
       } catch (e: any) { return res.status(400).json({ error: 'Invalid Base64' }); }
     }
-
     fs.writeFile(filePath, JSON.stringify(req.body, null, 2), (err: any) => err ? res.status(500).json({ error: 'Write JSON Failed' }) : res.json({ success: true }));
     return;
-  } 
-  
+  }
+
   if (req.method === 'DELETE') {
     fs.unlink(filePath, (err: any) => {
       if (err && err.code !== 'ENOENT') return res.status(500).json({ error: 'Delete Failed' });
       res.json({ success: true });
     });
     return;
-  } 
+  }
 
   res.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- Model Management Routes ---
+// --- Model Management ---
 
-// GET /models/status
 app.get('/models/status', (req, res) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
-    id,
-    port: instance.port,
-    status: instance.status,
-    modelPath: instance.modelPath,
-    uptime: Date.now() - instance.startTime
+    id, port: instance.port, status: instance.status,
+    modelPath: instance.modelPath, uptime: Date.now() - instance.startTime
   }));
   res.json({ activeModels: status, count: status.length });
 });
 
-// POST /models/load
 app.post('/models/load', async (req, res) => {
   const { id, modelPath, port: requestedPort, args = [] } = req.body;
-
-  if (!id || !modelPath) {
-    return res.status(400).json({ error: 'Missing id or modelPath' });
-  }
-
-  if (activeModels.has(id)) {
-    return res.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
-  }
+  if (!id || !modelPath) return res.status(400).json({ error: 'Missing id or modelPath' });
+  if (activeModels.has(id)) return res.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
 
   const absoluteModelPath = resolveModelPath(modelPath);
-
-  if (!fs.existsSync(LLAMA_SERVER_PATH)) {
-    return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
-  }
-  
-  if (!fs.existsSync(absoluteModelPath)) {
-    return res.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
-  }
+  if (!fs.existsSync(LLAMA_SERVER_PATH)) return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
+  if (!fs.existsSync(absoluteModelPath)) return res.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
 
   const port = requestedPort || await getFreePort();
   log.info(`Starting model ${id} on port ${port}...`);
   log.info(`Model Path: ${absoluteModelPath}`);
 
-  const launchArgs = [
-    '-m', absoluteModelPath,
-    '--port', port.toString(),
-    '--host', '127.0.0.1',
-    ...args
-  ];
+  const launchArgs = ['-m', absoluteModelPath, '--port', port.toString(), '--host', '127.0.0.1', ...args];
 
   const proc = spawn(LLAMA_SERVER_PATH, launchArgs, {
     cwd: path.dirname(LLAMA_SERVER_PATH),
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
-  const instance: ModelInstance = {
-    id,
-    process: proc,
-    port,
-    status: 'starting',
-    modelPath: absoluteModelPath,
-    startTime: Date.now()
-  };
-
+  const instance: ModelInstance = { id, process: proc, port, status: 'starting', modelPath: absoluteModelPath, startTime: Date.now() };
   activeModels.set(id, instance);
 
   proc.stdout?.on('data', (data) => {
     const str = data.toString().trim();
     if (str) log.llama(`[${id}] ${str}`);
-    if (str.includes("HTTP server listening")) {
-      instance.status = 'ready';
-    }
+    if (str.includes("HTTP server listening")) instance.status = 'ready';
   });
 
   proc.stderr?.on('data', (data) => {
-    log.error(`[${id}] ${data.toString().trim()}`);
+    const str = data.toString().trim();
+    if (!str) return;
+    const lowerStr = str.toLowerCase();
+    const isError = lowerStr.includes('error:') || lowerStr.includes('fatal') || lowerStr.includes('failed to') || lowerStr.includes('exception') || lowerStr.includes('abort');
+    const isFalsePositive = lowerStr.includes('was not control-type') || lowerStr.includes('overridden') || lowerStr.includes('n_ctx_seq') || lowerStr.includes('no implementations specified') || lowerStr.includes('already set by user');
+    if (isError && !isFalsePositive) log.error(`[${id}] ${str}`);
+    else log.llama(`[${id}] ${str}`);
   });
 
-  proc.on('exit', (code) => {
-    log.warn(`[${id}] Process exited with code ${code}`);
-    activeModels.delete(id);
-  });
+  proc.on('exit', (code) => { log.warn(`[${id}] Process exited with code ${code}`); activeModels.delete(id); });
 
   const isReady = await waitForModelReady(port);
-  
   if (isReady) {
     instance.status = 'ready';
     log.success(`Model ${id} loaded successfully on port ${port}`);
@@ -251,48 +201,28 @@ app.post('/models/load', async (req, res) => {
   }
 });
 
-// POST /models/unload
 app.post('/models/unload', (req, res) => {
   const { id } = req.body;
-  
   if (!id) return res.status(400).json({ error: 'Missing id' });
-  
   const instance = activeModels.get(id);
-  if (!instance) {
-    return res.status(404).json({ error: `Model ${id} not found` });
-  }
+  if (!instance) return res.status(404).json({ error: `Model ${id} not found` });
 
   log.info(`Unloading model ${id}...`);
   instance.process.kill('SIGTERM');
-  
-  setTimeout(() => {
-    if (instance.process.pid) {
-      try { process.kill(instance.process.pid, 'SIGKILL'); } catch(e) {}
-    }
-  }, 2000);
-
+  setTimeout(() => { if (instance.process.pid) { try { process.kill(instance.process.pid, 'SIGKILL'); } catch(e) {} } }, 2000);
   activeModels.delete(id);
   log.success(`Model ${id} unloaded`);
   res.json({ success: true, message: 'Model unloaded' });
 });
 
-// ✅ FIXED: Express v5 compatible named wildcard syntax
-// Uses /*path instead of /* or :splat(*)
 app.all('/proxy/:modelId/*path', (req, res) => {
   const { modelId, path: remainingPath } = req.params;
-  
   const instance = activeModels.get(modelId);
-  
-  if (!instance || instance.status !== 'ready') {
-    return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
-  }
+  if (!instance || instance.status !== 'ready') return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
 
-  // remainingPath contains everything after /proxy/:modelId/
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath || ''}`;
-  
   fetch(targetUrl, {
-    method: req.method,
-    headers: req.headers as any,
+    method: req.method, headers: req.headers as any,
     body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
   })
   .then(response => response.json())
@@ -300,11 +230,9 @@ app.all('/proxy/:modelId/*path', (req, res) => {
   .catch(err => res.status(502).json({ error: 'Proxy error', details: err.message }));
 });
 
-// --- Startup Banner ---
 const startServer = () => {
   const border = "────────────────────────────────────────";
   const title = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
-  
   console.clear();
   console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
   console.log(border);
@@ -317,7 +245,6 @@ const startServer = () => {
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Model Control Enabled.`);
   console.log("");
-
   app.listen(PORT, () => {});
 };
 

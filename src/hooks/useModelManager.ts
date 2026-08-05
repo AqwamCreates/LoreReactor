@@ -15,10 +15,10 @@ export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [runningModels, setRunningModels] = useState<Record<string, ModelState>>({});
+    const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+    
     const { addToast } = useToast();
     const API_BASE = localURL;
-
-    // Track which models we've already notified as idle to avoid spam
     const idleNotifiedRef = useRef<Set<string>>(new Set());
 
     const fetchStatus = async () => {
@@ -36,32 +36,32 @@ export function useModelManager() {
                     status: m.status
                 };
 
-                // ✅ Check slot idleness for ready models
+                // ✅ Check slot idleness — silently skip non-200 responses (503, 404, etc.)
                 if (m.status === 'ready' && m.port) {
                     try {
                         const slotsRes = await fetch(`http://localhost:${m.port}/slots`);
-                        if (slotsRes.ok) {
-                            const slots = await slotsRes.json();
-                            // llama.cpp /slots returns an array; each slot has "busy" or "processing" field
-                            const allIdle = Array.isArray(slots) && 
-                                slots.length > 0 && 
-                                slots.every((s: any) => !s.busy && !s.processing);
-                            
-                            if (allIdle && !idleNotifiedRef.current.has(m.id)) {
-                                idleNotifiedRef.current.add(m.id);
-                                addToast(`✅ ${m.id.substring(0, 8)}... is idle and ready`, "success");
-                            } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
-                                // Model became busy again, reset notification flag
-                                idleNotifiedRef.current.delete(m.id);
-                            }
+                        
+                        // Silently skip if model isn't ready yet (503) or endpoint doesn't exist (404)
+                        if (!slotsRes.ok) continue;
+                        
+                        const slots = await slotsRes.json();
+                        const allIdle = Array.isArray(slots) && 
+                            slots.length > 0 && 
+                            slots.every((s: any) => !s.busy && !s.processing);
+                        
+                        if (allIdle && !idleNotifiedRef.current.has(m.id)) {
+                            idleNotifiedRef.current.add(m.id);
+                            addToast(`✅ Model idle and ready`, "success");
+                        } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
+                            idleNotifiedRef.current.delete(m.id);
                         }
                     } catch (e) {
-                        // Slots endpoint may not be available on older builds; ignore silently
+                        // Network error, CORS, or invalid JSON — ignore silently
                     }
                 }
             }
             
-            // Clean up notified set for models that are no longer running
+            // Clean up notified set for models no longer running
             const activeIds = new Set(data.activeModels?.map((m: any) => m.id) || []);
             for (const id of idleNotifiedRef.current) {
                 if (!activeIds.has(id)) idleNotifiedRef.current.delete(id);
@@ -69,7 +69,7 @@ export function useModelManager() {
 
             setRunningModels(newStatus);
         } catch (e) {
-            // Server down or unreachable
+            // Server down or unreachable — ignore silently
         }
     };
 
@@ -131,6 +131,11 @@ export function useModelManager() {
                 if (res.ok) {
                     addToast(`Model stopped successfully`, "success");
                     idleNotifiedRef.current.delete(id);
+                    
+                    if (selectedModelId === id) {
+                        setSelectedModelId(null);
+                    }
+                    
                     setRunningModels(prev => {
                         const next = { ...prev };
                         delete next[id];
@@ -169,6 +174,9 @@ export function useModelManager() {
                         ...prev,
                         [id]: { isRunning: true, port: data.port, status: 'ready' }
                     }));
+                    
+                    // Auto-select when model loads successfully
+                    setSelectedModelId(id);
                 } else {
                     const errData = await res.json();
                     throw new Error(errData.error || "Unknown error");
@@ -193,6 +201,8 @@ export function useModelManager() {
         deleteModel, 
         refresh: loadModels,
         runningModels,
-        toggleModelLoad
+        toggleModelLoad,
+        selectedModelId,
+        setSelectedModelId
     };
 }

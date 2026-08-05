@@ -65,7 +65,12 @@ function App() {
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
   
-  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad } = useModelManager();
+  const { 
+    models: allModels, saveModel, deleteModel, 
+    runningModels, toggleModelLoad,
+    selectedModelId, setSelectedModelId
+  } = useModelManager();
+  
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
@@ -79,7 +84,6 @@ function App() {
   const [isStopListOpen, setIsStopListOpen] = useState(false);
   const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
   
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
@@ -114,7 +118,6 @@ function App() {
 
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
 
-  // ✅ LOADING STATE MANAGEMENT
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
@@ -168,28 +171,43 @@ function App() {
     } else { setActiveBudgetStrategy(null); }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
+  // ✅ Sync selected model with chat session AND inject runtime port
   useEffect(() => {
-    if (selectedModelId) {
+    if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
       const model = allModels.find(m => m.id === selectedModelId);
+      const port = runningModels[selectedModelId].port;
+      if (model && port) {
+        console.log(`[DEBUG] Injecting runtime port ${port} for model ${model.name}`);
+        const modelWithPort = { 
+          ...model, 
+          parameters: { 
+            ...model.parameters, 
+            _runtimePort: port 
+          } 
+        };
+        setSelectedGlobalModel(modelWithPort);
+      }
+    } else if (selectedModelId) {
+      // Model selected but not yet running — pass without port
+      const model = allModels.find(m => m.id === selectedModelId);
+      console.log(`[DEBUG] Model ${model?.name} selected but not running yet`);
       setSelectedGlobalModel(model || null);
-    } else { setSelectedGlobalModel(null); }
-  }, [selectedModelId, allModels, setSelectedGlobalModel]);
+    } else {
+      setSelectedGlobalModel(null);
+    }
+  }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
 
   // ✅ SMOOTH TRANSITION LOGIC
   useEffect(() => {
     const ready = (allCharacters.length > 0 || allModels.length > 0);
     
     if (ready && isInitializing) {
-      // 1. Start Fade Out
       setIsFadeOut(true);
-      
-      // 2. Wait for CSS transition (500ms) to finish before removing component
       setTimeout(() => {
         setIsInitializing(false);
         setIsFadeOut(false);
       }, 500);
     } else if (!ready && !isInitializing) {
-       // Fallback if data disappears unexpectedly
        setIsInitializing(true);
     }
   }, [allCharacters, allModels, isInitializing]);
@@ -528,10 +546,12 @@ function App() {
     const isMultiModal = !!model.mmproj; 
     const isRunning = runningModels[model.id]?.isRunning;
     const port = runningModels[model.id]?.port;
+    const isSelected = selectedModelId === model.id;
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
         {isMultiModal && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
         {isRunning && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Running :{port}</span>}
+        {isSelected && !isRunning && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
         <span>{model.description}</span>
@@ -736,14 +756,17 @@ function App() {
             emptyMessage="No models available." 
             actionLabel="Delete" 
             orderedListMode={false} 
-            activeSpecialActionId={Object.keys(runningModels).find(key => runningModels[key].isRunning)} 
+            activeSpecialActionId={selectedModelId || undefined} 
             specialActionIcon="★" 
             onSpecialAction={(id) => toggleModelLoad(id)} 
             specialActionTooltip={(m) => {
                 const isRunning = runningModels[m.id]?.isRunning;
                 const port = runningModels[m.id]?.port;
-                if (isRunning) return `⏹ Stop Model (Running on port ${port})`;
-                return `▶ Load Model`;
+                const isSelected = selectedModelId === m.id;
+                if (isRunning && isSelected) return `⏹ Stop & Deselect (Port: ${port})`;
+                if (isRunning) return `⏹ Stop Model (Port: ${port})`;
+                if (isSelected) return `✓ Already Selected — Click to Load`;
+                return `▶ Load & Select Model`;
             }} 
           />
         )}
