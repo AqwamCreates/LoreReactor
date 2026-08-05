@@ -9,7 +9,6 @@ async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
     const points = new Set<string>();
     
     for (const c of allChats) {
-        // If another chat branches FROM this chatId AT a specific message
         if (c && c.parentChatDataId === chatId && c.parentChatMessageId) {
             points.add(c.parentChatMessageId);
         }
@@ -20,7 +19,6 @@ async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
 export async function deleteMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
     const parentChatMessageIds = await getParentChatMessageIds(currentChat.id);
     
-    // ✅ Safety: Prevent deleting if this message is a branch point
     if (parentChatMessageIds.has(messageId)) {
         throw new Error("Cannot delete: Other chat sessions branch from this message.");
     }
@@ -38,7 +36,6 @@ export async function deleteMessage(currentChat: ChatData, messageId: string): P
 export async function editMessage(currentChat: ChatData, messageId: string, newText: string): Promise<ChatData> {
     const parentChatMessageIds = await getParentChatMessageIds(currentChat.id);
 
-    // ✅ Safety: Prevent editing if this message is a branch point
     if (parentChatMessageIds.has(messageId)) {
         throw new Error("Cannot edit: Other chat sessions branch from this message.");
     }
@@ -69,22 +66,18 @@ export async function massDeleteMessages(currentChat: ChatData, startIndex: numb
 }
 
 export async function branchMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
-    // Find the branch point
     const branchIndex = currentChat.chatMessageHistory.findIndex(m => m.id === messageId);
     if (branchIndex === -1) {
         throw new Error("Message not found");
     }
 
-    // Create a deep copy of the chat data up to the branch point
     const branchedChat: ChatData = {
         ...currentChat,
-        id: crypto.randomUUID(), // New ID for the branch
+        id: crypto.randomUUID(),
         name: `${currentChat.name} (Branch)`,
-        // ✅ Copy all contexts and participants from the source
         contexts: [...(currentChat.contexts || [])],
         participants: [...currentChat.participants],
         protagonist: currentChat.protagonist,
-        // ✅ Only keep messages up to the branch point
         chatMessageHistory: currentChat.chatMessageHistory.slice(0, branchIndex + 1),
         parentChatDataId: currentChat.id,
         parentChatMessageId: messageId,
@@ -92,8 +85,43 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
         lastUpdatedTimestamp: Date.now(),
     };
 
-    // Save the new branch chat
     await saveRawChatData(branchedChat);
     
     return branchedChat;
+}
+
+// ✅ NEW: Clone creates an independent copy with NO parent link
+// Unlike branch, clone is a fully standalone chat that doesn't remember its origin
+export async function cloneChatUpToMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
+    const cloneIndex = currentChat.chatMessageHistory.findIndex(m => m.id === messageId);
+    if (cloneIndex === -1) {
+        throw new Error("Message not found");
+    }
+
+    // Deep clone messages so they get new IDs and don't share references
+    const clonedMessages = currentChat.chatMessageHistory.slice(0, cloneIndex + 1).map(msg => ({
+        ...msg,
+        id: crypto.randomUUID(),
+        character: { ...msg.character },
+        firstCreatedTimestamp: Date.now(),
+        lastUpdatedTimestamp: Date.now(),
+        parentChatMessageId: null, // No parent linkage
+    }));
+
+    const clonedChat: ChatData = {
+        id: crypto.randomUUID(),
+        name: `${currentChat.name} (Clone)`,
+        protagonist: { ...currentChat.protagonist },
+        participants: currentChat.participants.map(p => ({ ...p })),
+        contexts: (currentChat.contexts || []).map(c => ({ ...c })),
+        chatMessageHistory: clonedMessages,
+        firstCreatedTimestamp: Date.now(),
+        lastUpdatedTimestamp: Date.now(),
+        parentChatDataId: null,   // ✅ No parent — fully independent
+        parentChatMessageId: null, // ✅ No branch point — fully independent
+    };
+
+    await saveRawChatData(clonedChat);
+
+    return clonedChat;
 }

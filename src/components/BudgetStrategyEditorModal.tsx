@@ -1,5 +1,4 @@
 // src/components/BudgetStrategyEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { SliderInput } from './SliderInput';
@@ -129,6 +128,40 @@ export function BudgetStrategyEditorModal({
         onClose();
     };
 
+    // ✅ Clone: save as new strategy with a new ID and "(Clone)" suffix
+    const handleClone = () => {
+        if (!validate()) return;
+
+        const onlineModel = allModels.find(m => m.id === onlineModelId);
+        const localModel = allModels.find(m => m.id === localModelId);
+
+        if (!onlineModel || !localModel) {
+            alert('Selected models not found.');
+            return;
+        }
+
+        const now = Date.now();
+        const clonedStrategy: BudgetStrategy = {
+            id: crypto.randomUUID(),
+            name: `${name.trim()} (Clone)`,
+            description: description.trim() || '',
+            onlineModel,
+            localModel,
+            switchProbabilty,
+            switchOnContextSize,
+            switchOnComplexityScore,
+            fallbackOnLocalFailure,
+            fallbackOnQualityThreshold,
+            fallbackOnTimeoutInSeconds,
+            maximumBudget,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        };
+
+        onSave(clonedStrategy);
+        onClose();
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -138,8 +171,14 @@ export function BudgetStrategyEditorModal({
                     <h2>{existingStrategy ? 'Edit Budget Strategy' : 'Create Budget Strategy'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        {/* ✅ Clone button — only shown when editing an existing strategy */}
+                        {existingStrategy && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                                Clone
+                            </button>
+                        )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>
-                            {existingStrategy ? 'Update' : 'Create'}
+                            {"Save"}
                         </button>
                     </div>
                 </div>
@@ -267,11 +306,10 @@ export function BudgetStrategyEditorModal({
                         </div>
                     </div>
 
-                    {/* Fallback Rules (REORDERED) */}
+                    {/* Fallback Rules */}
                     <div className="editor-section">
                         <span className="editor-section-title">Fallback Rules</span>
                         
-                        {/* ✅ Numeric Inputs First */}
                         <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">Quality Threshold</label>
@@ -300,7 +338,6 @@ export function BudgetStrategyEditorModal({
                             </div>
                         </div>
 
-                        {/* ✅ Checkbox Last */}
                         <div className="editor-row-full" style={{ marginTop: '8px' }}>
                             <label className="editor-checkbox-label">
                                 <input

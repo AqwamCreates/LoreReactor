@@ -18,7 +18,7 @@ import type {
   ChatData, RawChatData, Extension, InterjectableAction 
 } from '../types';
 
-import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
+import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -442,6 +442,20 @@ function App() {
     } catch (err) { addToast("Failed to branch chat.", "error"); }
   };
 
+  // ✅ NEW: Clone creates an independent copy with no parent link
+  const handleClone = async (id: string) => {
+    if (!chatData) return;
+    try {
+      const clonedChat = await cloneChatUpToMessage(chatData, id);
+      setChatData(clonedChat);
+      if(clonedChat.protagonist) setCurrentCharacter(clonedChat.protagonist);
+      refreshChatList();
+      addToast(`Cloned to "${clonedChat.name}"`, "success");
+    } catch (err) {
+      addToast("Failed to clone chat.", "error");
+    }
+  };
+
   const handleNavigateToSource = async () => {
     if (!chatData?.parentChatDataId) return;
     try {
@@ -666,7 +680,8 @@ function App() {
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                               {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} className="toolbar-btn" title="Regenerate this Response">↻</button>}
                               {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} className="toolbar-btn" title="Regenerate Your Input">↻</button>}
-                              <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn">⑂</button>
+                              <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">⑂</button>
+                              <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">📋</button>
                               <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
                               <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
                             </>
@@ -729,7 +744,7 @@ function App() {
         </div>
 
         <div className="input-wrapper">
-          {/* ✅ Model readiness banner — now gates on idle state */}
+          {/* ✅ Model readiness banner */}
           {!isModelReady && (
             <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
               {!selectedModelId && <span className="model-status-icon">🤖</span>}

@@ -95,7 +95,6 @@ export function CharacterEditorModal({
         return String(clamp(val, 0, fieldMax));
     };
 
-    // ✅ FIXED: Logic now calculates based on current state values directly
     const handleSystemPromptBlur = () => {
         const currentIW = Number.parseFloat(initiativeWeightStr);
         const currentCP = Number.parseFloat(chatProbabilityStr);
@@ -144,11 +143,12 @@ export function CharacterEditorModal({
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const handleSubmit = async () => {
+    // ✅ Shared logic to build a character object from current form state
+    const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
         if (!name.trim()) {
-            setSubmitError("Name Is required!");
-            return;
+            setSubmitError("Name is required!");
+            return null;
         }
 
         let finalImageFilename = existingCharacter?.image || null;
@@ -161,7 +161,7 @@ export function CharacterEditorModal({
                 console.error("Image upload failed:", err);
                 setSubmitError("Failed to upload image. Character not saved.");
                 setIsUploading(false);
-                return;
+                return null;
             }
             setIsUploading(false);
         }
@@ -178,7 +178,7 @@ export function CharacterEditorModal({
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
 
-        if (existingCharacter) {
+        if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
             finalMS = msValid ? rawMS : (existingCharacter.maximumChatStamina ?? -1);
@@ -207,20 +207,34 @@ export function CharacterEditorModal({
         }
 
         const now = Date.now();
-        const newChar: Character = {
-            id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
-            name, description, systemPrompt,
+        return {
+            id: isNewClone ? crypto.randomUUID() : (existingCharacter?.id || crypto.randomUUID()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
+            description,
+            systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,
             image: finalImageFilename ?? undefined,
             sampler: allSamplers.find(s => s.id === selectedSamplerId),
             initiativeWeight: finalIW,
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
-            firstCreatedTimestamp: existingCharacter?.firstCreatedTimestamp || now,
+            firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = async () => {
+        const newChar = await buildCharacterFromForm(false);
+        if (!newChar) return;
         onSave(newChar);
+        onClose();
+    };
+
+    // ✅ Clone: save as new character with a new ID and "(Clone)" suffix
+    const handleClone = async () => {
+        const clonedChar = await buildCharacterFromForm(true);
+        if (!clonedChar) return;
+        onSave(clonedChar);
         onClose();
     };
 
@@ -243,6 +257,12 @@ export function CharacterEditorModal({
                     <h2>{existingCharacter ? 'Edit Character' : 'Create New Character'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {/* ✅ Clone button — only shown when editing an existing character */}
+                        {existingCharacter && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>
+                                Clone
+                            </button>
+                        )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>
                             {isUploading ? 'Uploading...' : 'Save'}
                         </button>
