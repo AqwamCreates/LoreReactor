@@ -31,21 +31,28 @@ export function useModelManager() {
             const newStatus: Record<string, ModelState> = {};
             
             for (const m of data.activeModels || []) {
-                // Preserve existing idle state as default
-                const existingIdle = runningModels[m.id]?.isIdle ?? false;
+                // ✅ Preserve existing idle state as baseline
+                const prevIdle = runningModels[m.id]?.isIdle ?? false;
                 
                 newStatus[m.id] = {
                     isRunning: true,
                     port: m.port,
                     status: m.status,
-                    isIdle: existingIdle,
+                    isIdle: prevIdle,
                 };
 
+                // ✅ Only check slots if model status is ready
                 if (m.status === 'ready' && m.port) {
                     try {
                         const slotsRes = await fetch(`http://localhost:${m.port}/slots`);
                         
-                        if (!slotsRes.ok) continue;
+                        // ✅ If slots endpoint isn't available yet, keep previous idle state
+                        // Don't skip — still write the entry with preserved idle value
+                        if (!slotsRes.ok) {
+                            // Model is ready per /models/status but /slots not responding yet
+                            // Keep whatever idle state we had before
+                            continue;
+                        }
                         
                         const slots = await slotsRes.json();
                         const allIdle = Array.isArray(slots) && 
@@ -61,11 +68,12 @@ export function useModelManager() {
                             idleNotifiedRef.current.delete(m.id);
                         }
                     } catch (e) {
-                        // Network error, CORS, or invalid JSON — preserve existing idle state
+                        // Network error — preserve existing idle state (already set above)
                     }
                 }
             }
             
+            // Clean up notified set for models no longer running
             const activeIds = new Set(data.activeModels?.map((m: any) => m.id) || []);
             for (const id of idleNotifiedRef.current) {
                 if (!activeIds.has(id)) idleNotifiedRef.current.delete(id);
@@ -198,7 +206,7 @@ export function useModelManager() {
                 if (res.ok) {
                     const data = await res.json();
                     addToast(`Model loaded on port ${data.port}`, "success");
-                    // ✅ Model is running but NOT idle yet — isIdle starts as false
+                    // ✅ Model is running but NOT idle yet — slots poll will flip this
                     setRunningModels(prev => ({
                         ...prev,
                         [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false }
@@ -218,7 +226,8 @@ export function useModelManager() {
 
     useEffect(() => {
         loadModels();
-        const interval = setInterval(fetchStatus, 3000);
+        // ✅ Poll every 2 seconds during warmup phase for faster idle detection
+        const interval = setInterval(fetchStatus, 2000);
         return () => clearInterval(interval);
     }, []);
 
