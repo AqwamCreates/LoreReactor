@@ -18,21 +18,31 @@ const turnStartString = "{"
 
 const turnEndString = "}"
 
+function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
+    if (!text) return text;
+    
+    let result = text;
+    result = result.replace(/\{\{char\}\}/g, characterName);
+    result = result.replace(/\{\{user\}\}/g, protagonistName);
+    
+    return result;
+}
+
 export function getParticipantId(character: Character, participants: Character[]): string {
     const index = participants.findIndex(p => p.id === character.id);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-export function getFatigueContext(participantId: string, characterName: string, currentChatStamina: number, maximumChatStamina: number): string {
+export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
 
-    const initialString = `${contextStartString}Character ${participantId} (${characterName})`
+    const initialString = `${contextStartString}<think> I am`
 
-    if (ratio > 0.5) return `${initialString} is starting to feel slightly winded, but still have plenty of energy to speak.${contextEndString}`;
-    if (ratio > 0.3) return `${initialString} is somewhat exhausted from talking, but somewhat have the energy to speak.${contextEndString}`;
-    if (ratio > 0.1) return `${initialString} is quite drained from talking and barely have the energy to speak.${contextEndString}`;
+    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.</think>${contextEndString}`;
+    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.</think>${contextEndString}`;
+    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.</think>${contextEndString}`;
     return `${initialString} have no energy left to speak.${contextEndString}`;
 }
 
@@ -115,8 +125,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const allStopPatterns = sampler?.stopPatterns || [];
     const currentCharacterId = character.id;
     const characterName = character.name
-    const systemPrompt = character.systemPrompt
-    const thinkPrompt = character.thinkPrompt
+    const protagonistName = chatData.protagonist.name
+    let systemPrompt = character.systemPrompt
+    let thinkPrompt = character.thinkPrompt
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -166,8 +177,18 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             }
         }
 
+        let contextText = context.text
+
         if (shouldInject) {
-            if (context.text) promptLines.push(`${contextStartString}${context.text}${contextEndString}`);
+
+            if (contextText) {
+
+                contextText = replacePlaceholders(contextText, characterName, protagonistName)
+
+                promptLines.push(`${contextStartString}${contextText}${contextEndString}`);
+
+            }
+
             if (context.images && context.images.length > 0 && context.useBase64Encoding) activeContextsForImages.push(context);
         }
     }
@@ -192,19 +213,22 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     }
 
     const participantId = getParticipantId(character, chatData.participants);
-    
-    const previousMessage = findPreviousChatMessage(chatData, character.id);
-    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
-    const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
-    if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
-        const fatigue = getFatigueContext(participantId, characterName, currentChatStamina, maximumChatStamina);
-        if (fatigue) promptLines.push(fatigue);
+    if (systemPrompt) {
+
+        systemPrompt = replacePlaceholders(systemPrompt, characterName, chatData.protagonist.name)
+
+        promptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextStartString}`);
+
     }
+        
+    if (thinkPrompt) {
 
-    if (systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextStartString}`);
+        thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName)
 
-    if (thinkPrompt) promptLines.push(`${contextStartString}<think>${thinkPrompt}</think>${contextStartString}`);
+        promptLines.push(`${contextStartString}<think>${thinkPrompt}</think>${contextStartString}`);
+
+    }
 
     // Don't delete this comment. Uhm... Thinking hijacking worked a little too well. Also do not use "perfect" or "correct" before the word "formatting" as it will cause over-correction. Meanwhile, "consistent" works slightly weaker than "clean", which is weaker than "proper".
 
@@ -212,11 +236,20 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // We also need a phrase that stops the the language model from sticking the same topics. So the phrase for topic expansion and exploration is added to give more varied response.
 
+    // I also added awkwardness to avoid the language model from talking to itself.
+
     // Using UUID is a bad idea as they will flood the attention with irrelevant context, leading a more broken output for some models.
 
-    promptLines.push(`${contextStartString}<think>I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else.</think>${contextStartString}`)
+    promptLines.push(`${contextStartString}<think>I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.</think>${contextStartString}`)
 
-    //promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
+    const previousMessage = findPreviousChatMessage(chatData, character.id);
+    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
+
+    if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
+        const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
+        if (fatigue) promptLines.push(fatigue);
+    }
 
     if (chatMessageHistory.length > 0) {
         const historyLines: string[] = [];
