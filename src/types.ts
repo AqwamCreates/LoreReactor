@@ -105,6 +105,7 @@ export interface Character extends ObjectData  {
   
   image?: string; // Path to the character's image.
   systemPrompt?: string;
+  thinkPrompt?: string;
   initiativeWeight?: number | undefined;
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
@@ -116,6 +117,7 @@ export interface RawCharacter extends RawData {
 
   image?: string; // Path to the character's image.
   systemPrompt?: string;
+  thinkPrompt?: string;
   initiativeWeight?: number | undefined;
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
@@ -130,6 +132,7 @@ export interface ChatMessage {
   textContent: string;
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
+  textContentSummary?: string;
   kvCachePath?: string;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -143,6 +146,7 @@ export interface RawChatMessage {
   textContent: string;
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
+  textContentSummary?: string;
   kvCachePath?: string;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;

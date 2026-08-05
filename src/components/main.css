@@ -798,7 +798,7 @@
 }
 
 .editor-label {
-    font-size: 0.75rem; font-weight: bold; color: var(--text-h);
+    font-size: 0.65rem; font-weight: bold; color: var(--text-h);
     display: block; margin-bottom: 4px; letter-spacing: 0.5px; opacity: 0.8;
 }
 

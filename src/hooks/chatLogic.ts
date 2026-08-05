@@ -114,7 +114,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const sampler = character.sampler;
     const allStopPatterns = sampler?.stopPatterns || [];
     const currentCharacterId = character.id;
-    const characterName = character.name
+    const characterName = characterName
+    const systemPrompt = character.systemPrompt
+    const thinkPrompt = character.thinkPrompt
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -200,8 +202,11 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         if (fatigue) promptLines.push(fatigue);
     }
 
-     if (character.systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${character.name}) Prompt: ${character.systemPrompt}${contextStartString}`);
+    if (systemPrompt) promptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextStartString}`);
 
+    if (thinkPrompt) promptLines.push(`${contextStartString}<think>${thinkPrompt}</think>${contextStartString}`);
+
+    promptLines.push(`${contextStartString}<think>I have figured out on how to complete the response as Character ${participantId} (${characterName}) without repeating phrases.</think>${contextStartString}`) // Uhm... Thinking hijacking worked a little too well.
 
     //promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
 
@@ -226,7 +231,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         promptLines.push(historyLines.join('\n'));
     }
 
-    promptLines.push(`${turnStartString}${participantId} (${character.name}):`);
+    promptLines.push(`${turnStartString}${participantId} (${characterName}):`);
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
 }
@@ -331,7 +336,7 @@ export function createNewChatData(character: Character): ChatData {
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
+    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, characterName, textContent);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
