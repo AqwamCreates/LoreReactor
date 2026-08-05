@@ -22,7 +22,7 @@ interface ManagerModalProps<T> {
     activeSpecialActionId?: string;
 }
 
-export function ManagerModal<T extends { id: string; name?: string }>({
+export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
     title,
     items,
     isOpen,
@@ -45,49 +45,79 @@ export function ManagerModal<T extends { id: string; name?: string }>({
 
     if (!isOpen) return null;
 
-    // ✅ LOGIC TO HANDLE PLURALIZATION (ies -> y, s -> '')
     const get_singular_noun = (plural: string) => {
         if (plural.endsWith('ies')) {
-            return plural.slice(0, -3) + 'y'; // Strategies -> Strategy
+            return plural.slice(0, -3) + 'y';
         }
         if (plural.endsWith('s')) {
-            return plural.slice(0, -1); // Models -> Model
+            return plural.slice(0, -1);
         }
-        return plural; // Fallback
+        return plural;
     };
 
     const singularTitle = get_singular_noun(title);
 
-    // Get the order number for an item in the current order list
     const getOrderNumber = (id: string): number | null => {
         const index = currentOrderIds.indexOf(id);
         return index !== -1 ? index + 1 : null;
     };
 
-    // ✅ FILTERING LOGIC
+    // ✅ SORTING: Priority order → lastUpdatedTimestamp → firstCreatedTimestamp
+    const sortedItems = useMemo(() => {
+        const sorted = [...items].sort((a, b) => {
+            // Priority 1: Position in currentOrderIds (lower index = higher priority)
+            // Items not in the list sort after items that are in the list
+            if (orderedListMode && currentOrderIds.length > 0) {
+                const aIndex = currentOrderIds.indexOf(a.id);
+                const bIndex = currentOrderIds.indexOf(b.id);
+                const aInOrder = aIndex !== -1;
+                const bInOrder = bIndex !== -1;
+
+                if (aInOrder && bInOrder) {
+                    if (aIndex !== bIndex) return aIndex - bIndex;
+                } else if (aInOrder && !bInOrder) {
+                    return -1; // a comes first
+                } else if (!aInOrder && bInOrder) {
+                    return 1; // b comes first
+                }
+                // Both not in order → fall through to timestamp sorting
+            }
+
+            // Priority 2: Most recently updated first
+            const aUpdated = a.lastUpdatedTimestamp ?? 0;
+            const bUpdated = b.lastUpdatedTimestamp ?? 0;
+            if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+
+            // Priority 3: Most recently created first
+            const aCreated = a.firstCreatedTimestamp ?? 0;
+            const bCreated = b.firstCreatedTimestamp ?? 0;
+            return bCreated - aCreated;
+        });
+
+        return sorted;
+    }, [items, orderedListMode, currentOrderIds]);
+
+    // ✅ FILTERING LOGIC (applied after sorting so search preserves sort order)
     const filteredItems = useMemo(() => {
-        if (!searchQuery.trim()) return items;
+        if (!searchQuery.trim()) return sortedItems;
 
         const query = searchQuery.toLowerCase();
-        return items.filter((item) => {
-            // Check Name
+        return sortedItems.filter((item) => {
             const nameMatch = item.name?.toLowerCase().includes(query);
-            
-            // Check Subtext (Description) if available
+
             let subtextMatch = false;
             if (renderSubtext) {
                 const subtextNode = renderSubtext(item);
                 if (typeof subtextNode === 'string') {
                     subtextMatch = subtextNode.toLowerCase().includes(query);
                 } else if (subtextNode && typeof subtextNode === 'object' && 'props' in subtextNode) {
-                    // Basic check for React nodes containing text
                     subtextMatch = JSON.stringify(subtextNode).toLowerCase().includes(query);
                 }
             }
 
             return nameMatch || subtextMatch;
         });
-    }, [items, searchQuery, renderSubtext]);
+    }, [sortedItems, searchQuery, renderSubtext]);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -95,7 +125,6 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                 <div className="modal-header">
                     <h2>{title}</h2>
 
-                    {/* ✅ FIX: Improved Header Actions Layout */}
                     <div className="modal-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <button
                             type="button"
@@ -118,12 +147,11 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                     </div>
                 </div>
 
-                {/* ✅ SEARCH BAR SECTION */}
                 <div className="modal-search-container">
                     <input
                         type="text"
                         className="modal-search-input"
-                        placeholder={`Search ${title.toLowerCase()}...`}
+                        placeholder={`Search ${title.toLowerCase()}.`}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
@@ -156,10 +184,8 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                             </div>
                                         </div>
 
-                                        {/* ✅ Button Order: Number Order → Star → Delete */}
                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
 
-                                            {/* 1. Number Order Button (Optional) */}
                                             {orderedListMode && onToggleOrder && (
                                                 <button
                                                     type="button"
@@ -184,7 +210,6 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                                 </button>
                                             )}
 
-                                            {/* 2. Star Button (Optional) */}
                                             {specialActionIcon && onSpecialAction && (
                                                 <button
                                                     type="button"
@@ -205,7 +230,6 @@ export function ManagerModal<T extends { id: string; name?: string }>({
                                                 </button>
                                             )}
 
-                                            {/* 3. Delete Button (Always visible if onDelete provided) */}
                                             {onDelete && (
                                                 <button
                                                     type="button"

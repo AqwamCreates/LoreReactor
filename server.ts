@@ -215,12 +215,13 @@ app.post('/models/unload', (req, res) => {
   res.json({ success: true, message: 'Model unloaded' });
 });
 
-app.all('/proxy/:modelId/*path', (req, res) => {
-  const { modelId, path: remainingPath } = req.params;
+app.all('/proxy/:modelId/*', (req, res) => {
+  const modelId = req.params.modelId;
+  const remainingPath = (req.params as any)[0] || '';
   const instance = activeModels.get(modelId);
   if (!instance || instance.status !== 'ready') return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
 
-  const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath || ''}`;
+  const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
   fetch(targetUrl, {
     method: req.method, headers: req.headers as any,
     body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
