@@ -27,7 +27,6 @@ const DefaultModel: LanguageModel = {
   lastUpdatedTimestamp: Date.now(),
 };
 
-// ✅ Actions Repository
 const DEFAULT_ACTIONS: InterjectableAction[] = [
   { label: 'Hug', count: 0 }, { label: 'Kiss At', count: 0 }, { label: 'Slap', count: 0 },
   { label: 'Push Away', count: 0 }, { label: 'Touch', count: 0 }, { label: 'Grab', count: 0 },
