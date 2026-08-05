@@ -629,6 +629,38 @@
 
 .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--text-h); }
 
+.modal-search-container {
+  padding: 0 20px 15px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg); /* Ensure it matches modal bg */
+}
+
+.modal-search-input {
+  width: 100%;
+  padding: 10px 14px; /* Increased padding for better touch target */
+  border-radius: 8px; /* Slightly rounder */
+  border: 1px solid var(--border);
+  background: var(--social-bg);
+  color: var(--text-h);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box; /* Critical: prevents overflow */
+  transition: all 0.2s ease;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.modal-search-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.modal-search-input::placeholder {
+  color: var(--text-h);
+  opacity: 0.5;
+}
+
 .close-btn {
   background: transparent; border: none; font-size: 1.5rem;
   color: var(--text-h); cursor: pointer; line-height: 1;

@@ -18,6 +18,10 @@ const turnStartString = "{"
 
 const turnEndString = "}"
 
+const thinkStartString = "<think>"
+
+const thinkEndString = "</think>"
+
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
     if (!text) return text;
     
@@ -38,11 +42,11 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
 
-    const initialString = `${contextStartString}<think> I am`
+    const initialString = `${contextStartString}${thinkStartString} I am`
 
-    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.</think>${contextEndString}`;
-    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.</think>${contextEndString}`;
-    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.</think>${contextEndString}`;
+    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${thinkEndString}${contextEndString}`;
+    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${thinkEndString}${contextEndString}`;
+    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${thinkEndString}${contextEndString}`;
     return `${initialString} have no energy left to speak.${contextEndString}`;
 }
 
@@ -226,7 +230,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
         thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName)
 
-        promptLines.push(`${contextStartString}<think>${thinkPrompt}</think>${contextStartString}`);
+        promptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextStartString}`);
 
     }
 
@@ -240,7 +244,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // Using UUID is a bad idea as they will flood the attention with irrelevant context, leading a more broken output for some models.
 
-    promptLines.push(`${contextStartString}<think>I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.</think>${contextStartString}`)
+    promptLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.${thinkEndString}${contextStartString}`)
 
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
@@ -272,7 +276,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         promptLines.push(historyLines.join('\n'));
     }
 
-    promptLines.push(`${contextStartString}<think>I am now responding as Character ${participantId} (${characterName})</think>${contextStartString}`)
+    //promptLines.push(`${contextStartString}${thinkStartString}I am now responding as Character ${participantId} (${characterName})${thinkEndString}${contextStartString}`)
 
     promptLines.push(`${turnStartString}${participantId} (${characterName}):`);
 
@@ -295,6 +299,8 @@ export async function prepareRequestBody(
     const finalStops = [
         turnEndString,
         turnStartString,
+        thinkEndString,
+        thinkStartString,
         ...(Array.isArray(paramStops) ? paramStops : []),
         ...activeStopPatterns.map(sp => sp.pattern),
     ];
