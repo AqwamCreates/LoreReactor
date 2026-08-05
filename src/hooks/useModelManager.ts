@@ -36,12 +36,10 @@ export function useModelManager() {
                     status: m.status
                 };
 
-                // ✅ Check slot idleness — silently skip non-200 responses (503, 404, etc.)
                 if (m.status === 'ready' && m.port) {
                     try {
                         const slotsRes = await fetch(`http://localhost:${m.port}/slots`);
                         
-                        // Silently skip if model isn't ready yet (503) or endpoint doesn't exist (404)
                         if (!slotsRes.ok) continue;
                         
                         const slots = await slotsRes.json();
@@ -61,7 +59,6 @@ export function useModelManager() {
                 }
             }
             
-            // Clean up notified set for models no longer running
             const activeIds = new Set(data.activeModels?.map((m: any) => m.id) || []);
             for (const id of idleNotifiedRef.current) {
                 if (!activeIds.has(id)) idleNotifiedRef.current.delete(id);
@@ -116,31 +113,47 @@ export function useModelManager() {
         }
     };
 
+    // ✅ Internal helper to unload a model without triggering re-entrant toggleModelLoad
+    const unloadModelInternal = async (id: string): Promise<boolean> => {
+        try {
+            const res = await fetch(`${API_BASE}/models/unload`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            
+            if (res.ok) {
+                idleNotifiedRef.current.delete(id);
+                setRunningModels(prev => {
+                    const next = { ...prev };
+                    delete next[id];
+                    return next;
+                });
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.error(`Failed to unload model ${id}:`, err);
+            return false;
+        }
+    };
+
     const toggleModelLoad = async (id: string, forceUnload: boolean = false) => {
         const isCurrentlyRunning = runningModels[id]?.isRunning;
         
         if (isCurrentlyRunning && !forceUnload) {
+            // Unload this model
             try {
                 addToast(`Stopping model...`, "info");
-                const res = await fetch(`${API_BASE}/models/unload`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
+                const success = await unloadModelInternal(id);
                 
-                if (res.ok) {
+                if (success) {
                     addToast(`Model stopped successfully`, "success");
-                    idleNotifiedRef.current.delete(id);
                     
+                    // Deselect if this was the selected model
                     if (selectedModelId === id) {
                         setSelectedModelId(null);
                     }
-                    
-                    setRunningModels(prev => {
-                        const next = { ...prev };
-                        delete next[id];
-                        return next;
-                    });
                 } else {
                     throw new Error("Failed to unload");
                 }
@@ -152,6 +165,17 @@ export function useModelManager() {
         else if (!isCurrentlyRunning) {
             const model = models.find(m => m.id === id);
             if (!model) return;
+
+            // ✅ ENFORCE SINGLE MODEL: Unload any other running model first
+            const otherRunningIds = Object.entries(runningModels)
+                .filter(([rid, state]) => rid !== id && state.isRunning)
+                .map(([rid]) => rid);
+            
+            for (const otherId of otherRunningIds) {
+                const otherName = models.find(m => m.id === otherId)?.name || otherId;
+                addToast(`Stopping ${otherName} to free resources...`, "info");
+                await unloadModelInternal(otherId);
+            }
 
             const modelPath = model.model || '';
             
