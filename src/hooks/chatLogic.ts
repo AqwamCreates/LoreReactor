@@ -191,10 +191,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
     }
 
-    //const randomUUIDForInjection = uuidv4()
-
-    //.push(`${contextStartString}${randomUUIDForInjection}${contextStartString}`)
-
     const participantId = getParticipantId(character, chatData.participants);
     
     const previousMessage = findPreviousChatMessage(chatData, character.id);
@@ -216,7 +212,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // We also need a phrase that stops the the language model from sticking the same topics. So the phrase for topic expansion and exploration is added to give more varied response.
 
-    promptLines.push(`${contextStartString}<think>I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.</think>${contextStartString}`)
+    // Using UUID is a bad idea as they will flood the attention with irrelevant context, leading a more broken output for some models.
+
+    promptLines.push(`${contextStartString}<think>I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else.</think>${contextStartString}`)
 
     //promptLines.push(`${contextStartString}This is a conversation between a group of characters.${contextEndString}`);
 
