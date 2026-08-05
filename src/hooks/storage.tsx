@@ -1,23 +1,28 @@
 // src/hooks/storage.ts
 import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel,
+  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
-  BudgetStrategy, RawBudgetStrategy,
-  RawLanguageModel
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction
 } from '../types';
 
 import { localURL } from '../configurations';
 
-// ✅ New Interface for Interjectable Actions
-export interface InterjectableAction {
-  label: string;
-  count: number;
-}
-
 const DefaultSampler: Sampler = {
-  id: "0", name: "Default", description: undefined,
+  id: "default-sampler", 
+  name: "Default", 
+  description: "Fallback sampler",
   parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
-  stopPatterns: [], maximumNumberOfTokens: 512,
+  stopPatterns: [], 
+  maximumNumberOfTokens: 512,
+  firstCreatedTimestamp: Date.now(),
+  lastUpdatedTimestamp: Date.now(),
+};
+
+const DefaultModel: LanguageModel = {
+  id: "default-model",
+  name: "Default Model",
+  description: "Fallback model",
+  contextLength: 4096,
   firstCreatedTimestamp: Date.now(),
   lastUpdatedTimestamp: Date.now(),
 };
@@ -39,13 +44,16 @@ const DEFAULT_ACTIONS: InterjectableAction[] = [
 
 const WRITE_API_URL = localURL; 
 const PATHS = {
-  characters: "/user_data/character_data", characterImages: "/user_data/character_images",
-  samplers: "/user_data/sampler_data", contexts: "/user_data/context_data",
+  characters: "/user_data/character_data", 
+  characterImages: "/user_data/character_images",
+  samplers: "/user_data/sampler_data", 
+  contexts: "/user_data/context_data",
   models: "/user_data/model_data",
-  stopPatterns: "/user_data/stop_pattern_data", chatMessages: "/user_data/chat_messages", 
-  chatData: "/user_data/chat_data", kvCaches: "/user_data/kv_caches",
+  stopPatterns: "/user_data/stop_pattern_data", 
+  chatMessages: "/user_data/chat_messages", 
+  chatData: "/user_data/chat_data", 
+  kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
-  // ✅ Added Actions Path
   actions: "/user_data/actions.json",
 };
 const MANIFEST_FILE = 'manifest.json';
@@ -54,20 +62,45 @@ const MANIFEST_FILE = 'manifest.json';
 
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
-    const response = await fetch(url);
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+    const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
+    
+    const response = await fetch(targetUrl);
+    
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      console.warn(`HTTP Error ${response.status} for ${url}`);
+      return null;
+    }
+
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
-      if (response.status === 404 || response.status === 200) return null; 
+      return null; 
     }
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) { console.warn(`Failed to parse JSON from ${url}.`, error); return null; }
+
+    const text = await response.text();
+    if (!text.trim()) return null;
+    
+    return JSON.parse(text) as T;
+  } catch (error) { 
+    // Silently fail for missing files, warn for others
+    if ((error as Error).message.includes('Failed to fetch')) {
+      // Network error usually handled by caller or global handler
+    } else {
+      console.warn(`Failed to parse JSON from ${url}:`, error);
+    }
+    return null; 
+  }
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
   const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
-  const response = await fetch(targetUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const response = await fetch(targetUrl, { 
+    method: 'PUT', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(data) 
+  });
   if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
 }
 
@@ -81,10 +114,19 @@ async function deleteResource(url: string): Promise<void> {
 async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   let currentIds = await fetchJson<string[]>(manifestUrl);
-  if (!currentIds) currentIds = []; 
+  
+  if (!currentIds || !Array.isArray(currentIds)) {
+    currentIds = [];
+  }
+
   let newIds: string[];
-  if (action === 'add') { if (currentIds.includes(id)) return; newIds = [...currentIds, id]; } 
-  else { newIds = currentIds.filter(existingId => existingId !== id); }
+  if (action === 'add') { 
+    if (currentIds.includes(id)) return; 
+    newIds = [...currentIds, id]; 
+  } else { 
+    newIds = currentIds.filter(existingId => existingId !== id); 
+  }
+  
   await putJson(manifestUrl, newIds);
 }
 
@@ -102,6 +144,22 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// --- Batch Loading Utility ---
+// Prevents ERR_INSUFFICIENT_RESOURCES by loading in chunks
+async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize: number = 5): Promise<(T | null)[]> {
+  const results: (T | null)[] = [];
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(loader));
+    results.push(...batchResults);
+    // Small delay to let event loop breathe
+    if (i + batchSize < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+  return results;
+}
+
 // --- Stop Pattern Repository ---
 export async function loadRawStopPatternManifest(): Promise<string[]> { 
   return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; 
@@ -112,20 +170,20 @@ export async function loadRawStopPattern(id: string): Promise<StopPattern | null
   if (!rawPattern) return null;
   return { 
     id, 
-    name: rawPattern.name, 
+    name: rawPattern.name || 'Unknown Pattern', 
     description: rawPattern.description, 
     pattern: rawPattern.pattern,
     regularExpressionTrigger: rawPattern.regularExpressionTrigger,
     regularExpressionContext: rawPattern.regularExpressionContext,
     regularExpressionTarget: rawPattern.regularExpressionTarget,
-    firstCreatedTimestamp: rawPattern.firstCreatedTimestamp,
-    lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp,
+    firstCreatedTimestamp: rawPattern.firstCreatedTimestamp || Date.now(),
+    lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp || Date.now(),
   };
 }
 
 export async function loadAllRawStopPatterns(): Promise<StopPattern[]> {
   const ids = await loadRawStopPatternManifest();
-  const results = await Promise.all(ids.map(id => loadRawStopPattern(id)));
+  const results = await loadInBatches(ids, loadRawStopPattern);
   return results.filter((p): p is StopPattern => p !== null);
 }
 
@@ -150,25 +208,35 @@ export async function loadRawSamplerManifest(): Promise<string[]> {
 }
 
 export async function loadRawSampler(id: string): Promise<Sampler | null> {
-  const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
-  if (!rawSampler) return null;
-  const stopPatternIds = rawSampler.stopPatternIds || [];
-  const stopPatterns = (await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)))).filter((p): p is StopPattern => p !== null);
-  return { 
-    id, 
-    name: rawSampler.name, 
-    description: rawSampler.description, 
-    parameters: rawSampler.parameters || {}, 
-    maximumNumberOfTokens: rawSampler.maximumNumberOfTokens, 
-    stopPatterns,
-    firstCreatedTimestamp: rawSampler.firstCreatedTimestamp,
-    lastUpdatedTimestamp: rawSampler.lastUpdatedTimestamp,
-  };
+  try {
+    const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
+    if (!rawSampler) return null;
+    
+    const stopPatternIds = rawSampler.stopPatternIds || [];
+    // Load stop patterns safely, ignoring missing ones
+    const stopPatternsPromises = stopPatternIds.map(sid => loadRawStopPattern(sid));
+    const stopPatternsResults = await Promise.all(stopPatternsPromises);
+    const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
+
+    return { 
+      id, 
+      name: rawSampler.name || 'Unknown Sampler', 
+      description: rawSampler.description, 
+      parameters: rawSampler.parameters || {}, 
+      maximumNumberOfTokens: rawSampler.maximumNumberOfTokens, 
+      stopPatterns,
+      firstCreatedTimestamp: rawSampler.firstCreatedTimestamp || Date.now(),
+      lastUpdatedTimestamp: rawSampler.lastUpdatedTimestamp || Date.now(),
+    };
+  } catch (e) {
+    console.warn(`Failed to load sampler ${id}`, e);
+    return null;
+  }
 }
 
 export async function loadAllRawSamplers(): Promise<Sampler[]> {
   const ids = await loadRawSamplerManifest();
-  const results = await Promise.all(ids.map(id => loadRawSampler(id)));
+  const results = await loadInBatches(ids, loadRawSampler);
   return results.filter((s): s is Sampler => s !== null);
 }
 
@@ -194,29 +262,41 @@ export async function loadRawCharacterManifest(): Promise<string[]> {
 }
 
 export async function loadRawCharacter(id: string): Promise<Character | null> {
-  const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-  if (!rawCharacter) return null;
-  const samplerId = rawCharacter.samplerId;
-  const sampler = samplerId ? (await loadRawSampler(samplerId) || DefaultSampler) : DefaultSampler;
-  return { 
-    id, 
-    name: rawCharacter.name, 
-    image: rawCharacter.image, 
-    description: rawCharacter.description, 
-    systemPrompt: rawCharacter.systemPrompt,
-    thinkPrompt: rawCharacter.thinkPrompt, 
-    initiativeWeight: rawCharacter.initiativeWeight, 
-    chatProbability: rawCharacter.chatProbability, 
-    maximumChatStamina: rawCharacter.maximumChatStamina, 
-    sampler,
-    firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
-    lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
-  };
+  try {
+    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!rawCharacter) return null;
+
+    const samplerId = rawCharacter.samplerId;
+    let sampler: Sampler = DefaultSampler;
+    
+    if (samplerId) {
+      const loadedSampler = await loadRawSampler(samplerId);
+      if (loadedSampler) sampler = loadedSampler;
+    }
+
+    return { 
+      id, 
+      name: rawCharacter.name || 'Unknown Character', 
+      image: rawCharacter.image, 
+      description: rawCharacter.description, 
+      systemPrompt: rawCharacter.systemPrompt,
+      thinkPrompt: rawCharacter.thinkPrompt, 
+      initiativeWeight: rawCharacter.initiativeWeight, 
+      chatProbability: rawCharacter.chatProbability, 
+      maximumChatStamina: rawCharacter.maximumChatStamina, 
+      sampler,
+      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || Date.now(),
+      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || Date.now(),
+    };
+  } catch (e) {
+    console.warn(`Failed to load character ${id}`, e);
+    return null;
+  }
 }
 
 export async function loadAllRawCharacters(): Promise<Character[]> {
   const ids = await loadRawCharacterManifest();
-  const results = await Promise.all(ids.map(id => loadRawCharacter(id)));
+  const results = await loadInBatches(ids, loadRawCharacter);
   return results.filter((c): c is Character => c !== null);
 }
 
@@ -246,22 +326,22 @@ export async function loadRawContext(id: string): Promise<Context | null> {
     if (!rawContext) return null;
     return { 
         id, 
-        name: rawContext.name, 
+        name: rawContext.name || 'Unknown Context', 
         description: rawContext.description, 
         text: rawContext.text,
         images: rawContext.images,
-        useBase64Encoding: rawContext.useBase64Encoding,
+        useBase64Encoding: rawContext.useBase64Encoding ?? false,
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
-        firstCreatedTimestamp: rawContext.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp,
+        firstCreatedTimestamp: rawContext.firstCreatedTimestamp || Date.now(),
+        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp || Date.now(),
     };
 }
 
 export async function loadAllRawContexts(): Promise<Context[]> {
     const ids = await loadRawContextManifest();
-    const results = await Promise.all(ids.map(id => loadRawContext(id)));
+    const results = await loadInBatches(ids, loadRawContext);
     return results.filter((i): i is Context => i !== null);
 }
 
@@ -291,7 +371,7 @@ export async function loadRawModel(id: string): Promise<LanguageModel | null> {
     
     return {
         id,
-        name: rawModel.name,
+        name: rawModel.name || 'Unknown Model',
         description: rawModel.description,
         backend: rawModel.backend,
         contextLength: rawModel.contextLength,
@@ -302,14 +382,14 @@ export async function loadRawModel(id: string): Promise<LanguageModel | null> {
         cacheHitCostPerOneMillionOfTokens: rawModel.cacheHitCostPerOneMillionOfTokens,
         cacheMissCostPerOneMillionOfTokens: rawModel.cacheMissCostPerOneMillionOfTokens,
         outputGenerationCostPerOneMillionOfTokens: rawModel.outputGenerationCostPerOneMillionOfTokens,
-        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
+        firstCreatedTimestamp: rawModel.firstCreatedTimestamp || Date.now(),
+        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp || Date.now(),
     };
 }
 
 export async function loadAllRawModels(): Promise<LanguageModel[]> {
     const ids = await loadRawModelManifest();
-    const results = await Promise.all(ids.map(id => loadRawModel(id)));
+    const results = await loadInBatches(ids, loadRawModel);
     return results.filter((m): m is LanguageModel => m !== null);
 }
 
@@ -337,37 +417,41 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
     const rawStrategy = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
     if (!rawStrategy) return null;
     
-    const [onlineModel, localModel] = await Promise.all([
-        loadRawModel(rawStrategy.onlineModelId),
-        loadRawModel(rawStrategy.localModelId)
-    ]);
+    try {
+      const [onlineModel, localModel] = await Promise.all([
+          loadRawModel(rawStrategy.onlineModelId),
+          loadRawModel(rawStrategy.localModelId)
+      ]);
 
-    if (!onlineModel || !localModel) {
-        console.warn(`Failed to load models for budget strategy ${id}`);
-        return null;
+      // Fallback to defaults if models are missing to prevent crash
+      const finalOnline = onlineModel || DefaultModel;
+      const finalLocal = localModel || DefaultModel;
+
+      return {
+          id,
+          name: rawStrategy.name || 'Unknown Strategy',
+          description: rawStrategy.description,
+          onlineModel: finalOnline,
+          localModel: finalLocal,
+          switchProbabilty: rawStrategy.switchProbabilty,
+          switchOnContextSize: rawStrategy.switchOnContextSize,
+          switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
+          fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
+          fallbackOnQualityThreshold: rawStrategy.fallbackOnQualityThreshold,
+          fallbackOnTimeoutInSeconds: rawStrategy.fallbackOnTimeoutInSeconds,
+          maximumBudget: rawStrategy.maximumBudget,
+          firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp || Date.now(),
+          lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp || Date.now(),
+      };
+    } catch (e) {
+      console.warn(`Failed to load budget strategy ${id}`, e);
+      return null;
     }
-
-    return {
-        id,
-        name: rawStrategy.name,
-        description: rawStrategy.description,
-        onlineModel,
-        localModel,
-        switchProbabilty: rawStrategy.switchProbabilty,
-        switchOnContextSize: rawStrategy.switchOnContextSize,
-        switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
-        fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
-        fallbackOnQualityThreshold: rawStrategy.fallbackOnQualityThreshold,
-        fallbackOnTimeoutInSeconds: rawStrategy.fallbackOnTimeoutInSeconds,
-        maximumBudget: rawStrategy.maximumBudget,
-        firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp,
-    };
 }
 
 export async function loadAllRawBudgetStrategies(): Promise<BudgetStrategy[]> {
     const ids = await loadRawBudgetStrategyManifest();
-    const results = await Promise.all(ids.map(id => loadRawBudgetStrategy(id)));
+    const results = await loadInBatches(ids, loadRawBudgetStrategy);
     return results.filter((s): s is BudgetStrategy => s !== null);
 }
 
@@ -398,45 +482,126 @@ export async function loadRawChatManifest(): Promise<string[]> {
     return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
 }
 
-export async function loadRawChatData(id: string): Promise<ChatData | null> {
-  const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
-  if (!rawChatData) return null;
-  const [allCharacters, allContexts] = await Promise.all([ loadAllRawCharacters(), loadAllRawContexts() ]);
-  const charMap = new Map(allCharacters.map(c => [c.id, c]));
-  const contextMap = new Map(allContexts.map(i => [i.id, i]));
+// Optimized: Accept pre-loaded maps to avoid re-fetching everything for every chat
+async function buildChatDataFromRaw(
+  id: string, 
+  rawChatData: RawChatData, 
+  charMap: Map<string, Character>, 
+  contextMap: Map<string, Context>
+): Promise<ChatData | null> {
+  
   const protagonist = charMap.get(rawChatData.protagonistId);
-  if (!protagonist) return null;
-  const participants = rawChatData.participantIds.map(pid => charMap.get(pid)).filter((c): c is Character => c !== undefined);
-  const contexts = rawChatData.contextIds.map(iid => contextMap.get(iid)).filter((i): i is Context => i !== undefined);
+  if (!protagonist) {
+    console.warn(`Protagonist ${rawChatData.protagonistId} not found for chat ${id}`);
+    // Create a dummy protagonist to prevent total crash
+    const dummyChar: Character = { 
+      id: rawChatData.protagonistId, 
+      name: "Unknown User", 
+      firstCreatedTimestamp: Date.now(), 
+      lastUpdatedTimestamp: Date.now() 
+    };
+    // We can't return null easily here if we want to show the chat, so we might skip this chat or use dummy
+    // For safety, let's return null to skip this specific chat
+    return null; 
+  }
+
+  const participants = rawChatData.participantIds
+    .map(pid => charMap.get(pid))
+    .filter((c): c is Character => c !== undefined);
+    
+  // Ensure protagonist is in participants
+  if (!participants.find(p => p.id === protagonist.id)) {
+    participants.unshift(protagonist);
+  }
+
+  const contexts = (rawChatData.contextIds || [])
+    .map(iid => contextMap.get(iid))
+    .filter((i): i is Context => i !== undefined);
+
   const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
     const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
     if (!rawMessage) return null;
+    
     const character = charMap.get(rawMessage.characterId);
     const { characterId, ...messageWithoutCharId } = rawMessage;
+    
     return { 
       id: messageId, 
       ...messageWithoutCharId, 
-      character: character || { id: rawMessage.characterId, name: '[Unknown]', image: undefined } as Character 
+      character: character || { 
+        id: rawMessage.characterId, 
+        name: '[Unknown]', 
+        firstCreatedTimestamp: Date.now(), 
+        lastUpdatedTimestamp: Date.now() 
+      } as Character 
     };
   });
+
   const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
+
   return {
     id, 
-    name: rawChatData.name, 
+    name: rawChatData.name || "Untitled Chat", 
     protagonist, 
     participants, 
     contexts, 
     chatMessageHistory,
-    firstCreatedTimestamp: rawChatData.firstCreatedTimestamp, 
-    lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp,
+    firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
+    lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
     parentChatDataId: rawChatData.parentChatDataId || null, 
     parentChatMessageId: rawChatData.parentChatMessageId || null
   };
 }
 
+export async function loadRawChatData(id: string): Promise<ChatData | null> {
+  const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
+  if (!rawChatData) return null;
+
+  // Load dependencies once for this specific chat
+  const [allCharacters, allContexts] = await Promise.all([ 
+    loadAllRawCharacters(), 
+    loadAllRawContexts() 
+  ]);
+  
+  const charMap = new Map(allCharacters.map(c => [c.id, c]));
+  const contextMap = new Map(allContexts.map(i => [i.id, i]));
+
+  return buildChatDataFromRaw(id, rawChatData, charMap, contextMap);
+}
+
+// Optimized Bulk Loader
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
-  const results = await Promise.all(ids.map(id => loadRawChatData(id)));
+  if (ids.length === 0) return [];
+
+  // 1. Load all dependencies ONCE
+  const [allCharacters, allContexts] = await Promise.all([
+    loadAllRawCharacters(),
+    loadAllRawContexts()
+  ]);
+
+  const charMap = new Map(allCharacters.map(c => [c.id, c]));
+  const contextMap = new Map(allContexts.map(i => [i.id, i]));
+
+  // 2. Load chats in batches using the pre-loaded maps
+  const results: (ChatData | null)[] = [];
+  
+  for (let i = 0; i < ids.length; i += 3) { // Even smaller batch for chats as they are heavy
+    const batchIds = ids.slice(i, i + 3);
+    const batchPromises = batchIds.map(async (id) => {
+      const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
+      if (!raw) return null;
+      return buildChatDataFromRaw(id, raw, charMap, contextMap);
+    });
+    
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
+    
+    if (i + 3 < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+
   return results.filter((c): c is ChatData => c !== null);
 }
 
@@ -450,7 +615,12 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     };
     return putJson(`${PATHS.chatMessages}/${id}.json`, payload);
   });
-  await Promise.all(saveMessagePromises);
+  
+  // Save messages in batches to avoid overflow
+  for (let i = 0; i < saveMessagePromises.length; i += 10) {
+    await Promise.all(saveMessagePromises.slice(i, i + 10));
+  }
+
   const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, 
@@ -496,7 +666,7 @@ export async function deleteRawChatData(id: string): Promise<void> {
 
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
   const actions = await fetchJson<InterjectableAction[]>(PATHS.actions);
-  return actions || DEFAULT_ACTIONS;
+  return actions && actions.length > 0 ? actions : DEFAULT_ACTIONS;
 }
 
 export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {
@@ -506,7 +676,9 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 // --- Helpers ---
 export function getCharacterImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return `${PATHS.characterImages}/${imageFilename}`;
+  // Ensure double slashes don't happen if PATHS already has leading slash
+  const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
+  return `${WRITE_API_URL}${cleanPath}/${imageFilename}`;
 }
 
 export async function uploadCharacterImage(file: File): Promise<string> {
@@ -519,7 +691,8 @@ export async function uploadCharacterImage(file: File): Promise<string> {
 
 export function getContextImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return `${PATHS.contexts}/${imageFilename}`;
+  const cleanPath = PATHS.contexts.startsWith('/') ? PATHS.contexts : `/${PATHS.contexts}`;
+  return `${WRITE_API_URL}${cleanPath}/${imageFilename}`;
 }
 
 export async function uploadContextImage(file: File): Promise<string> {
