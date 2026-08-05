@@ -624,15 +624,17 @@
 
 .modal-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 15px 20px; border-bottom: 1px solid var(--border);
+  padding: 15px 20px; 
+  border-bottom: none; /* Removed border */
+  background: var(--bg);
 }
 
 .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--text-h); }
 
 .modal-search-container {
   padding: 0 20px 15px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg); /* Ensure it matches modal bg */
+  border-bottom: 1px solid var(--border); /* Only bottom border remains */
+  background: var(--bg);
 }
 
 .modal-search-input {

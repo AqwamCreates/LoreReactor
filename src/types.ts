@@ -218,3 +218,8 @@ export interface RawBudgetStrategy extends RawData {
   maximumBudget: number; //When the cost exceeds the budget, then the local model will be used throughout the rest of the conversations.
 
 }
+
+export interface InterjectableAction {
+  label: string;
+  count: number;
+}
