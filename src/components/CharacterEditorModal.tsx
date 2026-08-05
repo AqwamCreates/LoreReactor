@@ -26,6 +26,7 @@ export function CharacterEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [systemPrompt, setSystemPrompt] = useState('');
+    const [thinkPrompt, setThinkPrompt] = useState('');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export function CharacterEditorModal({
                 setName(existingCharacter.name || '');
                 setDescription(existingCharacter.description || '');
                 setSystemPrompt(existingCharacter.systemPrompt || '');
+                setThinkPrompt(existingCharacter.thinkPrompt || '');
                 setFirstMessage(''); 
                 
                 if (existingCharacter.image) {
@@ -71,6 +73,7 @@ export function CharacterEditorModal({
                 setName('');
                 setDescription('');
                 setSystemPrompt('');
+                setThinkPrompt('');
                 setFirstMessage('');
                 setImageFile(null);
                 setImagePreview(null);
@@ -207,6 +210,7 @@ export function CharacterEditorModal({
         const newChar: Character = {
             id: existingCharacter ? existingCharacter.id : crypto.randomUUID(),
             name, description, systemPrompt,
+            thinkPrompt: thinkPrompt.trim() || undefined,
             image: finalImageFilename ?? undefined,
             sampler: allSamplers.find(s => s.id === selectedSamplerId),
             initiativeWeight: finalIW,
@@ -324,6 +328,14 @@ export function CharacterEditorModal({
                                 className="editor-textarea"
                                 style={{ fontFamily: 'monospace', minHeight: 0, height: '100%' }} 
                                 placeholder="System prompt" disabled={isUploading}
+                            />
+
+                            {/* Think Prompt */}
+                            <textarea 
+                                value={thinkPrompt} onChange={(e) => setThinkPrompt(e.target.value)} 
+                                className="editor-textarea"
+                                style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                placeholder="Think Prompt" disabled={isUploading}
                             />
 
                             {/* Sampler + Stats */}

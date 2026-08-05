@@ -1,5 +1,5 @@
 .\llama\llama-server.exe ^
-    -m "user_data/models/Bonsai-27B-Q1_0.gguf" ^
+    -m "user_data\models\Qwen3.5-9B-Q3_K_s.gguf" ^
     -c 65536 ^
     --cache-type-k iq4_nl ^
     --cache-type-v iq4_nl ^
