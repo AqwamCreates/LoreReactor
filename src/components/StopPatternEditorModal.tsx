@@ -7,7 +7,7 @@ interface StopPatternEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (stopPattern: StopPattern) => void;
-    onDelete?: (id: string) => void; // Kept in props in case you need it later, but not used in UI
+    onDelete?: (id: string) => void;
     existingStopPattern?: StopPattern | null;
 }
 
@@ -82,23 +82,36 @@ export function StopPatternEditorModal({
         }
     };
 
-    const handleSubmit = () => {
-        if (!validate()) return;
+    // ✅ Shared logic to build a stop pattern object from current form state
+    const buildStopPatternFromForm = (isNewClone: boolean): StopPattern | null => {
+        if (!validate()) return null;
 
         const now = Date.now();
-        const stopPattern: StopPattern = {
-            id: existingStopPattern?.id || crypto.randomUUID(),
-            name: name.trim(),
+        return {
+            id: isNewClone ? crypto.randomUUID() : (existingStopPattern?.id || crypto.randomUUID()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             pattern: pattern.trim(),
             regularExpressionTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
-            firstCreatedTimestamp: existingStopPattern?.firstCreatedTimestamp || now,
+            firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = () => {
+        const stopPattern = buildStopPatternFromForm(false);
+        if (!stopPattern) return;
         onSave(stopPattern);
+        onClose();
+    };
+
+    // ✅ Clone: save as new stop pattern with a new ID and "(Clone)" suffix
+    const handleClone = () => {
+        const clonedStopPattern = buildStopPatternFromForm(true);
+        if (!clonedStopPattern) return;
+        onSave(clonedStopPattern);
         onClose();
     };
 
@@ -110,11 +123,14 @@ export function StopPatternEditorModal({
                 <div className="modal-header">
                     <h2>{existingStopPattern ? 'Edit Stop Pattern' : 'Create New Stop Pattern'}</h2>
                     <div className="editor-modal-actions">
-                        {/* ✅ DELETE BUTTON REMOVED */}
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>
-                            {existingStopPattern ? 'Update' : 'Create'}
-                        </button>
+                        {/* ✅ Clone button — only shown when editing an existing stop pattern */}
+                        {existingStopPattern && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                                Clone
+                            </button>
+                        )}
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
