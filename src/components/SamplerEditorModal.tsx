@@ -303,8 +303,9 @@ export function SamplerEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
-        if (!validate()) return;
+    // ✅ Shared logic to build a sampler object from current form state
+    const buildSamplerFromForm = (isNewClone: boolean): Sampler | null => {
+        if (!validate()) return null;
 
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
         
@@ -314,18 +315,30 @@ export function SamplerEditorModal({
         });
         
         const now = Date.now();
-        const sampler: Sampler = {
-            id: existingSampler?.id || crypto.randomUUID(),
-            name: name.trim(),
+        return {
+            id: isNewClone ? crypto.randomUUID() : (existingSampler?.id || crypto.randomUUID()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             parameters: paramsWithEnabled,
             stopPatterns,
             maximumNumberOfTokens: maxTokens,
-            firstCreatedTimestamp: existingSampler?.firstCreatedTimestamp || now,
+            firstCreatedTimestamp: isNewClone ? now : (existingSampler?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = () => {
+        const sampler = buildSamplerFromForm(false);
+        if (!sampler) return;
         onSave(sampler);
+        onClose();
+    };
+
+    // ✅ Clone: save as new sampler with a new ID and "(Clone)" suffix
+    const handleClone = () => {
+        const clonedSampler = buildSamplerFromForm(true);
+        if (!clonedSampler) return;
+        onSave(clonedSampler);
         onClose();
     };
 
@@ -395,7 +408,13 @@ export function SamplerEditorModal({
                     <h2>{existingSampler ? 'Edit Sampler' : 'Create New Sampler'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>{existingSampler ? 'Update' : 'Create'}</button>
+                        {/* ✅ Clone button — only shown when editing an existing sampler */}
+                        {existingSampler && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                                Clone
+                            </button>
+                        )}
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
