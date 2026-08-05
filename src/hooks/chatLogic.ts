@@ -114,7 +114,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const sampler = character.sampler;
     const allStopPatterns = sampler?.stopPatterns || [];
     const currentCharacterId = character.id;
-    const characterName = characterName
+    const characterName = character.name
     const systemPrompt = character.systemPrompt
     const thinkPrompt = character.thinkPrompt
 
@@ -336,7 +336,7 @@ export function createNewChatData(character: Character): ChatData {
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, characterName, textContent);
+    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
