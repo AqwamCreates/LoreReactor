@@ -186,7 +186,7 @@ export function SamplerEditorModal({
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [maxTokens, setMaxTokens] = useState<number>(512);
     const [errors, setErrors] = useState<{ name?: string }>({});
-    
+
     const [parameterOrder, setParameterOrder] = useState<string[]>(Object.keys(PARAMETER_CONFIGS));
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -195,13 +195,13 @@ export function SamplerEditorModal({
             if (existingSampler) {
                 setName(existingSampler.name || '');
                 setDescription(existingSampler.description || '');
-                
+
                 const loadedParams: any = {};
                 Object.keys(DEFAULT_PARAMETERS).forEach(key => {
                     loadedParams[key] = getParamValue(existingSampler.parameters, key, DEFAULT_PARAMETERS[key as keyof SamplerParameters]);
                 });
                 setParameters(loadedParams);
-                
+
                 const storedEnabled: Partial<EnabledParams> = {};
                 Object.keys(DEFAULT_ENABLED).forEach(key => {
                     const stored = existingSampler.parameters?.[`_enabled_${key}`];
@@ -212,7 +212,7 @@ export function SamplerEditorModal({
                     }
                 });
                 setEnabledParams({ ...DEFAULT_ENABLED, ...storedEnabled });
-                
+
                 setSelectedStopPatternIds(existingSampler.stopPatterns.map(sp => sp.id));
                 setMaxTokens(existingSampler.maximumNumberOfTokens || 512);
             } else {
@@ -249,12 +249,12 @@ export function SamplerEditorModal({
         if (!validate()) return null;
 
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
-        
+
         const paramsWithEnabled = { ...parameters };
         Object.keys(enabledParams).forEach(key => {
             paramsWithEnabled[`_enabled_${key}`] = enabledParams[key as keyof EnabledParams];
         });
-        
+
         const now = Date.now();
         return {
             id: isNewClone ? crypto.randomUUID() : (existingSampler?.id || crypto.randomUUID()),
@@ -333,55 +333,55 @@ export function SamplerEditorModal({
                 <div className="modal-body editor-modal-body">
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
-                        <input 
-                            type="text" 
-                            value={name} 
-                            onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} 
-                            className={`editor-input ${errors.name ? 'error' : ''}`} 
-                            placeholder="e.g., Creative Writing" 
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }}
+                            className={`editor-input ${errors.name ? 'error' : ''}`}
+                            placeholder="e.g., Creative Writing"
                         />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Description</label>
-                        <textarea 
-                            value={description} 
-                            onChange={(e) => setDescription(e.target.value)} 
-                            className="editor-textarea" 
-                            placeholder="Describe how this sampler works" 
-                            rows={2} 
+                        <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            className="editor-textarea"
+                            placeholder="Describe how this sampler works"
+                            rows={2}
                         />
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Maximum Number Of Tokens</label>
-                        <input 
-                            type="number" 
-                            value={maxTokens} 
-                            onChange={(e) => setMaxTokens(Number(e.target.value) || 0)} 
-                            className="editor-input" 
-                            placeholder="512" 
-                            min="1" 
-                            step="1" 
+                        <input
+                            type="number"
+                            value={maxTokens}
+                            onChange={(e) => setMaxTokens(Number(e.target.value) || 0)}
+                            className="editor-input"
+                            placeholder="512"
+                            min="1"
+                            step="1"
                         />
                     </div>
 
-                    {/* ✅ Sampling Parameters — CSS-driven layout */}
+                    {/* Sampling Parameters */}
                     <div className="editor-section">
-                        <div className="editor-section-title sampler-section-header">
+                        <div className="sampler-section-header editor-section-title">
                             <span>Sampling Parameters ({parameterOrder.length})</span>
                             <span className="sampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
-                        <div className="sampler-param-list">
+                                                <div className="sampler-param-list">
                             {parameterOrder.map((key, index) => {
                                 const config = PARAMETER_CONFIGS[key];
                                 if (!config) return null;
-                                
+
                                 const paramKey = key as keyof SamplerParameters;
                                 const isDragging = draggedIndex === index;
                                 const isEnabled = enabledParams[paramKey as keyof EnabledParams] ?? false;
-                                
+
                                 return (
                                     <div
                                         key={key}
@@ -392,26 +392,25 @@ export function SamplerEditorModal({
                                         onDrop={(e) => handleDrop(e, index)}
                                         className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''} ${!isEnabled ? 'sampler-param-disabled' : ''}`}
                                     >
-                                        {/* Drag handle — leftmost */}
                                         <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
 
-                                        {/* Enable toggle + label — same row, same font size */}
-                                        <div
-                                            className="sampler-param-label-area"
-                                            onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
-                                        >
-                                            <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
-                                                {isEnabled && <span className="sampler-checkbox-tick">✓</span>}
+                                        <div className="sampler-param-content">
+                                            {/* Line 1: checkbox + label */}
+                                            <div
+                                                className="sampler-param-label-row"
+                                                onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
+                                            >
+                                                <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
+                                                    {isEnabled && <span className="sampler-checkbox-tick">✓</span>}
+                                                </div>
+                                                <span className={`sampler-param-name ${isEnabled ? 'sampler-param-name-enabled' : ''}`}>
+                                                    {config.label}
+                                                </span>
                                             </div>
-                                            <span className={`sampler-param-name ${isEnabled ? 'sampler-param-name-enabled' : ''}`}>
-                                                {config.label}
-                                            </span>
-                                        </div>
 
-                                        {/* Input area — right side */}
-                                        <div className="sampler-param-input-area">
-                                            {config.isBoolean ? (
-                                                <div className="sampler-boolean-toggle">
+                                            {/* Line 2: full-width input */}
+                                            <div className="sampler-param-input-row">
+                                                {config.isBoolean ? (
                                                     <button
                                                         type="button"
                                                         className={`editor-btn ${parameters[paramKey] ? 'editor-btn-save' : 'editor-btn-cancel'}`}
@@ -421,27 +420,31 @@ export function SamplerEditorModal({
                                                     >
                                                         {parameters[paramKey] ? 'ON' : 'OFF'}
                                                     </button>
-                                                </div>
-                                            ) : config.isString ? (
-                                                <input
-                                                    type="text"
-                                                    value={parameters[paramKey] as string}
-                                                    onChange={(e) => handleParameterChange(paramKey, e.target.value)}
-                                                    disabled={!isEnabled}
-                                                    className={`editor-input sampler-string-input ${!isEnabled ? 'disabled' : ''}`}
-                                                />
-                                            ) : (
-                                                <SliderInput
-                                                    label=""
-                                                    value={parameters[paramKey] as number}
-                                                    minimumValue={config.min}
-                                                    maximumValue={config.max}
-                                                    stepValue={config.step}
-                                                    decimals={config.decimals || 2}
-                                                    onChange={(value) => handleParameterChange(paramKey, value)}
-                                                    description={config.description}
-                                                    disabled={!isEnabled}
-                                                />
+                                                ) : config.isString ? (
+                                                    <input
+                                                        type="text"
+                                                        value={parameters[paramKey] as string}
+                                                        onChange={(e) => handleParameterChange(paramKey, e.target.value)}
+                                                        disabled={!isEnabled}
+                                                        className={`editor-input sampler-string-input ${!isEnabled ? 'disabled' : ''}`}
+                                                    />
+                                                ) : (
+                                                    <SliderInput
+                                                        label=""
+                                                        value={parameters[paramKey] as number}
+                                                        minimumValue={config.min}
+                                                        maximumValue={config.max}
+                                                        stepValue={config.step}
+                                                        decimals={config.decimals || 2}
+                                                        onChange={(value) => handleParameterChange(paramKey, value)}
+                                                        disabled={!isEnabled}
+                                                    />
+                                                )}
+                                            </div>
+
+                                            {/* Line 3: description centered */}
+                                            {config.description && (
+                                                <div className="sampler-param-description">{config.description}</div>
                                             )}
                                         </div>
                                     </div>
@@ -450,11 +453,10 @@ export function SamplerEditorModal({
                         </div>
                     </div>
 
-                    {/* ✅ Stop Patterns — proper add/remove with dropdown */}
+                    {/* Stop Patterns */}
                     <div className="editor-section">
                         <div className="editor-section-title">Stop Patterns</div>
 
-                        {/* Selected stop patterns list */}
                         <div className="sampler-stop-patterns-list">
                             {selectedStopPatternIds.length === 0 && (
                                 <div className="sampler-stop-empty">No stop patterns assigned.</div>
@@ -481,7 +483,6 @@ export function SamplerEditorModal({
                             })}
                         </div>
 
-                        {/* Add stop pattern dropdown */}
                         <select
                             onChange={(e) => {
                                 const val = e.target.value;
