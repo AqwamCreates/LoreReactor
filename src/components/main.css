@@ -1573,3 +1573,214 @@ select {
   overflow: hidden;
   margin: 0;
 }
+
+/* =============================================================================
+   SAMPLER EDITOR — PARAMETER ROW LAYOUT
+   ============================================================================= */
+
+.sampler-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sampler-drag-hint {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.sampler-param-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ✅ Each parameter row: drag handle | label+checkbox | input */
+.sampler-param-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--social-bg);
+    transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.sampler-param-row:hover {
+    border-color: var(--accent-border);
+}
+
+.sampler-param-dragging {
+    opacity: 0.5;
+}
+
+.sampler-param-disabled {
+    opacity: 0.5;
+}
+
+/* ✅ Drag handle — fixed width, leftmost position */
+.sampler-drag-handle {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-h);
+    opacity: 0.3;
+    cursor: grab;
+    user-select: none;
+    line-height: 1;
+    letter-spacing: -2px;
+    transition: opacity 0.15s;
+}
+
+.sampler-drag-handle:hover {
+    opacity: 0.8;
+}
+
+.sampler-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* ✅ Label area — checkbox + name on same row, same font size */
+.sampler-param-label-area {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    min-width: 120px;
+    max-width: 160px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sampler-checkbox {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.sampler-checkbox.checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.sampler-checkbox-tick {
+    color: #fff;
+    font-size: 9px;
+    line-height: 1;
+}
+
+.sampler-param-name {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-h);
+    opacity: 0.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.15s;
+}
+
+.sampler-param-name-enabled {
+    opacity: 1;
+}
+
+/* ✅ Input area — takes remaining space */
+.sampler-param-input-area {
+    flex: 1;
+    min-width: 0;
+}
+
+.sampler-string-input {
+    font-family: monospace !important;
+    font-size: 0.75rem !important;
+    padding: 3px 8px !important;
+}
+
+.sampler-boolean-toggle {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* =============================================================================
+   SAMPLER EDITOR — STOP PATTERNS LIST
+   ============================================================================= */
+
+.sampler-stop-patterns-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.sampler-stop-empty {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.sampler-stop-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--social-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.sampler-stop-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.sampler-stop-name {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--text-h);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sampler-stop-pattern {
+    font-size: 0.65rem;
+    font-family: monospace;
+    opacity: 0.6;
+    color: var(--text-h);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sampler-stop-remove-btn {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: #ff4444;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0 4px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.sampler-stop-remove-btn:hover {
+    opacity: 1;
+}
