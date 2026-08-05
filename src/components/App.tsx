@@ -113,11 +113,11 @@ function App() {
 
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
-  const sampleModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
 
+  // ✅ FIXED: Sampler editor uses dedicated state instead of broken entity modal
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   
@@ -364,6 +364,25 @@ function App() {
       const strategy = allBudgetStrategies.find(s => s.id === strategyId);
       addToast(`Budget strategy "${strategy?.name}" activated!`, "success");
     }
+  };
+
+  // ✅ FIXED: Sampler editor handlers using dedicated state
+  const handleOpenSamplerEditor = (sampler?: Sampler | null) => {
+    setSamplerToEdit(sampler || null);
+    setIsSamplerEditorOpen(true);
+    setIsSampListOpen(false);
+  };
+
+  const handleSaveSampler = (sampler: Sampler) => {
+    saveSampler(sampler);
+    setIsSamplerEditorOpen(false);
+    setSamplerToEdit(null);
+  };
+
+  const handleDeleteSampler = (id: string) => {
+    deleteSampler(id);
+    setIsSamplerEditorOpen(false);
+    setSamplerToEdit(null);
   };
 
   const handleStartEditTitle = (e: React.MouseEvent) => { e.stopPropagation(); setEditTitleValue(chatData?.name || ''); setIsEditingTitle(true); };
@@ -697,7 +716,7 @@ function App() {
         <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
           <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
           <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
-          <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true) }} />
+          <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true); }} />
           <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
           <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
           <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
@@ -801,9 +820,30 @@ function App() {
         )}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
         
-        {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-        
-        {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => setIsSamplerEditorOpen(false)} onSave={(s) => { saveSampler(s); setIsSamplerEditorOpen(false); }} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
+        {/* ✅ FIXED: Samplers now use dedicated editor state instead of broken entity modal */}
+        {isSampListOpen && (
+          <ManagerModal 
+            title="Samplers" 
+            items={allSamplers} 
+            isOpen={isSampListOpen} 
+            onClose={() => setIsSampListOpen(false)} 
+            onSelect={(sampler) => handleOpenSamplerEditor(sampler)} 
+            onDelete={deleteSampler} 
+            onCreateNew={() => handleOpenSamplerEditor(null)} 
+            renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} 
+            emptyMessage="No samplers found." 
+            actionLabel="Delete" 
+          />
+        )}
+        {isSamplerEditorOpen && (
+          <SamplerEditorModal 
+            isOpen={isSamplerEditorOpen} 
+            onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} 
+            onSave={handleSaveSampler} 
+            existingSampler={samplerToEdit} 
+            allStopPatterns={allStopPatterns} 
+          />
+        )}
         
         {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(stopPattern) => stopModal.open(stopPattern)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => { const hasRegex = s.regularExpressionTrigger ? '🔍' : '📌'; return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasRegex} Pattern: {s.pattern}</span>); }} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
         {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
