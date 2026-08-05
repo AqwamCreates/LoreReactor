@@ -132,7 +132,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay">
             <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
                 <div className="modal-header">
                     <h2>{title}</h2>
