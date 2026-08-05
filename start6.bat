@@ -7,7 +7,7 @@
     --port 8080 ^
     --host 0.0.0.0 ^
     -ngl 99 ^
-    --cache-reuse 1 ^
+    --cache-reuse 256 ^
     -fa on ^
     --reasoning off
 
