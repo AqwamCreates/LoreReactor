@@ -11,11 +11,11 @@ import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadInterjectableActions, saveInterjectableActions, type InterjectableAction } from '../hooks/storage';
+import { loadInterjectableActions, saveInterjectableActions } from '../hooks/storage';
 
 import type { 
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
-  ChatData, RawChatData, Extension 
+  ChatData, RawChatData, Extension, InterjectableAction 
 } from '../types';
 
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage } from '../hooks/messageLogic';
@@ -64,7 +64,10 @@ function App() {
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
-  const { models: allModels, saveModel, deleteModel } = useModelManager();
+  
+  // ✅ UPDATED: Includes runningModels and toggleModelLoad
+  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad, isLoading: modelsLoading } = useModelManager();
+  
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
@@ -116,6 +119,9 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
+
+  // ✅ NEW: Initialization State
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // --- Effects ---
 
@@ -194,8 +200,21 @@ function App() {
     }
   }, [selectedModelId, allModels, setSelectedGlobalModel]);
 
+  // ✅ Track Initialization Completion
+  useEffect(() => {
+    // Consider initialized when we have characters AND models loaded (or failed)
+    // We check length > 0 OR if the managers have finished their first load cycle.
+    // For simplicity, we wait until characters and models are populated.
+    if (allCharacters.length > 0 || allModels.length > 0) {
+       // Small delay to ensure smooth transition
+       setTimeout(() => setIsInitializing(false), 500);
+    }
+    // Fallback timeout in case lists are empty but loaded
+    const timer = setTimeout(() => setIsInitializing(false), 3000);
+    return () => clearTimeout(timer);
+  }, [allCharacters, allModels]);
+
   // ✅ Refined Observer: Strictly Bottom-Focused (Cinematic Mode)
-  // This ensures the .is-active class is applied ONLY to the bottom-most visible message
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
       setCenterAvatar(null);
@@ -233,7 +252,6 @@ function App() {
 
           setCenterAvatar(avatarToShow);
           
-          // ✅ CRITICAL: Clean up old active classes and set new one
           document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
           (mostVisible.target as HTMLElement).classList.add('is-active');
         }
@@ -279,16 +297,6 @@ function App() {
       if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter);
     } else {
       addToast("Failed to delete chat.", "error");
-    }
-  };
-
-  const handleSetDefaultCharacter = (charId: string) => {
-    setDefaultCharacterId(charId);
-    localStorage.setItem('defaultCharacterId', charId);
-    const char = allCharacters.find(c => c.id === charId);
-    if (char) {
-      setCurrentCharacter(char);
-      addToast(`Default character set to ${char.name}`, "info");
     }
   };
 
@@ -567,27 +575,20 @@ function App() {
     addToast(`Removed action "${label}".`, "info");
   };
 
-  // ✅ FIXED: Robust Action Interjection Logic
   const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
-    // 1. Close Menu immediately
     setActionMenuTarget(null);
     setMenuSearchQuery('');
     
     if (!chatData || !currentCharacter) return;
     
-    // 2. Track Usage
     await incrementActionCount(actionLabel);
-
-    // 3. Construct Action Text
     const actionText = `*${actionLabel} ${targetChar.name}.*`;
 
-    // 4. CRITICAL FIX: Always Stop Current Generation First
     if (isLoading) {
       stopGeneration();
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    // 5. Force Trigger Response from Target Character
     try {
       await sendActionAndGetResponse(actionText, targetChar);
     } catch (error) {
@@ -620,7 +621,39 @@ function App() {
     }
   };
 
-  if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing...</div>;
+  // ✅ LOADING SCREEN RENDER
+  if (isInitializing) {
+    return (
+      <div className="loading-screen" style={{ 
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+        height: '100vh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)',
+        fontFamily: 'monospace', zIndex: 9999
+      }}>
+        <div style={{ fontSize: '2rem', marginBottom: '20px', fontWeight: 'bold', color: 'var(--accent)' }}>
+          ⚛️ LoreReactor
+        </div>
+        <div style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '30px' }}>
+          Initializing Core Systems...
+        </div>
+        <div style={{ 
+          width: '40px', height: '40px', 
+          border: '4px solid var(--border)', 
+          borderTop: '4px solid var(--accent)', 
+          borderRadius: '50%', 
+          animation: 'spin 1s linear infinite' 
+        }} />
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ✅ MAIN APP RENDER
+  if (!currentCharacter || !chatData) return <div className="loading-screen">Initializing Session...</div>;
 
   const isMassActive = massDeleteId !== null;
   const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
@@ -628,9 +661,13 @@ function App() {
 
   const renderModelSubtext = (model: LanguageModel) => {
     const isMultiModal = !!model.mmproj; 
+    const isRunning = runningModels[model.id]?.isRunning;
+    const port = runningModels[model.id]?.port;
+    
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
         {isMultiModal && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
+        {isRunning && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Running :{port}</span>}
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
         <span>{model.description}</span>
@@ -935,7 +972,35 @@ function App() {
         )}
         {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} />)}
         
-        {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={modelModal.handleDelete} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="✓" onSpecialAction={(id) => { const model = allModels.find(m => m.id === id); if (model) handleSelectModel(model); }} specialActionTooltip={(m) => `Use ${m.name}`} />)}
+        {/* ✅ UPDATED MODEL MANAGER: Integrated Load/Unload via Star Button */}
+        {isModelListOpen && (
+          <ManagerModal 
+            title="Models" 
+            items={allModels} 
+            isOpen={isModelListOpen} 
+            onClose={() => setIsModelListOpen(false)} 
+            onSelect={(model) => modelModal.open(model)} 
+            onDelete={deleteModel} 
+            onCreateNew={() => modelModal.open()} 
+            renderSubtext={renderModelSubtext} 
+            emptyMessage="No models available." 
+            actionLabel="Delete" 
+            orderedListMode={false} 
+            
+            // ✅ The "Active" ID is now the one currently running
+            // This makes the star filled (⭐) if the model is loaded
+            activeSpecialActionId={Object.keys(runningModels).find(key => runningModels[key].isRunning)} 
+            
+            specialActionIcon="★" 
+            onSpecialAction={(id) => toggleModelLoad(id)} 
+            specialActionTooltip={(m) => {
+                const isRunning = runningModels[m.id]?.isRunning;
+                const port = runningModels[m.id]?.port;
+                if (isRunning) return `⏹ Stop Model (Running on port ${port})`;
+                return `▶ Load Model`;
+            }} 
+          />
+        )}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
         
         {isSampListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSampListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => sampleModal.open(sampler)} onDelete={sampleModal.handleDelete} onCreateNew={() => sampleModal.open()} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
@@ -969,7 +1034,7 @@ function App() {
         {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
       </div>
 
-      {/* ✅ Floating Action Menu - FIXED HTML STRUCTURE */}
+      {/* ✅ Floating Action Menu */}
       {actionMenuTarget && (
          <div 
            className="action-menu-container"
