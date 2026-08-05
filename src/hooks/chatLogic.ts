@@ -272,6 +272,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         promptLines.push(historyLines.join('\n'));
     }
 
+    promptLines.push(`${contextStartString}<think>I am now responding as Character ${participantId} (${characterName})</think>${contextStartString}`)
+
     promptLines.push(`${turnStartString}${participantId} (${characterName}):`);
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
