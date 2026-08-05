@@ -1,6 +1,6 @@
 // src/components/ModelEditorModal.tsx
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import './main.css';
@@ -19,7 +19,7 @@ interface ModelSettings {
     ctx_size: number;
     cache_type_k: string;
     cache_type_v: string;
-    cache_type: string; // Combined KV dropdown value
+    cache_type: string;
     split_mode: string;
     ik: boolean;
     spec_type: string;
@@ -101,23 +101,46 @@ const getCacheTypes = (backend: string) => {
             { value: 'q5_1', label: 'Q5_1' },
             { value: 'iq4_nl', label: 'IQ4_NL' },
             { value: 'q4_1', label: 'Q4_1' },
-            { value: 'q4_0', label: 'Q4_0' },];
-        case 'Ollama': return [{ value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' }];
+            { value: 'q4_0', label: 'Q4_0' },
+        ];
+        case 'Ollama': return [
+            { value: 'f16', label: 'F16' },
+            { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q4_0', label: 'Q4_0' },
+        ];
         case 'ExLlamaV3': case 'ExLlamaV3 HF':
-            return [{ value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' }, { value: 'q8', label: 'Q8' }, { value: 'q7', label: 'Q7' }, { value: 'q6', label: 'Q6' }, { value: 'q5', label: 'Q5' }, { value: 'q4', label: 'Q4' }, { value: 'q3', label: 'Q3' }, { value: 'q2', label: 'Q2' }, { value: 'q4_q8', label: 'Q4_Q8' }];
+            return [
+                { value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' },
+                { value: 'q8', label: 'Q8' }, { value: 'q7', label: 'Q7' },
+                { value: 'q6', label: 'Q6' }, { value: 'q5', label: 'Q5' },
+                { value: 'q4', label: 'Q4' }, { value: 'q3', label: 'Q3' },
+                { value: 'q2', label: 'Q2' }, { value: 'q4_q8', label: 'Q4_Q8' },
+            ];
         case 'ExLlamaV2':
-            return [{ value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' }, { value: 'q8', label: 'Q8' }, { value: 'q6', label: 'Q6' }, { value: 'q4', label: 'Q4' }];
+            return [
+                { value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' },
+                { value: 'q8', label: 'Q8' }, { value: 'q6', label: 'Q6' },
+                { value: 'q4', label: 'Q4' },
+            ];
         case 'TensorRT-LLM':
-            return [{ value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' }, { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' }, { value: 'int8', label: 'INT8' }, { value: 'nvfp4', label: 'NVFP4' }];
+            return [
+                { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
+                { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
+                { value: 'int8', label: 'INT8' }, { value: 'nvfp4', label: 'NVFP4' },
+            ];
         case 'Transformers':
-            return [{ value: 'dynamic', label: 'Dynamic' }, { value: 'static', label: 'Static' }, { value: 'offloaded', label: 'Offloaded' }, { value: 'offloaded_static', label: 'Offloaded Static' }, { value: 'quantized', label: 'Quantized' }, { value: 'sliding_window', label: 'Sliding Window' }, { value: 'sink', label: 'Sink' }];
+            return [
+                { value: 'dynamic', label: 'Dynamic' }, { value: 'static', label: 'Static' },
+                { value: 'offloaded', label: 'Offloaded' }, { value: 'offloaded_static', label: 'Offloaded Static' },
+                { value: 'quantized', label: 'Quantized' }, { value: 'sliding_window', label: 'Sliding Window' },
+                { value: 'sink', label: 'Sink' },
+            ];
         case 'DeepSeek': return [{ value: 'auto', label: 'Auto' }];
         case 'Qwen': return [{ value: 'align', label: 'Align' }, { value: 'dynamic', label: 'Dynamic' }];
         default: return [{ value: 'default', label: 'Default' }];
     }
 };
 
-// Helper to sync individual K/V from combined value
 const syncKVFromCombined = (combinedValue: string): { k: string; v: string } => {
     return { k: combinedValue, v: combinedValue };
 };
@@ -140,17 +163,20 @@ export function ModelEditorModal({
     const [showApiKey, setShowApiKey] = useState(false);
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
     const [errors, setErrors] = useState<{ name?: string; model?: string; apiKey?: string }>({});
-    
+
     const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
     const [cacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
     const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
+    // ✅ Track whether we're loading an existing model to prevent cache reset
+    const isLoadingExistingRef = useRef(false);
+
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
-        cacheType: settings.cache_type_k, // Use K for estimation
+        cacheType: settings.cache_type_k,
         contextSize: settings.ctx_size || 8192,
         backend: backend,
     });
@@ -162,6 +188,9 @@ export function ModelEditorModal({
     useEffect(() => {
         if (isOpen) {
             if (existingModel) {
+                // ✅ Mark that we're loading existing data so cache reset doesn't overwrite
+                isLoadingExistingRef.current = true;
+
                 setName(existingModel.name || '');
                 setDescription(existingModel.description || '');
                 setBackend(existingModel.backend || 'Llama.cpp');
@@ -172,18 +201,17 @@ export function ModelEditorModal({
                 setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
                 setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
                 setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
-                
+
                 const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
                 setSelectedStopPatternIds(storedIds);
 
                 if (existingModel.parameters) {
                     const params = existingModel.parameters;
-                    
-                    // Determine cache values
+
                     const cacheK = (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k;
                     const cacheV = (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v;
                     const cacheCombined = (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type;
-                    
+
                     setSettings({
                         gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
                         ctx_size: (params.ctx_size as number) ?? DEFAULT_SETTINGS.ctx_size,
@@ -215,6 +243,7 @@ export function ModelEditorModal({
                     setSettings({ ...DEFAULT_SETTINGS });
                 }
             } else {
+                isLoadingExistingRef.current = false;
                 setName('');
                 setDescription('');
                 setBackend('Llama.cpp');
@@ -232,42 +261,59 @@ export function ModelEditorModal({
         }
     }, [isOpen, existingModel]);
 
-    // Reset cache types when backend changes
+    // ✅ FIXED: Only reset cache types when appropriate
     useEffect(() => {
         const cacheTypes = getCacheTypes(backend);
-        if (cacheTypes.length > 0) {
-            const defaultVal = cacheTypes[0].value;
-            if (isLlamaCpp) {
-                // For Llama.cpp, use combined dropdown with default
-                setSettings(prev => ({
+        if (cacheTypes.length === 0) return;
+
+        const validValues = cacheTypes.map(ct => ct.value);
+        const defaultVal = cacheTypes[0].value;
+
+        if (isLoadingExistingRef.current) {
+            // ✅ Editing existing model: only reset if current value is INVALID for this backend
+            setSettings(prev => {
+                const needsResetK = !validValues.includes(prev.cache_type_k);
+                const needsResetV = !validValues.includes(prev.cache_type_v);
+                const needsResetCombined = !validValues.includes(prev.cache_type);
+
+                // If all values are valid for this backend, preserve them entirely
+                if (!needsResetK && !needsResetV && !needsResetCombined) {
+                    return prev;
+                }
+
+                // Only reset the specific values that are invalid
+                return {
                     ...prev,
-                    cache_type: defaultVal,
-                    cache_type_k: defaultVal,
-                    cache_type_v: defaultVal,
-                }));
-            } else {
-                // For non-Llama.cpp, only use the combined dropdown
-                setSettings(prev => ({
-                    ...prev,
-                    cache_type: defaultVal,
-                    cache_type_k: defaultVal,
-                    cache_type_v: defaultVal,
-                }));
-            }
+                    cache_type_k: needsResetK ? defaultVal : prev.cache_type_k,
+                    cache_type_v: needsResetV ? defaultVal : prev.cache_type_v,
+                    cache_type: needsResetCombined ? defaultVal : prev.cache_type,
+                };
+            });
+
+            // ✅ Clear the flag after processing so future backend changes behave normally
+            isLoadingExistingRef.current = false;
+        } else {
+            // ✅ New model or user manually changed backend: reset to defaults
+            setSettings(prev => ({
+                ...prev,
+                cache_type: defaultVal,
+                cache_type_k: defaultVal,
+                cache_type_v: defaultVal,
+            }));
         }
-    }, [backend, isLlamaCpp]);
+    }, [backend]);
 
     const handleSettingChange = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => {
         setSettings(prev => {
             const newSettings = { ...prev, [key]: value };
-            
-            // If combined cache_type changes for Llama.cpp, sync K and V
-            if (key === 'cache_type' && isLlamaCpp) {
+
+            // If combined cache_type changes, sync K and V
+            if (key === 'cache_type') {
                 const { k, v } = syncKVFromCombined(value as string);
                 newSettings.cache_type_k = k;
                 newSettings.cache_type_v = v;
             }
-            
+
             return newSettings;
         });
     };
@@ -293,18 +339,18 @@ export function ModelEditorModal({
         const params: Record<string, unknown> = {};
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
         if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
-        
-        // Key-Value Cache handling
+
+        // ✅ FIXED: Always store cache values explicitly so they persist correctly
+        // Store individual K and V for Llama.cpp
         if (isLlamaCpp) {
-            // For Llama.cpp: store individual K and V, plus combined
-            if (settings.cache_type_k !== DEFAULT_SETTINGS.cache_type_k) params.cache_type_k = settings.cache_type_k;
-            if (settings.cache_type_v !== DEFAULT_SETTINGS.cache_type_v) params.cache_type_v = settings.cache_type_v;
-            if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+            params.cache_type_k = settings.cache_type_k;
+            params.cache_type_v = settings.cache_type_v;
+            params.cache_type = settings.cache_type;
         } else {
-            // For non-Llama.cpp: only store combined
-            if (settings.cache_type !== DEFAULT_SETTINGS.cache_type) params.cache_type = settings.cache_type;
+            // For non-Llama.cpp: store combined value
+            params.cache_type = settings.cache_type;
         }
-        
+
         if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
         if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
@@ -414,10 +460,10 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input 
+                            <input
                                 type={showApiKey ? 'text' : 'password'}
-                                value={apiKey} 
-                                onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }} 
+                                value={apiKey}
+                                onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }}
                                 className={`editor-input ${errors.apiKey ? 'error' : ''}`}
                                 style={{ fontFamily: 'monospace', flex: 1 }}
                                 placeholder="Enter your API key"
@@ -425,10 +471,10 @@ export function ModelEditorModal({
                             <button
                                 type="button"
                                 onClick={() => setShowApiKey(!showApiKey)}
-                                className="editor-btn" 
-                                style={{ 
-                                    padding: '6px 10px', 
-                                    width: 'auto', 
+                                className="editor-btn"
+                                style={{
+                                    padding: '6px 10px',
+                                    width: 'auto',
                                     minWidth: '40px',
                                     color: 'var(--accent)',
                                     display: 'flex',
@@ -493,25 +539,23 @@ export function ModelEditorModal({
                         <span className="editor-section-title">Key-Value Cache Quantization</span>
                         {isLlamaCpp ? (
                             <>
-                                {/* Combined dropdown for Llama.cpp */}
                                 <div style={{ marginBottom: '12px' }}>
                                     <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
-                                    <select 
-                                        value={settings.cache_type} 
-                                        onChange={(e) => handleSettingChange('cache_type', e.target.value)} 
+                                    <select
+                                        value={settings.cache_type}
+                                        onChange={(e) => handleSettingChange('cache_type', e.target.value)}
                                         className="editor-select"
                                     >
                                         {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                     </select>
                                 </div>
-                                
-                                {/* Individual K and V for Llama.cpp */}
+
                                 <div className="editor-row">
                                     <div>
                                         <label className="editor-label editor-label-small">Key Cache Type</label>
-                                        <select 
-                                            value={settings.cache_type_k} 
-                                            onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} 
+                                        <select
+                                            value={settings.cache_type_k}
+                                            onChange={(e) => handleSettingChange('cache_type_k', e.target.value)}
                                             className="editor-select"
                                         >
                                             {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
@@ -519,9 +563,9 @@ export function ModelEditorModal({
                                     </div>
                                     <div>
                                         <label className="editor-label editor-label-small">Value Cache Type</label>
-                                        <select 
-                                            value={settings.cache_type_v} 
-                                            onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} 
+                                        <select
+                                            value={settings.cache_type_v}
+                                            onChange={(e) => handleSettingChange('cache_type_v', e.target.value)}
                                             className="editor-select"
                                         >
                                             {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
@@ -530,12 +574,11 @@ export function ModelEditorModal({
                                 </div>
                             </>
                         ) : (
-                            /* Single dropdown for non-Llama.cpp backends */
                             <div>
                                 <label className="editor-label editor-label-small">Cache Type</label>
-                                <select 
-                                    value={settings.cache_type} 
-                                    onChange={(e) => handleSettingChange('cache_type', e.target.value)} 
+                                <select
+                                    value={settings.cache_type}
+                                    onChange={(e) => handleSettingChange('cache_type', e.target.value)}
                                     className="editor-select"
                                 >
                                     {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
@@ -592,7 +635,7 @@ export function ModelEditorModal({
                         </div>
                         <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
                         <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
-                        
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
                             <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
@@ -607,7 +650,7 @@ export function ModelEditorModal({
                         <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
                             These stop patterns will be automatically applied when using this model.
                         </div>
-                        
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
                             {selectedStopPatternIds.length === 0 && (
                                 <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No stop patterns assigned.</div>
@@ -621,8 +664,8 @@ export function ModelEditorModal({
                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{sp.name}</span>
                                             <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', opacity: 0.6, color: 'var(--text-h)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sp.pattern}</span>
                                         </div>
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
                                             style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px' }}
                                             title="Remove"
@@ -635,7 +678,7 @@ export function ModelEditorModal({
                         </div>
 
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <select 
+                            <select
                                 onChange={(e) => {
                                     const val = e.target.value;
                                     if (val && !selectedStopPatternIds.includes(val)) {

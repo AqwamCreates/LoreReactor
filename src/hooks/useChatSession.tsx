@@ -60,6 +60,10 @@ export function useChatSession() {
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
     const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
 
+    // ✅ Store runningModels ref so handleServerResponse always reads fresh port data
+    // without depending on useEffect injection timing
+    const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
+
     const [stats, setStats] = useState({
         numberOfCacheInvalidations: 0,
         numberOfRequests: 0,
@@ -144,14 +148,20 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
-                // ✅ Pass runtimePort from _runtimePort injected by App.tsx
-                const runtimePort = (selectedModel.parameters as any)?._runtimePort;
+                // ✅ FIX: Read runtime port DIRECTLY from runningModelsMap at call time
+                // This eliminates the race condition where useEffect hasn't injected _runtimePort yet
+                const runtimePort = selectedModel?.id 
+                    ? runningModelsMap[selectedModel.id]?.port 
+                    : undefined;
+                
+                // Also check _runtimePort as fallback for backward compatibility
+                const effectivePort = runtimePort || (selectedModel.parameters as any)?._runtimePort;
                 
                 const modelContext = {
                     apiKey: selectedModel.apiKey,
                     backend: selectedModel.backend,
                     modelPath: selectedModel.model,
-                    runtimePort: runtimePort
+                    runtimePort: effectivePort
                 };
 
                 rawText = await baseEngine.generateStream(
@@ -221,7 +231,12 @@ export function useChatSession() {
             }
             return null;
         }
-    }, [addToast, selectedModel, streamingText]);
+    }, [addToast, selectedModel, streamingText, runningModelsMap]);
+
+    // ✅ NEW: Expose a method for App.tsx to push runningModels updates into this hook
+    const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
+        setRunningModelsMap(models);
+    }, []);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter || isLoading) return;
@@ -506,6 +521,7 @@ export function useChatSession() {
         sendActionAndGetResponse,
         setActiveBudgetStrategy,
         setSelectedGlobalModel,
+        updateRunningModels,
         numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,

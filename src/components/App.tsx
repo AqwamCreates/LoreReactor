@@ -54,7 +54,8 @@ function App() {
     regenerateFromMessage, messageEndRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
-    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel
+    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
+    updateRunningModels
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -68,11 +69,22 @@ function App() {
   const { 
     models: allModels, saveModel, deleteModel, 
     runningModels, toggleModelLoad,
-    selectedModelId, setSelectedModelId
+    selectedModelId
   } = useModelManager();
   
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
+
+  // ✅ Model readiness: determines if the user can actually send messages
+  const isModelReady = selectedModelId 
+    ? runningModels[selectedModelId]?.isRunning === true 
+    : false;
+  
+  const modelStatusMessage = !selectedModelId 
+    ? "No model selected — open Models to load one"
+    : !runningModels[selectedModelId]?.isRunning
+      ? "Model is loading... please wait"
+      : "";
 
   // --- UI State ---
   const [isChatListOpen, setIsChatListOpen] = useState(false);
@@ -177,7 +189,6 @@ function App() {
       const model = allModels.find(m => m.id === selectedModelId);
       const port = runningModels[selectedModelId].port;
       if (model && port) {
-        console.log(`[DEBUG] Injecting runtime port ${port} for model ${model.name}`);
         const modelWithPort = { 
           ...model, 
           parameters: { 
@@ -188,14 +199,17 @@ function App() {
         setSelectedGlobalModel(modelWithPort);
       }
     } else if (selectedModelId) {
-      // Model selected but not yet running — pass without port
       const model = allModels.find(m => m.id === selectedModelId);
-      console.log(`[DEBUG] Model ${model?.name} selected but not running yet`);
       setSelectedGlobalModel(model || null);
     } else {
       setSelectedGlobalModel(null);
     }
   }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
+
+  // ✅ Keep chat session's runningModelsMap in sync to prevent double-click bug
+  useEffect(() => {
+    updateRunningModels(runningModels);
+  }, [runningModels, updateRunningModels]);
 
   // ✅ SMOOTH TRANSITION LOGIC
   useEffect(() => {
@@ -278,20 +292,13 @@ function App() {
     } else { addToast("Failed to delete chat.", "error"); }
   };
 
-  const handleSetDefaultCharacter = (charId: string) => {
-    setDefaultCharacterId(charId);
-    localStorage.setItem('defaultCharacterId', charId);
-    const char = allCharacters.find(c => c.id === charId);
-    if (char) { setCurrentCharacter(char); addToast(`Default character set to ${char.name}`, "info"); }
-  };
-
   const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
     if (charId === chatData.protagonist.id) { addToast("Cannot remove the protagonist.", "error"); return; }
     const currentIds = chatData.participants.map(p => p.id);
-    let newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
+    const newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
     const updatedChat = { ...chatData, participants: newParticipants };
@@ -347,18 +354,6 @@ function App() {
   };
 
   const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
-  
-  const handleSelectModel = (model: LanguageModel) => {
-    setSelectedModelId(model.id);
-    addToast(`Switched to ${model.name}.`, "info");
-    setIsModelListOpen(false);
-  };
-
-  const handleOpenSamplerEditor = (sampler?: Sampler) => {
-    setSamplerToEdit(sampler || null);
-    setIsSamplerEditorOpen(true);
-    setIsSampListOpen(false);
-  };
 
   const handleActivateBudgetStrategy = (strategyId: string) => {
     if (selectedBudgetStrategyId === strategyId) {
@@ -607,7 +602,6 @@ function App() {
             const isProtagonist = message.character.id === currentCharacter?.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
             const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter?.id).map(p => p.id));
-            const isLastAI = !isProtagonist && !chatData.chatMessageHistory.slice(index + 1).some(m => aiParticipantIds.has(m.character.id));
             const isEditing = editingId === message.id;
             const isMassStart = message.id === massDeleteId;
             const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
@@ -621,11 +615,11 @@ function App() {
                   {showSideAvatar && (
                     <div className="avatar-column">
                       <div style={{ position: 'relative' }}>
-                         {getCharacterImageUrl(message.character.image) ? (
-                            <img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
-                         ) : (
-                            <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
-                         )}
+                          {getCharacterImageUrl(message.character.image) ? (
+                              <img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
+                          ) : (
+                              <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
+                          )}
                       </div>
                       <span className="avatar-name">{displayName}</span>
                     </div>
@@ -712,6 +706,26 @@ function App() {
         </div>
 
         <div className="input-wrapper">
+          {/* ✅ Model readiness banner */}
+          {!isModelReady && (
+            <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
+              {!selectedModelId && <span className="model-status-icon">🤖</span>}
+              {selectedModelId && !runningModels[selectedModelId]?.isRunning && (
+                <span className="model-status-spinner" />
+              )}
+              <span className="model-status-text">{modelStatusMessage}</span>
+              {!selectedModelId && (
+                <button
+                  type="button"
+                  className="model-status-action-btn"
+                  onClick={() => setIsModelListOpen(true)}
+                >
+                  Open Models
+                </button>
+              )}
+            </div>
+          )}
+
           {pendingFiles.length > 0 && (
             <div className="attachment-strip">
               {pendingFiles.map((file, idx) => (
@@ -724,10 +738,25 @@ function App() {
             </div>
           )}
           <div className="input-area">
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="attach-button toolbar-btn">📎</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
             <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={`Chat as ${currentCharacter.name}.`} rows={3} className="chat-input" disabled={isLoading || !chatData} />
-            <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0)} className="send-button counter">{isLoading ? '⏹ Stop' : 'Send'}</button>
+            <textarea 
+              value={inputText} 
+              onChange={(e) => setInputText(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+              placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : "Load a model to start chatting..."} 
+              rows={3} 
+              className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} 
+              disabled={isLoading || !chatData || !isModelReady} 
+            />
+            <button 
+              type="button" 
+              onClick={isLoading ? stopGeneration : handleSend} 
+              disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0) || (!isLoading && !isModelReady)} 
+              className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
+            >
+              {isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}
+            </button>
           </div>
         </div>
 
@@ -804,10 +833,10 @@ function App() {
       </div>
 
       {actionMenuTarget && (
-         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
-           <div className="action-menu-header"><span>Interject Action</span></div>
-           <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
-           <div className="action-menu-list">
+          <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
+            <div className="action-menu-header"><span>Interject Action</span></div>
+            <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
+            <div className="action-menu-list">
               {getFilteredActions().map((action) => (
                 <div key={action.label} className="action-menu-item" role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); if (targetChar) handleActionInterject(action.label, targetChar); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); if (targetChar) handleActionInterject(action.label, targetChar); } }}>
                   <span className="action-menu-item-label">{action.label}</span>
