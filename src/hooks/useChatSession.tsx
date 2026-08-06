@@ -72,6 +72,16 @@ export function useChatSession() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     
+    // ✅ REFS: Always read latest values inside callbacks without stale closures
+    const selectedModelRef = useRef<LanguageModel | null>(null);
+    const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
+    const activeStrategyRef = useRef<BudgetStrategy | null>(null);
+    
+    // Keep refs in sync with state
+    useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
+    useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
+    useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
+    
     const { addToast } = useToast();
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -90,6 +100,7 @@ export function useChatSession() {
         }
     };
 
+    // ✅ FIXED: Empty dependency array — reads from refs instead of capturing stale state
     const handleServerResponse = useCallback(async (
         data: ChatData, 
         character: Character, 
@@ -111,11 +122,16 @@ export function useChatSession() {
             outputPerMillion: 0
         };
 
+        // ✅ Read from refs — always current, never stale
+        const currentModel = selectedModelRef.current;
+        const currentRunningModels = runningModelsMapRef.current;
+        const currentStrategy = strategy ?? activeStrategyRef.current;
+
         try {
             let rawText: string;
 
-            if (strategy) {
-                const strategyEngine = new BudgetStrategyEngine(strategy);
+            if (currentStrategy) {
+                const strategyEngine = new BudgetStrategyEngine(currentStrategy);
                 const wrappedCallbacks = onToken ? {
                     onToken: (stats: any) => {
                         setGenerationSpeed(stats.msPerToken);
@@ -136,7 +152,7 @@ export function useChatSession() {
                 }
 
             } else {
-                if (!selectedModel) {
+                if (!currentModel) {
                     if (!signal.aborted) {
                         addToast("No model selected. Please select a model from the Models list.", "error");
                     }
@@ -146,16 +162,17 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
-                const runtimePort = selectedModel?.id 
-                    ? runningModelsMap[selectedModel.id]?.port 
+                // ✅ Read port from ref — always current
+                const runtimePort = currentModel?.id 
+                    ? currentRunningModels[currentModel.id]?.port 
                     : undefined;
                 
-                const effectivePort = runtimePort || (selectedModel.parameters as any)?._runtimePort;
+                const effectivePort = runtimePort || (currentModel.parameters as any)?._runtimePort;
                 
                 const modelContext = {
-                    apiKey: selectedModel.apiKey,
-                    backend: selectedModel.backend,
-                    modelPath: selectedModel.model,
+                    apiKey: currentModel.apiKey,
+                    backend: currentModel.backend,
+                    modelPath: currentModel.model,
                     runtimePort: effectivePort
                 };
 
@@ -226,7 +243,7 @@ export function useChatSession() {
             }
             return null;
         }
-    }, [addToast, selectedModel, streamingText, runningModelsMap]);
+    }, [addToast]); // ✅ Only addToast — no more stale state dependencies
 
     const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
         setRunningModelsMap(models);
@@ -249,7 +266,7 @@ export function useChatSession() {
             setGenerationSpeed(0);
             
             try {
-                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, activeStrategy);
+                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, undefined);
                 if (!controller.signal.aborted && result) {
                     await saveRawChatData(result);
                     setChatData(result);
@@ -271,7 +288,7 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -294,13 +311,13 @@ export function useChatSession() {
         };
         try {
             const controller = new AbortController();
-            await handleServerResponse(data, silentCharacter, controller.signal, undefined, undefined, activeStrategy);
+            await handleServerResponse(data, silentCharacter, controller.signal, undefined, undefined, undefined);
             setIsInitialImageProcessed(true);
         } catch (error) {
             console.warn("Silent image processing failed:", error);
             setIsInitialImageProcessed(true);
         }
-    }, [handleServerResponse, activeStrategy]);
+    }, [handleServerResponse]);
 
     useEffect(() => {
         const init = async () => {
@@ -400,7 +417,7 @@ export function useChatSession() {
             await saveRawChatData(tempData);
 
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-                handleServerResponse(data, char, signal, onToken, userImagesBase64, activeStrategy);
+                handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             
@@ -421,7 +438,7 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse, activeStrategy, addToast]);
+    }, [chatData, currentCharacter, isLoading, handleServerResponse, addToast]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData || isLoading) {
@@ -479,7 +496,7 @@ export function useChatSession() {
 
         try {
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
-                return handleServerResponse(data, char, signal, onToken, undefined, activeStrategy);
+                return handleServerResponse(data, char, signal, onToken, undefined, undefined);
             };
 
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
@@ -502,11 +519,9 @@ export function useChatSession() {
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse, activeStrategy, addToast]);
+    }, [chatData, isLoading, handleServerResponse, addToast]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
-
-    // ✅ FIXED: Derive max context from selected model instead of hardcoded 4096
     const maxContextTokens = selectedModel?.contextLength || 4096;
 
     return {
