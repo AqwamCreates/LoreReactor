@@ -9,6 +9,7 @@ import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
+import { localURL } from '../configurations';
 
 const baseEngine = new LargeLanguageModelInferenceEngine();
 
@@ -72,17 +73,47 @@ export function useChatSession() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     
-    // ✅ REFS: Always read latest values inside callbacks without stale closures
     const selectedModelRef = useRef<LanguageModel | null>(null);
     const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
     const activeStrategyRef = useRef<BudgetStrategy | null>(null);
+    const isLoadingRef = useRef(false);
+    // ✅ Guard to prevent silent image processing from racing with user generation
+    const isProcessingSilentlyRef = useRef(false);
     
-    // Keep refs in sync with state
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
     useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
     useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
+    useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
     
     const { addToast } = useToast();
+
+    // ✅ EAGER FETCH: Populate running models immediately on mount
+    useEffect(() => {
+        const fetchRunningModels = async () => {
+            try {
+                const res = await fetch(`${localURL}/models/status`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const status: Record<string, { isRunning: boolean; port?: number }> = {};
+                for (const m of data.activeModels || []) {
+                    status[m.id] = { isRunning: true, port: m.port };
+                }
+                setRunningModelsMap(status);
+            } catch {
+                // Server not ready yet
+            }
+        };
+        fetchRunningModels();
+    }, []);
+
+    // ✅ Helper: Check if model is ready for generation (has port or API key)
+    const isModelReadyForGeneration = useCallback((): boolean => {
+        const model = selectedModelRef.current;
+        if (!model) return false;
+        if (model.apiKey) return true; // Cloud model
+        const models = runningModelsMapRef.current;
+        return !!(model.id && models[model.id]?.port);
+    }, []);
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
@@ -100,7 +131,6 @@ export function useChatSession() {
         }
     };
 
-    // ✅ FIXED: Empty dependency array — reads from refs instead of capturing stale state
     const handleServerResponse = useCallback(async (
         data: ChatData, 
         character: Character, 
@@ -122,7 +152,6 @@ export function useChatSession() {
             outputPerMillion: 0
         };
 
-        // ✅ Read from refs — always current, never stale
         const currentModel = selectedModelRef.current;
         const currentRunningModels = runningModelsMapRef.current;
         const currentStrategy = strategy ?? activeStrategyRef.current;
@@ -156,18 +185,23 @@ export function useChatSession() {
                     if (!signal.aborted) {
                         addToast("No model selected. Please select a model from the Models list.", "error");
                     }
-                    setIsLoading(false);
                     return null;
                 }
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
                 
-                // ✅ Read port from ref — always current
                 const runtimePort = currentModel?.id 
                     ? currentRunningModels[currentModel.id]?.port 
                     : undefined;
                 
                 const effectivePort = runtimePort || (currentModel.parameters as any)?._runtimePort;
+                
+                if (!effectivePort && !currentModel.apiKey) {
+                    if (!signal.aborted) {
+                        addToast("Model is not ready yet. Please wait.", "error");
+                    }
+                    return null;
+                }
                 
                 const modelContext = {
                     apiKey: currentModel.apiKey,
@@ -233,7 +267,6 @@ export function useChatSession() {
                 if (!signal.aborted) {
                     addToast("⚠️ Backend Connection Failed. Could not connect to the AI server.", "error");
                 }
-                setIsLoading(false);
                 return null;
             }
 
@@ -243,14 +276,19 @@ export function useChatSession() {
             }
             return null;
         }
-    }, [addToast]); // ✅ Only addToast — no more stale state dependencies
+    }, [addToast]);
 
     const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
         setRunningModelsMap(models);
     }, []);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
-        if (!chatData || !currentCharacter || isLoading) return;
+        if (!chatData || !currentCharacter || isLoadingRef.current) return;
+        // ✅ Pre-check model readiness BEFORE setting loading state
+        if (!isModelReadyForGeneration()) {
+            addToast("Model is not ready yet. Please wait.", "error");
+            return;
+        }
         try {
             const actionMsg = createChatMessage(chatData, currentCharacter, actionText);
             const updatedData = addMessageToChatData(chatData, actionMsg);
@@ -288,13 +326,20 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
             setIsInitialImageProcessed(true);
             return;
         }
+        // ✅ Skip if model not ready OR if user is already generating
+        if (!isModelReadyForGeneration() || isLoadingRef.current) {
+            setIsInitialImageProcessed(true);
+            return;
+        }
+
+        isProcessingSilentlyRef.current = true;
         const sampler = character.sampler;
         const silentCharacter: Character = {
             ...character,
@@ -312,12 +357,13 @@ export function useChatSession() {
         try {
             const controller = new AbortController();
             await handleServerResponse(data, silentCharacter, controller.signal, undefined, undefined, undefined);
-            setIsInitialImageProcessed(true);
         } catch (error) {
             console.warn("Silent image processing failed:", error);
+        } finally {
+            isProcessingSilentlyRef.current = false;
             setIsInitialImageProcessed(true);
         }
-    }, [handleServerResponse]);
+    }, [handleServerResponse, isModelReadyForGeneration]);
 
     useEffect(() => {
         const init = async () => {
@@ -396,7 +442,12 @@ export function useChatSession() {
     }, []);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
-        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoading) return;
+        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoadingRef.current) return;
+        // ✅ Pre-check model readiness BEFORE setting loading state or saving anything
+        if (!isModelReadyForGeneration()) {
+            addToast("Model is not ready yet. Please wait.", "error");
+            return;
+        }
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
@@ -438,11 +489,16 @@ export function useChatSession() {
             setStreamingText("");
             setStreamingCharacter(null);
         }
-    }, [chatData, currentCharacter, isLoading, handleServerResponse, addToast]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
-        if (!chatData || isLoading) {
-            if(isLoading) addToast("Already generating...", "info");
+        if (!chatData || isLoadingRef.current) {
+            if(isLoadingRef.current) addToast("Already generating...", "info");
+            return;
+        }
+        // ✅ Pre-check model readiness BEFORE trimming messages or setting loading state
+        if (!isModelReadyForGeneration()) {
+            addToast("Model is not ready yet. Please wait.", "error");
             return;
         }
         
@@ -519,7 +575,7 @@ export function useChatSession() {
             setStreamingText(""); 
             setStreamingCharacter(null); 
         }
-    }, [chatData, isLoading, handleServerResponse, addToast]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = selectedModel?.contextLength || 4096;
