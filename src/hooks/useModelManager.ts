@@ -21,6 +21,8 @@ export function useModelManager() {
     const { addToast } = useToast();
     const API_BASE = localURL;
     const idleNotifiedRef = useRef<Set<string>>(new Set());
+    // ✅ Track whether we've done the initial auto-select on first load
+    const hasAutoSelectedRef = useRef(false);
 
     const fetchStatus = async () => {
         try {
@@ -31,7 +33,6 @@ export function useModelManager() {
             const newStatus: Record<string, ModelState> = {};
             
             for (const m of data.activeModels || []) {
-                // ✅ Preserve existing idle state as baseline
                 const prevIdle = runningModels[m.id]?.isIdle ?? false;
                 
                 newStatus[m.id] = {
@@ -41,16 +42,11 @@ export function useModelManager() {
                     isIdle: prevIdle,
                 };
 
-                // ✅ Only check slots if model status is ready
                 if (m.status === 'ready' && m.port) {
                     try {
                         const slotsRes = await fetch(`http://localhost:${m.port}/slots`);
                         
-                        // ✅ If slots endpoint isn't available yet, keep previous idle state
-                        // Don't skip — still write the entry with preserved idle value
                         if (!slotsRes.ok) {
-                            // Model is ready per /models/status but /slots not responding yet
-                            // Keep whatever idle state we had before
                             continue;
                         }
                         
@@ -68,18 +64,29 @@ export function useModelManager() {
                             idleNotifiedRef.current.delete(m.id);
                         }
                     } catch (e) {
-                        // Network error — preserve existing idle state (already set above)
+                        // Network error — preserve existing idle state
                     }
                 }
             }
             
-            // Clean up notified set for models no longer running
             const activeIds = new Set(data.activeModels?.map((m: any) => m.id) || []);
             for (const id of idleNotifiedRef.current) {
                 if (!activeIds.has(id)) idleNotifiedRef.current.delete(id);
             }
 
             setRunningModels(newStatus);
+
+            // ✅ AUTO-SELECT: On first successful poll, if a model is running but nothing
+            // is selected, auto-select it so the UI reflects the server state after refresh
+            if (!hasAutoSelectedRef.current && data.activeModels && data.activeModels.length > 0) {
+                hasAutoSelectedRef.current = true;
+                // Find the first ready model, or fall back to the first running model
+                const readyModel = data.activeModels.find((m: any) => m.status === 'ready');
+                const modelToSelect = readyModel || data.activeModels[0];
+                if (modelToSelect) {
+                    setSelectedModelId(modelToSelect.id);
+                }
+            }
         } catch (e) {
             // Server down or unreachable — ignore silently
         }
@@ -206,7 +213,6 @@ export function useModelManager() {
                 if (res.ok) {
                     const data = await res.json();
                     addToast(`Model loaded on port ${data.port}`, "success");
-                    // ✅ Model is running but NOT idle yet — slots poll will flip this
                     setRunningModels(prev => ({
                         ...prev,
                         [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false }
@@ -226,7 +232,6 @@ export function useModelManager() {
 
     useEffect(() => {
         loadModels();
-        // ✅ Poll every 2 seconds during warmup phase for faster idle detection
         const interval = setInterval(fetchStatus, 2000);
         return () => clearInterval(interval);
     }, []);
