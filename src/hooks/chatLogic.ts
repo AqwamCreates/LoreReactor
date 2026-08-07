@@ -41,6 +41,7 @@ export function getParticipantId(character: Character, participants: Character[]
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
+// ✅ UPDATED: Accepts profile overrides for maximumChatStamina
 export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
@@ -118,6 +119,35 @@ function filterArrayBasedOnTarget(
         }
     }
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
+}
+
+/**
+ * ✅ Resolves effective chat probability for a character, applying profile override.
+ * Returns -1 if disabled (use character default), or 0-1 override value.
+ */
+export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
+    const profileOverride = profile?.chatProbability ?? -1;
+    if (profileOverride >= 0) return profileOverride;
+    return character.chatProbability ?? 0.5;
+}
+
+/**
+ * ✅ Resolves effective maximum chat stamina for a character, applying profile override.
+ * Returns Infinity if disabled, or the override/default value.
+ */
+export function getEffectiveMaxChatStamina(character: Character, profile?: Profile): number {
+    const profileOverride = profile?.maximumChatStamina ?? -1;
+    if (profileOverride >= 0) return profileOverride;
+    return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+}
+
+/**
+ * ✅ Resolves effective initiative weight for a character, applying forceEqualInitiative.
+ * Returns 1 when equal initiative is forced, otherwise the character's weight.
+ */
+export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
+    if (profile?.forceEqualInitiative) return 1;
+    return character.initiativeWeight ?? 1;
 }
 
 interface BuildResult {
@@ -283,13 +313,14 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.${nameInjection}${thinkEndString}${contextEndString}`);
 
     // FATIGUE BLOCK
+    // ✅ Uses profile-overridden maximumChatStamina
     const fatigueLines: string[] = [];
     const previousMessage = findPreviousChatMessage(chatData, character.id);
-    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
-    const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
+    const effectiveMaxStamina = getEffectiveMaxChatStamina(character, profile);
+    const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
 
-    if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
-        const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
+    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
+        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) fatigueLines.push(fatigue);
     }
 
@@ -459,13 +490,13 @@ export function createNewChatData(character: Character): ChatData {
     };
 }
 
-// ✅ forceNameReveal removed — name reveal is detection-based only, display override is in convertIdsToDisplayNames
+// ✅ UPDATED: Uses profile-overridden maximumChatStamina for remaining stamina calculation
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
-    const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
-    const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
+    const effectiveMaxStamina = getEffectiveMaxChatStamina(character, chatData.Profile);
+    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
     const now = Date.now();
 

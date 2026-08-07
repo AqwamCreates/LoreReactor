@@ -480,9 +480,14 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
+        forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
+        chatProbability: rawProfile.chatProbability ?? -1,
+        maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
-        inputStrategy: rawProfile.inputStrategy ?? ['System Prompt', 'Think Prompt', 'Character Description', 'Context', 'Chat History', 'User Input'],
+        inputStrategy: rawProfile.inputStrategy?.length
+            ? rawProfile.inputStrategy.filter(b => b !== 'Character Description')
+            : ['Context', 'System Prompt', 'Think Prompt', 'Chat History', 'User Input'],
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || Date.now(),
         lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || Date.now(),
     };

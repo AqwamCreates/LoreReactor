@@ -232,6 +232,9 @@ export type PromptBlockType =
 export interface Profile extends ObjectData {
 
   forceNameReveal: boolean;
+  forceEqualInitiative: boolean;
+  chatProbability: number; // -1 means it is disabled and uses character default.
+  maximumChatStamina: number; // -1 means it is disabled and uses character default..
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
@@ -241,12 +244,14 @@ export interface Profile extends ObjectData {
 export interface RawProfile extends RawData{
 
   forceNameReveal: boolean;
+  forceEqualInitiative: boolean;
+  chatProbability: number; // -1 means it is disabled and uses character default.
+  maximumChatStamina: number; // -1 means it is disabled and uses character default..
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
 
 }
-
 
 export interface InterjectableAction {
   label: string;
