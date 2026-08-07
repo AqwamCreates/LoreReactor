@@ -154,35 +154,29 @@ export interface RawChatMessage {
 
 }
 
-export interface ChatData {
+export interface ChatData extends ObjectData {
 
-  id: string;
-  name: string;
   protagonist: Character;
   participants: Character[];
   contexts?: Context[]; // Changed from instructions
   chatMessageHistory: ChatMessage[];
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
+  messageCount?: number; // ✅ Total message count from metadata, available without loading messages
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
   Profile?: Profile;
 
 }
 
-export interface RawChatData {
-  profileId: any;
+export interface RawChatData extends RawData {
 
-  name: string;
   protagonistId: string;
   participantIds: string[];
   contextIds: string[]; // Changed from instructionIds
   chatMessageIdHistory: string[];
-  firstCreatedTimestamp: number;
-  lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
   ProfileId?: string;
+  
 
 }
 
