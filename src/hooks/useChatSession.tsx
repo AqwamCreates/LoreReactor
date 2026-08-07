@@ -142,6 +142,28 @@ export function useChatSession() {
         }
     };
 
+    // ✅ Calculate dynamic paragraph limit using maximumChatStamina as the base ceiling
+    // Single AI: scales by stamina ratio. Multi AI: uses full stamina value as-is.
+    const getDynamicParagraphLimit = useCallback((character: Character, data: ChatData): number => {
+        const maxStamina = character.maximumChatStamina ?? 4;
+        
+        const aiParticipants = data.participants.filter(p => p.id !== data.protagonist.id);
+        
+        // Multi-AI: use full stamina as paragraph limit (no scaling)
+        if (aiParticipants.length > 1) return maxStamina;
+        
+        // Single AI: scale by current stamina ratio
+        const prevMsg = data.chatMessageHistory.length > 0 
+            ? [...data.chatMessageHistory].reverse().find(m => m.character.id === character.id)
+            : null;
+        
+        const currentStamina = prevMsg?.remainingChatStamina ?? maxStamina;
+        const ratio = Math.max(0, Math.min(1, currentStamina / maxStamina));
+        
+        // At full stamina = maxStamina paragraphs, at zero = 1 paragraph minimum
+        return Math.max(1, Math.round(maxStamina * ratio));
+    }, []);
+
     const handleServerResponse = useCallback(async (
         data: ChatData, 
         character: Character, 
@@ -167,8 +189,8 @@ export function useChatSession() {
         const currentRunningModels = runningModelsMapRef.current;
         const currentStrategy = strategy ?? activeStrategyRef.current;
 
-        // ✅ Read per-character paragraph limit (0 = unlimited)
-        const maxParagraphs = character.maximumNumberOfParagraphsPerTurn ?? 0;
+        // ✅ Dynamic paragraph limit based on stamina
+        const maxParagraphs = getDynamicParagraphLimit(character, data);
 
         try {
             let rawText: string;
@@ -344,7 +366,7 @@ export function useChatSession() {
             }
             return null;
         }
-    }, [addToast]);
+    }, [addToast, getDynamicParagraphLimit]);
 
     const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
         setRunningModelsMap(models);
