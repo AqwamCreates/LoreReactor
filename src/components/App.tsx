@@ -297,15 +297,28 @@ function App() {
   }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
   // --- Handlers ---
-  const handleSwitchChat = useCallback((id: string) => {
+
+  // ✅ Lazy load messages when switching to a chat
+  const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
-    if (selected) { 
-      setChatData(selected); 
-      if(selected.protagonist) setCurrentCharacter(selected.protagonist);
-      refreshChatList();
-      setIsChatListOpen(false);
+    if (!selected) return;
+
+    // ✅ Lazy load messages if not already loaded
+    let chatWithMessages = selected;
+    if (selected.chatMessageHistory.length === 0) {
+      try {
+        chatWithMessages = await loadRawChatData(id) || selected;
+      } catch (err) {
+        console.error("Failed to load chat messages:", err);
+        addToast("Failed to load chat messages.", "error");
+      }
     }
-  }, [allChats, setChatData, setCurrentCharacter, refreshChatList]);
+
+    setChatData(chatWithMessages); 
+    if (chatWithMessages.protagonist) setCurrentCharacter(chatWithMessages.protagonist);
+    refreshChatList();
+    setIsChatListOpen(false);
+  }, [allChats, setChatData, setCurrentCharacter, refreshChatList, addToast]);
 
   const handleNewChat = useCallback(() => {
     let charToUse = currentCharacter;
@@ -648,6 +661,7 @@ function App() {
     if (profile.forceNameReveal) flags.push('Force Names');
     if (profile.cacheInvalidationReductionLevel === 1) flags.push('Cache L1');
     if (profile.cacheInvalidationReductionLevel === 2) flags.push('Cache L2');
+    if (profile.cacheInvalidationReductionLevel === 3) flags.push('Cache L3');
     if (profile.stripThinkTokens) flags.push('Strip Think');
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
@@ -884,7 +898,13 @@ function App() {
           </div>
         </div>
 
-        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : `${c.chatMessageHistory.length} messages`} emptyMessage="No saved chat sessions found." />)}
+        {/* ✅ Chat list with lazy-loaded message count handling */}
+        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => {
+            const msgCount = c.messageCount ?? c.chatMessageHistory.length;
+            const branchInfo = c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : '';
+            if (branchInfo) return `${branchInfo} • ${msgCount} messages`;
+            return `${msgCount} messages`;
+        }} emptyMessage="No saved chat sessions found." />)}
         
         {isCharListOpen && (
           <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />

@@ -481,13 +481,13 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         description: rawProfile.description,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
         forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
-        chatProbability: rawProfile.chatProbability ?? -1,
-        maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
+        chatProbability: rawProfile.chatProbability ?? 0,
+        maximumChatStamina: rawProfile.maximumChatStamina ?? 0,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
         inputStrategy: rawProfile.inputStrategy?.length
-            ? rawProfile.inputStrategy.filter(b => b !== 'Character Description')
-            : ['Context', 'System Prompt', 'Think Prompt', 'Chat History', 'User Input'],
+            ? rawProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
+            : ['Context', 'System Prompt', 'Think Prompt', 'Chat History'],
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || Date.now(),
         lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || Date.now(),
     };
@@ -524,7 +524,11 @@ export async function loadRawChatManifest(): Promise<string[]> {
     return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
 }
 
-async function buildChatDataFromRaw(
+/**
+ * ✅ Builds a ChatData shell WITHOUT loading messages.
+ * Messages are loaded separately via loadChatMessages() on demand.
+ */
+async function buildChatDataShell(
   id: string, 
   rawChatData: RawChatData, 
   charMap: Map<string, Character>, 
@@ -550,29 +554,7 @@ async function buildChatDataFromRaw(
     .map(iid => contextMap.get(iid))
     .filter((i): i is Context => i !== undefined);
 
-  // ✅ Load profile from ProfileId
   const profile = rawChatData.ProfileId ? profileMap.get(rawChatData.ProfileId) : undefined;
-
-  const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
-    const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
-    if (!rawMessage) return null;
-    
-    const character = charMap.get(rawMessage.characterId);
-    const { characterId, ...messageWithoutCharId } = rawMessage;
-    
-    return { 
-      id: messageId, 
-      ...messageWithoutCharId, 
-      character: character || { 
-        id: rawMessage.characterId, 
-        name: '[Unknown]', 
-        firstCreatedTimestamp: Date.now(), 
-        lastUpdatedTimestamp: Date.now() 
-      } as Character 
-    };
-  });
-
-  const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
 
   return {
     id, 
@@ -580,7 +562,8 @@ async function buildChatDataFromRaw(
     protagonist, 
     participants, 
     contexts, 
-    chatMessageHistory,
+    chatMessageHistory: [], // ✅ Empty — loaded on demand
+    messageCount: rawChatData.chatMessageIdHistory?.length ?? 0, // ✅ Available without loading messages
     firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
     parentChatDataId: rawChatData.parentChatDataId || null, 
@@ -589,6 +572,53 @@ async function buildChatDataFromRaw(
   };
 }
 
+/**
+ * ✅ Loads chat messages for a specific chat on demand.
+ * Called when user selects a chat, not during bulk init.
+ */
+export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
+    // Already loaded — skip
+    if (chatData.chatMessageHistory.length > 0) return chatData;
+
+    // Get message IDs from storage
+    const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${chatData.id}.json`);
+    if (!rawChatData || !rawChatData.chatMessageIdHistory?.length) return chatData;
+
+    // Build character map from current participants for resolving message authors
+    const charMap = new Map<string, Character>();
+    charMap.set(chatData.protagonist.id, chatData.protagonist);
+    for (const p of chatData.participants) {
+        charMap.set(p.id, p);
+    }
+
+    const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
+        const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
+        if (!rawMessage) return null;
+        
+        const character = charMap.get(rawMessage.characterId);
+        const { characterId, ...messageWithoutCharId } = rawMessage;
+        
+        return { 
+            id: messageId, 
+            ...messageWithoutCharId, 
+            character: character || { 
+                id: rawMessage.characterId, 
+                name: '[Unknown]', 
+                firstCreatedTimestamp: Date.now(), 
+                lastUpdatedTimestamp: Date.now() 
+            } as Character 
+        };
+    });
+
+    const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
+
+    return { ...chatData, chatMessageHistory, messageCount: chatMessageHistory.length };
+}
+
+/**
+ * ✅ Loads a single chat's full data including messages.
+ * Used when switching to a specific chat or for operations needing messages.
+ */
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
@@ -603,13 +633,22 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const contextMap = new Map(allContexts.map(i => [i.id, i]));
   const profileMap = new Map(allProfiles.map(p => [p.id, p]));
 
-  return buildChatDataFromRaw(id, rawChatData, charMap, contextMap, profileMap);
+  const shell = buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
+  if (!shell) return null;
+
+  // ✅ Load messages inline for single-chat loads
+  return loadChatMessages(shell);
 }
 
+/**
+ * ✅ Bulk loads ALL chats WITHOUT messages for list display.
+ * Messages are loaded on demand when user selects a chat.
+ */
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
+  // Only load metadata dependencies — NOT messages
   const [allCharacters, allContexts, allProfiles] = await Promise.all([
     loadAllRawCharacters(),
     loadAllRawContexts(),
@@ -627,7 +666,7 @@ export async function loadAllRawChatData(): Promise<ChatData[]> {
     const batchPromises = batchIds.map(async (id) => {
       const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
       if (!raw) return null;
-      return buildChatDataFromRaw(id, raw, charMap, contextMap, profileMap);
+      return buildChatDataShell(id, raw, charMap, contextMap, profileMap);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -656,7 +695,7 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
+  const { id, protagonist, participants, contexts, chatMessageHistory, messageCount, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, 
     protagonistId: protagonist.id, 
