@@ -9,13 +9,14 @@ import { useStopPatternManager } from '../hooks/useStopPatternManager';
 import { useModelManager } from '../hooks/useModelManager';
 import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
+import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { loadInterjectableActions, saveInterjectableActions } from '../hooks/storage';
 
 import type { 
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
-  ChatData, RawChatData, Extension, InterjectableAction 
+  ChatData, RawChatData, Extension, InterjectableAction, Profile 
 } from '../types';
 
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
@@ -29,6 +30,7 @@ import { SamplerEditorModal } from './SamplerEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
+import { ProfileEditorModal } from './ProfileEditorModal';
 import './main.css';
 
 interface NavButtonProps {
@@ -74,6 +76,7 @@ function App() {
   
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
+  const { profiles: allProfiles, saveProfile, deleteProfile } = useProfileManager();
 
   // ✅ Model readiness: requires BOTH running AND idle (slots available)
   const isModelReady = selectedModelId 
@@ -99,6 +102,7 @@ function App() {
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
   const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
+  const [isProfileListOpen, setIsProfileListOpen] = useState(false);
   
   const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
@@ -120,6 +124,7 @@ function App() {
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
+  const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
   // ✅ Sampler editor uses dedicated state instead of broken entity modal
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
@@ -370,6 +375,16 @@ function App() {
     }
   };
 
+  // ✅ Profile handlers
+  const handleAssignProfile = async (profileId: string) => {
+    if (!chatData) return;
+    const profile = allProfiles.find(p => p.id === profileId) || undefined;
+    const updatedChat = { ...chatData, Profile: profile };
+    setChatData(updatedChat);
+    await saveRawChatData(updatedChat);
+    addToast(profile ? `Profile "${profile.name}" assigned` : "Profile removed", "info");
+  };
+
   // ✅ Sampler editor handlers using dedicated state
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => {
     setSamplerToEdit(sampler || null);
@@ -442,7 +457,6 @@ function App() {
     } catch (err) { addToast("Failed to branch chat.", "error"); }
   };
 
-  // ✅ NEW: Clone creates an independent copy with no parent link
   const handleClone = async (id: string) => {
     if (!chatData) return;
     try {
@@ -597,6 +611,21 @@ function App() {
     </span>
   );
 
+  const renderProfileSubtext = (profile: Profile) => {
+    const flags: string[] = [];
+    if (profile.forceNameReveal) flags.push('Force Names');
+    if (profile.cacheInvalidationReductionLevel === 1) flags.push('Cache L1');
+    if (profile.cacheInvalidationReductionLevel === 2) flags.push('Cache L2');
+    if (profile.stripThinkTokens) flags.push('Strip Think');
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
+        {flags.length > 0 ? flags.map((f, i) => (
+          <span key={i} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>
+        )) : <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>No special settings</span>}
+      </span>
+    );
+  };
+
   return (
     <>
       <div 
@@ -623,6 +652,19 @@ function App() {
                 )}
               </div>
               <div className="header-controls-group">
+                  {/* ✅ Per-chat profile selector */}
+                  <select
+                    value={chatData.Profile?.id || ''}
+                    onChange={(e) => handleAssignProfile(e.target.value)}
+                    className="editor-select"
+                    style={{ fontSize: '0.7rem', padding: '4px 28px 4px 8px', minWidth: '100px', maxWidth: '160px' }}
+                    title="Assign a profile to this chat"
+                  >
+                    <option value="">No Profile</option>
+                    {allProfiles.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
                   <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode">
                     <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
                     <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
@@ -740,6 +782,7 @@ function App() {
           <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
           <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
           <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
+          <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
           <NavButton icon="🧩" label="Extensions" onClick={handleOpenExtensions} />
         </div>
 
@@ -886,6 +929,30 @@ function App() {
           />
         )}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
+
+        {/* ✅ Profile Manager Modal */}
+        {isProfileListOpen && (
+          <ManagerModal
+            title="Profiles"
+            items={allProfiles}
+            isOpen={isProfileListOpen}
+            onClose={() => setIsProfileListOpen(false)}
+            onSelect={(profile) => profileModal.open(profile)}
+            onDelete={deleteProfile}
+            onCreateNew={() => profileModal.open()}
+            renderSubtext={renderProfileSubtext}
+            emptyMessage="No profiles found."
+            actionLabel="Delete"
+          />
+        )}
+        {profileModal.isOpen && (
+          <ProfileEditorModal
+            isOpen={profileModal.isOpen}
+            onClose={profileModal.close}
+            onSave={profileModal.handleSave}
+            existingProfile={profileModal.itemToEdit}
+          />
+        )}
         
         {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
       </div>

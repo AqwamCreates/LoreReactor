@@ -1,6 +1,6 @@
 // src/services/chatLogic.ts
 import { v4 as uuidv4 } from 'uuid';
-import type { Character, ChatData, ChatMessage, Context, StopPattern } from '../types';
+import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { detectName } from './nameDetection';
 
 // Apparently tokens like "{" and "}" (without the quotation marks) works quite well!
@@ -21,6 +21,10 @@ const turnEndString = "}"
 const thinkStartString = "<think>"
 
 const thinkEndString = "</think>"
+
+const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
+    'Context', 'System Prompt', 'Think Prompt', 'Chat History', 'User Input'
+];
 
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
     if (!text) return text;
@@ -128,10 +132,16 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     const sampler = character.sampler;
     const allStopPatterns = sampler?.stopPatterns || [];
     const currentCharacterId = character.id;
-    const characterName = character.name
-    const protagonistName = chatData.protagonist.name
-    let systemPrompt = character.systemPrompt
-    let thinkPrompt = character.thinkPrompt
+    const characterName = character.name;
+    const protagonistName = chatData.protagonist.name;
+    let systemPrompt = character.systemPrompt;
+    let thinkPrompt = character.thinkPrompt;
+
+    // ✅ Read profile settings
+    const profile = chatData.Profile;
+    const forceNameReveal = profile?.forceNameReveal ?? false;
+    const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
+    const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -140,11 +150,11 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     for (const msg of chatMessageHistory) {
         characterIdArray.push(msg.character.id);
         textContentArray.push(msg.textContent);
-        if (msg.isNameRevealed) revealedNamesMap.set(msg.character.id, true);
+        // ✅ If forceNameReveal, treat all names as revealed
+        if (msg.isNameRevealed || forceNameReveal) revealedNamesMap.set(msg.character.id, true);
     }
 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
-    const promptLines: string[] = [];
     const activeStopPatterns: StopPattern[] = [];
     const activeContextsForImages: Context[] = [];
 
@@ -158,6 +168,10 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         return combinationCache[ctxType][tgtType];
     };
 
+    // --- Build each prompt block separately ---
+
+    // CONTEXT BLOCK
+    const contextLines: string[] = [];
     for (const context of contexts) {
         const ctxType = context.regularExpressionContext || 'global';
         const tgtType = context.regularExpressionTarget || 'everyone';
@@ -181,22 +195,18 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             }
         }
 
-        let contextText = context.text
+        let contextText = context.text;
 
         if (shouldInject) {
-
             if (contextText) {
-
-                contextText = replacePlaceholders(contextText, characterName, protagonistName)
-
-                promptLines.push(`${contextStartString}${contextText}${contextEndString}`);
-
+                contextText = replacePlaceholders(contextText, characterName, protagonistName);
+                contextLines.push(`${contextStartString}${contextText}${contextEndString}`);
             }
-
             if (context.images && context.images.length > 0 && context.useBase64Encoding) activeContextsForImages.push(context);
         }
     }
 
+    // STOP PATTERNS (not a prompt block, always processed)
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
@@ -218,22 +228,21 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     const participantId = getParticipantId(character, chatData.participants);
 
+    // SYSTEM PROMPT BLOCK
+    const systemPromptLines: string[] = [];
     if (systemPrompt) {
-
-        systemPrompt = replacePlaceholders(systemPrompt, characterName, chatData.protagonist.name)
-
-        promptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextStartString}`);
-
+        systemPrompt = replacePlaceholders(systemPrompt, characterName, chatData.protagonist.name);
+        systemPromptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextEndString}`);
     }
-        
+
+    // THINK PROMPT BLOCK
+    const thinkPromptLines: string[] = [];
     if (thinkPrompt) {
-
-        thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName)
-
-        promptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextStartString}`);
-
+        thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName);
+        thinkPromptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextEndString}`);
     }
 
+    // META THINK BLOCK (formatting/behavior instructions)
     // Don't delete this comment. Uhm... Thinking hijacking worked a little too well. Also do not use "perfect" or "correct" before the word "formatting" as it will cause over-correction. Meanwhile, "consistent" works slightly weaker than "clean", which is weaker than "proper".
 
     // Don't delete this comment. The phrase "figured out" is slightly robotic when compared to "thought out".
@@ -244,46 +253,85 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // Using UUID is a bad idea as they will flood the attention with irrelevant context, leading a more broken output for some models.
 
-    promptLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.${thinkEndString}${contextStartString}`)
+    const metaThinkLines: string[] = [];
+    // ✅ cacheLevel >= 1: inject all participant names upfront to reduce cache invalidation
+    let nameInjection = '';
+    if (cacheLevel >= 1) {
+        const allNames = chatData.participants.map(p => {
+            const pId = getParticipantId(p, chatData.participants);
+            return `${pId}=${p.name}`;
+        }).join(', ');
+        nameInjection = ` Known participants: ${allNames}.`;
+    }
 
+    metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.${nameInjection}${thinkEndString}${contextEndString}`);
+
+    // FATIGUE BLOCK
+    const fatigueLines: string[] = [];
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const currentChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
 
     if (currentChatStamina !== undefined && maximumChatStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, maximumChatStamina);
-        if (fatigue) promptLines.push(fatigue);
+        if (fatigue) fatigueLines.push(fatigue);
     }
 
+    // CHAT HISTORY BLOCK
+    const historyLines: string[] = [];
     if (chatMessageHistory.length > 0) {
-        const historyLines: string[] = [];
-        for (const msg of chatMessageHistory) { // Do not remove the participant ID as the names would be unknown in the past text and the ID is the only way to identify people.
+        for (const msg of chatMessageHistory) {
             const otherCharacter = msg.character;
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
-            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
-            if (isRevealed){
-
+            // ✅ forceNameReveal overrides name visibility
+            const displayName = (isRevealed || isCurrent || forceNameReveal) ? otherCharacter.name : "Unknown Name";
+            if (isRevealed || forceNameReveal) {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
-
-            } else{
-
+            } else {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${msg.textContent}${turnEndString}`);
-
             }
         }
-        promptLines.push(historyLines.join('\n'));
     }
 
-    //promptLines.push(`${contextStartString}${thinkStartString}I am now responding as Character ${participantId} (${characterName})${thinkEndString}${contextStartString}`)
+    // USER INPUT BLOCK (completion trigger)
+    const userInputLines: string[] = [];
+    userInputLines.push(`${turnStartString}${participantId} (${characterName}):`);
 
-    promptLines.push(`${turnStartString}${participantId} (${characterName}):`);
+    // ✅ Assemble prompt blocks according to inputStrategy order
+    const blockMap: Record<string, string[]> = {
+        'Context': contextLines,
+        'System Prompt': systemPromptLines,
+        'Think Prompt': thinkPromptLines,
+        'Chat History': [...metaThinkLines, ...fatigueLines, ...historyLines],
+        'User Input': userInputLines,
+    };
+
+    const promptLines: string[] = [];
+    const usedTypes = new Set<string>();
+
+    for (const blockType of inputStrategy) {
+        const lines = blockMap[blockType];
+        if (lines && lines.length > 0) {
+            promptLines.push(...lines);
+        }
+        usedTypes.add(blockType);
+    }
+
+    // Append any blocks not mentioned in the strategy (safety net)
+    for (const blockType of DEFAULT_INPUT_STRATEGY) {
+        if (!usedTypes.has(blockType)) {
+            const lines = blockMap[blockType];
+            if (lines && lines.length > 0) {
+                promptLines.push(...lines);
+            }
+        }
+    }
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
 }
 
-// ✅ UPDATED: Accept userImageBase64s
 export async function prepareRequestBody(
     chatData: ChatData, 
     character: Character, 
@@ -356,11 +404,25 @@ export async function prepareRequestBody(
     return body;
 }
 
+// ✅ UPDATED: Respect forceNameReveal and stripThinkTokens from profile
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
+    const profile = chatData.Profile;
+    const forceNameReveal = profile?.forceNameReveal ?? false;
+    const stripThinkTokens = profile?.stripThinkTokens ?? false;
+
     let result = text;
+
+    // Strip think tokens if profile says so
+    if (stripThinkTokens) {
+        result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
+        // Clean up any leftover whitespace from stripped blocks
+        result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
+    }
+
     chatData.participants.forEach((p, i) => {
         const id = `Character ${i + 1}`;
-        const isRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
+        // ✅ If forceNameReveal, always replace IDs with names
+        const isRevealed = forceNameReveal || chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
         if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
     });
     return result;
@@ -382,10 +444,13 @@ export function createNewChatData(character: Character): ChatData {
     };
 }
 
+// ✅ UPDATED: Respect forceNameReveal from profile
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
+    const forceNameReveal = chatData.Profile?.forceNameReveal ?? false;
+    // ✅ If forceNameReveal, always mark as revealed
+    const isNameRevealed = forceNameReveal || wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
@@ -445,5 +510,6 @@ export function branchChatMessage(chatData: ChatData, branchPointMessageId: stri
         chatMessageHistory: chatData.chatMessageHistory.slice(0, branchIndex + 1),
         firstCreatedTimestamp: currentTimestamp,
         lastUpdatedTimestamp: currentTimestamp,
+        Profile: chatData.Profile,
     };
 }
