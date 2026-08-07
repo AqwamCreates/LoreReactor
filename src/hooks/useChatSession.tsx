@@ -77,7 +77,6 @@ export function useChatSession() {
     const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
     const activeStrategyRef = useRef<BudgetStrategy | null>(null);
     const isLoadingRef = useRef(false);
-    // ✅ Guard to prevent silent image processing from racing with user generation
     const isProcessingSilentlyRef = useRef(false);
     
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -87,7 +86,6 @@ export function useChatSession() {
     
     const { addToast } = useToast();
 
-    // ✅ EAGER FETCH: Populate running models immediately on mount
     useEffect(() => {
         const fetchRunningModels = async () => {
             try {
@@ -106,16 +104,14 @@ export function useChatSession() {
         fetchRunningModels();
     }, []);
 
-    // ✅ Helper: Check if model is ready for generation (has port or API key)
     const isModelReadyForGeneration = useCallback((): boolean => {
         const model = selectedModelRef.current;
         if (!model) return false;
-        if (model.apiKey) return true; // Cloud model
+        if (model.apiKey) return true;
         const models = runningModelsMapRef.current;
         return !!(model.id && models[model.id]?.port);
     }, []);
 
-    // ✅ Synchronous lock: sets BOTH ref and state atomically to prevent race
     const acquireGenerationLock = useCallback((): boolean => {
         if (isLoadingRef.current) return false;
         isLoadingRef.current = true;
@@ -170,6 +166,9 @@ export function useChatSession() {
         const currentModel = selectedModelRef.current;
         const currentRunningModels = runningModelsMapRef.current;
         const currentStrategy = strategy ?? activeStrategyRef.current;
+
+        // ✅ Read per-character paragraph limit (0 = unlimited)
+        const maxParagraphs = character.maximumNumberOfParagraphsPerTurn ?? 0;
 
         try {
             let rawText: string;
@@ -247,20 +246,14 @@ export function useChatSession() {
                             }));
                         }
                     },
-                    modelContext
+                    modelContext,
+                    maxParagraphs
                 );
             }
             
             // ✅ Retry once on empty response — llama.cpp intermittently returns empty
             if (!rawText || !rawText.trim()) {
                 if (!signal.aborted) {
-                    console.warn('[SERVER] ⚠️ Empty response, retrying once...', {
-                        rawTextLength: rawText?.length ?? 0,
-                        modelId: currentModel?.id,
-                        port: (currentModel?.parameters as any)?._runtimePort || currentRunningModels[currentModel?.id || '']?.port,
-                    });
-
-                    // Retry the same request once
                     if (currentStrategy) {
                         const retryEngine = new BudgetStrategyEngine(currentStrategy);
                         const wrappedCallbacks = onToken ? {
@@ -282,7 +275,6 @@ export function useChatSession() {
                             modelPath: currentModel.model,
                             runtimePort: effectivePort
                         };
-
                         rawText = await baseEngine.generateStream(
                             retryRequestBody,
                             { signal } as AbortController,
@@ -304,13 +296,12 @@ export function useChatSession() {
                                     }));
                                 }
                             },
-                            retryModelContext
+                            retryModelContext,
+                            maxParagraphs
                         );
                     }
 
-                    // If still empty after retry, give up
                     if (!rawText || !rawText.trim()) {
-                        console.warn('[SERVER] ❌ Retry also returned empty');
                         return null;
                     }
                 } else {
@@ -361,7 +352,6 @@ export function useChatSession() {
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter) return;
-        // ✅ Atomic lock prevents double-click
         if (!acquireGenerationLock()) {
             addToast("Already generating...", "info");
             return;
@@ -407,7 +397,6 @@ export function useChatSession() {
             setIsInitialImageProcessed(true);
             return;
         }
-        // ✅ Skip if model not ready OR if user is already generating
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) {
             setIsInitialImageProcessed(true);
             return;
@@ -516,7 +505,6 @@ export function useChatSession() {
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0))) return;
-        // ✅ Atomic lock prevents double-click
         if (!acquireGenerationLock()) {
             addToast("Already generating...", "info");
             return;
@@ -568,7 +556,6 @@ export function useChatSession() {
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData) return;
-        // ✅ Atomic lock prevents double-click
         if (!acquireGenerationLock()) {
             addToast("Already generating...", "info");
             return;
