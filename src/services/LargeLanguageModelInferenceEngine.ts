@@ -1,3 +1,5 @@
+// src/services/LargeLanguageModelInferenceEngine.ts
+
 export interface TokenStats {
   fullText: string;
   msPerToken: number;
@@ -28,10 +30,14 @@ export class LargeLanguageModelInferenceEngine {
     requestBody: any, 
     abortController: AbortController, 
     callbacks?: StreamCallbacks,
-    modelContext?: { apiKey?: string; backend?: string; modelPath?: string; runtimePort?: number }
+    modelContext?: { apiKey?: string; backend?: string; modelPath?: string; runtimePort?: number },
+    maxParagraphs?: number
   ): Promise<string> {
     
     const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
+    
+    // ✅ 0 or undefined means unlimited paragraphs
+    const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     
     const isCloud = !!apiKey && backend && [
       'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
@@ -127,6 +133,7 @@ export class LargeLanguageModelInferenceEngine {
     let fullContent = "";
     let firstTokenTime = 0;
     let tokenCount = 0;
+    let paragraphCount = 0;
 
     try {
       while (true) {
@@ -158,6 +165,24 @@ export class LargeLanguageModelInferenceEngine {
                 if (tokenCount === 0) firstTokenTime = now;
                 tokenCount++;
                 fullContent += token;
+
+                // ✅ Count paragraph breaks (\n\n) and abort when limit reached
+                if (paragraphLimit > 0) {
+                  const prevLength = fullContent.length - token.length;
+                  const prevContent = fullContent.substring(0, prevLength);
+                  const prevParagraphs = (prevContent.match(/\n\n/g) || []).length;
+                  const currentParagraphs = (fullContent.match(/\n\n/g) || []).length;
+                  
+                  if (currentParagraphs > prevParagraphs) {
+                    paragraphCount = currentParagraphs;
+                  }
+
+                  if (paragraphCount >= paragraphLimit) {
+                    // ✅ Abort at paragraph boundary — text ends cleanly
+                    abortController.abort();
+                    return fullContent.trim();
+                  }
+                }
 
                 const totalTime = now - firstTokenTime;
                 const msPerToken = tokenCount > 0 ? totalTime / tokenCount : 0;

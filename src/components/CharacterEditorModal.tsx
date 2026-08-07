@@ -38,6 +38,7 @@ export function CharacterEditorModal({
     const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>('-1');
     const [chatProbabilityStr, setChatProbabilityStr] = useState<string>('-1');
     const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>('-1');
+    const [maxParagraphsStr, setMaxParagraphsStr] = useState<string>('0');
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
         iw: null, cp: null, ms: null,
@@ -69,6 +70,7 @@ export function CharacterEditorModal({
                 setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
                 setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
                 setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
+                setMaxParagraphsStr(String(existingCharacter.maximumNumberOfParagraphsPerTurn ?? 0));
             } else {
                 setName('');
                 setDescription('');
@@ -81,6 +83,7 @@ export function CharacterEditorModal({
                 setInitiativeWeightStr('-1');
                 setChatProbabilityStr('-1');
                 setMaximumChatStaminaStr('-1');
+                setMaxParagraphsStr('0');
             }
         }
     }, [isOpen, existingCharacter, allSamplers]);
@@ -121,8 +124,8 @@ export function CharacterEditorModal({
         }
         if (msIsAuto) {
             const value = getMaximumChatStaminaValueFromText(combinedText);
-            setMaximumChatStaminaStr(String(value));
-            newDetected.ms = value;
+            setMaximumChatStaminaStr(String(Math.round(value)));
+            newDetected.ms = Math.round(value);
         }
 
         setAutoDetected(newDetected);
@@ -169,30 +172,35 @@ export function CharacterEditorModal({
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
+        const rawMP = Number.parseFloat(maxParagraphsStr);
 
         let finalIW: number;
         let finalCP: number;
         let finalMS: number;
+        let finalMP: number;
 
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
+        const mpValid = !Number.isNaN(rawMP) && rawMP >= 0;
 
         if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
-            finalMS = msValid ? rawMS : (existingCharacter.maximumChatStamina ?? -1);
+            finalMS = msValid ? Math.round(rawMS) : (existingCharacter.maximumChatStamina ?? -1);
+            finalMP = mpValid ? Math.round(rawMP) : (existingCharacter.maximumNumberOfParagraphsPerTurn ?? 0);
 
             if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
                 const combinedText = `${name} ${description} ${systemPrompt}`;
                 finalIW = getInitiativeWeightValueFromText(combinedText);
                 finalCP = getChatProbabilityValue(combinedText);
-                finalMS = getMaximumChatStaminaValueFromText(combinedText);
+                finalMS = Math.round(getMaximumChatStaminaValueFromText(combinedText));
             }
         } else {
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT_VALUE;
             finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY_VALUE;
-            finalMS = msValid ? rawMS : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
+            finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
+            finalMP = mpValid ? Math.round(rawMP) : 0;
 
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
                 const combinedText = `${name} ${description} ${systemPrompt}`;
@@ -202,7 +210,7 @@ export function CharacterEditorModal({
                 
                 if (detectedIW >= 0) finalIW = detectedIW;
                 if (detectedCP >= 0) finalCP = detectedCP;
-                if (detectedMS >= 0) finalMS = detectedMS;
+                if (detectedMS >= 0) finalMS = Math.round(detectedMS);
             }
         }
 
@@ -218,6 +226,7 @@ export function CharacterEditorModal({
             initiativeWeight: finalIW,
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
+            maximumNumberOfParagraphsPerTurn: finalMP > 0 ? finalMP : undefined,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -373,7 +382,7 @@ export function CharacterEditorModal({
                                 </select>
 
                                 <div className="editor-section" style={{ padding: '10px', marginBottom: 0 }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                         <div>
                                             <label className="editor-label editor-label-small">Initiative Weight</label>
                                             <input 
@@ -401,17 +410,44 @@ export function CharacterEditorModal({
                                             {renderAutoHint('cp')}
                                         </div>
                                         <div>
-                                            <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
+                                            <label className="editor-label editor-label-small">Max Stamina</label>
                                             <input 
-                                                type="number" step="1" 
+                                                type="number" step="1" min="0"
                                                 value={maximumChatStaminaStr} 
                                                 onChange={(e) => { setMaximumChatStaminaStr(e.target.value); setAutoDetected(prev => ({ ...prev, ms: null })); }}
-                                                onBlur={() => setMaximumChatStaminaStr(normalizeStatValue(maximumChatStaminaStr, Number.POSITIVE_INFINITY))}
+                                                onBlur={() => {
+                                                    const val = Number.parseFloat(maximumChatStaminaStr);
+                                                    if (Number.isNaN(val) || val < 0) {
+                                                        setMaximumChatStaminaStr('-1');
+                                                    } else {
+                                                        setMaximumChatStaminaStr(String(Math.round(val)));
+                                                    }
+                                                }}
                                                 className="editor-input"
                                                 style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
                                                 disabled={isUploading} 
                                             />
                                             {renderAutoHint('ms')}
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Max Paragraphs</label>
+                                            <input 
+                                                type="number" step="1" min="0"
+                                                value={maxParagraphsStr} 
+                                                onChange={(e) => setMaxParagraphsStr(e.target.value)}
+                                                onBlur={() => {
+                                                    const val = Number.parseFloat(maxParagraphsStr);
+                                                    if (Number.isNaN(val) || val < 0) {
+                                                        setMaxParagraphsStr('0');
+                                                    } else {
+                                                        setMaxParagraphsStr(String(Math.round(val)));
+                                                    }
+                                                }}
+                                                className="editor-input"
+                                                style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                                disabled={isUploading} 
+                                                title="0 = unlimited"
+                                            />
                                         </div>
                                     </div>
                                 </div>
