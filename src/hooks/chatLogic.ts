@@ -274,8 +274,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // THINK PROMPT BLOCK
     const thinkPromptLines: string[] = [];
-    // ✅ cacheLevel >= 2: inject ALL participants' think prompts upfront
-    if (cacheLevel >= 2) {
+    // ✅ cacheLevel >= 3: inject ALL participants' think prompts upfront
+    if (cacheLevel >= 3) {
         for (const p of chatData.participants) {
             if (p.thinkPrompt) {
                 const pId = getParticipantId(p, chatData.participants);
@@ -332,7 +332,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
-            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
+            // ✅ Use participant ID instead of "Unknown Name" when name is not revealed
+            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : otherParticipantId;
             if (isRevealed) {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
             } else {
