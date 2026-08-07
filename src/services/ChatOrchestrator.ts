@@ -26,9 +26,10 @@ export async function runTurnSequence(
     for (const p of workingData.participants) {
         if (p.id === workingData.protagonist.id) continue;
         const prev = findPreviousChatMessage(workingData, p.id);
-        // ✅ Use profile-overridden max stamina for initial stamina value
         const effectiveMax = getEffectiveMaxChatStamina(p, profile);
-        staminaMap.set(p.id, prev?.remainingChatStamina ?? effectiveMax);
+        // ✅ Cap stored stamina to effective max so profile overrides take effect immediately
+        const storedStamina = prev?.remainingChatStamina ?? effectiveMax;
+        staminaMap.set(p.id, Math.min(storedStamina, effectiveMax));
     }
 
     while (hasActivity && !abortController.signal.aborted) {
@@ -38,7 +39,6 @@ export async function runTurnSequence(
         for (const p of workingData.participants) {
             if (p.id === workingData.protagonist.id) continue;
             const current = staminaMap.get(p.id) || 0;
-            // ✅ Use profile-overridden max stamina for regen cap
             const max = getEffectiveMaxChatStamina(p, profile);
             if (current <= 0) {
                 staminaMap.set(p.id, Math.min(max, current + 1));
