@@ -56,21 +56,49 @@ export async function runTurnSequence(
 
         if (eligible.length === 0) break;
 
+        // ✅ FIXED: Use weighted random selection instead of sequential probability check.
+        // The old approach had a chance of selecting NO speaker when all probability rolls failed,
+        // causing silent generation failures that required double-clicking.
         let selectedSpeaker: Character | null = null;
+
+        // Build weighted pool: weight = initiativeWeight * (currentStamina / maxStamina) * chatProbability
+        const weightedPool: { char: Character; weight: number }[] = [];
+        let totalWeight = 0;
+
         for (const participant of eligible) {
-            // ✅ Use profile-overridden chat probability
             const effectiveProb = getEffectiveChatProbability(participant, profile);
-            if (Math.random() < effectiveProb) {
-                selectedSpeaker = participant;
-                break;
+            if (effectiveProb <= 0) continue; // Skip characters with 0 probability
+
+            const initWeight = getEffectiveInitiativeWeight(participant, profile);
+            const currentStamina = staminaMap.get(participant.id) || 0;
+            const maxStamina = getEffectiveMaxChatStamina(participant, profile);
+            const staminaRatio = maxStamina > 0 ? currentStamina / maxStamina : 1;
+
+            const weight = initWeight * staminaRatio * effectiveProb;
+            if (weight > 0) {
+                weightedPool.push({ char: participant, weight });
+                totalWeight += weight;
             }
-            // Not selected — regenerate stamina using profile-overridden max
-            const current = staminaMap.get(participant.id) || 0;
-            const max = getEffectiveMaxChatStamina(participant, profile);
-            staminaMap.set(participant.id, Math.min(max, current + 1));
         }
 
-        if (!selectedSpeaker) continue;
+        if (weightedPool.length === 0 || totalWeight <= 0) {
+            // No valid speakers — fall back to highest-weighted eligible participant
+            selectedSpeaker = eligible[0] || null;
+        } else {
+            // Weighted random selection — GUARANTEES a speaker is chosen
+            let roll = Math.random() * totalWeight;
+            for (const entry of weightedPool) {
+                roll -= entry.weight;
+                if (roll <= 0) {
+                    selectedSpeaker = entry.char;
+                    break;
+                }
+            }
+            // Fallback for floating point edge cases
+            if (!selectedSpeaker) selectedSpeaker = weightedPool[weightedPool.length - 1].char;
+        }
+
+        if (!selectedSpeaker) break;
 
         if (onSpeakerChange) onSpeakerChange(selectedSpeaker);
 

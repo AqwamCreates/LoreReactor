@@ -115,6 +115,21 @@ export function useChatSession() {
         return !!(model.id && models[model.id]?.port);
     }, []);
 
+    // ✅ Synchronous lock: sets BOTH ref and state atomically to prevent race
+    const acquireGenerationLock = useCallback((): boolean => {
+        if (isLoadingRef.current) return false;
+        isLoadingRef.current = true;
+        setIsLoading(true);
+        return true;
+    }, []);
+
+    const releaseGenerationLock = useCallback(() => {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+        setStreamingText("");
+        setStreamingCharacter(null);
+    }, []);
+
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
             const response = await fetch(url);
@@ -236,9 +251,71 @@ export function useChatSession() {
                 );
             }
             
-            if (!rawText) {
-                if (!signal.aborted) console.warn("Generated empty text");
-                return null;
+            // ✅ Retry once on empty response — llama.cpp intermittently returns empty
+            if (!rawText || !rawText.trim()) {
+                if (!signal.aborted) {
+                    console.warn('[SERVER] ⚠️ Empty response, retrying once...', {
+                        rawTextLength: rawText?.length ?? 0,
+                        modelId: currentModel?.id,
+                        port: (currentModel?.parameters as any)?._runtimePort || currentRunningModels[currentModel?.id || '']?.port,
+                    });
+
+                    // Retry the same request once
+                    if (currentStrategy) {
+                        const retryEngine = new BudgetStrategyEngine(currentStrategy);
+                        const wrappedCallbacks = onToken ? {
+                            onToken: (stats: any) => {
+                                setGenerationSpeed(stats.msPerToken);
+                                onToken(stats.fullText);
+                            }
+                        } : undefined;
+                        rawText = await retryEngine.generateStream(
+                            data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
+                        );
+                    } else if (currentModel) {
+                        const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
+                        const runtimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
+                        const effectivePort = runtimePort || (currentModel.parameters as any)?._runtimePort;
+                        const retryModelContext = {
+                            apiKey: currentModel.apiKey,
+                            backend: currentModel.backend,
+                            modelPath: currentModel.model,
+                            runtimePort: effectivePort
+                        };
+
+                        rawText = await baseEngine.generateStream(
+                            retryRequestBody,
+                            { signal } as AbortController,
+                            {
+                                onToken: (stats) => {
+                                    setGenerationSpeed(stats.msPerToken);
+                                    if (onToken) onToken(stats.fullText);
+                                },
+                                onFinish: (responseStats) => {
+                                    const promptTokens = responseStats.promptTokens || 0;
+                                    const completionTokens = responseStats.completionTokens || 0;
+                                    const isCacheMiss = responseStats.cacheMiss || false;
+                                    const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+                                    setStats(prev => ({
+                                        numberOfRequests: prev.numberOfRequests + 1,
+                                        numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                                        totalCost: prev.totalCost + costResult.totalCost,
+                                        costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                                    }));
+                                }
+                            },
+                            retryModelContext
+                        );
+                    }
+
+                    // If still empty after retry, give up
+                    if (!rawText || !rawText.trim()) {
+                        console.warn('[SERVER] ❌ Retry also returned empty');
+                        return null;
+                    }
+                } else {
+                    return null;
+                }
             }
 
             const displayText = convertIdsToDisplayNames(rawText, data);
@@ -283,10 +360,15 @@ export function useChatSession() {
     }, []);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
-        if (!chatData || !currentCharacter || isLoadingRef.current) return;
-        // ✅ Pre-check model readiness BEFORE setting loading state
+        if (!chatData || !currentCharacter) return;
+        // ✅ Atomic lock prevents double-click
+        if (!acquireGenerationLock()) {
+            addToast("Already generating...", "info");
+            return;
+        }
         if (!isModelReadyForGeneration()) {
             addToast("Model is not ready yet. Please wait.", "error");
+            releaseGenerationLock();
             return;
         }
         try {
@@ -298,17 +380,13 @@ export function useChatSession() {
             
             const controller = new AbortController();
             abortControllerRef.current = controller;
-            setIsLoading(true);
             setStreamingText("");
             setStreamingCharacter(targetChar);
             setGenerationSpeed(0);
             
             try {
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, undefined);
-                if (!controller.signal.aborted && result) {
-                    await saveRawChatData(result);
-                    setChatData(result);
-                } else if (controller.signal.aborted && result) {
+                if (result) {
                     await saveRawChatData(result);
                     setChatData(result);
                 }
@@ -316,17 +394,13 @@ export function useChatSession() {
                 if ((err as Error).name !== 'AbortError') console.error("AI response failed:", err);
             } finally {
                 if (abortControllerRef.current === controller) abortControllerRef.current = null;
-                setIsLoading(false);
-                setStreamingText("");
-                setStreamingCharacter(null);
+                releaseGenerationLock();
             }
         } catch (error) {
             console.error("Failed to send action:", error);
-            setIsLoading(false);
-            setStreamingText("");
-            setStreamingCharacter(null);
+            releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -334,7 +408,7 @@ export function useChatSession() {
             return;
         }
         // ✅ Skip if model not ready OR if user is already generating
-        if (!isModelReadyForGeneration() || isLoadingRef.current) {
+        if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) {
             setIsInitialImageProcessed(true);
             return;
         }
@@ -419,10 +493,9 @@ export function useChatSession() {
             abortControllerRef.current.abort();
             abortControllerRef.current = null; 
         }
-        setIsLoading(false);
-        setStreamingCharacter(null);
+        releaseGenerationLock();
         setGenerationSpeed(0);
-    }, []);
+    }, [releaseGenerationLock]);
 
     const startNewChat = useCallback((character: Character) => {
         const newChat = createNewChatData(character);
@@ -442,16 +515,20 @@ export function useChatSession() {
     }, []);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
-        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0)) || isLoadingRef.current) return;
-        // ✅ Pre-check model readiness BEFORE setting loading state or saving anything
+        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0))) return;
+        // ✅ Atomic lock prevents double-click
+        if (!acquireGenerationLock()) {
+            addToast("Already generating...", "info");
+            return;
+        }
         if (!isModelReadyForGeneration()) {
             addToast("Model is not ready yet. Please wait.", "error");
+            releaseGenerationLock();
             return;
         }
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
-        setIsLoading(true);
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
@@ -485,20 +562,20 @@ export function useChatSession() {
             }
         } finally {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
-            setIsLoading(false);
-            setStreamingText("");
-            setStreamingCharacter(null);
+            releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
-        if (!chatData || isLoadingRef.current) {
-            if(isLoadingRef.current) addToast("Already generating...", "info");
+        if (!chatData) return;
+        // ✅ Atomic lock prevents double-click
+        if (!acquireGenerationLock()) {
+            addToast("Already generating...", "info");
             return;
         }
-        // ✅ Pre-check model readiness BEFORE trimming messages or setting loading state
         if (!isModelReadyForGeneration()) {
             addToast("Model is not ready yet. Please wait.", "error");
+            releaseGenerationLock();
             return;
         }
         
@@ -507,6 +584,7 @@ export function useChatSession() {
 
         if (targetIndex === -1) {
             addToast("Message not found.", "error");
+            releaseGenerationLock();
             return;
         }
 
@@ -524,6 +602,7 @@ export function useChatSession() {
             messagesToDelete = history.slice(trimIndex);
         } else {
             addToast("Mismatched regeneration type.", "error");
+            releaseGenerationLock();
             return;
         }
 
@@ -542,7 +621,6 @@ export function useChatSession() {
         };
         
         setChatData(trimmedData);
-        setIsLoading(true);
         setStreamingText("");
         setStreamingCharacter(null);
         setGenerationSpeed(0);
@@ -571,11 +649,9 @@ export function useChatSession() {
             }
         } finally { 
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
-            setIsLoading(false); 
-            setStreamingText(""); 
-            setStreamingCharacter(null); 
+            releaseGenerationLock();
         }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = selectedModel?.contextLength || 4096;
