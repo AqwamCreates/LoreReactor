@@ -12,15 +12,9 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadInterjectableActions, saveInterjectableActions } from '../hooks/storage';
-
-import type { 
-  Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
-  ChatData, RawChatData, Extension, InterjectableAction, Profile 
-} from '../types';
+import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
 
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
-import { saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
@@ -32,6 +26,12 @@ import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import './main.css';
+
+import type { 
+  Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
+  ChatData, RawChatData, Extension, InterjectableAction, Profile 
+} from '../types';
+
 
 interface NavButtonProps {
   icon: string;
@@ -299,15 +299,16 @@ function App() {
   // --- Handlers ---
 
   // ✅ Lazy load messages when switching to a chat
+  // ✅ Lazy load messages when switching to a chat
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
 
-    // ✅ Lazy load messages if not already loaded
+    // ✅ Load messages into the existing shell instead of rebuilding from scratch
     let chatWithMessages = selected;
     if (selected.chatMessageHistory.length === 0) {
       try {
-        chatWithMessages = await loadRawChatData(id) || selected;
+        chatWithMessages = await loadChatMessages(selected);
       } catch (err) {
         console.error("Failed to load chat messages:", err);
         addToast("Failed to load chat messages.", "error");
@@ -390,7 +391,7 @@ function App() {
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
     const currentIds = getChatExtensions();
-    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
+    const newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = newExtensions;
@@ -736,7 +737,6 @@ function App() {
             if (!message.character) return null;
             const isProtagonist = message.character.id === currentCharacter?.id;
             const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const aiParticipantIds = new Set(chatData.participants.filter(p => p.id !== currentCharacter?.id).map(p => p.id));
             const isEditing = editingId === message.id;
             const isMassStart = message.id === massDeleteId;
             const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
