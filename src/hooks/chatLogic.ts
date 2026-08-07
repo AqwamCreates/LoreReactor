@@ -139,7 +139,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // ✅ Read profile settings
     const profile = chatData.Profile;
-    const forceNameReveal = profile?.forceNameReveal ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
 
@@ -150,8 +149,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     for (const msg of chatMessageHistory) {
         characterIdArray.push(msg.character.id);
         textContentArray.push(msg.textContent);
-        // ✅ If forceNameReveal, treat all names as revealed
-        if (msg.isNameRevealed || forceNameReveal) revealedNamesMap.set(msg.character.id, true);
+        if (msg.isNameRevealed) revealedNamesMap.set(msg.character.id, true);
     }
 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
@@ -230,14 +228,32 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // SYSTEM PROMPT BLOCK
     const systemPromptLines: string[] = [];
-    if (systemPrompt) {
+    // ✅ cacheLevel >= 2: inject ALL participants' system prompts upfront
+    if (cacheLevel >= 2) {
+        for (const p of chatData.participants) {
+            if (p.systemPrompt) {
+                const pId = getParticipantId(p, chatData.participants);
+                const pName = p.name;
+                systemPromptLines.push(`${contextStartString}Character ${pId} (${pName}) Prompt: ${replacePlaceholders(p.systemPrompt, characterName, protagonistName)}${contextEndString}`);
+            }
+        }
+    } else if (systemPrompt) {
         systemPrompt = replacePlaceholders(systemPrompt, characterName, chatData.protagonist.name);
         systemPromptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextEndString}`);
     }
 
     // THINK PROMPT BLOCK
     const thinkPromptLines: string[] = [];
-    if (thinkPrompt) {
+    // ✅ cacheLevel >= 2: inject ALL participants' think prompts upfront
+    if (cacheLevel >= 2) {
+        for (const p of chatData.participants) {
+            if (p.thinkPrompt) {
+                const pId = getParticipantId(p, chatData.participants);
+                const pName = p.name;
+                thinkPromptLines.push(`${contextStartString}${thinkStartString}${replacePlaceholders(p.thinkPrompt, characterName, protagonistName)}${thinkEndString}${contextEndString}`);
+            }
+        }
+    } else if (thinkPrompt) {
         thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName);
         thinkPromptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextEndString}`);
     }
@@ -285,9 +301,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
-            // ✅ forceNameReveal overrides name visibility
-            const displayName = (isRevealed || isCurrent || forceNameReveal) ? otherCharacter.name : "Unknown Name";
-            if (isRevealed || forceNameReveal) {
+            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : "Unknown Name";
+            if (isRevealed) {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
             } else {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${msg.textContent}${turnEndString}`);
@@ -404,7 +419,7 @@ export async function prepareRequestBody(
     return body;
 }
 
-// ✅ UPDATED: Respect forceNameReveal and stripThinkTokens from profile
+// ✅ forceNameReveal is DISPLAY-ONLY — only affects what the user sees, not prompt building
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
     const profile = chatData.Profile;
     const forceNameReveal = profile?.forceNameReveal ?? false;
@@ -421,7 +436,7 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
 
     chatData.participants.forEach((p, i) => {
         const id = `Character ${i + 1}`;
-        // ✅ If forceNameReveal, always replace IDs with names
+        // ✅ forceNameReveal overrides display visibility only
         const isRevealed = forceNameReveal || chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
         if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
     });
@@ -444,13 +459,11 @@ export function createNewChatData(character: Character): ChatData {
     };
 }
 
-// ✅ UPDATED: Respect forceNameReveal from profile
+// ✅ forceNameReveal removed — name reveal is detection-based only, display override is in convertIdsToDisplayNames
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const forceNameReveal = chatData.Profile?.forceNameReveal ?? false;
-    // ✅ If forceNameReveal, always mark as revealed
-    const isNameRevealed = forceNameReveal || wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
+    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
     const maximumChatStamina = character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? maximumChatStamina;
     const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;

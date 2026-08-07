@@ -1,12 +1,20 @@
+// src/hooks/immersionLogic.ts
 import type { ChatData } from "../types";
 
 export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryIndex: number, characterId: string): string {
 
-    const participants = chatData.participants
+    const participants = chatData.participants;
 
-    const chatMessageHistory = chatData.chatMessageHistory
+    const chatMessageHistory = chatData.chatMessageHistory;
 
-    const chatMessageHistoryLength = chatMessageHistory.length
+    const chatMessageHistoryLength = chatMessageHistory.length;
+
+    // ✅ forceNameReveal is DISPLAY-ONLY: always show name in UI regardless of reveal state
+    const forceNameReveal = chatData.Profile?.forceNameReveal ?? false;
+    if (forceNameReveal) {
+        const character = participants.find(p => p.id === characterId);
+        return character ? character.name : 'Unknown';
+    }
 
     if (!chatData || !chatMessageHistory || chatMessageHistoryLength === 0 || chatMessageHistoryIndex < 0 || chatMessageHistoryIndex >= chatMessageHistoryLength) {
         const index = participants.findIndex(p => p.id === characterId);
@@ -16,21 +24,21 @@ export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryInde
     // Scan backwards from the current index to find the immediate predecessor.
     // We start at currentIndex - 1 because we want to look at PREVIOUS messages.
 
-    const targetChatMessage = chatMessageHistory[chatMessageHistoryIndex]
+    const targetChatMessage = chatMessageHistory[chatMessageHistoryIndex];
 
     for (let i = chatMessageHistoryIndex - 1; i >= 0; i--) {
 
-        const chatMessage = chatMessageHistory[i]
+        const chatMessage = chatMessageHistory[i];
 
-        const character = chatMessage.character
+        const character = chatMessage.character;
 
         if (character.id === characterId) {
-        // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
-        if (chatMessage.isNameRevealed && targetChatMessage) {return character.name}
-        break; 
+            // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
+            if (chatMessage.isNameRevealed && targetChatMessage) { return character.name; }
+            break;
         }
     }
-    
+
     // Default: Show the generic ID if no previous reveal was found
     const index = participants.findIndex(p => p.id === characterId);
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
