@@ -48,6 +48,14 @@ function NavButton({ icon, label, onClick }: NavButtonProps) {
   );
 }
 
+// ✅ Loading progress step definition
+interface LoadStep {
+  id: string;
+  label: string;
+  icon: string;
+  done: boolean;
+}
+
 function App() {
   // --- Session & Managers ---
   const { 
@@ -139,6 +147,17 @@ function App() {
 
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
 
+  // ✅ Horizontal progress loading state — all 8 subsystems
+  const [loadSteps, setLoadSteps] = useState<LoadStep[]>([
+    { id: 'characters', label: 'Characters', icon: '🎭', done: false },
+    { id: 'models', label: 'Models', icon: '🤖', done: false },
+    { id: 'contexts', label: 'Contexts', icon: '🌍', done: false },
+    { id: 'samplers', label: 'Samplers', icon: '🎚️', done: false },
+    { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: false },
+    { id: 'budget', label: 'Budget', icon: '💰', done: false },
+    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: false },
+    { id: 'chats', label: 'Chat Sessions', icon: '💬', done: false },
+  ]);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
@@ -220,22 +239,39 @@ function App() {
     updateRunningModels(runningModels);
   }, [runningModels, updateRunningModels]);
 
-  // ✅ SMOOTH TRANSITION LOGIC
+  // ✅ Track loading progress per subsystem — all 8
   useEffect(() => {
-    const ready = (allCharacters.length > 0 || allModels.length > 0);
-    
-    if (ready && isInitializing) {
-      setIsFadeOut(true);
-      setTimeout(() => {
-        setIsInitializing(false);
-        setIsFadeOut(false);
-      }, 500);
-    } else if (!ready && !isInitializing) {
-       setIsInitializing(true);
-    }
-  }, [allCharacters, allModels, isInitializing]);
+    setLoadSteps(prev => prev.map(step => {
+      switch (step.id) {
+        case 'characters': return { ...step, done: allCharacters.length > 0 };
+        case 'models': return { ...step, done: allModels.length > 0 };
+        case 'contexts': return { ...step, done: allContexts.length > 0 };
+        case 'samplers': return { ...step, done: allSamplers.length > 0 };
+        case 'stopPatterns': return { ...step, done: allStopPatterns.length > 0 };
+        case 'budget': return { ...step, done: allBudgetStrategies.length > 0 };
+        case 'profiles': return { ...step, done: allProfiles.length > 0 };
+        case 'chats': return { ...step, done: allChats.length > 0 };
+        default: return step;
+      }
+    }));
+  }, [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
 
-  // ✅ FIXED: Cinematic avatar observer — properly detects visible messages and resolves avatar
+  // ✅ Dismiss loading screen once all steps complete
+  useEffect(() => {
+    const allDone = loadSteps.every(s => s.done);
+    if (allDone && isInitializing) {
+      const timer = setTimeout(() => {
+        setIsFadeOut(true);
+        setTimeout(() => {
+          setIsInitializing(false);
+          setIsFadeOut(false);
+        }, 300);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [loadSteps, isInitializing]);
+
+  // ✅ FIXED: Cinematic avatar observer
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || chatData.chatMessageHistory.length === 0) {
       setCenterAvatar(null);
@@ -262,7 +298,6 @@ function App() {
 
         let avatarToShow: Character | null = msg.character;
         
-        // If the most visible message is from the protagonist, show the previous AI character instead
         if (msg.character.id === currentCharacter?.id) {
           const currentIndex = chatData.chatMessageHistory.indexOf(msg);
           const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
@@ -282,7 +317,6 @@ function App() {
     const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
     messages.forEach((msg) => observer.observe(msg));
     
-    // ✅ Set initial avatar to last non-protagonist message if nothing is visible yet
     if (messages.length > 0 && !centerAvatar) {
       for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
         const msg = chatData.chatMessageHistory[i];
@@ -298,13 +332,10 @@ function App() {
 
   // --- Handlers ---
 
-  // ✅ Lazy load messages when switching to a chat
-  // ✅ Lazy load messages when switching to a chat
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
 
-    // ✅ Load messages into the existing shell instead of rebuilding from scratch
     let chatWithMessages = selected;
     if (selected.chatMessageHistory.length === 0) {
       try {
@@ -391,7 +422,7 @@ function App() {
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
     const currentIds = getChatExtensions();
-    const newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
+    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
     const newExtensions = allExtensions.filter(e => newIds.includes(e.id));
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = newExtensions;
@@ -412,7 +443,6 @@ function App() {
     }
   };
 
-  // ✅ Profile activation handler — works like budget strategy star toggle
   const handleActivateProfile = async (profileId: string) => {
     if (!chatData) return;
     const currentProfileId = chatData.Profile?.id;
@@ -431,7 +461,6 @@ function App() {
     }
   };
 
-  // ✅ Sampler editor handlers using dedicated state
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => {
     setSamplerToEdit(sampler || null);
     setIsSamplerEditorOpen(true);
@@ -597,42 +626,88 @@ function App() {
     if (viewMode === 'ladder') setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   };
 
-  // ✅ LOADING SCREEN WITH FADE OUT
+  // ✅ HORIZONTAL PROGRESS LOADING SCREEN — 8 subsystems
   if (isInitializing) {
+    const completedCount = loadSteps.filter(s => s.done).length;
+    const totalCount = loadSteps.length;
+
     return (
-      <div className="loading-screen" style={{ 
+      <div style={{ 
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
         height: '100vh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)',
         fontFamily: 'monospace', zIndex: 9999,
         opacity: isFadeOut ? 0 : 1,
-        transition: 'opacity 0.5s ease-out',
+        transition: 'opacity 0.3s ease-out',
         pointerEvents: isFadeOut ? 'none' : 'auto'
       }}>
-        <div style={{ fontSize: '2rem', marginBottom: '20px', fontWeight: 'bold', color: 'var(--accent)' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>
           ⚛️ LoreReactor
         </div>
-        <div style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '30px' }}>
-          Initializing Core Systems...
-        </div>
+
+        {/* Horizontal progress rows */}
         <div style={{ 
-          width: '40px', height: '40px', 
-          border: '4px solid var(--border)', 
-          borderTop: '4px solid var(--accent)', 
-          borderRadius: '50%', 
-          animation: 'spin 1s linear infinite' 
-        }} />
-        <style>{`
-          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        `}</style>
+          display: 'flex', flexDirection: 'column', gap: '10px',
+          width: '320px', maxWidth: '90vw'
+        }}>
+          {loadSteps.map((step) => (
+            <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Icon */}
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '6px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.85rem', flexShrink: 0,
+                background: step.done ? 'var(--accent)' : 'transparent',
+                border: `1px solid ${step.done ? 'var(--accent)' : 'var(--border)'}`,
+                color: step.done ? '#fff' : 'var(--text-h)',
+                transition: 'all 0.3s ease',
+                opacity: step.done ? 1 : 0.5
+              }}>
+                {step.done ? '✓' : step.icon}
+              </div>
+
+              {/* Label + bar container */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <span style={{ 
+                  fontSize: '0.7rem', 
+                  opacity: step.done ? 1 : 0.5,
+                  color: step.done ? 'var(--accent)' : 'var(--text-h)',
+                  transition: 'all 0.3s ease',
+                  fontWeight: step.done ? 'bold' : 'normal'
+                }}>
+                  {step.label}
+                </span>
+                
+                {/* Progress bar track */}
+                <div style={{
+                  width: '100%', height: '4px', borderRadius: '2px',
+                  background: 'var(--border)', overflow: 'hidden'
+                }}>
+                  {/* Progress bar fill */}
+                  <div style={{
+                    width: step.done ? '100%' : '0%',
+                    height: '100%', borderRadius: '2px',
+                    background: 'var(--accent)',
+                    transition: 'width 0.4s ease-out',
+                    boxShadow: step.done ? '0 0 6px rgba(var(--accent-rgb, 100, 200, 255), 0.5)' : 'none'
+                  }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: '24px', fontSize: '0.75rem', opacity: 0.5 }}>
+          {completedCount}/{totalCount} systems initialized
+        </div>
       </div>
     );
   }
 
-  if (!currentCharacter || !chatData) return null;
+  const hasSession = !!currentCharacter && !!chatData;
 
   const isMassActive = massDeleteId !== null;
-  const startIndex = isMassActive ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
-  const branchOffIndex = chatData.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
+  const startIndex = isMassActive && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
+  const branchOffIndex = chatData?.parentChatMessageId && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
 
   const renderModelSubtext = (model: LanguageModel) => {
     const isMultiModal = !!model.mmproj; 
@@ -673,7 +748,6 @@ function App() {
     );
   };
 
-  // ✅ Resolve cinematic avatar image URL safely
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
 
   return (
@@ -682,228 +756,240 @@ function App() {
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
         onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
       >
-        {/* ✅ FIXED: Cinematic avatar uses pre-resolved URL and proper fallback */}
-        {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && (
-          <div 
-            className="cinematic-stage active" 
-            onClick={(e) => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} 
-            title="Click character to interject action"
-          >
-            <img 
-              src={cinematicAvatarUrl} 
-              alt={centerAvatar.name} 
-              className="cinematic-avatar-img" 
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} 
-            />
+        {!hasSession && (
+          <div style={{ 
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            height: '100%', width: '100%', opacity: 0.5, gap: '12px'
+          }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
+            <div style={{ fontSize: '0.85rem' }}>Loading workspace...</div>
           </div>
         )}
-
-        <header className="app-header">
-          <div className="header-content">
-            <div className="header-top">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                {isEditingTitle ? (
-                  <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
-                ) : (
-                  <>
-                    <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
-                    <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}>✎</span>
-                  </>
-                )}
+        {hasSession && (
+          <>
+            {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && (
+              <div 
+                className="cinematic-stage active" 
+                onClick={(e) => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} 
+                title="Click character to interject action"
+              >
+                <img 
+                  src={cinematicAvatarUrl} 
+                  alt={centerAvatar.name} 
+                  className="cinematic-avatar-img" 
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} 
+                />
               </div>
-              <div className="header-controls-group">
-                  {/* ✅ Extensions button moved next to cinematic toggle */}
-                  <button 
-                    type="button"
-                    className="view-mode-toggle"
-                    onClick={handleOpenExtensions}
-                    title="Extensions"
-                    style={{ padding: '6px 10px' }}
-                  >
-                    <span>🧩</span>
-                  </button>
-                  <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode">
-                    <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
-                    <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
-                  </button>
-                  <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
-              </div>
-            </div>
-          </div>
-        </header>
+            )}
 
-        <div className="chat-history" ref={chatHistoryRef}>
-          {chatData?.chatMessageHistory.map((message, index) => {
-            if (!message.character) return null;
-            const isProtagonist = message.character.id === currentCharacter?.id;
-            const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-            const isEditing = editingId === message.id;
-            const isMassStart = message.id === massDeleteId;
-            const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-            const isStem = isStemMessage(message.id);
-            const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
-            const showSideAvatar = viewMode === 'ladder' && !isProtagonist;
-
-            return (
-              <React.Fragment key={message.id}>
-                <div className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
-                  {showSideAvatar && (
-                    <div className="avatar-column">
-                      <div style={{ position: 'relative' }}>
-                          {getCharacterImageUrl(message.character.image) ? (
-                              <img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
-                          ) : (
-                              <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
-                          )}
-                      </div>
-                      <span className="avatar-name">{displayName}</span>
-                    </div>
-                  )}
-                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
-                    {viewMode === 'cinematic' && (<div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, index, message.character.id)}</span></div>)}
-                    {isEditing ? (
-                      <div className="edit-mode">
-                        <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
-                        <div className="edit-actions">
-                          <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                          <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
-                        </div>
-                      </div>
+            <header className="app-header">
+              <div className="header-content">
+                <div className="header-top">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    {isEditingTitle ? (
+                      <input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
                     ) : (
                       <>
-                        <span className="message-text">{message.textContent}</span>
-                        <div className="message-toolbar">
-                          {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
-                            <>
-                              <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                              {/* ✅ Regeneration buttons disabled while model is not ready */}
-                              {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
-                              {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
-                              <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">⑂</button>
-                              <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">📋</button>
-                              <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
-                              <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
-                            </>
-                          ) : isMassStart ? (
-                            <div className="mass-delete-confirm-bar">
-                              <span>Delete from here?</span>
-                              <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button>
-                              <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button>
-                            </div>
-                          ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
-                        </div>
+                        <div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div>
+                        <span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}>✎</span>
                       </>
                     )}
                   </div>
-                </div>
-                {isJustBeforeBranchOff && (
-                  <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}>
-                    <div className="branch-separator-content">
-                      <span className="branch-separator-icon">🌿</span>
-                      <span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span>
-                      <span className="branch-separator-icon">🌿</span>
-                    </div>
+                  <div className="header-controls-group">
+                      <button 
+                        type="button"
+                        className="view-mode-toggle"
+                        onClick={handleOpenExtensions}
+                        title="Extensions"
+                        style={{ padding: '6px 10px' }}
+                      >
+                        <span>🧩</span>
+                      </button>
+                      <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode">
+                        <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
+                        <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
+                      </button>
+                      <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
                   </div>
-                )}
-              </React.Fragment>
-            );
-          })}
-          {isLoading && streamingCharacter && (
-            <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-              {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
-                <div className="avatar-column">
-                  <div style={{ position: 'relative' }}>
-                    {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />)}
-                  </div>
-                  <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
-                </div>
-              )}
-              <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
-                {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
-                <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                  <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
-                  <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
                 </div>
               </div>
-            </div>
-          )}
-          {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>)}
-          <div ref={messageEndRef} style={{ height: '1px' }} />
-        </div>
+            </header>
 
-        {/* ✅ Extensions removed from context bar — now in header */}
-        <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
-          <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
-          <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
-          <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true); }} />
-          <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
-          <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
-          <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
-          <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
-          <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
-        </div>
+            <div className="chat-history" ref={chatHistoryRef}>
+              {chatData?.chatMessageHistory.map((message, index) => {
+                if (!message.character) return null;
+                const isProtagonist = message.character.id === currentCharacter?.id;
+                const displayName = getDelayedDisplayName(chatData, index, message.character.id);
+                const isEditing = editingId === message.id;
+                const isMassStart = message.id === massDeleteId;
+                const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
+                const isStem = isStemMessage(message.id);
+                const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
+                const showSideAvatar = viewMode === 'ladder' && !isProtagonist;
 
-        <div className="input-wrapper">
-          {/* ✅ Model readiness banner */}
-          {!isModelReady && (
-            <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
-              {!selectedModelId && <span className="model-status-icon">🤖</span>}
-              {isModelLoading && (
-                <span className="model-status-spinner" />
-              )}
-              <span className="model-status-text">{modelStatusMessage}</span>
-              {!selectedModelId && (
-                <button
-                  type="button"
-                  className="model-status-action-btn"
-                  onClick={() => setIsModelListOpen(true)}
-                >
-                  Open Models
-                </button>
-              )}
-            </div>
-          )}
-
-          {pendingFiles.length > 0 && (
-            <div className="attachment-strip">
-              {pendingFiles.map((file, idx) => (
-                <div key={`${file.name}-${idx}`} className="attachment-chip">
-                  <span className="attachment-name">{file.name}</span>
-                  <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
-                  <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
+                return (
+                  <React.Fragment key={message.id}>
+                    <div className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
+                      {showSideAvatar && (
+                        <div className="avatar-column">
+                          <div style={{ position: 'relative' }}>
+                              {getCharacterImageUrl(message.character.image) ? (
+                                  <img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />
+                              ) : (
+                                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />
+                              )}
+                          </div>
+                          <span className="avatar-name">{displayName}</span>
+                        </div>
+                      )}
+                      <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                        {viewMode === 'cinematic' && (<div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, index, message.character.id)}</span></div>)}
+                        {isEditing ? (
+                          <div className="edit-mode">
+                            <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
+                            <div className="edit-actions">
+                              <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                              <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="message-text">{message.textContent}</span>
+                            <div className="message-toolbar">
+                              {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
+                                <>
+                                  <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
+                                  {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                                  {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                                  <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">⑂</button>
+                                  <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">📋</button>
+                                  <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                                  <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                                </>
+                              ) : isMassStart ? (
+                                <div className="mass-delete-confirm-bar">
+                                  <span>Delete from here?</span>
+                                  <button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button>
+                                  <button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button>
+                                </div>
+                              ) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {isJustBeforeBranchOff && (
+                      <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}>
+                        <div className="branch-separator-content">
+                          <span className="branch-separator-icon">🌿</span>
+                          <span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span>
+                          <span className="branch-separator-icon">🌿</span>
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {isLoading && streamingCharacter && (
+                <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
+                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
+                    <div className="avatar-column">
+                      <div style={{ position: 'relative' }}>
+                        {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />)}
+                      </div>
+                      <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
+                    </div>
+                  )}
+                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
+                    {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+                    <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+                      <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                      <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+                    </div>
+                  </div>
                 </div>
-              ))}
+              )}
+              {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>)}
+              <div ref={messageEndRef} style={{ height: '1px' }} />
             </div>
-          )}
-          <div className="input-area">
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
-            <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-            <textarea 
-              value={inputText} 
-              onChange={(e) => setInputText(e.target.value)} 
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
-              placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? "Warming up... please wait" : "Load a model to start chatting..."} 
-              rows={3} 
-              className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} 
-              disabled={isLoading || !chatData || !isModelReady} 
-            />
-            <button 
-              type="button" 
-              onClick={isLoading ? stopGeneration : handleSend} 
-              disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0) || (!isLoading && !isModelReady)} 
-              className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
-            >
-              {isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}
-            </button>
-          </div>
-        </div>
 
-        {/* ✅ Chat list with lazy-loaded message count handling */}
-        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => {
+            <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
+              <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
+              <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
+              <NavButton icon="🌍" label="Contexts" onClick={() => { setIsContextListMode(true); }} />
+              <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
+              <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
+              <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
+              <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
+              <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
+            </div>
+
+            <div className="input-wrapper">
+              {!isModelReady && (
+                <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
+                  {!selectedModelId && <span className="model-status-icon">🤖</span>}
+                  {isModelLoading && (
+                    <span className="model-status-spinner" />
+                  )}
+                  <span className="model-status-text">{modelStatusMessage}</span>
+                  {!selectedModelId && (
+                    <button
+                      type="button"
+                      className="model-status-action-btn"
+                      onClick={() => setIsModelListOpen(true)}
+                    >
+                      Open Models
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {pendingFiles.length > 0 && (
+                <div className="attachment-strip">
+                  {pendingFiles.map((file, idx) => (
+                    <div key={`${file.name}-${idx}`} className="attachment-chip">
+                      <span className="attachment-name">{file.name}</span>
+                      <span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span>
+                      <button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="input-area">
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
+                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
+                <textarea 
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+                  placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? "Warming up... please wait" : "Load a model to start chatting..."} 
+                  rows={3} 
+                  className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} 
+                  disabled={isLoading || !chatData || !isModelReady} 
+                />
+                <button 
+                  type="button" 
+                  onClick={isLoading ? stopGeneration : handleSend} 
+                  disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0) || (!isLoading && !isModelReady)} 
+                  className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
+                >
+                  {isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: ()=>{} } as any, id)} onCreateNew={handleNewChat}         renderSubtext={(c) => {
             const msgCount = c.messageCount ?? c.chatMessageHistory.length;
-            const branchInfo = c.parentChatDataId ? `Branch of ${c.parentChatDataId.substring(0,8)}...` : '';
-            if (branchInfo) return `${branchInfo} • ${msgCount} messages`;
-            return `${msgCount} messages`;
+            const participantCount = c.participants?.length ?? 0;
+            const contextCount = c.contexts?.length ?? 0;
+            const parts: string[] = [];
+            if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0,8)}...`);
+            parts.push(`${msgCount} message${msgCount !== 1 ? 's' : ''}`);
+            parts.push(`${participantCount} character${participantCount !== 1 ? 's' : ''}`);
+            if (contextCount > 0) parts.push(`${contextCount} context${contextCount !== 1 ? 's' : ''}`);
+            return parts.join(' • ');
         }} emptyMessage="No saved chat sessions found." />)}
         
         {isCharListOpen && (
@@ -993,7 +1079,6 @@ function App() {
         )}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
 
-        {/* ✅ Profile Manager Modal — star-based selection */}
         {isProfileListOpen && (
           <ManagerModal
             title="Profiles"
@@ -1025,7 +1110,7 @@ function App() {
         {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
       </div>
 
-      {actionMenuTarget && (
+      {actionMenuTarget && hasSession && (
           <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
             <div className="action-menu-header"><span>Interject Action</span></div>
             <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
