@@ -39,6 +39,9 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
+    const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
+    const [chatProbability, setChatProbability] = useState<number>(-1);
+    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [inputStrategy, setInputStrategy] = useState<PromptBlockType[]>([...DEFAULT_STRATEGY]);
@@ -53,6 +56,9 @@ export function ProfileEditorModal({
                 setName(existingProfile.name || '');
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
+                setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
+                setChatProbability(existingProfile.chatProbability ?? -1);
+                setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
                 // Filter out Character Description from saved strategies
@@ -64,6 +70,9 @@ export function ProfileEditorModal({
                 setName('');
                 setDescription('');
                 setForceNameReveal(false);
+                setForceEqualInitiative(false);
+                setChatProbability(-1);
+                setMaximumChatStamina(-1);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
                 setInputStrategy([...DEFAULT_STRATEGY]);
@@ -89,6 +98,9 @@ export function ProfileEditorModal({
             name: name.trim(),
             description: description.trim() || undefined,
             forceNameReveal,
+            forceEqualInitiative,
+            chatProbability,
+            maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             inputStrategy,
@@ -109,6 +121,9 @@ export function ProfileEditorModal({
             name: `${name.trim()} (Clone)`,
             description: description.trim() || undefined,
             forceNameReveal,
+            forceEqualInitiative,
+            chatProbability,
+            maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             inputStrategy: [...inputStrategy],
@@ -216,7 +231,7 @@ export function ProfileEditorModal({
                         />
                     </div>
 
-                    {/* Force Name Reveal */}
+                    {/* Identity & Display */}
                     <div className="editor-section">
                         <span className="editor-section-title">Identity & Display</span>
                         <label className="editor-checkbox-label">
@@ -230,6 +245,71 @@ export function ProfileEditorModal({
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Always show character names instead of "Unknown Name". Skips name detection entirely.
+                        </div>
+                    </div>
+
+                    {/* Turn Sequencing Overrides */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Turn Sequencing</span>
+
+                        {/* Force Equal Initiative */}
+                        <label className="editor-checkbox-label">
+                            <input
+                                type="checkbox"
+                                checked={forceEqualInitiative}
+                                onChange={(e) => setForceEqualInitiative(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Force Equal Initiative</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px', marginBottom: '12px' }}>
+                            All participants get equal initiative weight regardless of character settings. Useful for balanced multi-character conversations.
+                        </div>
+
+                        {/* Chat Probability Override */}
+                        <div style={{ marginBottom: '12px' }}>
+                            <label className="editor-label editor-label-small">Chat Probability Override</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="number"
+                                    value={chatProbability}
+                                    onChange={(e) => setChatProbability(Number(e.target.value))}
+                                    className="editor-input"
+                                    min="-1"
+                                    max="1"
+                                    step="0.05"
+                                    style={{ width: '80px', textAlign: 'right' }}
+                                />
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {chatProbability === -1 ? '(Using character default)' : `Override: ${chatProbability}`}
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
+                                -1 = disabled (use per-character setting). 0–1 = override all participants' chat probability.
+                            </div>
+                        </div>
+
+                        {/* Maximum Chat Stamina Override */}
+                        <div>
+                            <label className="editor-label editor-label-small">Maximum Chat Stamina Override</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="number"
+                                    value={maximumChatStamina}
+                                    onChange={(e) => setMaximumChatStamina(Number(e.target.value))}
+                                    className="editor-input"
+                                    min="-1"
+                                    max="100"
+                                    step="1"
+                                    style={{ width: '80px', textAlign: 'right' }}
+                                />
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {maximumChatStamina === -1 ? '(Using character default)' : `Override: ${maximumChatStamina}`}
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
+                                -1 = disabled (use per-character setting). Positive value = override all participants' stamina cap.
+                            </div>
                         </div>
                     </div>
 

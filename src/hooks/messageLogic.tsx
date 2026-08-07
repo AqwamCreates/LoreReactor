@@ -81,6 +81,7 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
         chatMessageHistory: currentChat.chatMessageHistory.slice(0, branchIndex + 1),
         parentChatDataId: currentChat.id,
         parentChatMessageId: messageId,
+        Profile: currentChat.Profile, // ✅ Preserve active profile
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
     };
@@ -90,7 +91,7 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
     return branchedChat;
 }
 
-// ✅ NEW: Clone creates an independent copy with NO parent link
+// ✅ Clone creates an independent copy with NO parent link
 // Unlike branch, clone is a fully standalone chat that doesn't remember its origin
 export async function cloneChatUpToMessage(currentChat: ChatData, messageId: string): Promise<ChatData> {
     const cloneIndex = currentChat.chatMessageHistory.findIndex(m => m.id === messageId);
@@ -115,6 +116,7 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
         participants: currentChat.participants.map(p => ({ ...p })),
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
         chatMessageHistory: clonedMessages,
+        Profile: currentChat.Profile, // ✅ Preserve active profile
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
         parentChatDataId: null,   // ✅ No parent — fully independent
