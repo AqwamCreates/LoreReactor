@@ -21,11 +21,13 @@ export async function runTurnSequence(
 
     const profile = workingData.Profile;
 
-    // ✅ Determine if the last message was from the protagonist (user)
-    const lastMessage = workingData.chatMessageHistory.length > 0 
-        ? workingData.chatMessageHistory[workingData.chatMessageHistory.length - 1] 
+    // ✅ Track the last speaker ID — updated after each successful generation
+    let lastSpeakerId: string | null = workingData.chatMessageHistory.length > 0
+        ? workingData.chatMessageHistory[workingData.chatMessageHistory.length - 1].character.id
         : null;
-    const lastWasProtagonist = lastMessage?.character.id === workingData.protagonist.id;
+
+    // ✅ Determine if the sequence started with a user message
+    const startedWithUser = lastSpeakerId === workingData.protagonist.id;
 
     // ✅ Track whether we've guaranteed at least one response after user input
     let hasGuaranteedResponse = false;
@@ -49,13 +51,13 @@ export async function runTurnSequence(
         hasActivity = false;
         turnCount++;
 
-        // ✅ Stamina regeneration pass: every non-speaking AI regens +1 per turn (up to max)
-        // This ensures single-AI chats don't get permanently stuck
+        // ✅ Stamina regeneration pass: only regens AIs that did NOT speak last turn
         for (const p of workingData.participants) {
             if (p.id === workingData.protagonist.id) continue;
             const current = staminaMap.get(p.id) || 0;
             const max = getEffectiveMaxChatStamina(p, profile);
-            if (current < max) {
+            const wasLastSpeaker = lastSpeakerId === p.id;
+            if (current < max && !wasLastSpeaker) {
                 staminaMap.set(p.id, Math.min(max, current + 1));
             }
         }
@@ -111,7 +113,7 @@ export async function runTurnSequence(
 
         // ✅ Probability gate: should this character actually speak this turn?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
-        const isGuaranteedTurn = lastWasProtagonist && !hasGuaranteedResponse;
+        const isGuaranteedTurn = startedWithUser && !hasGuaranteedResponse;
 
         if (!isGuaranteedTurn && Math.random() >= effectiveProb) {
             // AI stays quiet this turn — zero stamina temporarily to try others
@@ -152,6 +154,9 @@ export async function runTurnSequence(
             ...resultData,
             chatMessageHistory: [...resultData.chatMessageHistory.slice(0, -1), messageWithNewCurrentChatStamina]
         };
+
+        // ✅ CRITICAL: Update lastSpeakerId so regen pass knows who just spoke
+        lastSpeakerId = selectedSpeaker.id;
 
         hasActivity = true;
 
