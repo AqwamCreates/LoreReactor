@@ -2,7 +2,7 @@
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
-  BudgetStrategy, RawBudgetStrategy, InterjectableAction
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -53,6 +53,7 @@ const PATHS = {
   chatData: "/user_data/chat_data", 
   kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
+  profiles: "/user_data/profile_data",
   actions: "/user_data/actions.json",
 };
 const MANIFEST_FILE = 'manifest.json';
@@ -82,7 +83,6 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     
     return JSON.parse(text) as T;
   } catch (error) { 
-    // Silently fail for missing files, warn for others
     if ((error as Error).message.includes('Failed to fetch')) {
       // Network error usually handled by caller or global handler
     } else {
@@ -144,14 +144,12 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 // --- Batch Loading Utility ---
-// Prevents ERR_INSUFFICIENT_RESOURCES by loading in chunks
 async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize: number = 5): Promise<(T | null)[]> {
   const results: (T | null)[] = [];
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize);
     const batchResults = await Promise.all(batch.map(loader));
     results.push(...batchResults);
-    // Small delay to let event loop breathe
     if (i + batchSize < ids.length) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
@@ -212,7 +210,6 @@ export async function loadRawSampler(id: string): Promise<Sampler | null> {
     if (!rawSampler) return null;
     
     const stopPatternIds = rawSampler.stopPatternIds || [];
-    // Load stop patterns safely, ignoring missing ones
     const stopPatternsPromises = stopPatternIds.map(sid => loadRawStopPattern(sid));
     const stopPatternsResults = await Promise.all(stopPatternsPromises);
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
@@ -422,7 +419,6 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
           loadRawModel(rawStrategy.localModelId)
       ]);
 
-      // Fallback to defaults if models are missing to prevent crash
       const finalOnline = onlineModel || DefaultModel;
       const finalLocal = localModel || DefaultModel;
 
@@ -471,6 +467,48 @@ export async function deleteRawBudgetStrategy(id: string): Promise<void> {
     await updateManifest(PATHS.budgetStrategies, id, 'remove');
 }
 
+// --- Profile Repository ---
+export async function loadRawProfileManifest(): Promise<string[]> {
+    return await fetchJson<string[]>(`${PATHS.profiles}/${MANIFEST_FILE}`) || [];
+}
+
+export async function loadRawProfile(id: string): Promise<Profile | null> {
+    const rawProfile = await fetchJson<RawProfile>(`${PATHS.profiles}/${id}.json`);
+    if (!rawProfile) return null;
+    return {
+        id,
+        name: rawProfile.name || 'Unknown Profile',
+        description: rawProfile.description,
+        forceNameReveal: rawProfile.forceNameReveal ?? false,
+        cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
+        stripThinkTokens: rawProfile.stripThinkTokens ?? false,
+        inputStrategy: rawProfile.inputStrategy ?? ['System Prompt', 'Think Prompt', 'Character Description', 'Context', 'Chat History', 'User Input'],
+        firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || Date.now(),
+        lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || Date.now(),
+    };
+}
+
+export async function loadAllRawProfiles(): Promise<Profile[]> {
+    const ids = await loadRawProfileManifest();
+    const results = await loadInBatches(ids, loadRawProfile);
+    return results.filter((p): p is Profile => p !== null);
+}
+
+export async function saveRawProfile(profile: Profile): Promise<void> {
+    const { id, ...rawProfile } = profile;
+    const payload: RawProfile = {
+        ...rawProfile,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.profiles}/${id}.json`, payload);
+    await updateManifest(PATHS.profiles, id, 'add');
+}
+
+export async function deleteRawProfile(id: string): Promise<void> {
+    await deleteResource(`${PATHS.profiles}/${id}.json`);
+    await updateManifest(PATHS.profiles, id, 'remove');
+}
+
 // --- Chat Message Repository ---
 export async function deleteRawChatMessage(id: string): Promise<void> { 
     await deleteResource(`${PATHS.chatMessages}/${id}.json`); 
@@ -481,26 +519,17 @@ export async function loadRawChatManifest(): Promise<string[]> {
     return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
 }
 
-// Optimized: Accept pre-loaded maps to avoid re-fetching everything for every chat
 async function buildChatDataFromRaw(
   id: string, 
   rawChatData: RawChatData, 
   charMap: Map<string, Character>, 
-  contextMap: Map<string, Context>
+  contextMap: Map<string, Context>,
+  profileMap: Map<string, Profile>
 ): Promise<ChatData | null> {
   
   const protagonist = charMap.get(rawChatData.protagonistId);
   if (!protagonist) {
     console.warn(`Protagonist ${rawChatData.protagonistId} not found for chat ${id}`);
-    // Create a dummy protagonist to prevent total crash
-    const dummyChar: Character = { 
-      id: rawChatData.protagonistId, 
-      name: "Unknown User", 
-      firstCreatedTimestamp: Date.now(), 
-      lastUpdatedTimestamp: Date.now() 
-    };
-    // We can't return null easily here if we want to show the chat, so we might skip this chat or use dummy
-    // For safety, let's return null to skip this specific chat
     return null; 
   }
 
@@ -508,7 +537,6 @@ async function buildChatDataFromRaw(
     .map(pid => charMap.get(pid))
     .filter((c): c is Character => c !== undefined);
     
-  // Ensure protagonist is in participants
   if (!participants.find(p => p.id === protagonist.id)) {
     participants.unshift(protagonist);
   }
@@ -516,6 +544,9 @@ async function buildChatDataFromRaw(
   const contexts = (rawChatData.contextIds || [])
     .map(iid => contextMap.get(iid))
     .filter((i): i is Context => i !== undefined);
+
+  // ✅ Load profile from ProfileId
+  const profile = rawChatData.ProfileId ? profileMap.get(rawChatData.ProfileId) : undefined;
 
   const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
     const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
@@ -548,7 +579,8 @@ async function buildChatDataFromRaw(
     firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
     parentChatDataId: rawChatData.parentChatDataId || null, 
-    parentChatMessageId: rawChatData.parentChatMessageId || null
+    parentChatMessageId: rawChatData.parentChatMessageId || null,
+    Profile: profile,
   };
 }
 
@@ -556,41 +588,41 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
 
-  // Load dependencies once for this specific chat
-  const [allCharacters, allContexts] = await Promise.all([ 
+  const [allCharacters, allContexts, allProfiles] = await Promise.all([ 
     loadAllRawCharacters(), 
-    loadAllRawContexts() 
+    loadAllRawContexts(),
+    loadAllRawProfiles()
   ]);
   
   const charMap = new Map(allCharacters.map(c => [c.id, c]));
   const contextMap = new Map(allContexts.map(i => [i.id, i]));
+  const profileMap = new Map(allProfiles.map(p => [p.id, p]));
 
-  return buildChatDataFromRaw(id, rawChatData, charMap, contextMap);
+  return buildChatDataFromRaw(id, rawChatData, charMap, contextMap, profileMap);
 }
 
-// Optimized Bulk Loader
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  // 1. Load all dependencies ONCE
-  const [allCharacters, allContexts] = await Promise.all([
+  const [allCharacters, allContexts, allProfiles] = await Promise.all([
     loadAllRawCharacters(),
-    loadAllRawContexts()
+    loadAllRawContexts(),
+    loadAllRawProfiles()
   ]);
 
   const charMap = new Map(allCharacters.map(c => [c.id, c]));
   const contextMap = new Map(allContexts.map(i => [i.id, i]));
+  const profileMap = new Map(allProfiles.map(p => [p.id, p]));
 
-  // 2. Load chats in batches using the pre-loaded maps
   const results: (ChatData | null)[] = [];
   
-  for (let i = 0; i < ids.length; i += 3) { // Even smaller batch for chats as they are heavy
+  for (let i = 0; i < ids.length; i += 3) {
     const batchIds = ids.slice(i, i + 3);
     const batchPromises = batchIds.map(async (id) => {
       const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
       if (!raw) return null;
-      return buildChatDataFromRaw(id, raw, charMap, contextMap);
+      return buildChatDataFromRaw(id, raw, charMap, contextMap, profileMap);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -615,12 +647,11 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     return putJson(`${PATHS.chatMessages}/${id}.json`, payload);
   });
   
-  // Save messages in batches to avoid overflow
   for (let i = 0; i < saveMessagePromises.length; i += 10) {
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, ...rawChatData } = chatData;
+  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, 
     protagonistId: protagonist.id, 
@@ -629,6 +660,7 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     chatMessageIdHistory: chatMessageHistory.map(m => m.id),
     parentChatDataId: parentChatDataId || null, 
     parentChatMessageId: parentChatMessageId || null,
+    ProfileId: Profile?.id,
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.chatData}/${id}.json`, payload);
@@ -650,7 +682,8 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentChatDataId, 
-    parentChatMessageId
+    parentChatMessageId,
+    ProfileId: sourceChat.Profile?.id,
   };
   await putJson(`${PATHS.chatData}/${newChatId}.json`, newPayload);
   await updateManifest(PATHS.chatData, newChatId, 'add');
@@ -675,7 +708,6 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 // --- Helpers ---
 export function getCharacterImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  // Ensure double slashes don't happen if PATHS already has leading slash
   const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
   return `${WRITE_API_URL}${cleanPath}/${imageFilename}`;
 }

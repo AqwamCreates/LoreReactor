@@ -166,10 +166,12 @@ export interface ChatData {
   lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
+  Profile?: Profile;
 
 }
 
 export interface RawChatData {
+  profileId: any;
 
   name: string;
   protagonistId: string;
@@ -180,10 +182,11 @@ export interface RawChatData {
   lastUpdatedTimestamp: number;
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
+  ProfileId?: string;
 
 }
 
-export type ExtensionType = 'language_model_api' | 'image_generation_api' | 'accessibility' | 'extra';
+export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
 
 export interface Extension extends ObjectData{
 
@@ -219,7 +222,34 @@ export interface RawBudgetStrategy extends RawData {
 
 }
 
+export type PromptBlockType = 
+  | 'Context'              // Active context entries (regex-matched)     // Think/meta-instruction prompts  
+  | 'System Prompt'        // Character system prompts
+  | 'Think Prompt'
+  | 'Chat History'         // Conversation history messages
+  | 'User Input';          // The current user message
+
+export interface Profile extends ObjectData {
+
+  forceNameReveal: boolean;
+  cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
+  stripThinkTokens: boolean;
+  inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
+
+}
+
+export interface RawProfile extends RawData{
+
+  forceNameReveal: boolean;
+  cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
+  stripThinkTokens: boolean;
+  inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
+
+}
+
+
 export interface InterjectableAction {
   label: string;
   count: number;
 }
+
