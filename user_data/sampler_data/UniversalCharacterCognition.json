@@ -55,8 +55,8 @@
     "_enabled_dry_sequence_breaker": false,
     "_enabled_ignore_eos": false
   },
-  "maximumNumberOfTokens": 128,
+  "maximumNumberOfTokens": 1024,
   "firstCreatedTimestamp": 1785954158610,
-  "lastUpdatedTimestamp": 1785954982430,
+  "lastUpdatedTimestamp": 1786071956945,
   "stopPatternIds": []
 }

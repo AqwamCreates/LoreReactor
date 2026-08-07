@@ -235,8 +235,9 @@ function App() {
     }
   }, [allCharacters, allModels, isInitializing]);
 
+  // ✅ FIXED: Cinematic avatar observer — properly detects visible messages and resolves avatar
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData) {
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || chatData.chatMessageHistory.length === 0) {
       setCenterAvatar(null);
       return;
     }
@@ -248,30 +249,52 @@ function App() {
     };
 
     const observer = new IntersectionObserver((entries) => {
-      const mostVisible = entries.reduce((prev, current) => (prev.intersectionRatio > current.intersectionRatio) ? prev : current);
+      const mostVisible = entries.reduce((prev, current) => 
+        (prev.intersectionRatio > current.intersectionRatio) ? prev : current
+      );
+      
       if (mostVisible && mostVisible.intersectionRatio > 0.5) {
         const messageId = mostVisible.target.getAttribute('data-message-id');
+        if (!messageId) return;
+        
         const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
-        if (msg && msg.character) {
-          let avatarToShow: Character | null = msg.character;
-          if (msg.character.id === currentCharacter?.id) {
-            const currentIndex = chatData.chatMessageHistory.indexOf(msg);
-            const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
-            if (prevMessage && prevMessage.character?.id !== currentCharacter?.id) {
-              avatarToShow = prevMessage.character;
-            } else { avatarToShow = null; }
+        if (!msg || !msg.character) return;
+
+        let avatarToShow: Character | null = msg.character;
+        
+        // If the most visible message is from the protagonist, show the previous AI character instead
+        if (msg.character.id === currentCharacter?.id) {
+          const currentIndex = chatData.chatMessageHistory.indexOf(msg);
+          const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
+          if (prevMessage && prevMessage.character && prevMessage.character.id !== currentCharacter?.id) {
+            avatarToShow = prevMessage.character;
+          } else {
+            avatarToShow = null;
           }
-          setCenterAvatar(avatarToShow);
-          document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
-          (mostVisible.target as HTMLElement).classList.add('is-active');
         }
+        
+        setCenterAvatar(avatarToShow);
+        document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+        (mostVisible.target as HTMLElement).classList.add('is-active');
       }
     }, options);
 
     const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
     messages.forEach((msg) => observer.observe(msg));
+    
+    // ✅ Set initial avatar to last non-protagonist message if nothing is visible yet
+    if (messages.length > 0 && !centerAvatar) {
+      for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
+        const msg = chatData.chatMessageHistory[i];
+        if (msg.character && msg.character.id !== currentCharacter?.id) {
+          setCenterAvatar(msg.character);
+          break;
+        }
+      }
+    }
+    
     return () => observer.disconnect();
-  }, [viewMode, chatData?.chatMessageHistory.length, currentCharacter?.id, chatData]);
+  }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
   // --- Handlers ---
   const handleSwitchChat = useCallback((id: string) => {
@@ -375,14 +398,23 @@ function App() {
     }
   };
 
-  // ✅ Profile handlers
-  const handleAssignProfile = async (profileId: string) => {
+  // ✅ Profile activation handler — works like budget strategy star toggle
+  const handleActivateProfile = async (profileId: string) => {
     if (!chatData) return;
-    const profile = allProfiles.find(p => p.id === profileId) || undefined;
-    const updatedChat = { ...chatData, Profile: profile };
-    setChatData(updatedChat);
-    await saveRawChatData(updatedChat);
-    addToast(profile ? `Profile "${profile.name}" assigned` : "Profile removed", "info");
+    const currentProfileId = chatData.Profile?.id;
+    if (currentProfileId === profileId) {
+      const updatedChat = { ...chatData, Profile: undefined };
+      setChatData(updatedChat);
+      await saveRawChatData(updatedChat);
+      addToast("Profile deactivated.", "info");
+    } else {
+      const profile = allProfiles.find(p => p.id === profileId);
+      if (!profile) return;
+      const updatedChat = { ...chatData, Profile: profile };
+      setChatData(updatedChat);
+      await saveRawChatData(updatedChat);
+      addToast(`Profile "${profile.name}" activated!`, "success");
+    }
   };
 
   // ✅ Sampler editor handlers using dedicated state
@@ -626,15 +658,28 @@ function App() {
     );
   };
 
+  // ✅ Resolve cinematic avatar image URL safely
+  const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
+
   return (
     <>
       <div 
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} 
         onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); }}
       >
-        {viewMode === 'cinematic' && centerAvatar && (
-          <div className={`cinematic-stage active`} onClick={(e) => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action">
-            <img src={getCharacterImageUrl(centerAvatar.image) || ''} alt={centerAvatar.name} className="cinematic-avatar-img" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+        {/* ✅ FIXED: Cinematic avatar uses pre-resolved URL and proper fallback */}
+        {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && (
+          <div 
+            className="cinematic-stage active" 
+            onClick={(e) => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} 
+            title="Click character to interject action"
+          >
+            <img 
+              src={cinematicAvatarUrl} 
+              alt={centerAvatar.name} 
+              className="cinematic-avatar-img" 
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} 
+            />
           </div>
         )}
 
@@ -652,19 +697,16 @@ function App() {
                 )}
               </div>
               <div className="header-controls-group">
-                  {/* ✅ Per-chat profile selector */}
-                  <select
-                    value={chatData.Profile?.id || ''}
-                    onChange={(e) => handleAssignProfile(e.target.value)}
-                    className="editor-select"
-                    style={{ fontSize: '0.7rem', padding: '4px 28px 4px 8px', minWidth: '100px', maxWidth: '160px' }}
-                    title="Assign a profile to this chat"
+                  {/* ✅ Extensions button moved next to cinematic toggle */}
+                  <button 
+                    type="button"
+                    className="view-mode-toggle"
+                    onClick={handleOpenExtensions}
+                    title="Extensions"
+                    style={{ padding: '6px 10px' }}
                   >
-                    <option value="">No Profile</option>
-                    {allProfiles.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                    <span>🧩</span>
+                  </button>
                   <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode">
                     <span>{viewMode === 'ladder' ? '🎥' : '📜'}</span>
                     <span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span>
@@ -720,8 +762,9 @@ function App() {
                           {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                             <>
                               <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                              {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} className="toolbar-btn" title="Regenerate this Response">↻</button>}
-                              {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} className="toolbar-btn" title="Regenerate Your Input">↻</button>}
+                              {/* ✅ Regeneration buttons disabled while model is not ready */}
+                              {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                              {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
                               <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">⑂</button>
                               <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">📋</button>
                               <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
@@ -774,6 +817,7 @@ function App() {
           <div ref={messageEndRef} style={{ height: '1px' }} />
         </div>
 
+        {/* ✅ Extensions removed from context bar — now in header */}
         <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
           <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
           <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
@@ -783,7 +827,6 @@ function App() {
           <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
           <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
           <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
-          <NavButton icon="🧩" label="Extensions" onClick={handleOpenExtensions} />
         </div>
 
         <div className="input-wrapper">
@@ -930,7 +973,7 @@ function App() {
         )}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
 
-        {/* ✅ Profile Manager Modal */}
+        {/* ✅ Profile Manager Modal — star-based selection */}
         {isProfileListOpen && (
           <ManagerModal
             title="Profiles"
@@ -943,6 +986,11 @@ function App() {
             renderSubtext={renderProfileSubtext}
             emptyMessage="No profiles found."
             actionLabel="Delete"
+            orderedListMode={false}
+            activeSpecialActionId={chatData?.Profile?.id || undefined}
+            specialActionIcon="★"
+            onSpecialAction={handleActivateProfile}
+            specialActionTooltip={(p) => chatData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`}
           />
         )}
         {profileModal.isOpen && (
