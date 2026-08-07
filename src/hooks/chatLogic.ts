@@ -22,8 +22,9 @@ const thinkStartString = "<think>"
 
 const thinkEndString = "</think>"
 
+// ✅ User Input removed — only user-reorderable blocks remain
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'Context', 'System Prompt', 'Think Prompt', 'Chat History', 'User Input'
+    'Context', 'System Prompt', 'Think Prompt', 'Chat History'
 ];
 
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
@@ -41,7 +42,6 @@ export function getParticipantId(character: Character, participants: Character[]
     return index !== -1 ? `Character ${index + 1}` : 'Unknown';
 }
 
-// ✅ UPDATED: Accepts profile overrides for maximumChatStamina
 export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
     const ratio = currentChatStamina / maximumChatStamina;
@@ -123,21 +123,21 @@ function filterArrayBasedOnTarget(
 
 /**
  * ✅ Resolves effective chat probability for a character, applying profile override.
- * Returns -1 if disabled (use character default), or 0-1 override value.
+ * 0 = disabled (use character default). >0 = override value (0.01–1).
  */
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
-    const profileOverride = profile?.chatProbability ?? -1;
-    if (profileOverride >= 0) return profileOverride;
+    const profileOverride = profile?.chatProbability ?? 0;
+    if (profileOverride > 0) return profileOverride;
     return character.chatProbability ?? 0.5;
 }
 
 /**
  * ✅ Resolves effective maximum chat stamina for a character, applying profile override.
- * Returns Infinity if disabled, or the override/default value.
+ * 0 = disabled (use character default). >0 = override value.
  */
 export function getEffectiveMaxChatStamina(character: Character, profile?: Profile): number {
-    const profileOverride = profile?.maximumChatStamina ?? -1;
-    if (profileOverride >= 0) return profileOverride;
+    const profileOverride = profile?.maximumChatStamina ?? 0;
+    if (profileOverride > 0) return profileOverride;
     return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
 }
 
@@ -341,9 +341,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
     }
 
-    // USER INPUT BLOCK (completion trigger)
-    const userInputLines: string[] = [];
-    userInputLines.push(`${turnStartString}${participantId} (${characterName}):`);
+    // ✅ USER INPUT BLOCK — always appended at the end, NOT part of reorderable strategy
+    const userInputLine = `${turnStartString}${participantId} (${characterName}):`;
 
     // ✅ Assemble prompt blocks according to inputStrategy order
     const blockMap: Record<string, string[]> = {
@@ -351,7 +350,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Chat History': [...metaThinkLines, ...fatigueLines, ...historyLines],
-        'User Input': userInputLines,
     };
 
     const promptLines: string[] = [];
@@ -365,7 +363,7 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         usedTypes.add(blockType);
     }
 
-    // Append any blocks not mentioned in the strategy (safety net)
+    // Append any reorderable blocks not mentioned in the strategy (safety net)
     for (const blockType of DEFAULT_INPUT_STRATEGY) {
         if (!usedTypes.has(blockType)) {
             const lines = blockMap[blockType];
@@ -374,6 +372,9 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             }
         }
     }
+
+    // ✅ User Input completion trigger is ALWAYS last, regardless of strategy
+    promptLines.push(userInputLine);
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
 }
