@@ -299,7 +299,7 @@ export function ProfileEditorModal({
                                 label=""
                                 value={maximumChatStamina}
                                 minimumValue={0}
-                                maximumValue={50}
+                                maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setMaximumChatStamina(Math.round(val))}
