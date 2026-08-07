@@ -1,6 +1,6 @@
 // src/services/ChatOrchestrator.ts
 import type { Character, ChatData } from '../types';
-import { findPreviousChatMessage, getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveMaxChatStamina } from '../hooks/chatLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability } from '../hooks/chatLogic';
 import { saveRawChatData } from '../hooks/storage';
 
 interface TurnExecutor {
@@ -16,149 +16,88 @@ export async function runTurnSequence(
     onMessageSaved?: (data: ChatData) => void
 ): Promise<ChatData> {
     
+    const profile = currentChatData.Profile;
     let workingData = { ...currentChatData, chatMessageHistory: [...currentChatData.chatMessageHistory] };
-    let hasActivity = true;
 
-    const profile = workingData.Profile;
-
-    // ✅ Track the last speaker ID — updated after each successful generation
-    let lastSpeakerId: string | null = workingData.chatMessageHistory.length > 0
-        ? workingData.chatMessageHistory[workingData.chatMessageHistory.length - 1].character.id
+    // ✅ Determine who spoke last (before this sequence started)
+    const lastMsgBeforeSequence = workingData.chatMessageHistory.length > 0
+        ? workingData.chatMessageHistory[workingData.chatMessageHistory.length - 1]
         : null;
+    let lastSpeakerId: string | null = lastMsgBeforeSequence?.character.id ?? null;
 
-    // ✅ Determine if the sequence started with a user message
-    const startedWithUser = lastSpeakerId === workingData.protagonist.id;
+    // ✅ Track which AIs have already spoken this sequence
+    const spokenThisSequence = new Set<string>();
 
-    // ✅ Track whether we've guaranteed at least one response after user input
-    let hasGuaranteedResponse = false;
-
-    // ✅ Stamina map: tracks current stamina for each AI participant
-    const staminaMap = new Map<string, number>();
-
-    for (const p of workingData.participants) {
-        if (p.id === workingData.protagonist.id) continue;
-        const prev = findPreviousChatMessage(workingData, p.id);
-        const effectiveMax = getEffectiveMaxChatStamina(p, profile);
-        const storedStamina = prev?.remainingChatStamina ?? effectiveMax;
-        staminaMap.set(p.id, Math.min(storedStamina, effectiveMax));
-    }
-
-    // ✅ Safety counter to prevent infinite loops
-    const maxTurnsPerSequence = 20;
+    // ✅ Multi-turn loop
+    const maxTurnsPerSequence = 10;
     let turnCount = 0;
 
-    while (hasActivity && !abortController.signal.aborted && turnCount < maxTurnsPerSequence) {
-        hasActivity = false;
+    while (!abortController.signal.aborted && turnCount < maxTurnsPerSequence) {
         turnCount++;
 
-        // ✅ Stamina regeneration pass: only regens AIs that did NOT speak last turn
-        for (const p of workingData.participants) {
-            if (p.id === workingData.protagonist.id) continue;
-            const current = staminaMap.get(p.id) || 0;
-            const max = getEffectiveMaxChatStamina(p, profile);
-            const wasLastSpeaker = lastSpeakerId === p.id;
-            if (current < max && !wasLastSpeaker) {
-                staminaMap.set(p.id, Math.min(max, current + 1));
-            }
-        }
-
-        // ✅ Sort eligible participants using profile-overridden initiative weights
-        const eligible = workingData.participants
-            .filter(p => p.id !== workingData.protagonist.id && (staminaMap.get(p.id) || 0) > 0)
-            .sort((a, b) => {
-                const wA = getEffectiveInitiativeWeight(a, profile) * ((staminaMap.get(a.id) || 0) / (getEffectiveMaxChatStamina(a, profile) || 1));
-                const wB = getEffectiveInitiativeWeight(b, profile) * ((staminaMap.get(b.id) || 0) / (getEffectiveMaxChatStamina(b, profile) || 1));
-                return wB - wA;
-            });
+        // ✅ Get eligible AIs: exclude protagonist, last speaker, and anyone who already spoke
+        const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
+        const eligible = allAI.filter(p => p.id !== lastSpeakerId && !spokenThisSequence.has(p.id));
 
         if (eligible.length === 0) break;
 
-        // ✅ Weighted random selection
+        // ✅ Pick one speaker by initiative weight
         let selectedSpeaker: Character | null = null;
 
-        const weightedPool: { char: Character; weight: number }[] = [];
-        let totalWeight = 0;
-
-        for (const participant of eligible) {
-            const effectiveProb = getEffectiveChatProbability(participant, profile);
-            if (effectiveProb <= 0) continue;
-
-            const initWeight = getEffectiveInitiativeWeight(participant, profile);
-            const currentStamina = staminaMap.get(participant.id) || 0;
-            const maxStamina = getEffectiveMaxChatStamina(participant, profile);
-            const staminaRatio = maxStamina > 0 ? currentStamina / maxStamina : 1;
-
-            const weight = initWeight * staminaRatio * effectiveProb;
-            if (weight > 0) {
-                weightedPool.push({ char: participant, weight });
-                totalWeight += weight;
-            }
-        }
-
-        if (weightedPool.length === 0 || totalWeight <= 0) {
-            selectedSpeaker = eligible[0] || null;
+        if (eligible.length === 1) {
+            selectedSpeaker = eligible[0];
         } else {
-            let roll = Math.random() * totalWeight;
-            for (const entry of weightedPool) {
-                roll -= entry.weight;
-                if (roll <= 0) {
-                    selectedSpeaker = entry.char;
-                    break;
+            const initPool: { char: Character; weight: number }[] = [];
+            let totalWeight = 0;
+            for (const p of eligible) {
+                const w = getEffectiveInitiativeWeight(p, profile);
+                if (w > 0) {
+                    initPool.push({ char: p, weight: w });
+                    totalWeight += w;
                 }
             }
-            if (!selectedSpeaker) selectedSpeaker = weightedPool[weightedPool.length - 1].char;
+
+            if (initPool.length === 0 || totalWeight <= 0) {
+                selectedSpeaker = eligible[0];
+            } else {
+                let roll = Math.random() * totalWeight;
+                selectedSpeaker = initPool[initPool.length - 1].char;
+                for (const entry of initPool) {
+                    roll -= entry.weight;
+                    if (roll <= 0) {
+                        selectedSpeaker = entry.char;
+                        break;
+                    }
+                }
+            }
         }
 
         if (!selectedSpeaker) break;
 
-        // ✅ Probability gate: should this character actually speak this turn?
+        // ✅ Probability gate: does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
-        const isGuaranteedTurn = startedWithUser && !hasGuaranteedResponse;
-
-        if (!isGuaranteedTurn && Math.random() >= effectiveProb) {
-            // AI stays quiet this turn — zero stamina temporarily to try others
-            const currentStamina = staminaMap.get(selectedSpeaker.id) || 0;
-            staminaMap.set(selectedSpeaker.id, 0);
-
-            const othersEligible = eligible.filter(p => p.id !== selectedSpeaker.id && (staminaMap.get(p.id) || 0) > 0);
-            if (othersEligible.length === 0) {
-                // No one else can speak — restore stamina and exit
-                staminaMap.set(selectedSpeaker.id, currentStamina);
-                break;
-            }
-            // Try another speaker next iteration
-            hasActivity = true;
+        if (Math.random() >= effectiveProb) {
+            // Character stays quiet — mark as spoken so we don't pick them again
+            // but don't generate a message
+            spokenThisSequence.add(selectedSpeaker.id);
             continue;
         }
 
-        if (isGuaranteedTurn) {
-            hasGuaranteedResponse = true;
-        }
-
+        // ✅ Character speaks
         if (onSpeakerChange) onSpeakerChange(selectedSpeaker);
 
-        const tempDataForCall = { ...workingData, chatMessageHistory: [...workingData.chatMessageHistory] };
-        
-        const resultData = await executor(tempDataForCall, selectedSpeaker, abortController.signal, onTokenStream || (() => {}));
+        const resultData = await executor(
+            workingData, 
+            selectedSpeaker, 
+            abortController.signal, 
+            onTokenStream || (() => {})
+        );
 
         if (!resultData) break;
 
-        const newMessage = resultData.chatMessageHistory[resultData.chatMessageHistory.length - 1];
-        const currentChatStamina = staminaMap.get(selectedSpeaker.id) || 0;
-        const newCurrentChatStamina = Math.max(0, currentChatStamina - 1);
-        staminaMap.set(selectedSpeaker.id, newCurrentChatStamina);
-
-        const messageWithNewCurrentChatStamina = { ...newMessage, remainingChatStamina: newCurrentChatStamina };
-
-        workingData = {
-            ...resultData,
-            chatMessageHistory: [...resultData.chatMessageHistory.slice(0, -1), messageWithNewCurrentChatStamina]
-        };
-
-        // ✅ CRITICAL: Update lastSpeakerId so regen pass knows who just spoke
+        workingData = resultData;
         lastSpeakerId = selectedSpeaker.id;
-
-        hasActivity = true;
+        spokenThisSequence.add(selectedSpeaker.id);
 
         try {
             await saveRawChatData(workingData);
@@ -170,5 +109,5 @@ export async function runTurnSequence(
         }
     }
 
-    return { ...workingData, lastUpdatedTimestamp: Date.now() };
+    return workingData;
 }
