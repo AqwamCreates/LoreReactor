@@ -711,14 +711,16 @@ function App() {
 
   const renderModelSubtext = (model: LanguageModel) => {
     const isMultiModal = !!model.mmproj; 
-    const isRunning = runningModels[model.id]?.isRunning;
-    const port = runningModels[model.id]?.port;
+    const modelState = runningModels[model.id];
+    const isRunning = modelState?.isRunning === true;
+    const isIdle = modelState?.isIdle === true;
     const isSelected = selectedModelId === model.id;
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
         {isMultiModal && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
-        {isRunning && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Running :{port}</span>}
-        {isSelected && !isRunning && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
+        {isRunning && isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
+        {isRunning && !isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading...</span>}
+        {isSelected && !isRunning && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
         <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
         <span>{model.description}</span>
@@ -1019,11 +1021,13 @@ function App() {
             specialActionIcon="★" 
             onSpecialAction={(id) => toggleModelLoad(id)} 
             specialActionTooltip={(m) => {
-                const isRunning = runningModels[m.id]?.isRunning;
-                const port = runningModels[m.id]?.port;
+                const modelState = runningModels[m.id];
+                const isRunning = modelState?.isRunning === true;
+                const isIdle = modelState?.isIdle === true;
                 const isSelected = selectedModelId === m.id;
-                if (isRunning && isSelected) return `⏹ Stop & Deselect (Port: ${port})`;
-                if (isRunning) return `⏹ Stop Model (Port: ${port})`;
+                if (isRunning && isIdle && isSelected) return `⏹ Stop & Deselect`;
+                if (isRunning && isIdle) return `⏹ Stop Model`;
+                if (isRunning && !isIdle) return `⏳ Loading...`;
                 if (isSelected) return `✓ Already Selected — Click to Load`;
                 return `▶ Load & Select Model`;
             }} 
