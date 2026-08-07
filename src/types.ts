@@ -227,14 +227,13 @@ export type PromptBlockType =
   | 'System Prompt'        // Character system prompts
   | 'Think Prompt'
   | 'Chat History'         // Conversation history messages
-  | 'User Input';          // The current user message
 
 export interface Profile extends ObjectData {
 
   forceNameReveal: boolean;
   forceEqualInitiative: boolean;
-  chatProbability: number; // -1 means it is disabled and uses character default.
-  maximumChatStamina: number; // -1 means it is disabled and uses character default..
+  chatProbability: number; // 0 means it is disabled and uses character default.
+  maximumChatStamina: number; // 0 means it is disabled and uses character default..
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.

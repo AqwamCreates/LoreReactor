@@ -1,6 +1,7 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Profile, PromptBlockType } from '../types';
+import { SliderInput } from './SliderInput';
 import './main.css';
 
 interface ProfileEditorModalProps {
@@ -15,7 +16,6 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'System Prompt',
     'Think Prompt',
     'Chat History',
-    'User Input',
 ];
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -23,11 +23,16 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
     'System Prompt': 'System Prompt',
     'Think Prompt': 'Think Prompt',
     'Chat History': 'Chat History',
-    'User Input': 'User Input',
 };
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'Context', 'System Prompt', 'Think Prompt', 'Chat History', 'User Input'
+    'Context', 'System Prompt', 'Think Prompt', 'Chat History'
+];
+
+const CACHE_LEVEL_DESCRIPTIONS = [
+    'No injection. Names revealed only through detection.',
+    'Inject all participant names into prompt header.',
+    'Inject all names + system prompts + think prompts upfront.',
 ];
 
 export function ProfileEditorModal({
@@ -40,8 +45,8 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
-    const [chatProbability, setChatProbability] = useState<number>(-1);
-    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(-1);
+    const [chatProbability, setChatProbability] = useState<number>(0);
+    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [inputStrategy, setInputStrategy] = useState<PromptBlockType[]>([...DEFAULT_STRATEGY]);
@@ -57,13 +62,12 @@ export function ProfileEditorModal({
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
-                setChatProbability(existingProfile.chatProbability ?? -1);
-                setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
+                setChatProbability(existingProfile.chatProbability ?? 0);
+                setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-                // Filter out Character Description from saved strategies
                 const savedStrategy = existingProfile.inputStrategy?.length
-                    ? existingProfile.inputStrategy.filter(b => b !== 'Character Description')
+                    ? existingProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
                     : [...DEFAULT_STRATEGY];
                 setInputStrategy(savedStrategy);
             } else {
@@ -71,8 +75,8 @@ export function ProfileEditorModal({
                 setDescription('');
                 setForceNameReveal(false);
                 setForceEqualInitiative(false);
-                setChatProbability(-1);
-                setMaximumChatStamina(-1);
+                setChatProbability(0);
+                setMaximumChatStamina(0);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
                 setInputStrategy([...DEFAULT_STRATEGY]);
@@ -164,7 +168,6 @@ export function ProfileEditorModal({
         setDraggedIndex(null);
     };
 
-    // Move block up/down via buttons
     const moveBlock = (index: number, direction: -1 | 1) => {
         const newIndex = index + direction;
         if (newIndex < 0 || newIndex >= inputStrategy.length) return;
@@ -173,14 +176,12 @@ export function ProfileEditorModal({
         setInputStrategy(newOrder);
     };
 
-    // Add a missing block type to the end
     const addBlock = (blockType: PromptBlockType) => {
         if (!inputStrategy.includes(blockType)) {
             setInputStrategy(prev => [...prev, blockType]);
         }
     };
 
-    // Remove a block from the strategy
     const removeBlock = (index: number) => {
         setInputStrategy(prev => prev.filter((_, i) => i !== index));
     };
@@ -266,102 +267,62 @@ export function ProfileEditorModal({
                             All participants get equal initiative weight regardless of character settings. Useful for balanced multi-character conversations.
                         </div>
 
-                        {/* Chat Probability Override */}
+                        {/* Chat Probability Override — Slider */}
                         <div style={{ marginBottom: '12px' }}>
-                            <label className="editor-label editor-label-small">Chat Probability Override</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input
-                                    type="number"
-                                    value={chatProbability}
-                                    onChange={(e) => setChatProbability(Number(e.target.value))}
-                                    className="editor-input"
-                                    min="-1"
-                                    max="1"
-                                    step="0.05"
-                                    style={{ width: '80px', textAlign: 'right' }}
-                                />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === -1 ? '(Using character default)' : `Override: ${chatProbability}`}
+                                    {chatProbability === 0 ? '(Character default)' : ``}
                                 </span>
                             </div>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
-                                -1 = disabled (use per-character setting). 0–1 = override all participants' chat probability.
-                            </div>
+                            <SliderInput
+                                label=""
+                                value={chatProbability}
+                                minimumValue={0}
+                                maximumValue={1}
+                                stepValue={0.05}
+                                decimals={2}
+                                onChange={setChatProbability}
+                                description="0 = disabled (use per-character setting). Slide right to override all participants."
+                            />
                         </div>
 
-                        {/* Maximum Chat Stamina Override */}
+                        {/* Maximum Chat Stamina Override — Slider */}
                         <div>
-                            <label className="editor-label editor-label-small">Maximum Chat Stamina Override</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input
-                                    type="number"
-                                    value={maximumChatStamina}
-                                    onChange={(e) => setMaximumChatStamina(Number(e.target.value))}
-                                    className="editor-input"
-                                    min="-1"
-                                    max="100"
-                                    step="1"
-                                    style={{ width: '80px', textAlign: 'right' }}
-                                />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === -1 ? '(Using character default)' : `Override: ${maximumChatStamina}`}
+                                    {maximumChatStamina === 0 ? '(Character default)' : ``}
                                 </span>
                             </div>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
-                                -1 = disabled (use per-character setting). Positive value = override all participants' stamina cap.
-                            </div>
+                            <SliderInput
+                                label=""
+                                value={maximumChatStamina}
+                                minimumValue={0}
+                                maximumValue={50}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setMaximumChatStamina(Math.round(val))}
+                                description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
+                            />
                         </div>
                     </div>
 
-                    {/* Cache Invalidation Reduction */}
+                    {/* Cache Invalidation Reduction — Slider */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Cache Invalidation Reduction</span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label className="editor-checkbox-label" style={{ cursor: 'pointer' }}>
-                                <input
-                                    type="radio"
-                                    name="cacheLevel"
-                                    checked={cacheLevel === 0}
-                                    onChange={() => setCacheLevel(0)}
-                                    className="editor-checkbox-input"
-                                    style={{ borderRadius: '50%' }}
-                                />
-                                <span>Level 0 — None</span>
-                            </label>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '26px' }}>
-                                Default behavior. Names revealed only through detection.
-                            </div>
-
-                            <label className="editor-checkbox-label" style={{ cursor: 'pointer', marginTop: '4px' }}>
-                                <input
-                                    type="radio"
-                                    name="cacheLevel"
-                                    checked={cacheLevel === 1}
-                                    onChange={() => setCacheLevel(1)}
-                                    className="editor-checkbox-input"
-                                    style={{ borderRadius: '50%' }}
-                                />
-                                <span>Level 1 — Inject Names</span>
-                            </label>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '26px' }}>
-                                Injects all participant names into the prompt header so the model knows them upfront. Reduces cache misses from name corrections.
-                            </div>
-
-                            <label className="editor-checkbox-label" style={{ cursor: 'pointer', marginTop: '4px' }}>
-                                <input
-                                    type="radio"
-                                    name="cacheLevel"
-                                    checked={cacheLevel === 2}
-                                    onChange={() => setCacheLevel(2)}
-                                    className="editor-checkbox-input"
-                                    style={{ borderRadius: '50%' }}
-                                />
-                                <span>Level 2 — Inject Names + All Prompts</span>
-                            </label>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '26px' }}>
-                                Also injects all participants' system prompts and think prompts upfront. Maximum cache stability.
-                            </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
                         </div>
+                        <SliderInput
+                            label=""
+                            value={cacheLevel}
+                            minimumValue={0}
+                            maximumValue={2}
+                            stepValue={1}
+                            decimals={0}
+                            onChange={(val) => setCacheLevel(Math.round(val))}
+                            description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''}
+                        />
                     </div>
 
                     {/* Strip Think Tokens */}
@@ -441,7 +402,6 @@ export function ProfileEditorModal({
                             })}
                         </div>
 
-                        {/* Add missing blocks */}
                         {missingBlocks.length > 0 && (
                             <div style={{ marginTop: '8px' }}>
                                 <select
