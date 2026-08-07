@@ -890,7 +890,7 @@ function App() {
                   </React.Fragment>
                 );
               })}
-              {isLoading && streamingCharacter && (
+              {isLoading && streamingCharacter && streamingText && (
                 <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
                   {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
                     <div className="avatar-column">
