@@ -32,7 +32,8 @@ const DEFAULT_STRATEGY: PromptBlockType[] = [
 const CACHE_LEVEL_DESCRIPTIONS = [
     'No injection. Names revealed only through detection.',
     'Inject all participant names into prompt header.',
-    'Inject all names + system prompts + think prompts upfront.',
+    'Inject names + all system prompts upfront.',
+    'Inject names + system prompts + think prompts upfront. Maximum stability.',
 ];
 
 export function ProfileEditorModal({
@@ -317,7 +318,7 @@ export function ProfileEditorModal({
                             label=""
                             value={cacheLevel}
                             minimumValue={0}
-                            maximumValue={2}
+                            maximumValue={3}
                             stepValue={1}
                             decimals={0}
                             onChange={(val) => setCacheLevel(Math.round(val))}
