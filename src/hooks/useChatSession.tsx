@@ -853,6 +853,9 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
+        // ✅ Track message count before regeneration to detect if AI responded
+        const preRegenMsgCount = trimmedData.chatMessageHistory.length;
+
         try {
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
                 return handleServerResponse(data, char, signal, onToken, undefined, undefined);
@@ -860,11 +863,24 @@ export function useChatSession() {
 
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
 
-            if (updatedData) {
+            // ✅ Check if any new AI messages were added
+            const postRegenMsgCount = updatedData.chatMessageHistory.length;
+            const hasAIResponse = postRegenMsgCount > preRegenMsgCount;
+
+            if (hasAIResponse) {
                 await saveRawChatData(updatedData);
                 setChatData(updatedData);
             } else if (!controller.signal.aborted) {
-                addToast("Regeneration failed: No output generated.", "error");
+                // ✅ No AI responded — generate ambient narration
+                const ambientData = await generateAmbientNarration(updatedData, controller.signal);
+                
+                if (ambientData) {
+                    await saveRawChatData(ambientData);
+                    setChatData(ambientData);
+                } else {
+                    await saveRawChatData(updatedData);
+                    setChatData(updatedData);
+                }
             }
         } catch (err) { 
             const errorMsg = (err as Error).message;
@@ -876,7 +892,7 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             releaseGenerationLock();
         }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = selectedModel?.contextLength || 4096;
