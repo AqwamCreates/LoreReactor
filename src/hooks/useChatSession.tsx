@@ -7,13 +7,12 @@ import { runTurnSequence } from '../services/ChatOrchestrator';
 import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
+import { estimateTokens } from '../utilities/tokenCounter';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 
 const baseEngine = new LargeLanguageModelInferenceEngine();
-
-const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
 const convertFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -318,14 +317,12 @@ export function useChatSession() {
 
     // ✅ Generate ambient narration via keyword matching — no LLM dependency
     const generateAmbientNarration = useCallback(async (data: ChatData, _signal: AbortSignal): Promise<ChatData | null> => {
-        // Gather text from recent messages (exclude ambient narrator)
         const recentText = data.chatMessageHistory
             .filter(m => m.character.id !== '__ambient_narrator__')
             .slice(-8)
             .map(m => m.textContent.toLowerCase())
             .join(' ');
 
-        // Score each category by keyword matches
         let bestCategory: typeof AMBIENT_POOL[0] | null = null;
         let bestScore = 0;
 
@@ -340,10 +337,8 @@ export function useChatSession() {
             }
         }
 
-        // Pick from matched category or fallback
         const pool = bestCategory ? bestCategory.lines : AMBIENT_FALLBACK;
 
-        // Avoid recent repeats
         const recentAmbient = data.chatMessageHistory
             .filter(m => m.character.id === '__ambient_narrator__')
             .slice(-3)
@@ -353,7 +348,6 @@ export function useChatSession() {
         const finalPool = available.length > 0 ? available : pool;
         const selected = finalPool[Math.floor(Math.random() * finalPool.length)];
 
-        // Simulate streaming effect
         setStreamingCharacter(AMBIENT_NARRATOR);
         setStreamingText("");
 
@@ -426,8 +420,7 @@ export function useChatSession() {
                     return null;
                 }
 
-                const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
-                
+                // ✅ Resolve runtime port BEFORE using it
                 const runtimePort = currentModel?.id 
                     ? currentRunningModels[currentModel.id]?.port 
                     : undefined;
@@ -440,6 +433,9 @@ export function useChatSession() {
                     }
                     return null;
                 }
+
+                // ✅ Pass effectivePort to prepareRequestBody for accurate token counting
+                const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, effectivePort);
                 
                 const modelContext = {
                     apiKey: currentModel.apiKey,
@@ -490,14 +486,17 @@ export function useChatSession() {
                             data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
                         );
                     } else if (currentModel) {
-                        const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64);
-                        const runtimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
-                        const effectivePort = runtimePort || (currentModel.parameters as any)?._runtimePort;
+                        // ✅ Resolve port for retry too
+                        const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
+                        const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
+                        
+                        const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
+                        
                         const retryModelContext = {
                             apiKey: currentModel.apiKey,
                             backend: currentModel.backend,
                             modelPath: currentModel.model,
-                            runtimePort: effectivePort
+                            runtimePort: retryEffectivePort
                         };
                         rawText = await baseEngine.generateStream(
                             retryRequestBody,
@@ -756,7 +755,6 @@ export function useChatSession() {
             setChatData(tempData);
             await saveRawChatData(tempData);
 
-            // ✅ Clear streaming text before each turn so thinking indicator shows during cache invalidation
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
                 setStreamingText("");
                 return handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
@@ -764,7 +762,6 @@ export function useChatSession() {
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             
-            // ✅ Check if any new AI messages were added (beyond the user message we added)
             const originalMsgCount = tempData.chatMessageHistory.length;
             const newMsgCount = updatedData.chatMessageHistory.length;
             const hasAIResponse = newMsgCount > originalMsgCount;
@@ -773,7 +770,6 @@ export function useChatSession() {
                 await saveRawChatData(updatedData);
                 setChatData(updatedData);
             } else if (!controller.signal.aborted) {
-                // ✅ No AI responded — generate ambient narration
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {
@@ -856,11 +852,9 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        // ✅ Track message count before regeneration to detect if AI responded
         const preRegenMsgCount = trimmedData.chatMessageHistory.length;
 
         try {
-            // ✅ Clear streaming text before each turn so thinking indicator shows during cache invalidation
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
                 setStreamingText("");
                 return handleServerResponse(data, char, signal, onToken, undefined, undefined);
@@ -868,7 +862,6 @@ export function useChatSession() {
 
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
 
-            // ✅ Check if any new AI messages were added
             const postRegenMsgCount = updatedData.chatMessageHistory.length;
             const hasAIResponse = postRegenMsgCount > preRegenMsgCount;
 
@@ -876,7 +869,6 @@ export function useChatSession() {
                 await saveRawChatData(updatedData);
                 setChatData(updatedData);
             } else if (!controller.signal.aborted) {
-                // ✅ No AI responded — generate ambient narration
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {

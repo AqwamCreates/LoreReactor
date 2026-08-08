@@ -1,7 +1,7 @@
 // src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Context } from '../types';
+import type { Context, Character } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import './main.css';
 
@@ -11,6 +11,7 @@ interface ContextEditorModalProps {
     onSave: (context: Context) => void;
     onDelete?: (id: string) => void;
     existingContext?: Context | null;
+    allCharacters?: Character[];
 }
 
 export function ContextEditorModal({
@@ -19,6 +20,7 @@ export function ContextEditorModal({
     onSave,
     onDelete,
     existingContext,
+    allCharacters = [],
 }: ContextEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -36,6 +38,13 @@ export function ContextEditorModal({
     const [testResult, setTestResult] = useState<boolean | null>(null);
     const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ✅ Lorebook fields
+    const [tokenBudget, setTokenBudget] = useState<number>(0);
+    const [recursiveScan, setRecursiveScan] = useState<boolean>(false);
+    const [preventRecursion, setPreventRecursion] = useState<boolean>(false);
+    const [insertionDepth, setInsertionDepth] = useState<number>(0);
+    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
 
     useEffect(() => {
         if (isOpen) {
@@ -57,6 +66,13 @@ export function ContextEditorModal({
                 setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
                 
                 setUseBase64Encoding(existingContext.useBase64Encoding ?? false);
+
+                // ✅ Load lorebook fields
+                setTokenBudget(existingContext.tokenBudget ?? 0);
+                setRecursiveScan(existingContext.recursiveScan ?? false);
+                setPreventRecursion(existingContext.preventRecursion ?? false);
+                setInsertionDepth(existingContext.insertionDepth ?? 0);
+                setCharacterBindings(existingContext.characterBindings ?? []);
             } else {
                 setName('');
                 setDescription('');
@@ -67,6 +83,13 @@ export function ContextEditorModal({
                 setRegexTrigger('');
                 setRegexContext('global');
                 setRegexTarget('everyone');
+
+                // ✅ Default lorebook fields
+                setTokenBudget(0);
+                setRecursiveScan(false);
+                setPreventRecursion(false);
+                setInsertionDepth(0);
+                setCharacterBindings([]);
             }
             setErrors({});
             setTestText('');
@@ -150,6 +173,12 @@ export function ContextEditorModal({
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
             useBase64Encoding: useBase64Encoding,
+            // ✅ Lorebook fields — only include non-default values to keep data clean
+            tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
+            recursiveScan: recursiveScan || undefined,
+            preventRecursion: preventRecursion || undefined,
+            insertionDepth: insertionDepth !== 0 ? insertionDepth : undefined,
+            characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
             firstCreatedTimestamp: isNewClone ? now : (existingContext?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -183,6 +212,9 @@ export function ContextEditorModal({
     const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;
+
+    // ✅ Helper to get character by ID
+    const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -283,6 +315,124 @@ export function ContextEditorModal({
                         )}
                     </div>
 
+                    {/* ✅ Lorebook Section */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Lorebook</span>
+
+                        {/* Token Budget + Insertion Depth row */}
+                        <div className="editor-row">
+                            <div>
+                                <label className="editor-label editor-label-small">Token Budget</label>
+                                <input 
+                                    type="number" 
+                                    step="1" 
+                                    min="0"
+                                    value={tokenBudget} 
+                                    onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))}
+                                    className="editor-input"
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    title="Max tokens this entry can consume. 0 = auto-estimate. Total budget: 2048. Bottom entries dropped first on overflow."
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = auto · bottom dropped first</div>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Insertion Depth</label>
+                                <input 
+                                    type="number" 
+                                    step="1" 
+                                    min="0"
+                                    value={insertionDepth} 
+                                    onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))}
+                                    className="editor-input"
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    title="Where in the prompt to place this entry. 0 = top of context block, higher = closer to chat history"
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = top · higher = closer to chat</div>
+                            </div>
+                        </div>
+
+                        {/* Recursive Scan + Prevent Recursion toggles */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={recursiveScan}
+                                    onChange={(e) => setRecursiveScan(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span style={{ fontSize: '0.8rem' }}>Recursive Scan</span>
+                            </label>
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-4px' }}>
+                                This entry's text can trigger other entries
+                            </div>
+
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={preventRecursion}
+                                    onChange={(e) => setPreventRecursion(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span style={{ fontSize: '0.8rem' }}>Recursion Only</span>
+                            </label>
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-4px' }}>
+                                Only activated by other entries' recursion, never by direct chat scan
+                            </div>
+                        </div>
+
+                        {/* ✅ Character Bindings — dropdown-add pattern like ModelEditorModal stop patterns */}
+                        {allCharacters.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                                <span className="editor-label editor-label-small">Character Bindings</span>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '8px' }}>
+                                    Only inject when these characters speak. Empty = all characters.
+                                </div>
+
+                                {/* Selected bindings list */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                                    {characterBindings.length === 0 && (
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No character bindings — applies to all.</div>
+                                    )}
+                                    {characterBindings.map(id => {
+                                        const char = getCharacterById(id);
+                                        if (!char) return null;
+                                        return (
+                                            <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{char.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))}
+                                                    style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px' }}
+                                                    title="Remove binding"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Dropdown to add */}
+                                <select
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val && !characterBindings.includes(val)) {
+                                            setCharacterBindings(prev => [...prev, val]);
+                                        }
+                                        e.target.value = "";
+                                    }}
+                                    className="editor-select"
+                                    defaultValue=""
+                                >
+                                    <option value="" disabled>+ Bind to a character</option>
+                                    {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Base64 Encoding Toggle */}
                     <div className="editor-toggle-section">
                         <label className="editor-checkbox-label">
@@ -292,7 +442,7 @@ export function ContextEditorModal({
                                 onChange={(e) => setUseBase64Encoding(e.target.checked)}
                                 className="editor-checkbox-input"
                             />
-                            <span className="editor-label">Encode Text & Images as Base64</span>
+                            <span className="editor-label">Encode text as Base64</span>
                         </label>
                     </div>
 
