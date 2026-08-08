@@ -1895,3 +1895,23 @@ select {
     background: var(--border);
 }
 
+/* Text formatting for RP messages */
+.fmt-quote {
+    color: #f0a050;
+}
+
+.fmt-italic {
+    color: var(--accent);
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.fmt-bold {
+    color: #ffffff;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
+}
+
+.fmt-normal {
+    color: var(--text-h) !important;
+}
