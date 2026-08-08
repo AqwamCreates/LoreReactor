@@ -756,8 +756,11 @@ export function useChatSession() {
             setChatData(tempData);
             await saveRawChatData(tempData);
 
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => 
-                handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
+            // ✅ Clear streaming text before each turn so thinking indicator shows during cache invalidation
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
+                setStreamingText("");
+                return handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
+            };
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
             
@@ -857,7 +860,9 @@ export function useChatSession() {
         const preRegenMsgCount = trimmedData.chatMessageHistory.length;
 
         try {
+            // ✅ Clear streaming text before each turn so thinking indicator shows during cache invalidation
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
+                setStreamingText("");
                 return handleServerResponse(data, char, signal, onToken, undefined, undefined);
             };
 
