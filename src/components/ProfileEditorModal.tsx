@@ -12,21 +12,21 @@ interface ProfileEditorModalProps {
 }
 
 const ALL_BLOCK_TYPES: PromptBlockType[] = [
-    'Context',
     'System Prompt',
     'Think Prompt',
+    'Context',
     'Chat History',
 ];
 
 const BLOCK_TYPE_LABELS: Record<string, string> = {
-    'Context': 'Context',
     'System Prompt': 'System Prompt',
     'Think Prompt': 'Think Prompt',
+    'Context': 'Context',
     'Chat History': 'Chat History',
 };
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'Context', 'System Prompt', 'Think Prompt', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Context', 'Chat History'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [

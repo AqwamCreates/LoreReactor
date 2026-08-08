@@ -22,9 +22,11 @@ const thinkStartString = "<think>"
 
 const thinkEndString = "</think>"
 
-// ✅ User Input removed — only user-reorderable blocks remain
+// ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
+// Optimized for KV cache stability (stable blocks first, volatile chat history last)
+// and attention priority (behavioral instructions before reference material).
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'Context', 'System Prompt', 'Think Prompt', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Context', 'Chat History'
 ];
 
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
