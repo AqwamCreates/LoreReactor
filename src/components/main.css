@@ -1799,3 +1799,39 @@ select {
 .sampler-stop-remove-btn:hover {
     opacity: 1;
 }
+
+.bubble-ambient {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-style: italic;
+    opacity: 0.6;
+    text-align: center;
+    margin: 8px auto;
+    padding: 4px 16px !important;
+    max-width: 80%;
+    font-size: 0.85rem;
+    color: var(--text-h);
+}
+
+.bubble-ambient .message-text {
+    color: var(--text-h);
+    opacity: 0.7;
+}
+
+.bubble-ambient {
+    font-style: italic;
+    opacity: 0.6;
+}
+
+.bubble-ambient .message-text {
+    color: var(--text-h);
+    opacity: 0.7;
+}
+
+.cinematic-bubble-header-ambient {
+    opacity: 0.5;
+    font-style: italic;
+    letter-spacing: 2px;
+}
+
