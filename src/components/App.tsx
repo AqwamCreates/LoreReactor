@@ -27,6 +27,8 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import './main.css';
 
+import { formatMessageText } from '../utilities/textFormatter';
+
 import type { 
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy, 
   ChatData, RawChatData, Extension, InterjectableAction, Profile 
@@ -862,7 +864,7 @@ function App() {
                           </div>
                         ) : (
                           <>
-                            <span className="message-text">{message.textContent}</span>
+                            <span className="message-text">{formatMessageText(message.textContent)}</span>
                             <div className="message-toolbar">
                               {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                                 <>
@@ -931,7 +933,7 @@ function App() {
                   <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
                     {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
                     <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                      <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
+                      <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
                       <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
                     </div>
                   </div>
