@@ -1315,6 +1315,19 @@ select {
   display: none !important;
 }
 
+.action-menu-item-disabled {
+    cursor: not-allowed;
+}
+
+.action-menu-item-disabled .action-menu-item-label {
+    opacity: 0.3;
+    color: var(--text-h);
+}
+
+.action-menu-item-disabled:hover {
+    background: transparent;
+}
+
 /* =============================================================================
    CINEMATIC MODE
    ============================================================================= */
