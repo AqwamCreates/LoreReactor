@@ -56,6 +56,8 @@ interface LoadStep {
   done: boolean;
 }
 
+const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+
 function App() {
   // --- Session & Managers ---
   const { 
@@ -296,12 +298,15 @@ function App() {
         const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
         if (!msg || !msg.character) return;
 
+        // ✅ Skip ambient narrator messages for cinematic avatar
+        if (msg.character.id === AMBIENT_NARRATOR_ID) return;
+
         let avatarToShow: Character | null = msg.character;
         
         if (msg.character.id === currentCharacter?.id) {
           const currentIndex = chatData.chatMessageHistory.indexOf(msg);
           const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
-          if (prevMessage && prevMessage.character && prevMessage.character.id !== currentCharacter?.id) {
+          if (prevMessage && prevMessage.character && prevMessage.character.id !== currentCharacter?.id && prevMessage.character.id !== AMBIENT_NARRATOR_ID) {
             avatarToShow = prevMessage.character;
           } else {
             avatarToShow = null;
@@ -320,7 +325,7 @@ function App() {
     if (messages.length > 0 && !centerAvatar) {
       for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
         const msg = chatData.chatMessageHistory[i];
-        if (msg.character && msg.character.id !== currentCharacter?.id) {
+        if (msg.character && msg.character.id !== currentCharacter?.id && msg.character.id !== AMBIENT_NARRATOR_ID) {
           setCenterAvatar(msg.character);
           break;
         }
@@ -820,6 +825,7 @@ function App() {
             <div className="chat-history" ref={chatHistoryRef}>
               {chatData?.chatMessageHistory.map((message, index) => {
                 if (!message.character) return null;
+                const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
                 const isProtagonist = message.character.id === currentCharacter?.id;
                 const displayName = getDelayedDisplayName(chatData, index, message.character.id);
                 const isEditing = editingId === message.id;
@@ -827,7 +833,7 @@ function App() {
                 const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
                 const isStem = isStemMessage(message.id);
                 const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
-                const showSideAvatar = viewMode === 'ladder' && !isProtagonist;
+                const showSideAvatar = viewMode === 'ladder' && !isProtagonist && !isAmbient;
 
                 return (
                   <React.Fragment key={message.id}>
@@ -844,8 +850,8 @@ function App() {
                           <span className="avatar-name">{displayName}</span>
                         </div>
                       )}
-                      <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
-                        {viewMode === 'cinematic' && (<div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, index, message.character.id)}</span></div>)}
+                      <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''}`}>
+                        {viewMode === 'cinematic' && (<div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}><span>{isAmbient ? '✦' : getDelayedDisplayName(chatData, index, message.character.id)}</span></div>)}
                         {isEditing ? (
                           <div className="edit-mode">
                             <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} />
@@ -894,7 +900,7 @@ function App() {
               })}
               {isLoading && streamingCharacter && streamingText && (
                 <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && (
+                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
                     <div className="avatar-column">
                       <div style={{ position: 'relative' }}>
                         {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />)}
@@ -902,8 +908,8 @@ function App() {
                       <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
                     </div>
                   )}
-                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai`}>
-                    {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
+                    {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
                     <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                       <span className="message-text" style={{ display: 'inline' }}>{streamingText}</span>
                       <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
