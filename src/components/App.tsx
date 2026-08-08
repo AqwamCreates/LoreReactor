@@ -898,6 +898,26 @@ function App() {
                   </React.Fragment>
                 );
               })}
+              {/* ✅ Thinking indicator — shows while waiting for first token during cache invalidation */}
+              {isLoading && streamingCharacter && !streamingText && (
+                <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
+                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
+                    <div className="avatar-column">
+                      <div style={{ position: 'relative' }}>
+                        {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer', opacity: 0.5 }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer', opacity: 0.5 }} />)}
+                      </div>
+                      <span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
+                    </div>
+                  )}
+                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
+                    {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+                    <span className="thinking-indicator">
+                      <span className="thinking-text">Thinking</span>
+                      <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+                    </span>
+                  </div>
+                </div>
+              )}
               {isLoading && streamingCharacter && streamingText && (
                 <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
                   {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
