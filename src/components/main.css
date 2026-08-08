@@ -1872,3 +1872,13 @@ select {
     80%, 100% { opacity: 0.2; }
 }
 
+.editor-btn-import {
+    background: var(--social-bg);
+    color: var(--text-h);
+    border: 1px solid var(--border);
+}
+
+.editor-btn-import:hover:not(:disabled) {
+    background: var(--border);
+}
+
