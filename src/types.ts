@@ -250,4 +250,18 @@ export interface InterjectableAction {
   label: string;
   count: number;
 }
-
+export interface ParsedCharacterCard {
+    name: string;
+    description: string;
+    first_mes: string;
+    personality?: string;
+    scenario?: string;
+    mes_example?: string;
+    creator_notes?: string;
+    system_prompt?: string;
+    post_history_instructions?: string;
+    alternate_greetings?: string[];
+    tags?: string[];
+    creator?: string;
+    character_version?: string;
+}

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Character, Sampler } from '../types';
 import { uploadCharacterImage } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
+import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
 import './main.css';
 
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
@@ -44,6 +45,7 @@ export function CharacterEditorModal({
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cardImportRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -141,6 +143,38 @@ export function CharacterEditorModal({
         setImageFile(null);
         setImagePreview(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // ✅ Import character card from PNG
+    const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        const card = await parseCharacterCard(file);
+        if (!card) {
+            setSubmitError("Not a valid character card PNG. Supported formats: TavernAI V1/V2.");
+            return;
+        }
+
+        const fields = mapCardToEditorFields(card);
+        setName(fields.name);
+        setDescription(fields.description);
+        setSystemPrompt(fields.systemPrompt);
+        setThinkPrompt(fields.thinkPrompt);
+        setFirstMessage(fields.firstMessage);
+
+        // Also use the PNG itself as the character image
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+
+        // Reset auto-detection so blur triggers fresh detection on imported text
+        setAutoDetected({ iw: null, cp: null, ms: null });
+        setInitiativeWeightStr('-1');
+        setChatProbabilityStr('-1');
+        setMaximumChatStaminaStr('-1');
+
+        setSubmitError(null);
     };
 
     // ✅ Shared logic to build a character object from current form state
@@ -262,6 +296,15 @@ export function CharacterEditorModal({
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>
                                 Clone
                             </button>
+                        )}
+                        {/* ✅ Import character card button — only when creating new */}
+                        {!existingCharacter && (
+                            <>
+                                <button type="button" className="editor-btn editor-btn-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>
+                                    Import
+                                </button>
+                                <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />
+                            </>
                         )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>
                             {isUploading ? 'Uploading...' : 'Save'}
