@@ -1146,7 +1146,26 @@ function App() {
             <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
             <div className="action-menu-list">
               {getFilteredActions().map((action) => (
-                <div key={action.label} className="action-menu-item" role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); if (targetChar) handleActionInterject(action.label, targetChar); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); if (targetChar) handleActionInterject(action.label, targetChar); } }}>
+                <div 
+                  key={action.label} 
+                  className={`action-menu-item ${!isModelReady ? 'action-menu-item-disabled' : ''}`} 
+                  role="button" 
+                  tabIndex={isModelReady ? 0 : -1} 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (!isModelReady) return;
+                    const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); 
+                    if (targetChar) handleActionInterject(action.label, targetChar); 
+                  }} 
+                  onKeyDown={(e) => { 
+                    if (!isModelReady) return;
+                    if (e.key === 'Enter' || e.key === ' ') { 
+                      e.stopPropagation(); 
+                      const targetChar = allCharacters.find(c => c.id === actionMenuTarget.charId); 
+                      if (targetChar) handleActionInterject(action.label, targetChar); 
+                    } 
+                  }}
+                >
                   <span className="action-menu-item-label">{action.label}</span>
                   <div className="action-meta-container">
                     <span className="action-count-badge" onClick={(e) => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Click to remove action">
