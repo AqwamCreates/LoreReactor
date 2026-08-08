@@ -2,40 +2,32 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { detectName } from './nameDetection';
-
-// Apparently tokens like "{" and "}" (without the quotation marks) works quite well!
-// "{" and "}" (without the quotation marks) is basically common in programming languages. Very often, for a code to work, the syntax must be correct. As a result, there is an implicit assumption that the words must be selected to certain rules in roleplay.
-// "<" and ">" (without the quotation marks) also works nicely.
-// "[" and "]" (without the quotation marks) somewhat works.
-
-// When you combine this pattern "{ : }" (without the quotation marks), it looks like a JSON-file to be processed.
+import { countTokens, estimateTokens } from '../utilities/tokenCounter';
 
 const contextStartString = "{"
-
 const contextEndString = "}"
-
 const turnStartString = "{"
-
 const turnEndString = "}"
-
-const thinkStartString = "<think>"
-
-const thinkEndString = "</think>"
+const thinkStartString = ""
+const thinkEndString = ""
 
 // ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
-// Optimized for KV cache stability (stable blocks first, volatile chat history last)
-// and attention priority (behavioral instructions before reference material).
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Context', 'Chat History'
 ];
 
+// ✅ Maximum recursion depth for lorebook scanning — prevents infinite loops
+const MAX_RECURSION_DEPTH = 5;
+
+// ✅ Default total token budget for all context entries combined
+// Entries are dropped from the bottom of the list first when this is exceeded
+const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
+
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
     if (!text) return text;
-    
     let result = text;
     result = result.replace(/\{\{char\}\}/g, characterName);
     result = result.replace(/\{\{user\}\}/g, protagonistName);
-    
     return result;
 }
 
@@ -123,33 +115,171 @@ function filterArrayBasedOnTarget(
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
-/**
- * ✅ Resolves effective chat probability for a character, applying profile override.
- * 0 = disabled (use character default). >0 = override value (0.01–1).
- */
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
     const profileOverride = profile?.chatProbability ?? 0;
     if (profileOverride > 0) return profileOverride;
     return character.chatProbability ?? 0.5;
 }
 
-/**
- * ✅ Resolves effective maximum chat stamina for a character, applying profile override.
- * 0 = disabled (use character default). >0 = override value.
- */
 export function getEffectiveMaxChatStamina(character: Character, profile?: Profile): number {
     const profileOverride = profile?.maximumChatStamina ?? 0;
     if (profileOverride > 0) return profileOverride;
     return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
 }
 
-/**
- * ✅ Resolves effective initiative weight for a character, applying forceEqualInitiative.
- * Returns 1 when equal initiative is forced, otherwise the character's weight.
- */
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
     if (profile?.forceEqualInitiative) return 1;
     return character.initiativeWeight ?? 1;
+}
+
+/**
+ * ✅ Checks if a context entry's keyword/regex matches against a search string.
+ */
+function doesContextMatch(context: Context, searchSpace: string): boolean {
+    const regexTrigger = context.regularExpressionTrigger;
+    if (!regexTrigger) return true;
+    try {
+        const regex = new RegExp(regexTrigger);
+        return regex.test(searchSpace);
+    } catch (e) {
+        console.warn(`Invalid regex in context ${context.name}`, e);
+        return true;
+    }
+}
+
+/**
+ * ✅ Checks if a context entry is bound to the current speaking character.
+ */
+function isCharacterBound(context: Context, currentCharacterId: string): boolean {
+    if (!context.characterBindings || context.characterBindings.length === 0) return true;
+    return context.characterBindings.includes(currentCharacterId);
+}
+
+/**
+ * ✅ Lorebook-style recursive context resolution.
+ * 
+ * Phase 1: Scan chat text for direct keyword matches (respecting scope/target filters).
+ *          Entries preserve their original list order from chatData.contexts.
+ * Phase 2: For each matched entry with recursiveScan=true, scan its text against
+ *          all unmatched entries' keywords. Repeat up to MAX_RECURSION_DEPTH.
+ * Phase 3: Enforce token budget — walk list top-to-bottom, drop entries that
+ *          would exceed the budget. Then sort surviving entries by insertionDepth.
+ * 
+ * Budget enforcement uses list order (not a separate priority field):
+ * entries at the top of the user's ordered list survive, bottom entries get cut.
+ * 
+ * Token counting uses llama-server /tokenize when runtimePort is available,
+ * falling back to ~4 chars/token estimation otherwise.
+ */
+async function resolveContextEntries(
+    contexts: Context[],
+    chatSearchSpace: string,
+    currentCharacterId: string,
+    getFilteredData: (ctxType: string, tgtType: string) => { characterIdArray: string[]; textContentArray: string[] },
+    runtimePort?: number
+): Promise<{ context: Context; formattedLine: string }[]> {
+    const activated = new Set<string>();
+    const activatedMap = new Map<string, Context>();
+
+    // --- Phase 1: Direct scan (preserves list order) ---
+    for (const context of contexts) {
+        if (activated.has(context.id)) continue;
+        if (context.preventRecursion) continue;
+        if (!isCharacterBound(context, currentCharacterId)) continue;
+
+        const ctxType = context.regularExpressionContext || 'global';
+        const tgtType = context.regularExpressionTarget || 'everyone';
+        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
+
+        if (filteredTexts.length === 0 && !context.regularExpressionTrigger) {
+            if (ctxType !== 'global' || tgtType !== 'everyone') continue;
+        }
+
+        const searchSpace = filteredTexts.join('\n');
+        const combinedSearch = searchSpace + '\n' + chatSearchSpace;
+
+        if (doesContextMatch(context, combinedSearch)) {
+            activated.add(context.id);
+            activatedMap.set(context.id, context);
+        }
+    }
+
+    // --- Phase 2: Recursive scanning ---
+    let recursionDepth = 0;
+    let newActivations = true;
+
+    while (newActivations && recursionDepth < MAX_RECURSION_DEPTH) {
+        newActivations = false;
+        recursionDepth++;
+
+        const activatedText = Array.from(activatedMap.values())
+            .map(c => c.text || '')
+            .join('\n');
+
+        if (!activatedText.trim()) break;
+
+        for (const context of contexts) {
+            if (activated.has(context.id)) continue;
+            if (!isCharacterBound(context, currentCharacterId)) continue;
+
+            if (doesContextMatch(context, activatedText)) {
+                activated.add(context.id);
+                activatedMap.set(context.id, context);
+                newActivations = true;
+            }
+        }
+    }
+
+    // --- Phase 3: Format, enforce budget by list order, sort by depth ---
+
+    const orderedActivated: Context[] = [];
+    for (const context of contexts) {
+        if (activatedMap.has(context.id)) {
+            orderedActivated.push(context);
+        }
+    }
+
+    // Format each entry and count tokens (async via llama-server or sync fallback)
+    const formattedEntries: { context: Context; formattedLine: string; tokenCount: number }[] = [];
+
+    for (const context of orderedActivated) {
+        const contextText = context.text;
+        if (!contextText) continue;
+
+        const formattedLine = `${contextStartString}${contextText}${contextEndString}`;
+
+        // ✅ Use per-entry tokenBudget if set, otherwise count actual tokens
+        let tokenCount: number;
+        if (context.tokenBudget && context.tokenBudget > 0) {
+            tokenCount = context.tokenBudget;
+        } else if (runtimePort) {
+            tokenCount = await countTokens(formattedLine, runtimePort);
+        } else {
+            tokenCount = estimateTokens(formattedLine);
+        }
+
+        formattedEntries.push({ context, formattedLine, tokenCount });
+    }
+
+    // ✅ Enforce total token budget — walk top-to-bottom, drop entries that overflow
+    let totalTokens = 0;
+    const budgetEntries: typeof formattedEntries = [];
+
+    for (const entry of formattedEntries) {
+        if (totalTokens + entry.tokenCount <= DEFAULT_CONTEXT_TOKEN_BUDGET) {
+            totalTokens += entry.tokenCount;
+            budgetEntries.push(entry);
+        }
+    }
+
+    // Sort surviving entries by insertionDepth (lower = closer to top of prompt)
+    budgetEntries.sort((a, b) => {
+        const depthA = a.context.insertionDepth ?? 0;
+        const depthB = b.context.insertionDepth ?? 0;
+        return depthA - depthB;
+    });
+
+    return budgetEntries.map(e => ({ context: e.context, formattedLine: e.formattedLine }));
 }
 
 interface BuildResult {
@@ -158,7 +288,7 @@ interface BuildResult {
     activeContextsForImages: Context[];
 }
 
-export function buildPromptAndStopPatterns(chatData: ChatData, character: Character): BuildResult {
+export async function buildPromptAndStopPatterns(chatData: ChatData, character: Character, runtimePort?: number): Promise<BuildResult> {
     const chatMessageHistory = chatData.chatMessageHistory;
     const contexts = chatData.contexts || [];
     const sampler = character.sampler;
@@ -169,7 +299,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     let systemPrompt = character.systemPrompt;
     let thinkPrompt = character.thinkPrompt;
 
-    // ✅ Read profile settings
     const profile = chatData.Profile;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
@@ -198,45 +327,39 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         return combinationCache[ctxType][tgtType];
     };
 
-    // --- Build each prompt block separately ---
-
-    // CONTEXT BLOCK
+    // ✅ CONTEXT BLOCK — lorebook-style resolution with async token counting
     const contextLines: string[] = [];
-    for (const context of contexts) {
-        const ctxType = context.regularExpressionContext || 'global';
-        const tgtType = context.regularExpressionTarget || 'everyone';
-        const regexTrigger = context.regularExpressionTrigger;
-        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
+    const globalChatSearch = textContentArray.join('\n');
 
-        if (filteredTexts.length === 0 && !regexTrigger) {
-            if (ctxType !== 'global' || tgtType !== 'everyone') continue;
-        }
+    const resolvedContexts = await resolveContextEntries(
+        contexts,
+        globalChatSearch,
+        currentCharacterId,
+        getFilteredData,
+        runtimePort
+    );
 
-        const searchSpace = filteredTexts.join('\n');
-        let shouldInject = false;
-        if (!regexTrigger) shouldInject = true;
-        else {
-            try {
-                const regex = new RegExp(regexTrigger);
-                if (regex.test(searchSpace)) shouldInject = true;
-            } catch (e) {
-                console.warn(`Invalid regex in context ${context.name}`, e);
-                shouldInject = true;
+    for (const { context, formattedLine } of resolvedContexts) {
+        let line = formattedLine;
+        if (context.text) {
+            const replacedText = replacePlaceholders(context.text, characterName, protagonistName);
+            if (context.useBase64Encoding) {
+                // ✅ Text base64-encoded when toggle is on
+                const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
+                line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
+            } else {
+                line = `${contextStartString}${replacedText}${contextEndString}`;
             }
         }
+        contextLines.push(line);
 
-        let contextText = context.text;
-
-        if (shouldInject) {
-            if (contextText) {
-                contextText = replacePlaceholders(contextText, characterName, protagonistName);
-                contextLines.push(`${contextStartString}${contextText}${contextEndString}`);
-            }
-            if (context.images && context.images.length > 0 && context.useBase64Encoding) activeContextsForImages.push(context);
+        // ✅ Images always use base64 encoding — no toggle needed
+        if (context.images && context.images.length > 0) {
+            activeContextsForImages.push(context);
         }
     }
 
-    // STOP PATTERNS (not a prompt block, always processed)
+    // STOP PATTERNS
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
@@ -260,7 +383,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // SYSTEM PROMPT BLOCK
     const systemPromptLines: string[] = [];
-    // ✅ cacheLevel >= 2: inject ALL participants' system prompts upfront
     if (cacheLevel >= 2) {
         for (const p of chatData.participants) {
             if (p.systemPrompt) {
@@ -276,7 +398,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
 
     // THINK PROMPT BLOCK
     const thinkPromptLines: string[] = [];
-    // ✅ cacheLevel >= 3: inject ALL participants' think prompts upfront
     if (cacheLevel >= 3) {
         for (const p of chatData.participants) {
             if (p.thinkPrompt) {
@@ -290,19 +411,8 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         thinkPromptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextEndString}`);
     }
 
-    // META THINK BLOCK (formatting/behavior instructions)
-    // Don't delete this comment. Uhm... Thinking hijacking worked a little too well. Also do not use "perfect" or "correct" before the word "formatting" as it will cause over-correction. Meanwhile, "consistent" works slightly weaker than "clean", which is weaker than "proper".
-
-    // Don't delete this comment. The phrase "figured out" is slightly robotic when compared to "thought out".
-
-    // We also need a phrase that stops the the language model from sticking the same topics. So the phrase for topic expansion and exploration is added to give more varied response.
-
-    // I also added awkwardness to avoid the language model from talking to itself.
-
-    // Using UUID is a bad idea as they will flood the attention with irrelevant context, leading a more broken output for some models.
-
+    // META THINK BLOCK
     const metaThinkLines: string[] = [];
-    // ✅ cacheLevel >= 1: inject all participant names upfront to reduce cache invalidation
     let nameInjection = '';
     if (cacheLevel >= 1) {
         const allNames = chatData.participants.map(p => {
@@ -315,7 +425,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
     metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information.${nameInjection}${thinkEndString}${contextEndString}`);
 
     // FATIGUE BLOCK
-    // ✅ Uses profile-overridden maximumChatStamina
     const fatigueLines: string[] = [];
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const effectiveMaxStamina = getEffectiveMaxChatStamina(character, profile);
@@ -334,7 +443,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
-            // ✅ Use participant ID instead of "Unknown Name" when name is not revealed
             const displayName = (isRevealed || isCurrent) ? otherCharacter.name : otherParticipantId;
             if (isRevealed) {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
@@ -344,7 +452,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
     }
 
-    // ✅ USER INPUT BLOCK — always appended at the end, NOT part of reorderable strategy
     const userInputLine = `${turnStartString}${participantId} (${characterName}):`;
 
     // ✅ Assemble prompt blocks according to inputStrategy order
@@ -366,7 +473,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         usedTypes.add(blockType);
     }
 
-    // Append any reorderable blocks not mentioned in the strategy (safety net)
     for (const blockType of DEFAULT_INPUT_STRATEGY) {
         if (!usedTypes.has(blockType)) {
             const lines = blockMap[blockType];
@@ -376,7 +482,6 @@ export function buildPromptAndStopPatterns(chatData: ChatData, character: Charac
         }
     }
 
-    // ✅ User Input completion trigger is ALWAYS last, regardless of strategy
     promptLines.push(userInputLine);
 
     return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
@@ -386,11 +491,12 @@ export async function prepareRequestBody(
     chatData: ChatData, 
     character: Character, 
     characterImageBase64?: string | null,
-    userImageBase64s?: string[]
+    userImageBase64s?: string[],
+    runtimePort?: number
 ): Promise<any> {
     const sampler = character.sampler;
     
-    const { prompt, activeStopPatterns, activeContextsForImages } = buildPromptAndStopPatterns(chatData, character);
+    const { prompt, activeStopPatterns, activeContextsForImages } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
     
@@ -410,6 +516,7 @@ export async function prepareRequestBody(
 
     if (characterImageBase64) allImageData.push({ data: characterImageBase64, id: 12 });
 
+    // ✅ Context images always loaded as base64
     if (activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
             if (!context.images) return [];
@@ -454,25 +561,20 @@ export async function prepareRequestBody(
     return body;
 }
 
-// ✅ forceNameReveal is DISPLAY-ONLY — only affects what the user sees, not prompt building
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
     const profile = chatData.Profile;
-    const forceNameReveal = profile?.forceNameReveal ?? false;
     const stripThinkTokens = profile?.stripThinkTokens ?? false;
 
     let result = text;
 
-    // Strip think tokens if profile says so
     if (stripThinkTokens) {
-        result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
-        // Clean up any leftover whitespace from stripped blocks
+        result = result.replace(/[\s\S]*?<\/think>/g, '');
         result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
     }
 
     chatData.participants.forEach((p, i) => {
         const id = `Character ${i + 1}`;
-        // ✅ forceNameReveal overrides display visibility only
-        const isRevealed = forceNameReveal || chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
+        const isRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
         if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
     });
     return result;
@@ -494,7 +596,6 @@ export function createNewChatData(character: Character): ChatData {
     };
 }
 
-// ✅ UPDATED: Uses profile-overridden maximumChatStamina for remaining stamina calculation
 export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;

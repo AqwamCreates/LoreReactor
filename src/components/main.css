@@ -1901,9 +1901,8 @@ select {
 }
 
 .fmt-italic {
-    color: var(--accent);
+    color: #8899aa;
     font-style: italic;
-    opacity: 0.85;
 }
 
 .fmt-bold {
