@@ -417,11 +417,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     // ✅ Build chat history with summarization pipeline applied in step order
+    // All steps in the list are considered active (presence = enabled)
     const historyLines: string[] = [];
     if (chatMessageHistory.length > 0) {
-        // Get enabled summarization steps sorted by order
-        const enabledSteps = (profile?.summarizationSteps || [])
-            .filter(s => s.enabled)
+        const activeSteps = [...(profile?.summarizationSteps || [])]
             .sort((a, b) => a.order - b.order);
 
         // Start with full message list — each step may transform it
@@ -431,8 +430,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             text: msg.textContent,
         }));
 
-        // Apply each enabled step in order
-        for (const step of enabledSteps) {
+        // Apply each active step in order
+        for (const step of activeSteps) {
             if (step.strategyType === 'Sliding Window Replace') {
                 const windowSize = step.slidingWindowSize ?? 10;
                 const cutoff = Math.max(0, processedMessages.length - windowSize);
