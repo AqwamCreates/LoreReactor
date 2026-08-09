@@ -127,7 +127,6 @@ export async function generatePeriodicCompression(
             insertionDepth: 0,
             tokenBudget: maxTokens,
             recursiveScan: false,
-            preventRecursion: true,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         });
@@ -208,7 +207,6 @@ export async function generateRecursiveSummary(
             insertionDepth: 2,
             tokenBudget: maxTokens,
             recursiveScan: false,
-            preventRecursion: true,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         });
@@ -240,7 +238,6 @@ export async function generateRecursiveSummary(
                     insertionDepth: 2 + currentLayerIndex,
                     tokenBudget: maxTokens,
                     recursiveScan: false,
-                    preventRecursion: true,
                     firstCreatedTimestamp: now,
                     lastUpdatedTimestamp: now,
                 });
@@ -264,7 +261,6 @@ export async function generateRecursiveSummary(
                 insertionDepth: 0,
                 tokenBudget: maxTokens,
                 recursiveScan: false,
-                preventRecursion: true,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             });
@@ -280,7 +276,6 @@ export async function generateRecursiveSummary(
             insertionDepth: 0,
             tokenBudget: maxTokens,
             recursiveScan: false,
-            preventRecursion: true,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         });
