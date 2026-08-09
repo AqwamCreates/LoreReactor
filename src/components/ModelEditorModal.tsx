@@ -15,7 +15,6 @@ interface ModelEditorModalProps {
 
 interface ModelSettings {
     gpu_layers: number;
-    ctx_size: number;
     cache_type_k: string;
     cache_type_v: string;
     cache_type: string;
@@ -43,7 +42,6 @@ interface ModelSettings {
 
 const DEFAULT_SETTINGS: ModelSettings = {
     gpu_layers: -1,
-    ctx_size: 0,
     cache_type_k: 'f16',
     cache_type_v: 'f16',
     cache_type: 'f16',
@@ -155,7 +153,7 @@ export function ModelEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [backend, setBackend] = useState<LanguageModel['backend']>('Llama.cpp');
-    const [contextLength, setContextLength] = useState<number>(8192);
+    const [contextLength, setContextLength] = useState<number>(0);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
     const [apiKey, setApiKey] = useState('');
@@ -175,7 +173,7 @@ export function ModelEditorModal({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
         cacheType: settings.cache_type_k,
-        contextSize: settings.ctx_size || 8192,
+        contextSize: contextLength || 8192,
         backend: backend,
     });
 
@@ -190,7 +188,7 @@ export function ModelEditorModal({
                 setName(existingModel.name || '');
                 setDescription(existingModel.description || '');
                 setBackend(existingModel.backend || 'Llama.cpp');
-                setContextLength(existingModel.contextLength || 8192);
+                setContextLength(existingModel.contextLength || 0);
                 setModelPath(existingModel.model || '');
                 setMmprojPath(existingModel.mmproj || '');
                 setApiKey(existingModel.apiKey || '');
@@ -210,7 +208,6 @@ export function ModelEditorModal({
 
                     setSettings({
                         gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
-                        ctx_size: (params.ctx_size as number) ?? DEFAULT_SETTINGS.ctx_size,
                         cache_type_k: cacheK,
                         cache_type_v: cacheV,
                         cache_type: cacheCombined,
@@ -243,7 +240,7 @@ export function ModelEditorModal({
                 setName('');
                 setDescription('');
                 setBackend('Llama.cpp');
-                setContextLength(8192);
+                setContextLength(0);
                 setModelPath('');
                 setMmprojPath('');
                 setApiKey('');
@@ -319,7 +316,6 @@ export function ModelEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    // ✅ Shared logic to build a model object from current form state
     const buildModelFromForm = (isNewClone: boolean): LanguageModel | null => {
         if (!validate()) {
             alert("Please fill in all required fields before saving.");
@@ -328,7 +324,6 @@ export function ModelEditorModal({
 
         const params: Record<string, unknown> = {};
         if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
-        if (settings.ctx_size !== DEFAULT_SETTINGS.ctx_size) params.ctx_size = settings.ctx_size;
 
         if (isLlamaCpp) {
             params.cache_type_k = settings.cache_type_k;
@@ -368,7 +363,7 @@ export function ModelEditorModal({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             backend,
-            contextLength: contextLength || 8192,
+            contextLength: contextLength || 0,
             model: modelPath.trim() || undefined,
             mmproj: mmprojPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
@@ -388,7 +383,6 @@ export function ModelEditorModal({
         onClose();
     };
 
-    // ✅ Clone: save as new model with a new ID and "(Clone)" suffix
     const handleClone = () => {
         const clonedModel = buildModelFromForm(true);
         if (!clonedModel) return;
@@ -421,7 +415,6 @@ export function ModelEditorModal({
                             </div>
                         )}
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing model */}
                         {existingModel && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
                                 Clone
@@ -460,6 +453,23 @@ export function ModelEditorModal({
                         <label className="editor-label">MMProj Path</label>
                         <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/mmproj.gguf" />
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
+                    </div>
+
+                    {/* ✅ Context Length — single source of truth, sent to server as -c */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <label className="editor-label">Context Length</label>
+                        <input 
+                            type="number" 
+                            value={contextLength} 
+                            onChange={(e) => setContextLength(Math.max(0, Number(e.target.value) || 0))} 
+                            className="editor-input" 
+                            min="0" 
+                            step="1024" 
+                            placeholder="0 (Auto-detect from model)" 
+                        />
+                        <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px' }}>
+                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 32768, 131072). Sent to server as -c flag.
+                        </div>
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
@@ -513,17 +523,13 @@ export function ModelEditorModal({
                                 <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Context Size</label>
-                                <input type="number" value={settings.ctx_size} onChange={(e) => handleSettingChange('ctx_size', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" />
-                            </div>
-                        </div>
-                        <div className="editor-row">
-                            <div>
                                 <label className="editor-label editor-label-small">Split Mode</label>
                                 <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
                                     {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
+                        </div>
+                        <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">Use IK</label>
                                 <div style={{ paddingTop: '6px' }}>
@@ -539,7 +545,6 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
-                    {/* Cache Type Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Key-Value Cache Quantization</span>
                         {isLlamaCpp ? (

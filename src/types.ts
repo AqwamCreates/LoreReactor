@@ -227,6 +227,57 @@ export interface RawBudgetStrategy extends RawData {
 
 }
 
+// Add to src/types.ts
+
+// ✅ Summarization strategy types
+export type SummarizationStrategyType = 
+    | 'Sliding Window Replace'    // Option 1: Replace old messages with per-message summaries
+    | 'Periodic Compression'      // Option 3: Compress every M messages into a paragraph
+    | 'Recursive Summary'         // Option 2: Hierarchical chunk → meta → global summaries
+    | 'Observation Masking'       // Option 4: Hide irrelevant old messages by relevance score
+
+export interface SummarizationStep extends ObjectData {                    // Display name (e.g., "Sliding Window", "Periodic Compression")
+    strategyType: SummarizationStrategyType;
+    enabled: boolean;                    // Can be disabled independently
+    order: number;                       // Execution order (lower = runs first)
+    
+    // --- Sliding Window Replace settings ---
+    slidingWindowSize?: number;          // Keep last N messages verbatim (default: 10)
+    
+    // --- Periodic Compression settings ---
+    compressionInterval?: number;        // Compress every M messages (default: 20)
+    compressionChunkSize?: number;       // How many messages to compress at once (default: 10)
+    
+    // --- Recursive Summary settings ---
+    recursiveChunkSize?: number;         // Messages per chunk at layer 0 (default: 10)
+    recursiveMaxDepth?: number;          // Max recursion depth (default: 3)
+    
+    // --- Observation Masking settings ---
+    maskingRelevanceThreshold?: number;  // Min relevance score to include (0.0-1.0, default: 0.3)
+    maskingKeywordWeight?: number;       // Weight for keyword matching vs recency (0.0-1.0, default: 0.7)
+    
+    // --- Shared settings ---
+    summaryTokenBudget?: number;         // Max tokens for generated summaries (default: 512)
+    summaryModelId?: string;             // Which model to use for summarization (empty = use current model)
+    triggerTokenThreshold?: number;      // Trigger when total tokens exceed this (0 = auto based on context length)
+}
+
+export interface RawSummarizationStep extends RawData{
+    strategyType: SummarizationStrategyType;
+    enabled: boolean;
+    order: number;
+    slidingWindowSize?: number;
+    compressionInterval?: number;
+    compressionChunkSize?: number;
+    recursiveChunkSize?: number;
+    recursiveMaxDepth?: number;
+    maskingRelevanceThreshold?: number;
+    maskingKeywordWeight?: number;
+    summaryTokenBudget?: number;
+    summaryModelId?: string;
+    triggerTokenThreshold?: number;
+}
+
 export type PromptBlockType = 
   'System Prompt'        // Character system prompts
   | 'Think Prompt'
@@ -242,6 +293,7 @@ export interface Profile extends ObjectData {
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
+  summarizationSteps: SummarizationStep[];
 
 }
 
@@ -254,6 +306,7 @@ export interface RawProfile extends RawData{
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
+  summarizationSteps: RawSummarizationStep[];
 
 }
 
@@ -264,15 +317,15 @@ export interface InterjectableAction {
 export interface ParsedCharacterCard {
     name: string;
     description: string;
-    first_mes: string;
+    firstMes: string;
     personality?: string;
     scenario?: string;
-    mes_example?: string;
-    creator_notes?: string;
-    system_prompt?: string;
-    post_history_instructions?: string;
-    alternate_greetings?: string[];
+    mesExample?: string;
+    creatorNotes?: string;
+    systemPrompt?: string;
+    postHistoryInstructions?: string;
+    alternateGreetings?: string[];
     tags?: string[];
     creator?: string;
-    character_version?: string;
+    characterVersion?: string;
 }

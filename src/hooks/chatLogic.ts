@@ -157,19 +157,6 @@ function isCharacterBound(context: Context, currentCharacterId: string): boolean
 
 /**
  * ✅ Lorebook-style recursive context resolution.
- * 
- * Phase 1: Scan chat text for direct keyword matches (respecting scope/target filters).
- *          Entries preserve their original list order from chatData.contexts.
- * Phase 2: For each matched entry with recursiveScan=true, scan its text against
- *          all unmatched entries' keywords. Repeat up to MAX_RECURSION_DEPTH.
- * Phase 3: Enforce token budget — walk list top-to-bottom, drop entries that
- *          would exceed the budget. Then sort surviving entries by insertionDepth.
- * 
- * Budget enforcement uses list order (not a separate priority field):
- * entries at the top of the user's ordered list survive, bottom entries get cut.
- * 
- * Token counting uses llama-server /tokenize when runtimePort is available,
- * falling back to ~4 chars/token estimation otherwise.
  */
 async function resolveContextEntries(
     contexts: Context[],
@@ -239,7 +226,6 @@ async function resolveContextEntries(
         }
     }
 
-    // Format each entry and count tokens (async via llama-server or sync fallback)
     const formattedEntries: { context: Context; formattedLine: string; tokenCount: number }[] = [];
 
     for (const context of orderedActivated) {
@@ -248,7 +234,6 @@ async function resolveContextEntries(
 
         const formattedLine = `${contextStartString}${contextText}${contextEndString}`;
 
-        // ✅ Use per-entry tokenBudget if set, otherwise count actual tokens
         let tokenCount: number;
         if (context.tokenBudget && context.tokenBudget > 0) {
             tokenCount = context.tokenBudget;
@@ -261,7 +246,6 @@ async function resolveContextEntries(
         formattedEntries.push({ context, formattedLine, tokenCount });
     }
 
-    // ✅ Enforce total token budget — walk top-to-bottom, drop entries that overflow
     let totalTokens = 0;
     const budgetEntries: typeof formattedEntries = [];
 
@@ -272,7 +256,6 @@ async function resolveContextEntries(
         }
     }
 
-    // Sort surviving entries by insertionDepth (lower = closer to top of prompt)
     budgetEntries.sort((a, b) => {
         const depthA = a.context.insertionDepth ?? 0;
         const depthB = b.context.insertionDepth ?? 0;
@@ -344,7 +327,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (context.text) {
             const replacedText = replacePlaceholders(context.text, characterName, protagonistName);
             if (context.useBase64Encoding) {
-                // ✅ Text base64-encoded when toggle is on
                 const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
                 line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
             } else {
@@ -353,7 +335,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
         contextLines.push(line);
 
-        // ✅ Images always use base64 encoding — no toggle needed
         if (context.images && context.images.length > 0) {
             activeContextsForImages.push(context);
         }
@@ -435,19 +416,80 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (fatigue) fatigueLines.push(fatigue);
     }
 
-    // CHAT HISTORY BLOCK
+    // ✅ Build chat history with summarization pipeline applied in step order
     const historyLines: string[] = [];
     if (chatMessageHistory.length > 0) {
-        for (const msg of chatMessageHistory) {
-            const otherCharacter = msg.character;
+        // Get enabled summarization steps sorted by order
+        const enabledSteps = (profile?.summarizationSteps || [])
+            .filter(s => s.enabled)
+            .sort((a, b) => a.order - b.order);
+
+        // Start with full message list — each step may transform it
+        let processedMessages = chatMessageHistory.map((msg, idx) => ({
+            msg,
+            idx,
+            text: msg.textContent,
+        }));
+
+        // Apply each enabled step in order
+        for (const step of enabledSteps) {
+            if (step.strategyType === 'Sliding Window Replace') {
+                const windowSize = step.slidingWindowSize ?? 10;
+                const cutoff = Math.max(0, processedMessages.length - windowSize);
+                for (let i = 0; i < processedMessages.length; i++) {
+                    if (i < cutoff && processedMessages[i].msg.textContentSummary) {
+                        processedMessages[i].text = processedMessages[i].msg.textContentSummary;
+                    }
+                }
+            }
+
+            if (step.strategyType === 'Observation Masking') {
+                const threshold = step.maskingRelevanceThreshold ?? 0.3;
+                const keywordWeight = step.maskingKeywordWeight ?? 0.7;
+                const recencyWeight = 1 - keywordWeight;
+
+                // Build keyword set from recent messages (last 5)
+                const recentText = processedMessages
+                    .slice(-5)
+                    .map(p => p.text.toLowerCase())
+                    .join(' ');
+                const keywords = new Set(
+                    recentText.split(/\s+/).filter(w => w.length > 3)
+                );
+
+                // Score each message and filter
+                processedMessages = processedMessages.filter((p, i) => {
+                    const totalMessages = processedMessages.length;
+                    const recencyScore = (i + 1) / totalMessages;
+
+                    let keywordScore = 0;
+                    const words = p.text.toLowerCase().split(/\s+/);
+                    for (const word of words) {
+                        if (keywords.has(word)) keywordScore++;
+                    }
+                    keywordScore = words.length > 0 ? keywordScore / words.length : 0;
+
+                    const combinedScore = (keywordWeight * keywordScore) + (recencyWeight * recencyScore);
+                    return combinedScore >= threshold;
+                });
+            }
+
+            // Periodic Compression and Recursive Summary produce Context entries
+            // and are handled by SummarizationEngine, not here
+        }
+
+        // Render processed messages into prompt lines
+        for (const p of processedMessages) {
+            const otherCharacter = p.msg.character;
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
             const displayName = (isRevealed || isCurrent) ? otherCharacter.name : otherParticipantId;
+
             if (isRevealed) {
-                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${msg.textContent}${turnEndString}`);
+                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${p.text}${turnEndString}`);
             } else {
-                historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${msg.textContent}${turnEndString}`);
+                historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${p.text}${turnEndString}`);
             }
         }
     }
@@ -516,7 +558,6 @@ export async function prepareRequestBody(
 
     if (characterImageBase64) allImageData.push({ data: characterImageBase64, id: 12 });
 
-    // ✅ Context images always loaded as base64
     if (activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
             if (!context.images) return [];

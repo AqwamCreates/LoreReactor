@@ -101,15 +101,15 @@ function normalizeV1(json: any): ParsedCharacterCard {
     return {
         name: json.name || '',
         description: json.description || '',
-        first_mes: json.first_mes || '',
+        firstMes: json.first_mes || '',
         personality: json.personality || undefined,
         scenario: json.scenario || undefined,
-        mes_example: json.mes_example || undefined,
-        system_prompt: json.system_prompt || undefined,
-        post_history_instructions: json.post_history_instructions || undefined,
+        mesExample: json.mes_example || undefined,
+        systemPrompt: json.system_prompt || undefined,
+        postHistoryInstructions: json.post_history_instructions || undefined,
         tags: json.tags || undefined,
         creator: json.creator || undefined,
-        character_version: json.character_version || undefined,
+        characterVersion: json.character_version || undefined,
     };
 }
 
@@ -118,17 +118,17 @@ function normalizeV2V3(data: any): ParsedCharacterCard {
     return {
         name: data.name || '',
         description: data.description || '',
-        first_mes: data.first_mes || '',
+        firstMes: data.first_mes || '',
         personality: data.personality || undefined,
         scenario: data.scenario || undefined,
-        mes_example: data.mes_example || undefined,
-        creator_notes: data.creator_notes || undefined,
-        system_prompt: data.system_prompt || undefined,
-        post_history_instructions: data.post_history_instructions || undefined,
-        alternate_greetings: data.alternate_greetings || undefined,
+        mesExample: data.mes_example || undefined,
+        creatorNotes: data.creator_notes || undefined,
+        systemPrompt: data.system_prompt || undefined,
+        postHistoryInstructions: data.post_history_instructions || undefined,
+        alternateGreetings: data.alternate_greetings || undefined,
         tags: data.tags || undefined,
         creator: data.extensions?.creator || undefined,
-        character_version: data.character_version || undefined,
+        characterVersion: data.character_version || undefined,
     };
 }
 
@@ -144,7 +144,7 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
     firstMessage: string;
 } {
     // Build system prompt from available fields
-    let systemPrompt = card.system_prompt || '';
+    let systemPrompt = card.systemPrompt || '';
     if (!systemPrompt) {
         const parts: string[] = [];
         if (card.personality) parts.push(`Personality: ${card.personality}`);
@@ -153,12 +153,12 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
     }
 
     // Use post_history_instructions as think prompt if available
-    const thinkPrompt = card.post_history_instructions || '';
+    const thinkPrompt = card.postHistoryInstructions || '';
 
     // Description: combine description + creator_notes if useful
     let description = card.description || '';
-    if (card.creator_notes && !description) {
-        description = card.creator_notes;
+    if (card.creatorNotes && !description) {
+        description = card.creatorNotes;
     }
 
     return {
@@ -166,6 +166,6 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
         description,
         systemPrompt,
         thinkPrompt,
-        firstMessage: card.first_mes || '',
+        firstMessage: card.firstMes || '',
     };
 }

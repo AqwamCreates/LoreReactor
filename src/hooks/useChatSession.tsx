@@ -8,11 +8,14 @@ import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageMode
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { estimateTokens } from '../utilities/tokenCounter';
+import { generateMissingSummaries, checkTriggerThreshold } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 
 const baseEngine = new LargeLanguageModelInferenceEngine();
+
+const now = Date.now()
 
 const convertFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -23,7 +26,6 @@ const convertFileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-// ✅ Ambient narrator character — used when no AI responds
 const AMBIENT_NARRATOR: Character = {
     id: '__ambient_narrator__',
     name: '',
@@ -32,11 +34,10 @@ const AMBIENT_NARRATOR: Character = {
     initiativeWeight: 0,
     chatProbability: 1,
     maximumChatStamina: 1,
-    firstCreatedTimestamp: Date.now(),
-    lastUpdatedTimestamp: Date.now(),
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
 };
 
-// ✅ Ambient narration — keyword-matched curated lines
 const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     {
         keywords: ['hello', 'hi', 'hey', 'greet', 'good morning', 'good evening', 'good night', 'howdy', 'yo', '?'],
@@ -165,7 +166,6 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     },
 ];
 
-// ✅ Fallback lines when no keywords match
 const AMBIENT_FALLBACK = [
     "A heavy silence settles over everything.",
     "The air grows still, thick with unspoken words.",
@@ -203,6 +203,65 @@ function getDefaultCharacter(): Character {
     };
 }
 
+/**
+ * ✅ Runs background summarization after messages are saved.
+ * Checks trigger threshold, generates missing summaries, persists results.
+ */
+async function runBackgroundSummarization(
+    data: ChatData,
+    setData: (d: ChatData) => void,
+    dataRef: React.MutableRefObject<ChatData | null>,
+    modelRef: React.MutableRefObject<LanguageModel | null>,
+    runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>
+): Promise<void> {
+    try {
+        const modelCtxLen = modelRef.current?.contextLength || 8192;
+        const currentTokens = data.chatMessageHistory.reduce(
+            (acc, m) => acc + estimateTokens(m.textContent), 0
+        );
+        const triggered = checkTriggerThreshold(data, currentTokens, modelCtxLen);
+
+        if (!triggered || triggered.strategyType !== 'Sliding Window Replace' || !triggered.slidingWindowSize) {
+            return;
+        }
+
+        const port = modelRef.current?.id
+            ? runningModelsRef.current[modelRef.current.id]?.port
+            : undefined;
+        const effectivePort = port || (modelRef.current?.parameters as any)?._runtimePort;
+
+        if (!effectivePort) return;
+
+        const budgetStep = data.Profile?.summarizationSteps?.find(
+            s => s.strategyType === 'Sliding Window Replace' && s.enabled
+        );
+        const summaryBudget = budgetStep?.summaryTokenBudget ?? 256;
+
+        const summaries = await generateMissingSummaries(
+            data,
+            triggered.slidingWindowSize,
+            effectivePort,
+            summaryBudget
+        );
+
+        if (summaries.size > 0) {
+            const dataWithSummaries: ChatData = {
+                ...data,
+                chatMessageHistory: data.chatMessageHistory.map(m => {
+                    const summary = summaries.get(m.id);
+                    if (summary) return { ...m, textContentSummary: summary };
+                    return m;
+                }),
+            };
+            await saveRawChatData(dataWithSummaries);
+            setData(dataWithSummaries);
+            dataRef.current = dataWithSummaries;
+        }
+    } catch (err) {
+        console.warn('Background summarization failed:', err);
+    }
+}
+
 export function useChatSession() {
     const [chatData, setChatData] = useState<ChatData | null>(null);
     const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
@@ -233,11 +292,19 @@ export function useChatSession() {
     const activeStrategyRef = useRef<BudgetStrategy | null>(null);
     const isLoadingRef = useRef(false);
     const isProcessingSilentlyRef = useRef(false);
+
+    // ✅ Refs for synchronous access during abort
+    const streamingTextRef = useRef("");
+    const streamingCharacterRef = useRef<Character | null>(null);
+    const chatDataRef = useRef<ChatData | null>(null);
     
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
     useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
     useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
     useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+    useEffect(() => { streamingTextRef.current = streamingText; }, [streamingText]);
+    useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
+    useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
     
     const { addToast } = useToast();
 
@@ -279,6 +346,8 @@ export function useChatSession() {
         setIsLoading(false);
         setStreamingText("");
         setStreamingCharacter(null);
+        streamingTextRef.current = "";
+        streamingCharacterRef.current = null;
     }, []);
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -297,25 +366,18 @@ export function useChatSession() {
         }
     };
 
-    // ✅ Calculate dynamic paragraph limit using maximumChatStamina as the base ceiling
     const getDynamicParagraphLimit = useCallback((character: Character, data: ChatData): number => {
         const maxStamina = character.maximumChatStamina ?? 4;
-        
         const aiParticipants = data.participants.filter(p => p.id !== data.protagonist.id);
-        
         if (aiParticipants.length > 1) return maxStamina;
-        
         const prevMsg = data.chatMessageHistory.length > 0 
             ? [...data.chatMessageHistory].reverse().find(m => m.character.id === character.id)
             : null;
-        
         const currentStamina = prevMsg?.remainingChatStamina ?? maxStamina;
         const ratio = Math.max(0, Math.min(1, currentStamina / maxStamina));
-        
         return Math.max(1, Math.round(maxStamina * ratio));
     }, []);
 
-    // ✅ Generate ambient narration via keyword matching — no LLM dependency
     const generateAmbientNarration = useCallback(async (data: ChatData, _signal: AbortSignal): Promise<ChatData | null> => {
         const recentText = data.chatMessageHistory
             .filter(m => m.character.id !== '__ambient_narrator__')
@@ -349,11 +411,15 @@ export function useChatSession() {
         const selected = finalPool[Math.floor(Math.random() * finalPool.length)];
 
         setStreamingCharacter(AMBIENT_NARRATOR);
+        streamingCharacterRef.current = AMBIENT_NARRATOR;
         setStreamingText("");
+        streamingTextRef.current = "";
 
         const chars = selected.split('');
         for (let i = 0; i < chars.length; i++) {
-            setStreamingText(selected.substring(0, i + 1));
+            const partial = selected.substring(0, i + 1);
+            streamingTextRef.current = partial;
+            setStreamingText(partial);
             await new Promise(resolve => setTimeout(resolve, 20));
         }
 
@@ -396,6 +462,7 @@ export function useChatSession() {
                 const wrappedCallbacks = onToken ? {
                     onToken: (stats: any) => {
                         setGenerationSpeed(stats.msPerToken);
+                        streamingTextRef.current = stats.fullText;
                         onToken(stats.fullText);
                     }
                 } : undefined;
@@ -420,7 +487,6 @@ export function useChatSession() {
                     return null;
                 }
 
-                // ✅ Resolve runtime port BEFORE using it
                 const runtimePort = currentModel?.id 
                     ? currentRunningModels[currentModel.id]?.port 
                     : undefined;
@@ -434,7 +500,6 @@ export function useChatSession() {
                     return null;
                 }
 
-                // ✅ Pass effectivePort to prepareRequestBody for accurate token counting
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, effectivePort);
                 
                 const modelContext = {
@@ -450,6 +515,7 @@ export function useChatSession() {
                     {
                         onToken: (stats) => {
                             setGenerationSpeed(stats.msPerToken);
+                            streamingTextRef.current = stats.fullText;
                             if (onToken) onToken(stats.fullText);
                         },
                         onFinish: (responseStats) => {
@@ -471,7 +537,6 @@ export function useChatSession() {
                 );
             }
             
-            // ✅ Retry once on empty response
             if (!rawText || !rawText.trim()) {
                 if (!signal.aborted) {
                     if (currentStrategy) {
@@ -479,6 +544,7 @@ export function useChatSession() {
                         const wrappedCallbacks = onToken ? {
                             onToken: (stats: any) => {
                                 setGenerationSpeed(stats.msPerToken);
+                                streamingTextRef.current = stats.fullText;
                                 onToken(stats.fullText);
                             }
                         } : undefined;
@@ -486,7 +552,6 @@ export function useChatSession() {
                             data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
                         );
                     } else if (currentModel) {
-                        // ✅ Resolve port for retry too
                         const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
                         const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
                         
@@ -504,6 +569,7 @@ export function useChatSession() {
                             {
                                 onToken: (stats) => {
                                     setGenerationSpeed(stats.msPerToken);
+                                    streamingTextRef.current = stats.fullText;
                                     if (onToken) onToken(stats.fullText);
                                 },
                                 onFinish: (responseStats) => {
@@ -539,10 +605,17 @@ export function useChatSession() {
             const err = error as Error;
             
             if (err.name === 'AbortError') {
-                if (streamingText && streamingText.trim().length > 0) {
-                    const displayText = convertIdsToDisplayNames(streamingText, data);
-                    const aiMessage = createChatMessage(data, character, displayText);
-                    return addMessageToChatData(data, aiMessage);
+                const savedText = streamingTextRef.current;
+                const savedChar = streamingCharacterRef.current;
+                const currentChatData = chatDataRef.current;
+                
+                if (savedText && savedText.trim().length > 0 && savedChar && currentChatData) {
+                    const displayText = convertIdsToDisplayNames(savedText, currentChatData);
+                    const aiMessage = createChatMessage(currentChatData, savedChar, displayText);
+                    const updatedData = addMessageToChatData(currentChatData, aiMessage);
+                    await saveRawChatData(updatedData);
+                    setChatData(updatedData);
+                    chatDataRef.current = updatedData;
                 }
                 return null;
             }
@@ -575,6 +648,15 @@ export function useChatSession() {
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
         if (!chatData || !currentCharacter) return;
+        
+        if (isLoadingRef.current) {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
         if (!acquireGenerationLock()) {
             addToast("Already generating...", "info");
             return;
@@ -585,16 +667,25 @@ export function useChatSession() {
             return;
         }
         try {
-            const actionMsg = createChatMessage(chatData, currentCharacter, actionText);
-            const updatedData = addMessageToChatData(chatData, actionMsg);
+            const latestChatData = chatDataRef.current;
+            if (!latestChatData) {
+                releaseGenerationLock();
+                return;
+            }
+
+            const actionMsg = createChatMessage(latestChatData, currentCharacter, actionText);
+            const updatedData = addMessageToChatData(latestChatData, actionMsg);
             await saveRawChatData(updatedData);
             setChatData(updatedData);
+            chatDataRef.current = updatedData;
             await new Promise(resolve => setTimeout(resolve, 50));
             
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setStreamingText("");
+            streamingTextRef.current = "";
             setStreamingCharacter(targetChar);
+            streamingCharacterRef.current = targetChar;
             setGenerationSpeed(0);
             
             try {
@@ -602,6 +693,7 @@ export function useChatSession() {
                 if (result) {
                     await saveRawChatData(result);
                     setChatData(result);
+                    chatDataRef.current = result;
                 }
             } catch (err) {
                 if ((err as Error).name !== 'AbortError') console.error("AI response failed:", err);
@@ -741,7 +833,9 @@ export function useChatSession() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
         setStreamingText("");
+        streamingTextRef.current = "";
         setStreamingCharacter(null);
+        streamingCharacterRef.current = null;
         setGenerationSpeed(0);
         
         try {
@@ -753,10 +847,14 @@ export function useChatSession() {
             const userMsg = createChatMessage(chatData, currentCharacter, text);
             const tempData = addMessageToChatData(chatData, userMsg);
             setChatData(tempData);
+            chatDataRef.current = tempData;
             await saveRawChatData(tempData);
 
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
                 setStreamingText("");
+                streamingTextRef.current = "";
+                setStreamingCharacter(char);
+                streamingCharacterRef.current = char;
                 return handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
             };
             
@@ -769,15 +867,21 @@ export function useChatSession() {
             if (hasAIResponse) {
                 await saveRawChatData(updatedData);
                 setChatData(updatedData);
+                chatDataRef.current = updatedData;
+
+                // ✅ Trigger background summarization after AI response
+                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef);
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {
                     await saveRawChatData(ambientData);
                     setChatData(ambientData);
+                    chatDataRef.current = ambientData;
                 } else {
                     await saveRawChatData(updatedData);
                     setChatData(updatedData);
+                    chatDataRef.current = updatedData;
                 }
             }
         } catch (err) {
@@ -845,8 +949,11 @@ export function useChatSession() {
         };
         
         setChatData(trimmedData);
+        chatDataRef.current = trimmedData;
         setStreamingText("");
+        streamingTextRef.current = "";
         setStreamingCharacter(null);
+        streamingCharacterRef.current = null;
         setGenerationSpeed(0);
         
         const controller = new AbortController();
@@ -857,6 +964,9 @@ export function useChatSession() {
         try {
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
                 setStreamingText("");
+                streamingTextRef.current = "";
+                setStreamingCharacter(char);
+                streamingCharacterRef.current = char;
                 return handleServerResponse(data, char, signal, onToken, undefined, undefined);
             };
 
@@ -868,15 +978,21 @@ export function useChatSession() {
             if (hasAIResponse) {
                 await saveRawChatData(updatedData);
                 setChatData(updatedData);
+                chatDataRef.current = updatedData;
+
+                // ✅ Trigger background summarization after regeneration
+                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef);
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {
                     await saveRawChatData(ambientData);
                     setChatData(ambientData);
+                    chatDataRef.current = ambientData;
                 } else {
                     await saveRawChatData(updatedData);
                     setChatData(updatedData);
+                    chatDataRef.current = updatedData;
                 }
             }
         } catch (err) { 
@@ -892,7 +1008,7 @@ export function useChatSession() {
     }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
-    const maxContextTokens = selectedModel?.contextLength || 4096;
+    const maxContextTokens = selectedModel?.contextLength || 8192;
 
     return {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
