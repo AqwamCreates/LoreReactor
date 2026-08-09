@@ -1,5 +1,8 @@
 // src/services/SummarizationEngine.ts
 import type { ChatData, ChatMessage, Context } from '../types';
+import { LargeLanguageModelInferenceEngine, type ModelContext } from './LargeLanguageModelInferenceEngine';
+
+const engine = new LargeLanguageModelInferenceEngine();
 
 const SUMMARIZE_SYSTEM_PROMPT = `You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.`;
 
@@ -12,35 +15,16 @@ const RECURSIVE_MERGE_PROMPT = `You are a narrative merger for roleplay chat his
  */
 export async function generateMessageSummary(
     message: ChatMessage,
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 256
 ): Promise<string | null> {
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${message.textContent}\n\nSummary:`;
 
-    try {
-        const res = await fetch(`http://localhost:${runtimePort}/completion`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt,
-                n_predict: maxTokens,
-                temperature: 0.3,
-                stop: ['\n\n', '\nMessage from', '```'],
-                stream: false,
-            }),
-        });
-
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const content = data.content?.trim();
-        if (!content || content.length === 0) return null;
-
-        return content;
-    } catch (e) {
-        console.warn('Failed to generate message summary:', e);
-        return null;
-    }
+    return engine.generateCompletion(prompt, modelContext, {
+        maxTokens,
+        temperature: 0.3,
+        stop: ['\n\n', '\nMessage from', '```'],
+    });
 }
 
 /**
@@ -50,7 +34,7 @@ export async function generateMessageSummary(
 export async function generateMissingSummaries(
     chatData: ChatData,
     windowSize: number,
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 256
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
@@ -62,7 +46,7 @@ export async function generateMissingSummaries(
     if (toSummarize.length === 0) return results;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, runtimePort, maxTokens);
+        const summary = await generateMessageSummary(msg, modelContext, maxTokens);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -76,7 +60,7 @@ export async function generateMissingSummaries(
  */
 async function compressChunk(
     messages: ChatMessage[],
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 512
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
@@ -85,30 +69,11 @@ async function compressChunk(
 
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
 
-    try {
-        const res = await fetch(`http://localhost:${runtimePort}/completion`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt,
-                n_predict: maxTokens,
-                temperature: 0.3,
-                stop: ['\n\n\n', '```'],
-                stream: false,
-            }),
-        });
-
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const content = data.content?.trim();
-        if (!content || content.length === 0) return null;
-
-        return content;
-    } catch (e) {
-        console.warn('Failed to compress chunk:', e);
-        return null;
-    }
+    return engine.generateCompletion(prompt, modelContext, {
+        maxTokens,
+        temperature: 0.3,
+        stop: ['\n\n\n', '```'],
+    });
 }
 
 /**
@@ -119,7 +84,7 @@ export async function generatePeriodicCompression(
     chatData: ChatData,
     compressionInterval: number,
     compressionChunkSize: number,
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 512
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -149,10 +114,10 @@ export async function generatePeriodicCompression(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, runtimePort, maxTokens);
+        const compressed = await compressChunk(chunk, modelContext, maxTokens);
         if (!compressed) continue;
 
-        const context: Context = {
+        newContexts.push({
             id: `auto-summary-${crypto.randomUUID()}`,
             name: `[Auto-Summary] Messages ${startIdx + 1}–${endIdx}`,
             description: `msgs:${startIdx}-${endIdx}`,
@@ -165,9 +130,7 @@ export async function generatePeriodicCompression(
             preventRecursion: true,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
-        };
-
-        newContexts.push(context);
+        });
     }
 
     return newContexts;
@@ -178,7 +141,7 @@ export async function generatePeriodicCompression(
  */
 async function mergeSummaries(
     summaries: string[],
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 512
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
@@ -187,30 +150,11 @@ async function mergeSummaries(
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
 
-    try {
-        const res = await fetch(`http://localhost:${runtimePort}/completion`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt,
-                n_predict: maxTokens,
-                temperature: 0.3,
-                stop: ['\n\n\n', '```'],
-                stream: false,
-            }),
-        });
-
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const content = data.content?.trim();
-        if (!content || content.length === 0) return null;
-
-        return content;
-    } catch (e) {
-        console.warn('Failed to merge summaries:', e);
-        return null;
-    }
+    return engine.generateCompletion(prompt, modelContext, {
+        maxTokens,
+        temperature: 0.3,
+        stop: ['\n\n\n', '```'],
+    });
 }
 
 /**
@@ -226,7 +170,7 @@ export async function generateRecursiveSummary(
     chatData: ChatData,
     chunkSize: number,
     maxDepth: number,
-    runtimePort: number,
+    modelContext: ModelContext,
     maxTokens: number = 1024
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -249,7 +193,7 @@ export async function generateRecursiveSummary(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, runtimePort, maxTokens);
+        const compressed = await compressChunk(chunk, modelContext, maxTokens);
         if (!compressed) continue;
 
         layer0Summaries.push(compressed);
@@ -282,7 +226,7 @@ export async function generateRecursiveSummary(
 
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, runtimePort, maxTokens);
+            const merged = await mergeSummaries(batch, modelContext, maxTokens);
             if (merged) {
                 nextLayerSummaries.push(merged);
 
@@ -308,7 +252,7 @@ export async function generateRecursiveSummary(
 
     // --- Final global summary ---
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, runtimePort, maxTokens);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, modelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${crypto.randomUUID()}`,
