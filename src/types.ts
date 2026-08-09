@@ -117,6 +117,7 @@ export interface RawLanguageModel extends RawData {
 export interface Character extends ObjectData  {
   
   image?: string; // Path to the character's image.
+  voice?: string; // Path to the character's voice.
   systemPrompt?: string;
   thinkPrompt?: string;
   initiativeWeight?: number | undefined;
@@ -129,6 +130,7 @@ export interface Character extends ObjectData  {
 export interface RawCharacter extends RawData {
 
   image?: string; // Path to the character's image.
+  voice?: string; // Path to the character's voice.
   systemPrompt?: string;
   thinkPrompt?: string;
   initiativeWeight?: number | undefined;
