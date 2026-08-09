@@ -18,13 +18,6 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Chat History',
 ];
 
-const BLOCK_TYPE_LABELS: Record<string, string> = {
-    'System Prompt': 'System Prompt',
-    'Think Prompt': 'Think Prompt',
-    'Context': 'Context',
-    'Chat History': 'Chat History',
-};
-
 const DEFAULT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Context', 'Chat History'
 ];
@@ -42,6 +35,13 @@ const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
     'Recursive Summary': 'Build hierarchical summaries: chunks → meta-summaries → global summary.',
     'Observation Masking': 'Hide older messages by relevance score. Keep only what matters to the current context.',
 };
+
+const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
+    'Sliding Window Replace',
+    'Periodic Compression',
+    'Recursive Summary',
+    'Observation Masking',
+];
 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
@@ -113,6 +113,10 @@ export function ProfileEditorModal({
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
+    const [narrateNormalText, setNarrateNormalText] = useState(true);
+    const [narrateQuotedText, setNarrateQuotedText] = useState(false);
+    const [narrateBoldedText, setNarrateBoldedText] = useState(false);
+    const [narrateItalicizedText, setNarrateItalicizedText] = useState(false);
     const [inputStrategy, setInputStrategy] = useState<PromptBlockType[]>([...DEFAULT_STRATEGY]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>([]);
     const [errors, setErrors] = useState<{ name?: string }>({});
@@ -132,6 +136,10 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
+                setNarrateNormalText(existingProfile.narrateNormalText ?? true);
+                setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
+                setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
+                setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
                 const savedStrategy = existingProfile.inputStrategy?.length
                     ? existingProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
                     : [...DEFAULT_STRATEGY];
@@ -150,6 +158,10 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(0);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
+                setNarrateNormalText(true);
+                setNarrateQuotedText(false);
+                setNarrateBoldedText(false);
+                setNarrateItalicizedText(false);
                 setInputStrategy([...DEFAULT_STRATEGY]);
                 setSummarizationSteps(getDefaultSummarizationSteps());
             }
@@ -181,6 +193,10 @@ export function ProfileEditorModal({
             maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
+            narrateNormalText,
+            narrateQuotedText,
+            narrateBoldedText,
+            narrateItalicizedText,
             inputStrategy,
             summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, order: i, lastUpdatedTimestamp: now })),
             firstCreatedTimestamp: existingProfile?.firstCreatedTimestamp || now,
@@ -205,6 +221,10 @@ export function ProfileEditorModal({
             maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
+            narrateNormalText,
+            narrateQuotedText,
+            narrateBoldedText,
+            narrateItalicizedText,
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s,
@@ -333,9 +353,6 @@ export function ProfileEditorModal({
         setSummarizationSteps(prev => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i })));
         if (expandedStepId === summarizationSteps[index]?.id) setExpandedStepId(null);
     };
-
-    const availableStrategyTypes = (Object.keys(STRATEGY_DESCRIPTIONS) as SummarizationStrategyType[])
-        .filter(t => !summarizationSteps.some(s => s.strategyType === t));
 
     if (!isOpen) return null;
 
@@ -471,6 +488,49 @@ export function ProfileEditorModal({
                         />
                     </div>
 
+                    {/* ✅ Voice Narration — two-column layout */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Voice Narration</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={narrateNormalText}
+                                    onChange={(e) => setNarrateNormalText(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Narrate Normal Text</span>
+                            </label>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={narrateQuotedText}
+                                    onChange={(e) => setNarrateQuotedText(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Narrate Quoted Text</span>
+                            </label>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={narrateBoldedText}
+                                    onChange={(e) => setNarrateBoldedText(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Narrate Bolded Text</span>
+                            </label>
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={narrateItalicizedText}
+                                    onChange={(e) => setNarrateItalicizedText(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Narrate Italicized Text</span>
+                            </label>
+                        </div>
+                    </div>
+
                     {/* Strip Think Tokens */}
                     <div className="editor-section">
                         <span className="editor-section-title">Output Processing</span>
@@ -515,7 +575,7 @@ export function ProfileEditorModal({
                                         <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
                                         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>
-                                                {index + 1}. {BLOCK_TYPE_LABELS[blockType] || blockType}
+                                                {index + 1}. {blockType}
                                             </span>
                                         </div>
                                         <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
@@ -541,7 +601,7 @@ export function ProfileEditorModal({
                                 >
                                     <option value="" disabled>+ Add a missing block</option>
                                     {missingBlocks.map(b => (
-                                        <option key={b} value={b}>{BLOCK_TYPE_LABELS[b] || b}</option>
+                                        <option key={b} value={b}>{b}</option>
                                     ))}
                                 </select>
                             </div>
@@ -555,7 +615,7 @@ export function ProfileEditorModal({
                             <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
                         </div>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Steps execute in order. Click a step to expand its settings. Remove via × or the dropdown below.
+                            Controls how messages are summarized based on the order of the individual text summarizers.
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -762,24 +822,23 @@ export function ProfileEditorModal({
                             })}
                         </div>
 
-                        {availableStrategyTypes.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                                <select
-                                    onChange={(e) => {
-                                        const val = e.target.value as SummarizationStrategyType;
-                                        if (val) addSummarizationStep(val);
-                                        e.target.value = '';
-                                    }}
-                                    className="editor-select"
-                                    defaultValue=""
-                                >
-                                    <option value="" disabled>+ Add a summarization step</option>
-                                    {availableStrategyTypes.map(t => (
-                                        <option key={t} value={t}>{t}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                        {/* ✅ Always show all strategy types — duplicates allowed */}
+                        <div style={{ marginTop: '8px' }}>
+                            <select
+                                onChange={(e) => {
+                                    const val = e.target.value as SummarizationStrategyType;
+                                    if (val) addSummarizationStep(val);
+                                    e.target.value = '';
+                                }}
+                                className="editor-select"
+                                defaultValue=""
+                            >
+                                <option value="" disabled>+ Add a summarization step</option>
+                                {ALL_STRATEGY_TYPES.map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                ))}
+                            </select>
+                        </div>
 
                         {summarizationSteps.length === 0 && (
                             <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>

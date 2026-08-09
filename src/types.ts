@@ -295,6 +295,10 @@ export interface Profile extends ObjectData {
   chatProbability: number; // 0 means it is disabled and uses character default.
   maximumChatStamina: number; // 0 means it is disabled and uses character default..
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
+  narrateNormalText: boolean;
+  narrateQuotedText: boolean;
+  narrateBoldedText: boolean;
+  narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: SummarizationStep[];
@@ -308,6 +312,10 @@ export interface RawProfile extends RawData{
   chatProbability: number; // -1 means it is disabled and uses character default.
   maximumChatStamina: number; // -1 means it is disabled and uses character default..
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
+  narrateNormalText: boolean;
+  narrateQuotedText: boolean;
+  narrateBoldedText: boolean;
+  narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: RawSummarizationStep[];
