@@ -4,10 +4,9 @@ import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } 
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
-import { LargeLanguageModelInferenceEngine, type ModelContext } from '../services/LargeLanguageModelInferenceEngine';
+import { LargeLanguageModelInferenceEngine, estimateTokens, type ModelContext } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
-import { estimateTokens } from '../utilities/tokenCounter';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
