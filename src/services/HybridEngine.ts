@@ -42,7 +42,7 @@ export class HybridEngine {
     options: StreamOptions
   ): Promise<string> {
     // 1. Determine which model to use based on Strategy
-    let targetModel = character.sampler?.associatedModel || this.getActiveModel();
+    let targetModel = this.activeStrategy?.localModel ?? null;
     
     if (this.activeStrategy) {
       // TODO: Implement your switching logic here
@@ -58,11 +58,6 @@ export class HybridEngine {
 
     // 3. Execute via Base Engine
     return this.baseEngine.generateStream(requestBody, controller, options);
-  }
-
-  private getActiveModel() {
-    // Fallback logic if no strategy is active
-    return null; 
   }
 }
 
