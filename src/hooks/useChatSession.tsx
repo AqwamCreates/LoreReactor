@@ -8,7 +8,7 @@ import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageMode
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { estimateTokens } from '../utilities/tokenCounter';
-import { generateMissingSummaries, checkTriggerThreshold } from '../services/SummarizationEngine';
+import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
@@ -205,14 +205,15 @@ function getDefaultCharacter(): Character {
 
 /**
  * ✅ Runs background summarization after messages are saved.
- * Checks trigger threshold, generates missing summaries, persists results.
+ * Checks trigger threshold, runs applicable strategies in order, persists results.
  */
 async function runBackgroundSummarization(
     data: ChatData,
     setData: (d: ChatData) => void,
     dataRef: React.MutableRefObject<ChatData | null>,
     modelRef: React.MutableRefObject<LanguageModel | null>,
-    runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>
+    runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
+    addToast: (message: string, type: 'success' | 'error' | 'info') => void
 ): Promise<void> {
     try {
         const modelCtxLen = modelRef.current?.contextLength || 8192;
@@ -221,9 +222,9 @@ async function runBackgroundSummarization(
         );
         const triggered = checkTriggerThreshold(data, currentTokens, modelCtxLen);
 
-        if (!triggered || triggered.strategyType !== 'Sliding Window Replace' || !triggered.slidingWindowSize) {
-            return;
-        }
+        if (!triggered) return;
+
+        addToast(`Running ${triggered.strategyType}...`, "info");
 
         const port = modelRef.current?.id
             ? runningModelsRef.current[modelRef.current.id]?.port
@@ -232,33 +233,85 @@ async function runBackgroundSummarization(
 
         if (!effectivePort) return;
 
-        const budgetStep = data.Profile?.summarizationSteps?.find(
-            s => s.strategyType === 'Sliding Window Replace' && s.enabled
-        );
-        const summaryBudget = budgetStep?.summaryTokenBudget ?? 256;
+        let updatedData = data;
 
-        const summaries = await generateMissingSummaries(
-            data,
-            triggered.slidingWindowSize,
-            effectivePort,
-            summaryBudget
-        );
+        // --- Sliding Window Replace ---
+        if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
+            const budgetStep = data.Profile?.summarizationSteps?.find(
+                s => s.strategyType === 'Sliding Window Replace' && s.enabled
+            );
+            const summaryBudget = budgetStep?.summaryTokenBudget ?? 256;
 
-        if (summaries.size > 0) {
-            const dataWithSummaries: ChatData = {
-                ...data,
-                chatMessageHistory: data.chatMessageHistory.map(m => {
-                    const summary = summaries.get(m.id);
-                    if (summary) return { ...m, textContentSummary: summary };
-                    return m;
-                }),
-            };
-            await saveRawChatData(dataWithSummaries);
-            setData(dataWithSummaries);
-            dataRef.current = dataWithSummaries;
+            const summaries = await generateMissingSummaries(
+                updatedData,
+                triggered.slidingWindowSize,
+                effectivePort,
+                summaryBudget
+            );
+
+            if (summaries.size > 0) {
+                updatedData = {
+                    ...updatedData,
+                    chatMessageHistory: updatedData.chatMessageHistory.map(m => {
+                        const summary = summaries.get(m.id);
+                        if (summary) return { ...m, textContentSummary: summary };
+                        return m;
+                    }),
+                };
+            }
+        }
+
+        // --- Periodic Compression ---
+        if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
+            const budgetStep = data.Profile?.summarizationSteps?.find(
+                s => s.strategyType === 'Periodic Compression' && s.enabled
+            );
+            const summaryBudget = budgetStep?.summaryTokenBudget ?? 512;
+
+            const newContexts = await generatePeriodicCompression(
+                updatedData,
+                triggered.compressionInterval,
+                triggered.compressionChunkSize,
+                effectivePort,
+                summaryBudget
+            );
+
+            if (newContexts.length > 0) {
+                const existingContexts = updatedData.contexts || [];
+                updatedData = {
+                    ...updatedData,
+                    contexts: [...existingContexts, ...newContexts],
+                };
+            }
+        }
+
+        // Persist if anything changed
+        if (updatedData !== data) {
+            await saveRawChatData(updatedData);
+            setData(updatedData);
+            dataRef.current = updatedData;
+
+            // Report what was done
+            const newSummaries = triggered.strategyType === 'Sliding Window Replace'
+                ? updatedData.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length
+                : 0;
+            const newContexts = triggered.strategyType === 'Periodic Compression'
+                ? (updatedData.contexts?.length ?? 0) - (data.contexts?.length ?? 0)
+                : 0;
+
+            if (newSummaries > 0) {
+                addToast(`Summarized ${newSummaries} message${newSummaries !== 1 ? 's' : ''}`, "success");
+            } else if (newContexts > 0) {
+                addToast(`Generated ${newContexts} compression context${newContexts !== 1 ? 's' : ''}`, "success");
+            } else {
+                addToast(`${triggered.strategyType} complete (no changes needed)`, "info");
+            }
+        } else {
+            addToast(`${triggered.strategyType} complete (no changes needed)`, "info");
         }
     } catch (err) {
         console.warn('Background summarization failed:', err);
+        addToast(`❌ Summarization failed: ${(err as Error).message}`, "error");
     }
 }
 
@@ -870,7 +923,7 @@ export function useChatSession() {
                 chatDataRef.current = updatedData;
 
                 // ✅ Trigger background summarization after AI response
-                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef);
+                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);;
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
