@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
-import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
+import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl, getCharacterVoiceUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -382,6 +382,9 @@ export function useChatSession() {
     const streamingTextRef = useRef("");
     const streamingCharacterRef = useRef<Character | null>(null);
     const chatDataRef = useRef<ChatData | null>(null);
+
+    // ✅ Cache of voice labels already uploaded to TTS server this session
+    const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
     useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
@@ -437,25 +440,85 @@ export function useChatSession() {
         streamingCharacterRef.current = null;
     }, []);
 
-    // ✅ TTS auto-speak helper
-    const speakMessage = useCallback(async (text: string, character: Character) => {
+    // ✅ TTS auto-speak helper — fire-and-forget, never blocks UI
+    // Respects profile narration filters (normal, quoted, bold, italic)
+    const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
 
-        const ttsContext: TextToSpeedLanguageModelContext = {
-            serverUrl: ttsServerUrl || undefined,
-            backend: 'Qwen3-TTS',
-        };
+        // ✅ Filter text based on profile narration settings
+        const profile = chatDataRef.current?.Profile;
+        if (profile) {
+            let filteredParts: string[] = [];
 
-        const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
-            voice: character.voice,
-        });
+            if (profile.narrateNormalText !== false) {
+                // Normal text = everything minus quoted, bold, italic markers
+                let normal = text;
+                normal = normal.replace(/"[^"]*"|'[^']*'/g, '');
+                normal = normal.replace(/\*\*[^*]+\*\*/g, '');
+                normal = normal.replace(/\*[^*]+\*/g, '');
+                const trimmed = normal.trim();
+                if (trimmed) filteredParts.push(trimmed);
+            }
 
-        if (blob) {
-            const audioUrl = URL.createObjectURL(blob);
-            const audio = new Audio(audioUrl);
-            audio.onended = () => URL.revokeObjectURL(audioUrl);
-            audio.play().catch(e => console.warn('TTS playback failed:', e));
+            if (profile.narrateQuotedText) {
+                const matches = text.match(/"[^"]*"|'[^']*'/g);
+                if (matches) filteredParts.push(matches.map(m => m.replace(/^["']|["']$/g, '')).join(' '));
+            }
+
+            if (profile.narrateBoldedText) {
+                const matches = text.match(/\*\*[^*]+\*\*/g);
+                if (matches) filteredParts.push(matches.map(m => m.replace(/\*\*/g, '')).join(' '));
+            }
+
+            if (profile.narrateItalicizedText) {
+                const matches = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
+                if (matches) filteredParts.push(matches.map(m => m.replace(/\*/g, '')).join(' '));
+            }
+
+            const filteredText = filteredParts.join(' ').trim();
+            if (!filteredText) return;
+            text = filteredText;
         }
+
+        // Fire async work without awaiting — prevents UI freeze
+        (async () => {
+            try {
+                const ttsContext: TextToSpeedLanguageModelContext = {
+                    serverUrl: ttsServerUrl || undefined,
+                    backend: 'Qwen3-TTS',
+                };
+
+                // Upload voice to TTS server if not already cached this session
+                if (!uploadedTtsVoicesRef.current.has(character.voice)) {
+                    const voiceUrl = getCharacterVoiceUrl(character.voice);
+                    if (!voiceUrl) return;
+
+                    const res = await fetch(voiceUrl);
+                    if (!res.ok) return;
+
+                    const blob = await res.blob();
+                    const file = new File([blob], character.voice, { type: blob.type || 'audio/wav' });
+
+                    const uploaded = await textToSpeechModelEngine.uploadVoice(character.voice, file, ttsContext);
+                    if (!uploaded) return;
+
+                    uploadedTtsVoicesRef.current.add(character.voice);
+                }
+
+                const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
+                    voice: character.voice,
+                });
+
+                if (blob) {
+                    const audioUrl = URL.createObjectURL(blob);
+                    const audio = new Audio(audioUrl);
+                    audio.onended = () => URL.revokeObjectURL(audioUrl);
+                    audio.play().catch(e => console.warn('TTS playback failed:', e));
+                }
+            } catch (e) {
+                console.warn('TTS speak failed:', e);
+            }
+        })();
     }, [ttsServerUrl]);
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -803,7 +866,7 @@ export function useChatSession() {
                     setChatData(result);
                     chatDataRef.current = result;
 
-                    // ✅ Auto-speak AI response
+                    // ✅ Auto-speak AI response (fire-and-forget)
                     const lastMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
                     if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
                         speakMessage(lastMsg.textContent, lastMsg.character);
@@ -986,7 +1049,7 @@ export function useChatSession() {
                 // ✅ Trigger background summarization after AI response
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
 
-                // ✅ Auto-speak AI response
+                // ✅ Auto-speak AI response (fire-and-forget)
                 const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
                 if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);
@@ -1103,7 +1166,7 @@ export function useChatSession() {
                 // ✅ Trigger background summarization after regeneration
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
 
-                // ✅ Auto-speak AI response
+                // ✅ Auto-speak AI response (fire-and-forget)
                 const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
                 if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);

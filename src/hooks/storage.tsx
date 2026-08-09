@@ -578,9 +578,13 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         chatProbability: rawProfile.chatProbability ?? 0,
         maximumChatStamina: rawProfile.maximumChatStamina ?? 0,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
+        narrateNormalText: rawProfile.narrateNormalText,
+        narrateQuotedText: rawProfile.narrateQuotedText,
+        narrateBoldedText: rawProfile.narrateBoldedText,
+        narrateItalicizedText: rawProfile.narrateItalicizedText,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
         inputStrategy: rawProfile.inputStrategy?.length
-            ? rawProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
+            ? rawProfile.inputStrategy
             : ['Context', 'System Prompt', 'Think Prompt', 'Chat History'],
         summarizationSteps,
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
