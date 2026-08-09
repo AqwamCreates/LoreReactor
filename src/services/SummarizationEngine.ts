@@ -1,8 +1,8 @@
 // src/services/SummarizationEngine.ts
 import type { ChatData, ChatMessage, Context } from '../types';
-import { LargeLanguageModelInferenceEngine, type ModelContext } from './LargeLanguageModelInferenceEngine';
+import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 
-const engine = new LargeLanguageModelInferenceEngine();
+const engine = new LanguageModelEngine();
 
 const SUMMARIZE_SYSTEM_PROMPT = `You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.`;
 
@@ -15,12 +15,12 @@ const RECURSIVE_MERGE_PROMPT = `You are a narrative merger for roleplay chat his
  */
 export async function generateMessageSummary(
     message: ChatMessage,
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 256
 ): Promise<string | null> {
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${message.textContent}\n\nSummary:`;
 
-    return engine.generateCompletion(prompt, modelContext, {
+    return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
         temperature: 0.3,
         stop: ['\n\n', '\nMessage from', '```'],
@@ -34,7 +34,7 @@ export async function generateMessageSummary(
 export async function generateMissingSummaries(
     chatData: ChatData,
     windowSize: number,
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 256
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
@@ -46,7 +46,7 @@ export async function generateMissingSummaries(
     if (toSummarize.length === 0) return results;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, modelContext, maxTokens);
+        const summary = await generateMessageSummary(msg, LanguageModelContext, maxTokens);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -60,7 +60,7 @@ export async function generateMissingSummaries(
  */
 async function compressChunk(
     messages: ChatMessage[],
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 512
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
@@ -69,7 +69,7 @@ async function compressChunk(
 
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
 
-    return engine.generateCompletion(prompt, modelContext, {
+    return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
         temperature: 0.3,
         stop: ['\n\n\n', '```'],
@@ -84,7 +84,7 @@ export async function generatePeriodicCompression(
     chatData: ChatData,
     compressionInterval: number,
     compressionChunkSize: number,
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 512
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -114,7 +114,7 @@ export async function generatePeriodicCompression(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, modelContext, maxTokens);
+        const compressed = await compressChunk(chunk, LanguageModelContext, maxTokens);
         if (!compressed) continue;
 
         newContexts.push({
@@ -140,7 +140,7 @@ export async function generatePeriodicCompression(
  */
 async function mergeSummaries(
     summaries: string[],
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 512
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
@@ -149,7 +149,7 @@ async function mergeSummaries(
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
 
-    return engine.generateCompletion(prompt, modelContext, {
+    return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
         temperature: 0.3,
         stop: ['\n\n\n', '```'],
@@ -169,7 +169,7 @@ export async function generateRecursiveSummary(
     chatData: ChatData,
     chunkSize: number,
     maxDepth: number,
-    modelContext: ModelContext,
+    LanguageModelContext: LanguageModelContext,
     maxTokens: number = 1024
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -192,7 +192,7 @@ export async function generateRecursiveSummary(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, modelContext, maxTokens);
+        const compressed = await compressChunk(chunk, LanguageModelContext, maxTokens);
         if (!compressed) continue;
 
         layer0Summaries.push(compressed);
@@ -224,7 +224,7 @@ export async function generateRecursiveSummary(
 
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, modelContext, maxTokens);
+            const merged = await mergeSummaries(batch, LanguageModelContext, maxTokens);
             if (merged) {
                 nextLayerSummaries.push(merged);
 
@@ -249,7 +249,7 @@ export async function generateRecursiveSummary(
 
     // --- Final global summary ---
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, modelContext, maxTokens);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, LanguageModelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${crypto.randomUUID()}`,
@@ -291,7 +291,7 @@ export async function generateRecursiveSummary(
 export function checkTriggerThreshold(
     chatData: ChatData,
     currentTokenCount: number,
-    modelContextLength: number
+    LanguageModelContextLength: number
 ): {
     strategyType: string;
     slidingWindowSize?: number;
@@ -310,7 +310,7 @@ export function checkTriggerThreshold(
         const threshold = step.triggerTokenThreshold ?? 0;
         const effectiveThreshold = threshold > 0
             ? threshold
-            : Math.floor(modelContextLength * 0.7);
+            : Math.floor(LanguageModelContextLength * 0.7);
 
         if (currentTokenCount >= effectiveThreshold) {
             if (step.strategyType === 'Sliding Window Replace') {

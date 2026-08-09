@@ -1,6 +1,6 @@
 // src/services/HybridEngine.ts
 import type { ChatData, Character, BudgetStrategy } from '../types';
-import { LargeLanguageModelInferenceEngine } from './LargeLanguageModelInferenceEngine';
+import { LanguageModelEngine } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic'; // Assuming you have this helper
 
 interface StreamStats {
@@ -21,12 +21,12 @@ interface StreamOptions {
 }
 
 export class HybridEngine {
-  private baseEngine: LargeLanguageModelInferenceEngine;
+  private baseEngine: LanguageModelEngine;
   private activeStrategy: BudgetStrategy | null = null;
   private currentBudgetSpent: number = 0;
 
   constructor() {
-    this.baseEngine = new LargeLanguageModelInferenceEngine();
+    this.baseEngine = new LanguageModelEngine();
   }
 
   public setStrategy(strategy: BudgetStrategy | null) {
