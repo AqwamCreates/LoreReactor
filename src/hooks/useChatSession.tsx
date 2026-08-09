@@ -4,7 +4,7 @@ import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } 
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
-import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageModelInferenceEngine';
+import { LargeLanguageModelInferenceEngine, type ModelContext } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { estimateTokens } from '../utilities/tokenCounter';
@@ -207,10 +207,6 @@ function getDefaultCharacter(): Character {
  * ✅ Runs background summarization after messages are saved.
  * Checks trigger threshold, runs applicable strategies in order, persists results.
  */
-/**
- * ✅ Runs background summarization after messages are saved.
- * Checks trigger threshold, runs applicable strategies in order, persists results.
- */
 async function runBackgroundSummarization(
     data: ChatData,
     setData: (d: ChatData) => void,
@@ -235,7 +231,14 @@ async function runBackgroundSummarization(
             : undefined;
         const effectivePort = port || (modelRef.current?.parameters as any)?._runtimePort;
 
-        if (!effectivePort) return;
+        const modelContext: ModelContext = {
+            apiKey: modelRef.current?.apiKey,
+            backend: modelRef.current?.backend,
+            modelPath: modelRef.current?.model,
+            runtimePort: effectivePort,
+        };
+
+        if (!effectivePort && !modelRef.current?.apiKey) return;
 
         let updatedData = data;
 
@@ -249,7 +252,7 @@ async function runBackgroundSummarization(
             const summaries = await generateMissingSummaries(
                 updatedData,
                 triggered.slidingWindowSize,
-                effectivePort,
+                modelContext,
                 summaryBudget
             );
 
@@ -276,7 +279,7 @@ async function runBackgroundSummarization(
                 updatedData,
                 triggered.compressionInterval,
                 triggered.compressionChunkSize,
-                effectivePort,
+                modelContext,
                 summaryBudget
             );
 
@@ -300,7 +303,7 @@ async function runBackgroundSummarization(
                 updatedData,
                 triggered.recursiveChunkSize,
                 triggered.recursiveMaxDepth,
-                effectivePort,
+                modelContext,
                 summaryBudget
             );
 
@@ -582,7 +585,7 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, effectivePort);
                 
-                const modelContext = {
+                const modelContext: ModelContext = {
                     apiKey: currentModel.apiKey,
                     backend: currentModel.backend,
                     modelPath: currentModel.model,
@@ -637,7 +640,7 @@ export function useChatSession() {
                         
                         const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
                         
-                        const retryModelContext = {
+                        const retryModelContext: ModelContext = {
                             apiKey: currentModel.apiKey,
                             backend: currentModel.backend,
                             modelPath: currentModel.model,
