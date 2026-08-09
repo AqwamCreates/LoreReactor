@@ -302,12 +302,6 @@ export function ProfileEditorModal({
         setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
     };
 
-    const toggleStepEnabled = (index: number) => {
-        setSummarizationSteps(prev => prev.map((s, i) =>
-            i === index ? { ...s, enabled: !s.enabled, lastUpdatedTimestamp: Date.now() } : s
-        ));
-    };
-
     const updateStepField = <K extends keyof SummarizationStep>(index: number, field: K, value: SummarizationStep[K]) => {
         setSummarizationSteps(prev => prev.map((s, i) =>
             i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s
@@ -320,7 +314,7 @@ export function ProfileEditorModal({
             id: `step-${crypto.randomUUID()}`,
             name: strategyType,
             strategyType,
-            enabled: false,
+            enabled: true,
             order: summarizationSteps.length,
             summaryTokenBudget: 512,
             triggerTokenThreshold: 0,
@@ -561,7 +555,7 @@ export function ProfileEditorModal({
                             <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
                         </div>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Steps execute in order. Each can be independently enabled/disabled. Click a step to expand its settings.
+                            Steps execute in order. Click a step to expand its settings. Remove via × or the dropdown below.
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -577,7 +571,7 @@ export function ProfileEditorModal({
                                             onDragEnd={handleStepDragEnd}
                                             onDragOver={handleDragOver}
                                             onDrop={(e) => handleStepDrop(e, index)}
-                                            className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''} ${!step.enabled ? 'sampler-param-disabled' : ''}`}
+                                            className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
                                             style={{ padding: '6px 8px', cursor: 'pointer' }}
                                             onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
                                         >
@@ -588,7 +582,6 @@ export function ProfileEditorModal({
                                                     fontSize: '0.75rem',
                                                     fontWeight: 'bold',
                                                     color: 'var(--text-h)',
-                                                    opacity: step.enabled ? 1 : 0.5,
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
                                                     whiteSpace: 'nowrap',
@@ -600,14 +593,6 @@ export function ProfileEditorModal({
                                             <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                                                 <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === 0 ? 0.3 : 1 }}>▲</button>
                                                 <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-btn" title="Move down" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
-                                                <label className="editor-checkbox-label" style={{ margin: 0, gap: '0px' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={step.enabled}
-                                                        onChange={() => toggleStepEnabled(index)}
-                                                        className="editor-checkbox-input"
-                                                    />
-                                                </label>
                                                 <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-btn" title="Remove step" style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}>×</button>
                                                 <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                                             </div>
