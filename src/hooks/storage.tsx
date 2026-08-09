@@ -2,7 +2,8 @@
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
-  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
+  SummarizationStep, RawSummarizationStep
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -40,6 +41,63 @@ const DEFAULT_ACTIONS: InterjectableAction[] = [
   { label: 'Frown At', count: 0 }, { label: 'Smile At', count: 0 }, { label: 'Grin At', count: 0 },
   { label: 'Pout At', count: 0 }
 ];
+
+// ✅ Default summarization steps for new profiles or profiles without steps
+function getDefaultSummarizationSteps(): SummarizationStep[] {
+    const now = Date.now();
+    return [
+        {
+            id: 'step-sliding-window',
+            name: 'Sliding Window Replace',
+            strategyType: 'Sliding Window Replace',
+            enabled: true,
+            order: 0,
+            slidingWindowSize: 10,
+            summaryTokenBudget: 256,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-periodic-compression',
+            name: 'Periodic Compression',
+            strategyType: 'Periodic Compression',
+            enabled: false,
+            order: 1,
+            compressionInterval: 20,
+            compressionChunkSize: 10,
+            summaryTokenBudget: 512,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-recursive-summary',
+            name: 'Recursive Summary',
+            strategyType: 'Recursive Summary',
+            enabled: false,
+            order: 2,
+            recursiveChunkSize: 10,
+            recursiveMaxDepth: 3,
+            summaryTokenBudget: 1024,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-observation-masking',
+            name: 'Observation Masking',
+            strategyType: 'Observation Masking',
+            enabled: false,
+            order: 3,
+            maskingRelevanceThreshold: 0.3,
+            maskingKeywordWeight: 0.7,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+    ];
+}
 
 const WRITE_API_URL = localURL; 
 const PATHS = {
@@ -330,6 +388,11 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
+        tokenBudget: rawContext.tokenBudget,
+        recursiveScan: rawContext.recursiveScan,
+        preventRecursion: rawContext.preventRecursion,
+        insertionDepth: rawContext.insertionDepth,
+        characterBindings: rawContext.characterBindings,
         firstCreatedTimestamp: rawContext.firstCreatedTimestamp || Date.now(),
         lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp || Date.now(),
     };
@@ -475,6 +538,34 @@ export async function loadRawProfileManifest(): Promise<string[]> {
 export async function loadRawProfile(id: string): Promise<Profile | null> {
     const rawProfile = await fetchJson<RawProfile>(`${PATHS.profiles}/${id}.json`);
     if (!rawProfile) return null;
+
+    const now = Date.now();
+
+    // ✅ Hydrate summarization steps — add ids/timestamps if missing, fall back to defaults
+    const rawSteps = rawProfile.summarizationSteps || [];
+    const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
+        ? rawSteps.map((step, i) => ({
+            id: step.id || `step-${crypto.randomUUID()}`,
+            name: step.name || step.strategyType,
+            description: step.description,
+            strategyType: step.strategyType,
+            enabled: step.enabled ?? false,
+            order: step.order ?? i,
+            slidingWindowSize: step.slidingWindowSize,
+            compressionInterval: step.compressionInterval,
+            compressionChunkSize: step.compressionChunkSize,
+            recursiveChunkSize: step.recursiveChunkSize,
+            recursiveMaxDepth: step.recursiveMaxDepth,
+            maskingRelevanceThreshold: step.maskingRelevanceThreshold,
+            maskingKeywordWeight: step.maskingKeywordWeight,
+            summaryTokenBudget: step.summaryTokenBudget,
+            summaryModelId: step.summaryModelId,
+            triggerTokenThreshold: step.triggerTokenThreshold,
+            firstCreatedTimestamp: step.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
+        }))
+        : getDefaultSummarizationSteps();
+
     return {
         id,
         name: rawProfile.name || 'Unknown Profile',
@@ -488,8 +579,9 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         inputStrategy: rawProfile.inputStrategy?.length
             ? rawProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
             : ['Context', 'System Prompt', 'Think Prompt', 'Chat History'],
-        firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || Date.now(),
-        lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || Date.now(),
+        summarizationSteps,
+        firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || now,
     };
 }
 
@@ -500,9 +592,12 @@ export async function loadAllRawProfiles(): Promise<Profile[]> {
 }
 
 export async function saveRawProfile(profile: Profile): Promise<void> {
-    const { id, ...rawProfile } = profile;
+    const { id, summarizationSteps, ...rawProfile } = profile;
+    // ✅ Strip id from each step since RawSummarizationStep extends RawData (no id)
+    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ id: _stepId, ...rest }) => rest);
     const payload: RawProfile = {
         ...rawProfile,
+        summarizationSteps: rawSteps,
         lastUpdatedTimestamp: Date.now(),
     };
     await putJson(`${PATHS.profiles}/${id}.json`, payload);

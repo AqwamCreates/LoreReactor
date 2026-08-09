@@ -260,10 +260,12 @@ function App() {
     }));
   }, [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
 
-  // ✅ Dismiss loading screen once all steps complete
+  // ✅ Dismiss loading screen once all steps complete OR timeout for empty collections
   useEffect(() => {
+    if (!isInitializing) return;
+
     const allDone = loadSteps.every(s => s.done);
-    if (allDone && isInitializing) {
+    if (allDone) {
       const timer = setTimeout(() => {
         setIsFadeOut(true);
         setTimeout(() => {
@@ -273,6 +275,18 @@ function App() {
       }, 200);
       return () => clearTimeout(timer);
     }
+
+    // ✅ Safety timeout — force dismiss after 4 seconds even if some steps never complete
+    // This handles empty collections (0 models, 0 budget strategies, etc.)
+    const fallbackTimer = setTimeout(() => {
+      setIsFadeOut(true);
+      setTimeout(() => {
+        setIsInitializing(false);
+        setIsFadeOut(false);
+      }, 300);
+    }, 4000);
+
+    return () => clearTimeout(fallbackTimer);
   }, [loadSteps, isInitializing]);
 
   // ✅ FIXED: Cinematic avatar observer
@@ -906,7 +920,21 @@ function App() {
                   {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
                     <div className="avatar-column">
                       <div style={{ position: 'relative' }}>
-                        {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer', opacity: 0.5 }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer', opacity: 0.5 }} />)}
+                        {getCharacterImageUrl(streamingCharacter.image) ? (
+                          <img 
+                            src={getCharacterImageUrl(streamingCharacter.image)!} 
+                            alt={streamingCharacter.name} 
+                            className="character-avatar" 
+                            onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
+                            style={{ cursor: 'pointer', opacity: 0.5 }} 
+                          />
+                        ) : (
+                          <div 
+                            className="character-avatar placeholder" 
+                            onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
+                            style={{ cursor: 'pointer', opacity: 0.5 }} 
+                          />
+                        )}
                       </div>
                       <span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
                     </div>
@@ -925,7 +953,21 @@ function App() {
                   {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
                     <div className="avatar-column">
                       <div style={{ position: 'relative' }}>
-                        {getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" style={{ cursor: 'pointer' }} />)}
+                        {getCharacterImageUrl(streamingCharacter.image) ? (
+                          <img 
+                            src={getCharacterImageUrl(streamingCharacter.image)!} 
+                            alt={streamingCharacter.name} 
+                            className="character-avatar" 
+                            onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
+                            style={{ cursor: 'pointer' }} 
+                          />
+                        ) : (
+                          <div 
+                            className="character-avatar placeholder" 
+                            onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
+                            style={{ cursor: 'pointer' }} 
+                          />
+                        )}
                       </div>
                       <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
                     </div>
