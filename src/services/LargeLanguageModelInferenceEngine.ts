@@ -10,6 +10,13 @@ export interface StreamCallbacks {
   onToken: (stats: TokenStats) => void;
 }
 
+export interface ModelContext {
+  apiKey?: string;
+  backend?: string;
+  modelPath?: string;
+  runtimePort?: number;
+}
+
 const CLOUD_ENDPOINTS: Record<string, string> = {
   'DeepSeek': 'https://api.deepseek.com/chat/completions',
   'Qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
@@ -24,24 +31,30 @@ const CLOUD_ENDPOINTS: Record<string, string> = {
   'Inworld': 'https://api.inworld.ai/v1/chat/completions',
 };
 
+const CLOUD_BACKENDS = [
+  'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
+];
+
 export class LargeLanguageModelInferenceEngine {
-  
-  async generateStream(
-    requestBody: any, 
-    abortController: AbortController, 
-    callbacks?: StreamCallbacks,
-    modelContext?: { apiKey?: string; backend?: string; modelPath?: string; runtimePort?: number },
-    maxParagraphs?: number
-  ): Promise<string> {
-    
+
+  /**
+   * ✅ Single source of truth for resolving URL, headers, and body.
+   * Used by both generateStream and generateCompletion.
+   */
+  private resolveRequest(
+    prompt: string,
+    stream: boolean,
+    modelContext?: ModelContext,
+    params?: {
+      temperature?: number;
+      top_p?: number;
+      maxTokens?: number;
+      stop?: string[];
+      extraParams?: Record<string, unknown>;
+    }
+  ): { url: string; headers: HeadersInit; body: string } {
     const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
-    
-    // ✅ 0 or undefined means unlimited paragraphs
-    const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
-    
-    const isCloud = !!apiKey && backend && [
-      'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
-    ].includes(backend);
+    const isCloud = !!apiKey && backend && CLOUD_BACKENDS.includes(backend);
 
     let url: string;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -55,7 +68,7 @@ export class LargeLanguageModelInferenceEngine {
       } else {
         const defaultUrl = CLOUD_ENDPOINTS[backend];
         if (!defaultUrl) throw new Error(`Unsupported cloud backend: ${backend}`);
-        url = requestBody.api_url || defaultUrl;
+        url = defaultUrl;
       }
 
       if (backend === 'Inworld') {
@@ -64,50 +77,124 @@ export class LargeLanguageModelInferenceEngine {
         headers.Authorization = `Bearer ${apiKey}`;
       }
 
-      let payloadModelName = 'default-model';
-      if (requestBody.parameters?.model_name) {
-        payloadModelName = requestBody.parameters.model_name;
-      } else if (backend !== 'Other' && modelPath) {
-        payloadModelName = modelPath;
-      }
+      const payloadModelName = modelPath || 'default-model';
 
-      if (requestBody.prompt && !requestBody.messages) {
-        body = JSON.stringify({
-          model: payloadModelName,
-          messages: [{ role: "user", content: requestBody.prompt }],
-          stream: true,
-          temperature: requestBody.temperature,
-          top_p: requestBody.top_p,
-          max_tokens: requestBody.n_predict || requestBody.max_tokens,
-          stop: requestBody.stop,
-          ...requestBody.extra_cloud_params
-        });
-      } else if (requestBody.messages) {
-        body = JSON.stringify({ model: payloadModelName, ...requestBody, stream: true });
-      } else {
-        body = JSON.stringify(requestBody);
-      }
+      body = JSON.stringify({
+        model: payloadModelName,
+        messages: [{ role: "user", content: prompt }],
+        stream,
+        temperature: params?.temperature,
+        top_p: params?.top_p,
+        max_tokens: params?.maxTokens,
+        stop: params?.stop,
+        ...params?.extraParams,
+      });
 
     } else if (runtimePort) {
-      // ✅ LOCAL MODEL: Direct connection to llama-server /completion
+      // --- Local llama-server ---
       url = `http://127.0.0.1:${runtimePort}/completion`;
-      
-      // Ensure body is in llama.cpp native completion format
-      if (requestBody.messages && !requestBody.prompt) {
-        const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
-        requestBody.prompt = lastUserMsg?.content || '';
-        delete requestBody.messages;
-        delete requestBody.model;
-      }
-      
-      requestBody.stream = true;
-      body = JSON.stringify(requestBody);
+
+      body = JSON.stringify({
+        prompt,
+        n_predict: params?.maxTokens,
+        temperature: params?.temperature,
+        top_p: params?.top_p,
+        stop: params?.stop,
+        stream,
+      });
 
     } else {
-      // Fallback: Vite proxy
+      // --- Fallback: Vite proxy ---
       url = '/api/completion';
-      body = JSON.stringify(requestBody);
+
+      body = JSON.stringify({
+        prompt,
+        n_predict: params?.maxTokens,
+        temperature: params?.temperature,
+        top_p: params?.top_p,
+        stop: params?.stop,
+        stream,
+      });
     }
+
+    return { url, headers, body };
+  }
+
+  /**
+   * ✅ Extracts text content from either OpenAI-compatible or llama.cpp response format.
+   */
+  private extractContent(data: any): string | null {
+    // OpenAI-compatible format (cloud + some local wrappers)
+    if (data.choices?.[0]?.message?.content !== undefined) {
+      const content = data.choices[0].message.content?.trim();
+      return content && content.length > 0 ? content : null;
+    }
+    // llama.cpp native completion format
+    if (data.content !== undefined) {
+      const content = data.content?.trim();
+      return content && content.length > 0 ? content : null;
+    }
+    return null;
+  }
+
+  /**
+   * ✅ Non-streaming completion for internal use (summarization, compression).
+   */
+  async generateCompletion(
+    prompt: string,
+    modelContext?: ModelContext,
+    options: {
+      maxTokens?: number;
+      temperature?: number;
+      stop?: string[];
+    } = {}
+  ): Promise<string | null> {
+    const { maxTokens = 512, temperature = 0.3, stop } = options;
+
+    try {
+      const { url, headers, body } = this.resolveRequest(prompt, false, modelContext, {
+        maxTokens,
+        temperature,
+        stop,
+      });
+
+      const res = await fetch(url, { method: 'POST', headers, body });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      return this.extractContent(data);
+    } catch (e) {
+      console.warn('generateCompletion failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * ✅ Streaming generation for chat responses.
+   */
+  async generateStream(
+    requestBody: any,
+    abortController: AbortController,
+    callbacks?: StreamCallbacks,
+    modelContext?: ModelContext,
+    maxParagraphs?: number
+  ): Promise<string> {
+    const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
+
+    // Extract prompt from requestBody — handle both native and messages format
+    let prompt = requestBody.prompt || '';
+    if (!prompt && requestBody.messages) {
+      const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
+      prompt = lastUserMsg?.content || '';
+    }
+
+    const { url, headers, body } = this.resolveRequest(prompt, true, modelContext, {
+      temperature: requestBody.temperature,
+      top_p: requestBody.top_p,
+      maxTokens: requestBody.n_predict || requestBody.max_tokens,
+      stop: requestBody.stop,
+      extraParams: requestBody.extra_cloud_params,
+    });
 
     const response = await fetch(url, {
       method: 'POST',
@@ -166,19 +253,17 @@ export class LargeLanguageModelInferenceEngine {
                 tokenCount++;
                 fullContent += token;
 
-                // ✅ Count paragraph breaks (\n\n) and abort when limit reached
                 if (paragraphLimit > 0) {
                   const prevLength = fullContent.length - token.length;
                   const prevContent = fullContent.substring(0, prevLength);
                   const prevParagraphs = (prevContent.match(/\n\n/g) || []).length;
                   const currentParagraphs = (fullContent.match(/\n\n/g) || []).length;
-                  
+
                   if (currentParagraphs > prevParagraphs) {
                     paragraphCount = currentParagraphs;
                   }
 
                   if (paragraphCount >= paragraphLimit) {
-                    // ✅ Abort at paragraph boundary — text ends cleanly
                     abortController.abort();
                     return fullContent.trim();
                   }
