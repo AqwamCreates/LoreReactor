@@ -334,10 +334,10 @@ async function runBackgroundSummarization(
             } else if (newContexts > 0) {
                 addToast(`Generated ${newContexts} context${newContexts !== 1 ? 's' : ''} (${triggered.strategyType})`, "success");
             } else {
-                addToast(`${triggered.strategyType} complete (no changes needed)`, "info");
+                addToast(`${triggered.strategyType} complete`, "info");
             }
         } else {
-            addToast(`${triggered.strategyType} complete (no changes needed)`, "info");
+            addToast(`${triggered.strategyType} complete`, "info");
         }
     } catch (err) {
         console.warn('Background summarization failed:', err);

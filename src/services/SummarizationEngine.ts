@@ -291,6 +291,7 @@ export async function generateRecursiveSummary(
 
 /**
  * Checks whether any summarization step should trigger based on token count.
+ * All steps in the list are considered active (presence = enabled).
  */
 export function checkTriggerThreshold(
     chatData: ChatData,
@@ -307,11 +308,10 @@ export function checkTriggerThreshold(
     const profile = chatData.Profile;
     if (!profile?.summarizationSteps) return null;
 
-    const enabledSteps = profile.summarizationSteps
-        .filter(s => s.enabled)
+    const activeSteps = [...profile.summarizationSteps]
         .sort((a, b) => a.order - b.order);
 
-    for (const step of enabledSteps) {
+    for (const step of activeSteps) {
         const threshold = step.triggerTokenThreshold ?? 0;
         const effectiveThreshold = threshold > 0
             ? threshold
