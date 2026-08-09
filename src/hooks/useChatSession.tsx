@@ -8,7 +8,7 @@ import { LargeLanguageModelInferenceEngine } from '../services/LargeLanguageMode
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { estimateTokens } from '../utilities/tokenCounter';
-import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold } from '../services/SummarizationEngine';
+import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
@@ -207,6 +207,10 @@ function getDefaultCharacter(): Character {
  * ✅ Runs background summarization after messages are saved.
  * Checks trigger threshold, runs applicable strategies in order, persists results.
  */
+/**
+ * ✅ Runs background summarization after messages are saved.
+ * Checks trigger threshold, runs applicable strategies in order, persists results.
+ */
 async function runBackgroundSummarization(
     data: ChatData,
     setData: (d: ChatData) => void,
@@ -285,24 +289,47 @@ async function runBackgroundSummarization(
             }
         }
 
+        // --- Recursive Summary ---
+        if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
+            const budgetStep = data.Profile?.summarizationSteps?.find(
+                s => s.strategyType === 'Recursive Summary' && s.enabled
+            );
+            const summaryBudget = budgetStep?.summaryTokenBudget ?? 1024;
+
+            const newContexts = await generateRecursiveSummary(
+                updatedData,
+                triggered.recursiveChunkSize,
+                triggered.recursiveMaxDepth,
+                effectivePort,
+                summaryBudget
+            );
+
+            if (newContexts.length > 0) {
+                const existingContexts = updatedData.contexts || [];
+                updatedData = {
+                    ...updatedData,
+                    contexts: [...existingContexts, ...newContexts],
+                };
+            }
+        }
+
         // Persist if anything changed
         if (updatedData !== data) {
             await saveRawChatData(updatedData);
             setData(updatedData);
             dataRef.current = updatedData;
 
-            // Report what was done
             const newSummaries = triggered.strategyType === 'Sliding Window Replace'
                 ? updatedData.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length
                 : 0;
-            const newContexts = triggered.strategyType === 'Periodic Compression'
+            const newContexts = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary')
                 ? (updatedData.contexts?.length ?? 0) - (data.contexts?.length ?? 0)
                 : 0;
 
             if (newSummaries > 0) {
                 addToast(`Summarized ${newSummaries} message${newSummaries !== 1 ? 's' : ''}`, "success");
             } else if (newContexts > 0) {
-                addToast(`Generated ${newContexts} compression context${newContexts !== 1 ? 's' : ''}`, "success");
+                addToast(`Generated ${newContexts} context${newContexts !== 1 ? 's' : ''} (${triggered.strategyType})`, "success");
             } else {
                 addToast(`${triggered.strategyType} complete (no changes needed)`, "info");
             }
@@ -923,7 +950,7 @@ export function useChatSession() {
                 chatDataRef.current = updatedData;
 
                 // ✅ Trigger background summarization after AI response
-                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);;
+                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
@@ -1034,7 +1061,7 @@ export function useChatSession() {
                 chatDataRef.current = updatedData;
 
                 // ✅ Trigger background summarization after regeneration
-                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef);
+                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
