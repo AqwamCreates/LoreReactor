@@ -57,7 +57,12 @@ export class HybridEngine {
     const requestBody = await prepareRequestBody(chatData, character, imageData, targetModel);
 
     // 3. Execute via Base Engine
-    return this.baseEngine.generateStream(requestBody, controller, options);
+    const callbacks = {
+      onToken: options.onToken ?? (() => {}),
+      onFinish: options.onFinish ?? (() => {}),
+    };
+
+    return this.baseEngine.generateStream(requestBody, controller, callbacks);
   }
 }
 

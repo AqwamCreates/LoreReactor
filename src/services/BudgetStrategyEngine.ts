@@ -52,9 +52,6 @@ export class BudgetStrategyEngine {
 
     while (attemptCount < maxAttempts && !abortController.signal.aborted) {
       const selectedModel = selection.model;
-      const startTime = Date.now();
-      let hasResponded = false;
-      let fullText = "";
 
       try {
         // Prepare Image for Character
@@ -86,8 +83,6 @@ export class BudgetStrategyEngine {
         // Wrap callbacks to track stats
         const wrappedCallbacks: StreamCallbacks | undefined = callbacks ? {
           onToken: (stats: TokenStats) => {
-            hasResponded = true;
-            fullText = stats.fullText;
             this.totalTokensGenerated++;
             callbacks.onToken(stats);
           }
@@ -115,9 +110,6 @@ export class BudgetStrategyEngine {
       } catch (error) {
         const err = error as Error;
         console.warn(`Model ${selectedModel.name} failed:`, err.message);
-
-        const isTimeout = Date.now() - startTime > (this.strategy.fallbackOnTimeoutInSeconds * 1000);
-        const isFailure = err.message.includes('Failed') || err.message.includes('Error') || err.message.includes('Abort');
 
         // Fallback Logic: Only if current was Local AND fallback is enabled
         if (selection.type === 'local' && this.strategy.fallbackOnLocalFailure && attemptCount === 0) {
