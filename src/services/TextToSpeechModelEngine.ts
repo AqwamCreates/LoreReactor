@@ -1,66 +1,64 @@
 // src/services/TextToSpeechModelInferenceEngine.ts
 
-export interface TextToSpeechModelContext {
+export interface TextToSpeedLanguageModelContext {
   serverUrl?: string;   // e.g., "http://localhost:7860"
-  apiKey?: string;      // For cloud TextToSpeech APIs (future)
-  backend?: 'Qwen3-TextToSpeech' | 'Browser' | 'Other';
+  apiKey?: string;      // For cloud TTS APIs (future)
+  backend?: 'Qwen3-TTS' | 'Browser' | 'Other';
 }
 
-export interface TextToSpeechSynthesizeOptions {
+export interface TextToSpeedSynthesizeOptions {
   voice?: string;       // Voice label (uploaded file prefix or built-in speaker name)
-  speed?: number;       // Speed multiplier (default: 1.0)
   language?: string;    // Language hint (for future multi-backend support)
 }
 
-export class TextToSpeechModelInferenceEngine {
+export class TextToSpeechModelEngine {
 
   /**
-   * ✅ Synthesizes speech from text using the configured TextToSpeech backend.
+   * ✅ Synthesizes speech from text using the configured TTS backend.
    * Returns an audio Blob (WAV format) or null on failure.
    */
   async synthesize(
     text: string,
-    modelContext?: TextToSpeechModelContext,
-    options?: TextToSpeechSynthesizeOptions
+    modelContext?: TextToSpeedLanguageModelContext,
+    options?: TextToSpeedSynthesizeOptions
   ): Promise<Blob | null> {
     const { serverUrl } = modelContext || {};
-    const { voice, speed } = options || {};
+    const { voice } = options || {};
 
-    // --- Qwen3-TextToSpeech Server Backend ---
+    // --- Qwen3-TTS Server Backend ---
     if (serverUrl) {
       try {
         const params = new URLSearchParams();
         params.set('text', text);
         if (voice) params.set('voice', voice);
-        if (speed && speed !== 1.0) params.set('speed', String(speed));
 
         const url = `${serverUrl}/synthesize_speech/?${params.toString()}`;
 
         const res = await fetch(url);
         if (!res.ok) {
-          console.warn(`TextToSpeech synthesis failed: ${res.status}`);
+          console.warn(`TTS synthesis failed: ${res.status}`);
           return null;
         }
 
         return await res.blob();
       } catch (e) {
-        console.warn('TextToSpeech synthesis failed:', e);
+        console.warn('TTS synthesis failed:', e);
         return null;
       }
     }
 
     // --- Browser Web Speech API Fallback ---
-    return this.synthesizeBrowser(text, voice, speed);
+    return this.synthesizeBrowser(text, voice);
   }
 
   /**
-   * ✅ Uploads a reference audio file to the TextToSpeech server for voice cloning.
+   * ✅ Uploads a reference audio file to the TTS server for voice cloning.
    * Returns true on success.
    */
   async uploadVoice(
     label: string,
     file: File,
-    modelContext?: TextToSpeechModelContext
+    modelContext?: TextToSpeedLanguageModelContext
   ): Promise<boolean> {
     const { serverUrl } = modelContext || {};
     if (!serverUrl) return false;
@@ -77,7 +75,7 @@ export class TextToSpeechModelInferenceEngine {
 
       return res.ok;
     } catch (e) {
-      console.warn('TextToSpeech voice upload failed:', e);
+      console.warn('TTS voice upload failed:', e);
       return false;
     }
   }
@@ -89,7 +87,7 @@ export class TextToSpeechModelInferenceEngine {
   async changeVoice(
     audioFile: File,
     targetVoice: string,
-    modelContext?: TextToSpeechModelContext
+    modelContext?: TextToSpeedLanguageModelContext
   ): Promise<Blob | null> {
     const { serverUrl } = modelContext || {};
     if (!serverUrl) return null;
@@ -107,15 +105,15 @@ export class TextToSpeechModelInferenceEngine {
       if (!res.ok) return null;
       return await res.blob();
     } catch (e) {
-      console.warn('TextToSpeech voice conversion failed:', e);
+      console.warn('TTS voice conversion failed:', e);
       return null;
     }
   }
 
   /**
-   * ✅ Checks if the TextToSpeech server is reachable.
+   * ✅ Checks if the TTS server is reachable.
    */
-  async isServerAvailable(modelContext?: TextToSpeechModelContext): Promise<boolean> {
+  async isServerAvailable(modelContext?: TextToSpeedLanguageModelContext): Promise<boolean> {
     const { serverUrl } = modelContext || {};
     if (!serverUrl) return false;
 
@@ -135,7 +133,6 @@ export class TextToSpeechModelInferenceEngine {
   private synthesizeBrowser(
     text: string,
     voiceName?: string,
-    speed?: number
   ): Promise<Blob | null> {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -144,7 +141,6 @@ export class TextToSpeechModelInferenceEngine {
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
-      if (speed) utterance.rate = speed;
 
       // Try to match requested voice
       if (voiceName) {

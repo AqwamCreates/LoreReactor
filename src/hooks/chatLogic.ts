@@ -2,7 +2,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { detectName } from './nameDetection';
-import { LargeLanguageModelInferenceEngine, estimateTokens } from '../services/LargeLanguageModelInferenceEngine';
+import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
 
 const contextStartString = "{"
 const contextEndString = "}"
@@ -24,7 +24,7 @@ const DEFAULT_MAX_RECURSION_DEPTH = 5;
 // Entries are dropped from the bottom of the list first when this is exceeded
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
-const tokenEngine = new LargeLanguageModelInferenceEngine();
+const tokenEngine = new LanguageModelEngine();
 
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
     if (!text) return text;

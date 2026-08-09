@@ -10,7 +10,7 @@ export interface StreamCallbacks {
   onToken: (stats: TokenStats) => void;
 }
 
-export interface ModelContext {
+export interface LanguageModelContext {
   apiKey?: string;
   backend?: string;
   modelPath?: string;
@@ -43,7 +43,7 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export class LargeLanguageModelInferenceEngine {
+export class LanguageModelEngine {
 
   /**
    * ✅ Single source of truth for resolving URL, headers, and body.
@@ -52,7 +52,7 @@ export class LargeLanguageModelInferenceEngine {
   private resolveRequest(
     prompt: string,
     stream: boolean,
-    modelContext?: ModelContext,
+    modelContext?: LanguageModelContext,
     params?: {
       temperature?: number;
       top_p?: number;
@@ -150,7 +150,7 @@ export class LargeLanguageModelInferenceEngine {
    */
   async generateCompletion(
     prompt: string,
-    modelContext?: ModelContext,
+    modelContext?: LanguageModelContext,
     options: {
       maxTokens?: number;
       temperature?: number;
@@ -182,7 +182,7 @@ export class LargeLanguageModelInferenceEngine {
    * Falls back to character-based estimation if unavailable.
    * Only works for local models — cloud APIs don't expose /tokenize.
    */
-  async countTokens(text: string, modelContext?: ModelContext): Promise<number> {
+  async countTokens(text: string, modelContext?: LanguageModelContext): Promise<number> {
     const { runtimePort } = modelContext || {};
 
     // Cloud models or no port → fall back to estimation
@@ -211,7 +211,7 @@ export class LargeLanguageModelInferenceEngine {
     requestBody: any,
     abortController: AbortController,
     callbacks?: StreamCallbacks,
-    modelContext?: ModelContext,
+    modelContext?: LanguageModelContext,
     maxParagraphs?: number
   ): Promise<string> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;

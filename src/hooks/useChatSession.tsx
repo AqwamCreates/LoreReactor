@@ -4,7 +4,6 @@ import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } 
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
-import { LargeLanguageModelInferenceEngine, estimateTokens, type ModelContext } from '../services/LargeLanguageModelInferenceEngine';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/SummarizationEngine';
@@ -12,7 +11,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 
-const baseEngine = new LargeLanguageModelInferenceEngine();
+import { LanguageModelEngine, estimateTokens, type LanguageModelContext } from '../services/LanguageModelEngine.ts';
+import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine.ts';
+
+const languageModelEngine = new LanguageModelEngine();
+const textToSpeechModelEngine = new TextToSpeechModelEngine();
 
 const now = Date.now()
 
@@ -230,7 +233,7 @@ async function runBackgroundSummarization(
             : undefined;
         const effectivePort = port || (modelRef.current?.parameters as any)?._runtimePort;
 
-        const modelContext: ModelContext = {
+        const LanguageModelContext: LanguageModelContext = {
             apiKey: modelRef.current?.apiKey,
             backend: modelRef.current?.backend,
             modelPath: modelRef.current?.model,
@@ -251,7 +254,7 @@ async function runBackgroundSummarization(
             const summaries = await generateMissingSummaries(
                 updatedData,
                 triggered.slidingWindowSize,
-                modelContext,
+                LanguageModelContext,
                 summaryBudget
             );
 
@@ -278,7 +281,7 @@ async function runBackgroundSummarization(
                 updatedData,
                 triggered.compressionInterval,
                 triggered.compressionChunkSize,
-                modelContext,
+                LanguageModelContext,
                 summaryBudget
             );
 
@@ -302,7 +305,7 @@ async function runBackgroundSummarization(
                 updatedData,
                 triggered.recursiveChunkSize,
                 triggered.recursiveMaxDepth,
-                modelContext,
+                LanguageModelContext,
                 summaryBudget
             );
 
@@ -390,6 +393,8 @@ export function useChatSession() {
     
     const { addToast } = useToast();
 
+    const [ttsServerUrl] = useState<string>('http://localhost:7860');
+
     useEffect(() => {
         const fetchRunningModels = async () => {
             try {
@@ -431,6 +436,27 @@ export function useChatSession() {
         streamingTextRef.current = "";
         streamingCharacterRef.current = null;
     }, []);
+
+    // ✅ TTS auto-speak helper
+    const speakMessage = useCallback(async (text: string, character: Character) => {
+        if (!character.voice) return;
+
+        const ttsContext: TextToSpeedLanguageModelContext = {
+            serverUrl: ttsServerUrl || undefined,
+            backend: 'Qwen3-TTS',
+        };
+
+        const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
+            voice: character.voice,
+        });
+
+        if (blob) {
+            const audioUrl = URL.createObjectURL(blob);
+            const audio = new Audio(audioUrl);
+            audio.onended = () => URL.revokeObjectURL(audioUrl);
+            audio.play().catch(e => console.warn('TTS playback failed:', e));
+        }
+    }, [ttsServerUrl]);
 
     const getImageBase64 = async (url: string): Promise<string | null> => {
         try {
@@ -584,14 +610,14 @@ export function useChatSession() {
 
                 const requestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, effectivePort);
                 
-                const modelContext: ModelContext = {
+                const LanguageModelContext: LanguageModelContext = {
                     apiKey: currentModel.apiKey,
                     backend: currentModel.backend,
                     modelPath: currentModel.model,
                     runtimePort: effectivePort
                 };
 
-                rawText = await baseEngine.generateStream(
+                rawText = await languageModelEngine.generateStream(
                     requestBody,
                     { signal } as AbortController,
                     {
@@ -614,7 +640,7 @@ export function useChatSession() {
                             }));
                         }
                     },
-                    modelContext,
+                    LanguageModelContext,
                     maxParagraphs
                 );
             }
@@ -639,13 +665,13 @@ export function useChatSession() {
                         
                         const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
                         
-                        const retryModelContext: ModelContext = {
+                        const retryLanguageModelContext: LanguageModelContext = {
                             apiKey: currentModel.apiKey,
                             backend: currentModel.backend,
                             modelPath: currentModel.model,
                             runtimePort: retryEffectivePort
                         };
-                        rawText = await baseEngine.generateStream(
+                        rawText = await languageModelEngine.generateStream(
                             retryRequestBody,
                             { signal } as AbortController,
                             {
@@ -667,7 +693,7 @@ export function useChatSession() {
                                     }));
                                 }
                             },
-                            retryModelContext,
+                            retryLanguageModelContext,
                             maxParagraphs
                         );
                     }
@@ -776,6 +802,12 @@ export function useChatSession() {
                     await saveRawChatData(result);
                     setChatData(result);
                     chatDataRef.current = result;
+
+                    // ✅ Auto-speak AI response
+                    const lastMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
+                    if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
+                        speakMessage(lastMsg.textContent, lastMsg.character);
+                    }
                 }
             } catch (err) {
                 if ((err as Error).name !== 'AbortError') console.error("AI response failed:", err);
@@ -787,7 +819,7 @@ export function useChatSession() {
             console.error("Failed to send action:", error);
             releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, speakMessage]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -953,6 +985,12 @@ export function useChatSession() {
 
                 // ✅ Trigger background summarization after AI response
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
+
+                // ✅ Auto-speak AI response
+                const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
+                if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
+                    speakMessage(lastMsg.textContent, lastMsg.character);
+                }
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
@@ -975,7 +1013,7 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData) return;
@@ -1064,6 +1102,12 @@ export function useChatSession() {
 
                 // ✅ Trigger background summarization after regeneration
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
+
+                // ✅ Auto-speak AI response
+                const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
+                if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
+                    speakMessage(lastMsg.textContent, lastMsg.character);
+                }
             } else if (!controller.signal.aborted) {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
@@ -1087,7 +1131,7 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             releaseGenerationLock();
         }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = selectedModel?.contextLength || 8192;

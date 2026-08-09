@@ -333,7 +333,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       id, 
       name: rawCharacter.name || 'Unknown Character', 
       image: rawCharacter.image,
-      voice: rawCharacter.voice, 
+      voice: rawCharacter.voice,
       description: rawCharacter.description, 
       systemPrompt: rawCharacter.systemPrompt,
       thinkPrompt: rawCharacter.thinkPrompt, 

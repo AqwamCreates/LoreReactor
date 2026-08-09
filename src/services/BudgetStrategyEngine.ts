@@ -1,18 +1,18 @@
 // src/services/BudgetStrategyEngine.ts
 import type { BudgetStrategy, ChatData, Character } from '../types';
-import { LargeLanguageModelInferenceEngine, type StreamCallbacks, type TokenStats } from './LargeLanguageModelInferenceEngine';
+import { LanguageModelEngine, type StreamCallbacks, type TokenStats } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { getCharacterImageUrl } from '../hooks/storage';
 
 export class BudgetStrategyEngine {
   private strategy: BudgetStrategy;
-  private baseEngine: LargeLanguageModelInferenceEngine;
+  private baseEngine: LanguageModelEngine;
   public currentCost: number = 0;
   public totalTokensGenerated: number = 0;
 
   constructor(strategy: BudgetStrategy) {
     this.strategy = strategy;
-    this.baseEngine = new LargeLanguageModelInferenceEngine();
+    this.baseEngine = new LanguageModelEngine();
   }
 
   /**
