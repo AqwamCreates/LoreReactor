@@ -103,6 +103,7 @@ const WRITE_API_URL = localURL;
 const PATHS = {
   characters: "/user_data/character_data", 
   characterImages: "/user_data/character_images",
+  characterVoices: "/user_data/character_voices",
   samplers: "/user_data/sampler_data", 
   contexts: "/user_data/context_data",
   models: "/user_data/model_data",
@@ -331,7 +332,8 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
     return { 
       id, 
       name: rawCharacter.name || 'Unknown Character', 
-      image: rawCharacter.image, 
+      image: rawCharacter.image,
+      voice: rawCharacter.voice, 
       description: rawCharacter.description, 
       systemPrompt: rawCharacter.systemPrompt,
       thinkPrompt: rawCharacter.thinkPrompt, 
@@ -857,6 +859,20 @@ export async function uploadCharacterImage(file: File): Promise<string> {
   const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const imagePath = `${PATHS.characterImages}/${filename}`;
   await putJson(imagePath, { base64 });
+  return filename;
+}
+
+export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
+  if (!voiceFileName) return null;
+  const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterVoices : `/${PATHS.characterVoices}`;
+  return `${WRITE_API_URL}${cleanPath}/${voiceFileName}`;
+}
+
+export async function uploadCharacterVoice(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const voicePath = `${PATHS.characterVoices}/${filename}`;
+  await putJson(voicePath, { base64 });
   return filename;
 }
 
