@@ -60,7 +60,7 @@ export interface Context extends ObjectData  {
   regularExpressionTarget?: 'everyone' | 'listener' | 'self';
   tokenBudget?: number;        // Max tokens this entry can consume
   recursiveScan?: boolean;     // Can this entry's text trigger other entries?
-  preventRecursion?: boolean;  // Can this entry ONLY be triggered by recursion?
+  maximumRecursionDepth?: number; // Max recursion depth for lorebook scanning (overrides global default)
   insertionDepth?: number;     // Where in the prompt to place (0 = top, higher = closer to chat)
   characterBindings?: string[]; // Only inject when these characters are speaking
   useBase64Encoding: boolean
@@ -77,7 +77,7 @@ export interface RawContext extends RawData  {
   regularExpressionTarget?: 'everyone' | 'listener' | 'self';
   tokenBudget?: number;        // Max tokens this entry can consume
   recursiveScan?: boolean;     // Can this entry's text trigger other entries?
-  preventRecursion?: boolean;  // Can this entry ONLY be triggered by recursion?
+  maximumRecursionDepth?: number; // Max recursion depth for lorebook scanning (overrides global default)
   insertionDepth?: number;     // Where in the prompt to place (0 = top, higher = closer to chat)
   characterBindings?: string[]; // Only inject when these characters are speaking
   useBase64Encoding: boolean

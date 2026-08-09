@@ -389,7 +389,7 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionTarget: rawContext.regularExpressionTarget,
         tokenBudget: rawContext.tokenBudget,
         recursiveScan: rawContext.recursiveScan,
-        preventRecursion: rawContext.preventRecursion,
+        maximumRecursionDepth: rawContext.maximumRecursionDepth,
         insertionDepth: rawContext.insertionDepth,
         characterBindings: rawContext.characterBindings,
         useBase64Encoding: rawContext.useBase64Encoding ?? false,

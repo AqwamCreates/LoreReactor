@@ -35,6 +35,14 @@ const CLOUD_BACKENDS = [
   'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
 ];
 
+/**
+ * Synchronous estimation fallback when async isn't available.
+ * Uses ~4 chars per token as a rough average for most models.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 export class LargeLanguageModelInferenceEngine {
 
   /**
@@ -166,6 +174,33 @@ export class LargeLanguageModelInferenceEngine {
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return null;
+    }
+  }
+
+  /**
+   * ✅ Counts tokens using llama-server's /tokenize endpoint.
+   * Falls back to character-based estimation if unavailable.
+   * Only works for local models — cloud APIs don't expose /tokenize.
+   */
+  async countTokens(text: string, modelContext?: ModelContext): Promise<number> {
+    const { runtimePort } = modelContext || {};
+
+    // Cloud models or no port → fall back to estimation
+    if (!runtimePort) return estimateTokens(text);
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${runtimePort}/tokenize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+
+      if (!res.ok) return estimateTokens(text);
+
+      const data = await res.json();
+      return data.tokens?.length ?? estimateTokens(text);
+    } catch {
+      return estimateTokens(text);
     }
   }
 

@@ -2,7 +2,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { detectName } from './nameDetection';
-import { countTokens, estimateTokens } from '../utilities/tokenCounter';
+import { LargeLanguageModelInferenceEngine, estimateTokens } from '../services/LargeLanguageModelInferenceEngine';
 
 const contextStartString = "{"
 const contextEndString = "}"
@@ -16,12 +16,15 @@ const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Context', 'Chat History'
 ];
 
-// ✅ Maximum recursion depth for lorebook scanning — prevents infinite loops
-const MAX_RECURSION_DEPTH = 5;
+// ✅ Default maximum recursion depth for lorebook scanning — prevents infinite loops
+// Individual contexts can override this via maximumRecursionDepth
+const DEFAULT_MAX_RECURSION_DEPTH = 5;
 
 // ✅ Default total token budget for all context entries combined
 // Entries are dropped from the bottom of the list first when this is exceeded
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
+
+const tokenEngine = new LargeLanguageModelInferenceEngine();
 
 function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
     if (!text) return text;
@@ -171,7 +174,6 @@ async function resolveContextEntries(
     // --- Phase 1: Direct scan (preserves list order) ---
     for (const context of contexts) {
         if (activated.has(context.id)) continue;
-        if (context.preventRecursion) continue;
         if (!isCharacterBound(context, currentCharacterId)) continue;
 
         const ctxType = context.regularExpressionContext || 'global';
@@ -192,10 +194,14 @@ async function resolveContextEntries(
     }
 
     // --- Phase 2: Recursive scanning ---
+    // Each context can specify its own maximumRecursionDepth.
+    // A context is only eligible for recursive activation if the current
+    // recursion depth is within its personal limit.
+    // maximumRecursionDepth: 0 means direct scan only, never recursive.
     let recursionDepth = 0;
     let newActivations = true;
 
-    while (newActivations && recursionDepth < MAX_RECURSION_DEPTH) {
+    while (newActivations && recursionDepth < DEFAULT_MAX_RECURSION_DEPTH) {
         newActivations = false;
         recursionDepth++;
 
@@ -208,6 +214,10 @@ async function resolveContextEntries(
         for (const context of contexts) {
             if (activated.has(context.id)) continue;
             if (!isCharacterBound(context, currentCharacterId)) continue;
+
+            // ✅ Per-context recursion depth limit
+            const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
+            if (recursionDepth > contextMaxDepth) continue;
 
             if (doesContextMatch(context, activatedText)) {
                 activated.add(context.id);
@@ -238,7 +248,7 @@ async function resolveContextEntries(
         if (context.tokenBudget && context.tokenBudget > 0) {
             tokenCount = context.tokenBudget;
         } else if (runtimePort) {
-            tokenCount = await countTokens(formattedLine, runtimePort);
+            tokenCount = await tokenEngine.countTokens(formattedLine, { runtimePort });
         } else {
             tokenCount = estimateTokens(formattedLine);
         }

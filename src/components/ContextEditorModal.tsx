@@ -42,7 +42,7 @@ export function ContextEditorModal({
     // ✅ Lorebook fields
     const [tokenBudget, setTokenBudget] = useState<number>(0);
     const [recursiveScan, setRecursiveScan] = useState<boolean>(false);
-    const [preventRecursion, setPreventRecursion] = useState<boolean>(false);
+    const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(5);
     const [insertionDepth, setInsertionDepth] = useState<number>(0);
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
 
@@ -70,7 +70,7 @@ export function ContextEditorModal({
                 // ✅ Load lorebook fields
                 setTokenBudget(existingContext.tokenBudget ?? 0);
                 setRecursiveScan(existingContext.recursiveScan ?? false);
-                setPreventRecursion(existingContext.preventRecursion ?? false);
+                setMaximumRecursionDepth(existingContext.maximumRecursionDepth ?? 5);
                 setInsertionDepth(existingContext.insertionDepth ?? 0);
                 setCharacterBindings(existingContext.characterBindings ?? []);
             } else {
@@ -87,7 +87,7 @@ export function ContextEditorModal({
                 // ✅ Default lorebook fields
                 setTokenBudget(0);
                 setRecursiveScan(false);
-                setPreventRecursion(false);
+                setMaximumRecursionDepth(5);
                 setInsertionDepth(0);
                 setCharacterBindings([]);
             }
@@ -176,7 +176,7 @@ export function ContextEditorModal({
             // ✅ Lorebook fields — only include non-default values to keep data clean
             tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
             recursiveScan: recursiveScan || undefined,
-            preventRecursion: preventRecursion || undefined,
+            maximumRecursionDepth: maximumRecursionDepth !== 5 ? maximumRecursionDepth : undefined,
             insertionDepth: insertionDepth !== 0 ? insertionDepth : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
             firstCreatedTimestamp: isNewClone ? now : (existingContext?.firstCreatedTimestamp || now),
@@ -351,33 +351,37 @@ export function ContextEditorModal({
                             </div>
                         </div>
 
-                        {/* Recursive Scan + Prevent Recursion toggles */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={recursiveScan}
-                                    onChange={(e) => setRecursiveScan(e.target.checked)}
-                                    className="editor-checkbox-input"
+                        {/* Max Recursion Depth + Recursive Scan toggle */}
+                        <div className="editor-row" style={{ marginTop: '10px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Max Recursion Depth</label>
+                                <input 
+                                    type="number" 
+                                    step="1" 
+                                    min="0"
+                                    max="10"
+                                    value={maximumRecursionDepth} 
+                                    onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))}
+                                    className="editor-input"
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    title="Max recursion depth for lorebook scanning. 0 = direct scan only, never recursive. Default: 5."
                                 />
-                                <span style={{ fontSize: '0.8rem' }}>Recursive Scan</span>
-                            </label>
-                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-4px' }}>
-                                This entry's text can trigger other entries
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = no recursion · default: 5</div>
                             </div>
-
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={preventRecursion}
-                                    onChange={(e) => setPreventRecursion(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span style={{ fontSize: '0.8rem' }}>Recursion Only</span>
-                            </label>
-                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-4px' }}>
-                                Only activated by other entries' recursion, never by direct chat scan
+                            <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
+                                <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={recursiveScan}
+                                        onChange={(e) => setRecursiveScan(e.target.checked)}
+                                        className="editor-checkbox-input"
+                                    />
+                                    <span style={{ fontSize: '0.8rem' }}>Recursive Scan</span>
+                                </label>
                             </div>
+                        </div>
+                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-2px' }}>
+                            This entry's text can trigger other entries during recursion
                         </div>
 
                         {/* ✅ Character Bindings — dropdown-add pattern like ModelEditorModal stop patterns */}
