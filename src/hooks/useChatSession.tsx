@@ -509,7 +509,10 @@ export function useChatSession() {
                     if (!uploaded) return;
 
                     uploadedTtsVoicesRef.current.add(voiceLabel);
+
                 }
+
+                await new Promise(resolve => setTimeout(resolve, 500)); 
 
                 const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
                     // ✅ Use UUID for synthesis too

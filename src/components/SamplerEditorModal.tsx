@@ -196,12 +196,14 @@ export function SamplerEditorModal({
                 setName(existingSampler.name || '');
                 setDescription(existingSampler.description || '');
 
+                // Restore parameter values
                 const loadedParams: any = {};
                 Object.keys(DEFAULT_PARAMETERS).forEach(key => {
                     loadedParams[key] = getParamValue(existingSampler.parameters, key, DEFAULT_PARAMETERS[key as keyof SamplerParameters]);
                 });
                 setParameters(loadedParams);
 
+                // Restore enabled states
                 const storedEnabled: Partial<EnabledParams> = {};
                 Object.keys(DEFAULT_ENABLED).forEach(key => {
                     const stored = existingSampler.parameters?.[`_enabled_${key}`];
@@ -213,17 +215,29 @@ export function SamplerEditorModal({
                 });
                 setEnabledParams({ ...DEFAULT_ENABLED, ...storedEnabled });
 
+                // ✅ RESTORE PARAMETER ORDER FROM SAVED DATA
+                const storedOrder = existingSampler.parameters?.['_parameterOrder'];
+                if (Array.isArray(storedOrder) && storedOrder.length > 0) {
+                    const validKeys = Object.keys(PARAMETER_CONFIGS);
+                    const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
+                    const missingKeys = validKeys.filter(k => !safeOrder.includes(k));
+                    setParameterOrder([...safeOrder, ...missingKeys]);
+                } else {
+                    setParameterOrder(Object.keys(PARAMETER_CONFIGS));
+                }
+
                 setSelectedStopPatternIds(existingSampler.stopPatterns.map(sp => sp.id));
                 setMaxTokens(existingSampler.maximumNumberOfTokens || 512);
             } else {
+                // New sampler defaults
                 setName('');
                 setDescription('');
                 setParameters({ ...DEFAULT_PARAMETERS });
                 setEnabledParams({ ...DEFAULT_ENABLED });
+                setParameterOrder(Object.keys(PARAMETER_CONFIGS));
                 setSelectedStopPatternIds([]);
                 setMaxTokens(512);
             }
-            setParameterOrder(Object.keys(PARAMETER_CONFIGS));
             setErrors({});
         }
     }, [isOpen, existingSampler]);
@@ -251,6 +265,10 @@ export function SamplerEditorModal({
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
 
         const paramsWithEnabled = { ...parameters };
+
+        // ✅ PERSIST THE CURRENT PARAMETER ORDER
+        paramsWithEnabled['_parameterOrder'] = [...parameterOrder];
+
         Object.keys(enabledParams).forEach(key => {
             paramsWithEnabled[`_enabled_${key}`] = enabledParams[key as keyof EnabledParams];
         });
@@ -373,7 +391,7 @@ export function SamplerEditorModal({
                             <span>Sampling Parameters ({parameterOrder.length})</span>
                             <span className="sampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
-                                                <div className="sampler-param-list">
+                        <div className="sampler-param-list">
                             {parameterOrder.map((key, index) => {
                                 const config = PARAMETER_CONFIGS[key];
                                 if (!config) return null;
