@@ -8,8 +8,8 @@ const contextStartString = "{"
 const contextEndString = "}"
 const turnStartString = "{"
 const turnEndString = "}"
-const thinkStartString = ""
-const thinkEndString = ""
+const thinkStartString = "<think>"
+const thinkEndString = "</think>"
 
 // ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [

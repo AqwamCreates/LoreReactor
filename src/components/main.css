@@ -1347,7 +1347,7 @@ select {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 100vw;
+  width: 45vw;
   height: 65vh;
   max-width: none;
   display: flex;
@@ -1357,7 +1357,7 @@ select {
   
   pointer-events: auto; 
   cursor: pointer;
-  z-index: 5; 
+  z-index: 30; 
   
   transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
   opacity: 0;
@@ -1383,15 +1383,14 @@ select {
   max-height: none;
   max-width: none;
   pointer-events: auto; 
-  mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
+  -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
   transition: transform 0.3s ease, filter 0.3s ease;
 }
 
 .mode-cinematic .chat-history {
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  flex-direction: column-reverse;
   
   flex: 1;
   width: 100%;
@@ -1402,9 +1401,10 @@ select {
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
   mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
-  pointer-events: none;
 }
 
 .mode-cinematic .message-row {
@@ -1415,7 +1415,7 @@ select {
   display: flex !important;
   justify-content: center !important;
   align-items: flex-start;
-  margin-bottom: 40px;
+  margin-bottom: 0%;
   transition: transform 0.3s ease;
   opacity: 1;
   filter: none;
@@ -1476,13 +1476,13 @@ select {
   align-self: center;
   width: 100%;
   max-width: 700px;
-  margin-bottom: 30px;
+  margin-bottom: 12px;
   z-index: 30;
   background: transparent !important;
   border: none;
   position: relative;
   flex-shrink: 0;
-  padding-top: 10px;
+  padding-top: 4px;
   box-shadow: none;
   pointer-events: auto;
 }
@@ -1560,6 +1560,7 @@ select {
   user-select: text !important;
   -webkit-user-select: text !important;
   pointer-events: auto !important;
+  z-index: 150;
 }
 
 .mode-cinematic .message-bubble {
