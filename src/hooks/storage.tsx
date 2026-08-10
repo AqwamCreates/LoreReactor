@@ -735,7 +735,7 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const contextMap = new Map(allContexts.map(i => [i.id, i]));
   const profileMap = new Map(allProfiles.map(p => [p.id, p]));
 
-  const shell = buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
+  const shell = await buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
   if (!shell) return null;
 
   // ✅ Load messages inline for single-chat loads
