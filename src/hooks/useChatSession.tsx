@@ -488,8 +488,12 @@ export function useChatSession() {
                     backend: 'Qwen3-TTS',
                 };
 
+                // ✅ USE CHARACTER.ID INSTEAD OF NAME/FILENAME
+                // This guarantees uniqueness even if two characters are named "Alice"
+                const voiceLabel = character.id; 
+
                 // Upload voice to TTS server if not already cached this session
-                if (!uploadedTtsVoicesRef.current.has(character.voice)) {
+                if (!uploadedTtsVoicesRef.current.has(voiceLabel)) {
                     const voiceUrl = getCharacterVoiceUrl(character.voice);
                     if (!voiceUrl) return;
 
@@ -497,16 +501,19 @@ export function useChatSession() {
                     if (!res.ok) return;
 
                     const blob = await res.blob();
-                    const file = new File([blob], character.voice, { type: blob.type || 'audio/wav' });
+                    
+                    // ✅ Pass the UUID as the label to the TTS server
+                    const file = new File([blob], `${voiceLabel}.wav`, { type: blob.type || 'audio/wav' });
 
-                    const uploaded = await textToSpeechModelEngine.uploadVoice(character.voice, file, ttsContext);
+                    const uploaded = await textToSpeechModelEngine.uploadVoice(voiceLabel, file, ttsContext);
                     if (!uploaded) return;
 
-                    uploadedTtsVoicesRef.current.add(character.voice);
+                    uploadedTtsVoicesRef.current.add(voiceLabel);
                 }
 
                 const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
-                    voice: character.voice,
+                    // ✅ Use UUID for synthesis too
+                    voice: voiceLabel, 
                 });
 
                 if (blob) {
