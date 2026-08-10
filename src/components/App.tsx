@@ -327,8 +327,9 @@ function App() {
     const newIds = currentIds.includes(charId) ? currentIds.filter(id => id !== charId) : [...currentIds, charId];
     const newParticipants = allCharacters.filter(c => newIds.includes(c.id));
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
-    setChatData({ ...chatData, participants: newParticipants });
-    if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter({ ...chatData, participants: newParticipants }.protagonist);
+    const updatedChat = { ...chatData, participants: newParticipants };
+    setChatData(updatedChat);
+    if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
     addToast("Participants updated (Session Only).", "info");
   };
 
@@ -465,7 +466,8 @@ function App() {
   const handleAddAction = (label: string) => {
     const trimmed = label.trim(); if (!trimmed) return;
     if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) { addToast(`Action "${trimmed}" already exists.`, "info"); return; }
-    setActions([...actions, { label: trimmed, count: 0 }]); saveInterjectableActions([...actions, { label: trimmed, count: 0 }]); setMenuSearchQuery(''); addToast(`Added action "${trimmed}".`, "success");
+    const newActions = [...actions, { label: trimmed, count: 0 }];
+    setActions(newActions); saveInterjectableActions(newActions); setMenuSearchQuery(''); addToast(`Added action "${trimmed}".`, "success");
   };
 
   const handleDeleteAction = (label: string) => {
@@ -493,55 +495,60 @@ function App() {
     return currentIndex !== -1 && currentIndex <= branchIndex;
   };
 
-  // ✅ Find the bottom-most visible REAL message (excludes streaming indicators and spacers)
-  const getBottomVisibleMessageId = (): string | null => {
-    if (!chatHistoryRef.current || !chatData) return null;
+  // ✅ Find top-most visible real message by index in chatMessageHistory
+  // Returns the array INDEX (not ID) so we can use it consistently across layouts
+  const getTopVisibleMessageIndex = (): number => {
+    if (!chatHistoryRef.current || !chatData) return -1;
     const container = chatHistoryRef.current;
     const containerRect = container.getBoundingClientRect();
-    // Build set of real message IDs to filter out streaming/spacer elements
     const realMessageIds = new Set(chatData.chatMessageHistory.map(m => m.id));
     const messages = container.querySelectorAll('[data-message-id]');
-    let bestId: string | null = null;
-    let bestBottom = -Infinity;
+    let bestIndex = -1;
+    let bestTop = Infinity;
     messages.forEach((el) => {
       const id = el.getAttribute('data-message-id');
-      if (!id || !realMessageIds.has(id)) return; // Skip streaming indicators and spacers
+      if (!id || !realMessageIds.has(id)) return;
       const rect = el.getBoundingClientRect();
       if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
-        if (rect.bottom > bestBottom) { bestBottom = rect.bottom; bestId = id; }
+        if (rect.top < bestTop) {
+          bestTop = rect.top;
+          bestIndex = chatData.chatMessageHistory.findIndex(m => m.id === id);
+        }
       }
     });
-    return bestId;
+    return bestIndex;
   };
 
   const toggleViewMode = () => {
-    let activeMessageId: string | null = null;
-
-    // First try .is-active (set by cinematic observer)
-    if (chatHistoryRef.current) {
-      const activeEl = chatHistoryRef.current.querySelector('.message-row.is-active');
-      if (activeEl) activeMessageId = activeEl.getAttribute('data-message-id');
+    // ✅ Capture the MESSAGE INDEX at the top of the viewport before switching
+    // Index-based tracking is layout-agnostic — works identically in both modes
+    const topVisibleIndex = getTopVisibleMessageIndex();
+    
+    // Fall back to ref tracking if nothing visible
+    let targetIndex = topVisibleIndex;
+    if (targetIndex === -1 && lastViewedMessageIdRef.current && chatData) {
+      targetIndex = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
     }
 
-    // If no .is-active, find bottom-visible real message
-    if (!activeMessageId) activeMessageId = getBottomVisibleMessageId();
+    // Store the message ID for future fallbacks
+    if (targetIndex >= 0 && chatData) {
+      lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIndex].id;
+    }
 
-    // Fall back to ref tracking
-    if (!activeMessageId) activeMessageId = lastViewedMessageIdRef.current;
-
-    if (activeMessageId) lastViewedMessageIdRef.current = activeMessageId;
-
-    // Suppress cinematic auto-scroll during mode switch
     suppressAutoScrollRef.current = true;
 
     setViewMode(prev => prev === 'ladder' ? 'cinematic' : 'ladder');
 
+    // ✅ After render, find the SAME index in the new layout and scroll to it
+    // In cinematic (reversed array), index N maps to reversed position
+    // In ladder (normal array), index N maps directly
+    // Using scrollIntoView with block:'start' aligns to top of viewport in both layouts
     setTimeout(() => {
-      if (activeMessageId && chatHistoryRef.current) {
-        const targetEl = chatHistoryRef.current.querySelector(`[data-message-id="${activeMessageId}"]`);
+      if (targetIndex >= 0 && chatData && chatHistoryRef.current) {
+        const targetMessageId = chatData.chatMessageHistory[targetIndex].id;
+        const targetEl = chatHistoryRef.current.querySelector(`[data-message-id="${targetMessageId}"]`) as HTMLElement | null;
         if (targetEl) {
-          // ✅ Use 'nearest' to avoid shifting position between modes
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          targetEl.scrollIntoView({ block: 'start' });
           setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
           return;
         }
