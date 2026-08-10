@@ -389,7 +389,7 @@ function App() {
     }
   };
 
-  const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerEditorOpen(true); setIsSampListOpen(false); };
+  const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
   const handleDeleteSampler = (id: string) => { deleteSampler(id); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
