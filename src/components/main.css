@@ -1392,10 +1392,11 @@ select {
   display: flex;
   flex-direction: column-reverse;
   
-  flex: 1;
+  flex: none;
+  height: 30vh;
   width: 100%;
   max-width: 100%;
-  padding: 60px 20px 20px 20px;
+  padding: 20px 20px 10px 20px;
   z-index: 10;
   position: relative; 
   overflow-y: auto;
@@ -1403,8 +1404,9 @@ select {
   scroll-behavior: smooth;
   pointer-events: auto;
   -webkit-overflow-scrolling: touch;
-  mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 60%, black 70%);
+  margin-top: auto;
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.3) 20%, rgba(0,0,0,0.7) 40%, black 60%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.3) 20%, rgba(0,0,0,0.7) 40%, black 60%);
 }
 
 .mode-cinematic .message-row {
