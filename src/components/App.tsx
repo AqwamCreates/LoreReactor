@@ -351,6 +351,13 @@ function App() {
     return () => observer.disconnect();
   }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
+  // ✅ Fix auto-scroll for cinematic column-reverse layout
+  useEffect(() => {
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current) return;
+    // In column-reverse, scrollTop = 0 is the visual bottom
+    chatHistoryRef.current.scrollTop = 0;
+  }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
+
   // --- Handlers ---
 
   const handleSwitchChat = useCallback(async (id: string) => {
@@ -773,6 +780,79 @@ function App() {
 
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
 
+  // ✅ Streaming/thinking indicator elements — extracted so they can be placed
+  // before messages in cinematic mode (column-reverse puts first DOM child at bottom)
+  const streamingIndicators = (
+    <>
+      {isLoading && streamingCharacter && !streamingText && (
+        <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
+          {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
+            <div className="avatar-column">
+              <div style={{ position: 'relative' }}>
+                {getCharacterImageUrl(streamingCharacter.image) ? (
+                  <img 
+                    src={getCharacterImageUrl(streamingCharacter.image)!} 
+                    alt={streamingCharacter.name} 
+                    className="character-avatar" 
+                    onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
+                    style={{ cursor: 'pointer', opacity: 0.5 }} 
+                  />
+                ) : (
+                  <div 
+                    className="character-avatar placeholder" 
+                    onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
+                    style={{ cursor: 'pointer', opacity: 0.5 }} 
+                  />
+                )}
+              </div>
+              <span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
+            </div>
+          )}
+          <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
+            {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+            <span className="thinking-indicator">
+              <span className="thinking-text">Thinking</span>
+              <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+            </span>
+          </div>
+        </div>
+      )}
+      {isLoading && streamingCharacter && streamingText && (
+        <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
+          {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
+            <div className="avatar-column">
+              <div style={{ position: 'relative' }}>
+                {getCharacterImageUrl(streamingCharacter.image) ? (
+                  <img 
+                    src={getCharacterImageUrl(streamingCharacter.image)!} 
+                    alt={streamingCharacter.name} 
+                    className="character-avatar" 
+                    onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
+                    style={{ cursor: 'pointer' }} 
+                  />
+                ) : (
+                  <div 
+                    className="character-avatar placeholder" 
+                    onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
+                    style={{ cursor: 'pointer' }} 
+                  />
+                )}
+              </div>
+              <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
+            </div>
+          )}
+          <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
+            {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
+            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+              <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
+              <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <div 
@@ -839,7 +919,14 @@ function App() {
             </header>
 
             <div className="chat-history" ref={chatHistoryRef}>
-              {chatData?.chatMessageHistory.map((message, index) => {
+              {/* ✅ In cinematic mode (column-reverse), streaming indicators go FIRST
+                  so they render at the visual bottom. In ladder mode they go LAST. */}
+              {viewMode === 'cinematic' && streamingIndicators}
+
+              {(viewMode === 'cinematic' ? [...chatData.chatMessageHistory].reverse() : chatData.chatMessageHistory).map((message, renderIndex) => {
+                const index = viewMode === 'cinematic' 
+                  ? chatData.chatMessageHistory.length - 1 - renderIndex 
+                  : renderIndex;
                 if (!message.character) return null;
                 const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
                 const isProtagonist = message.character.id === currentCharacter?.id;
@@ -914,73 +1001,10 @@ function App() {
                   </React.Fragment>
                 );
               })}
-              {/* ✅ Thinking indicator — shows while waiting for first token during cache invalidation */}
-              {isLoading && streamingCharacter && !streamingText && (
-                <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
-                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-                    <div className="avatar-column">
-                      <div style={{ position: 'relative' }}>
-                        {getCharacterImageUrl(streamingCharacter.image) ? (
-                          <img 
-                            src={getCharacterImageUrl(streamingCharacter.image)!} 
-                            alt={streamingCharacter.name} 
-                            className="character-avatar" 
-                            onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
-                            style={{ cursor: 'pointer', opacity: 0.5 }} 
-                          />
-                        ) : (
-                          <div 
-                            className="character-avatar placeholder" 
-                            onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)}
-                            style={{ cursor: 'pointer', opacity: 0.5 }} 
-                          />
-                        )}
-                      </div>
-                      <span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
-                    </div>
-                  )}
-                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
-                    {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
-                    <span className="thinking-indicator">
-                      <span className="thinking-text">Thinking</span>
-                      <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-                    </span>
-                  </div>
-                </div>
-              )}
-              {isLoading && streamingCharacter && streamingText && (
-                <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-                  {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-                    <div className="avatar-column">
-                      <div style={{ position: 'relative' }}>
-                        {getCharacterImageUrl(streamingCharacter.image) ? (
-                          <img 
-                            src={getCharacterImageUrl(streamingCharacter.image)!} 
-                            alt={streamingCharacter.name} 
-                            className="character-avatar" 
-                            onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
-                            style={{ cursor: 'pointer' }} 
-                          />
-                        ) : (
-                          <div 
-                            className="character-avatar placeholder" 
-                            onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)}
-                            style={{ cursor: 'pointer' }} 
-                          />
-                        )}
-                      </div>
-                      <span className="avatar-name">{getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span>
-                    </div>
-                  )}
-                  <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
-                    {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}</span></div>}
-                    <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                      <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
-                      <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+
+              {/* ✅ In ladder mode, streaming indicators go AFTER messages (normal order) */}
+              {viewMode === 'ladder' && streamingIndicators}
+
               {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>)}
               <div ref={messageEndRef} style={{ height: '1px' }} />
             </div>
