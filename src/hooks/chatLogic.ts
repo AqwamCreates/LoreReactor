@@ -8,8 +8,12 @@ const contextStartString = "{"
 const contextEndString = "}"
 const turnStartString = "{"
 const turnEndString = "}"
-const thinkStartString = "<|channel><think>"
-const thinkEndString = "</think><channel|>"
+const commonThinkStartString = "<think>"
+const commonThinkEndString = "</think>"
+const gemmaThinkStartString = "<|channel>"
+const gemmaThinkEndString = "<|channel>"
+const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`
+const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`
 
 // ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
@@ -554,6 +558,10 @@ export async function prepareRequestBody(
     const finalStops = [
         turnEndString,
         turnStartString,
+        commonThinkStartString,
+        commonThinkEndString,
+        gemmaThinkStartString,
+        gemmaThinkEndString,
         thinkEndString,
         thinkStartString,
         ...(Array.isArray(paramStops) ? paramStops : []),
