@@ -8,6 +8,8 @@ import type {
 
 import { localURL } from '../configurations';
 
+const now = Date.now()
+
 const DefaultSampler: Sampler = {
   id: "default-sampler", 
   name: "Default", 
@@ -15,8 +17,8 @@ const DefaultSampler: Sampler = {
   parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
   stopPatterns: [], 
   maximumNumberOfTokens: 512,
-  firstCreatedTimestamp: Date.now(),
-  lastUpdatedTimestamp: Date.now(),
+  firstCreatedTimestamp: now,
+  lastUpdatedTimestamp: now,
 };
 
 const DefaultModel: LanguageModel = {
@@ -24,8 +26,8 @@ const DefaultModel: LanguageModel = {
   name: "Default Model",
   description: "Fallback model",
   contextLength: 4096,
-  firstCreatedTimestamp: Date.now(),
-  lastUpdatedTimestamp: Date.now(),
+  firstCreatedTimestamp: now,
+  lastUpdatedTimestamp: now,
 };
 
 const DEFAULT_ACTIONS: InterjectableAction[] = [
@@ -868,7 +870,7 @@ export async function uploadCharacterImage(file: File): Promise<string> {
 
 export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
-  const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterVoices : `/${PATHS.characterVoices}`;
+  const cleanPath = PATHS.characterVoices.startsWith('/') ? PATHS.characterVoices : `/${PATHS.characterVoices}`;
   return `${WRITE_API_URL}${cleanPath}/${voiceFileName}`;
 }
 
