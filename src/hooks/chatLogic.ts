@@ -433,13 +433,15 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         nameInjection = ` Known participants: ${allNames}.`;
     }
 
-    metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting that satisfies the prompt. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information. I will never generate an empty response.${nameInjection}.${thinkEndString}${contextEndString}`);
-
-    // FATIGUE BLOCK
-    const fatigueLines: string[] = [];
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const effectiveMaxStamina = getEffectiveMaxChatStamina(character, profile);
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
+    const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph"
+
+    metaThinkLines.push(`${contextStartString}${thinkStartString}I understand that I have ${currentChatStamina} ${paragraphText} left to say. I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting that satisfies the prompt. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information. I will not create an empty response.${nameInjection}.${thinkEndString}${contextEndString}`);
+
+    // FATIGUE BLOCK
+    const fatigueLines: string[] = [];
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);

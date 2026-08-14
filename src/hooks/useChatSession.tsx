@@ -1104,7 +1104,7 @@ export function useChatSession() {
         const isTargetAI = targetMessage.character.id !== chatData.protagonist.id;
 
         let trimIndex: number;
-        let messagesToDelete: ChatMessage[] = [];
+        let messagesToDelete: ChatMessage[];
 
         if (type === 'ai' && isTargetAI) {
             trimIndex = targetIndex;
