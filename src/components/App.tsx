@@ -627,81 +627,77 @@ function App() {
 
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
 
-// src/App.tsx
-
-// ... inside the return statement, find the `streamingIndicators` constant ...
-
-const streamingIndicators = (
-  <>
-    {isLoading && streamingCharacter && !streamingText && (
-      <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
-        {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-          <div className="avatar-column">
-            <div style={{ position: 'relative' }}>
-              {getCharacterImageUrl(streamingCharacter.image) ? (
-                <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
-              ) : (
-                <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
-              )}
-            </div>
-            {/* ✅ FIX: Use getDelayedDisplayName here too */}
-            <span className="avatar-name" style={{ opacity: 0.5 }}>
-              {getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}
-            </span>
-          </div>
-        )}
-        <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
-          {viewMode === 'cinematic' && (
-            <div className="cinematic-bubble-header">
-              <span>
-                {/* ✅ FIX: Use getDelayedDisplayName here too */}
-                {getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}
+  const streamingIndicators = (
+    <>
+      {isLoading && streamingCharacter && !streamingText && (
+        <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
+          {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
+            <div className="avatar-column">
+              <div style={{ position: 'relative' }}>
+                {getCharacterImageUrl(streamingCharacter.image) ? (
+                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
+                ) : (
+                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
+                )}
+              </div>
+              {/* ✅ FIX: Use length - 1 to force history scan */}
+              <span className="avatar-name" style={{ opacity: 0.5 }}>
+                {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
               </span>
             </div>
           )}
-          <span className="thinking-indicator">
-            <span className="thinking-text">Thinking</span>
-            <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-          </span>
-        </div>
-      </div>
-    )}
-    
-    {isLoading && streamingCharacter && streamingText && (
-      <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
-        {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-          <div className="avatar-column">
-            <div style={{ position: 'relative' }}>
-              {getCharacterImageUrl(streamingCharacter.image) ? (
-                <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-              ) : (
-                <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-              )}
-            </div>
-            {/* ✅ FIX: Use getDelayedDisplayName here too */}
-            <span className="avatar-name">
-              {getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}
+          <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
+            {viewMode === 'cinematic' && (
+              <div className="cinematic-bubble-header">
+                <span>
+                  {/* ✅ FIX: Use length - 1 to force history scan */}
+                  {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
+                </span>
+              </div>
+            )}
+            <span className="thinking-indicator">
+              <span className="thinking-text">Thinking</span>
+              <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
             </span>
           </div>
-        )}
-        <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
-          {viewMode === 'cinematic' && (
-            <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}>
-              <span>
-                {/* ✅ FIX: Use getDelayedDisplayName here too */}
-                {streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, chatData.chatMessageHistory.length, streamingCharacter.id)}
+        </div>
+      )}
+      
+      {isLoading && streamingCharacter && streamingText && (
+        <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
+          {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
+            <div className="avatar-column">
+              <div style={{ position: 'relative' }}>
+                {getCharacterImageUrl(streamingCharacter.image) ? (
+                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
+                ) : (
+                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
+                )}
+              </div>
+              {/* ✅ FIX: Use length - 1 to force history scan */}
+              <span className="avatar-name">
+                {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
               </span>
             </div>
           )}
-          <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-            <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
-            <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+          <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
+            {viewMode === 'cinematic' && (
+              <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}>
+                <span>
+                  {/* ✅ FIX: Use length - 1 to force history scan */}
+                  {streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
+                </span>
+              </div>
+            )}
+            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
+              <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
+              <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
+            </div>
           </div>
         </div>
-      </div>
-    )}
-  </>
-);
+      )}
+    </>
+  );
 
   return (
     <>
