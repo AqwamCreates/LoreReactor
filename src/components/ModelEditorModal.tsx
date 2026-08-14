@@ -468,7 +468,7 @@ export function ModelEditorModal({
                             placeholder="0 (Auto-detect from model)" 
                         />
                         <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px' }}>
-                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 32768, 131072). Sent to server as -c flag.
+                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 16384, 32768, 65536, 131072). Sent to server as -c flag.
                         </div>
                     </div>
 
