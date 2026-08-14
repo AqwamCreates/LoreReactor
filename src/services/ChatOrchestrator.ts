@@ -29,11 +29,8 @@ export async function runTurnSequence(
     const spokenThisSequence = new Set<string>();
 
     // ✅ Multi-turn loop
-    const maxTurnsPerSequence = 10;
-    let turnCount = 0;
 
-    while (!abortController.signal.aborted && turnCount < maxTurnsPerSequence) {
-        turnCount++;
+    while (!abortController.signal.aborted) {
 
         // ✅ Get eligible AIs: exclude protagonist, last speaker, and anyone who already spoke
         const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
@@ -42,7 +39,7 @@ export async function runTurnSequence(
         if (eligible.length === 0) break;
 
         // ✅ Pick one speaker by initiative weight
-        let selectedSpeaker: Character | null = null;
+        let selectedSpeaker: Character | null;
 
         if (eligible.length === 1) {
             selectedSpeaker = eligible[0];
