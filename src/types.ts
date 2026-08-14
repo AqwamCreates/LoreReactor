@@ -124,6 +124,7 @@ export interface Character extends ObjectData  {
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   sampler?: Sampler | undefined;
+  stopPatterns?: [StopPattern]
 
 }
 
@@ -137,6 +138,7 @@ export interface RawCharacter extends RawData {
   chatProbability?: number | undefined;
   maximumChatStamina?: number | undefined;
   samplerId?: string | undefined; // Store only the sampler ID here
+  stopPatternIds?: [number]
 
 }
 

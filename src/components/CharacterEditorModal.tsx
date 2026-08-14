@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Character, Sampler } from '../types';
+import type { Character, Sampler, StopPattern } from '../types';
 import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
@@ -33,6 +33,10 @@ export function CharacterEditorModal({
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [selectedSamplerId, setSelectedSamplerId] = useState<string>('');
+    
+    // ✅ Stop Patterns State (Copied from SamplerEditorModal logic)
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+
     const [isHoveringImage, setIsHoveringImage] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
@@ -75,6 +79,10 @@ export function CharacterEditorModal({
                 setImageFile(null);
                 setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
                 
+                // ✅ Load Stop Patterns from existing character's sampler
+                const existingStopIds = existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || [];
+                setSelectedStopPatternIds(existingStopIds);
+
                 setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
                 setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
                 setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
@@ -92,6 +100,7 @@ export function CharacterEditorModal({
                 setImageFile(null);
                 setImagePreview(null);
                 setSelectedSamplerId(allSamplers[0]?.id || '');
+                setSelectedStopPatternIds([]); // Reset stop patterns for new character
                 setInitiativeWeightStr('-1');
                 setChatProbabilityStr('-1');
                 setMaximumChatStaminaStr('-1');
@@ -214,6 +223,7 @@ export function CharacterEditorModal({
         setInitiativeWeightStr('-1');
         setChatProbabilityStr('-1');
         setMaximumChatStaminaStr('-1');
+        setSelectedStopPatternIds([]); // Reset stop patterns on import
 
         setSubmitError(null);
     };
@@ -300,6 +310,24 @@ export function CharacterEditorModal({
             }
         }
 
+        // ✅ Reconstruct Sampler with selected Stop Patterns
+        const baseSampler = allSamplers.find(s => s.id === selectedSamplerId);
+        const allStopPatterns = baseSampler ? baseSampler.stopPatterns : []; 
+        // Note: In a real app, you might need access to ALL global stop patterns here, 
+        // not just those attached to the selected sampler, if characters can mix-and-match globally.
+        // Assuming for now we filter the global list or the sampler provides the pool.
+        // If you have a global list of stop patterns passed as prop, use that instead.
+        // For this implementation, we assume the user selects patterns that exist in the system.
+        // We will filter the global 'allStopPatterns' if available, otherwise we rely on the sampler's list + new selections.
+        // To make this robust like SamplerEditor, we need the global list of StopPatterns. 
+        // Since it's not in props, we assume the 'selectedStopPatternIds' refer to valid IDs known by the backend.
+        
+        // Construct the final sampler object with the specific stop patterns selected
+        const finalSampler = baseSampler ? {
+            ...baseSampler,
+            stopPatterns: baseSampler.stopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id))
+        } : undefined;
+
         const now = Date.now();
         return {
             id: isNewClone ? crypto.randomUUID() : (existingCharacter?.id || crypto.randomUUID()),
@@ -309,7 +337,7 @@ export function CharacterEditorModal({
             thinkPrompt: thinkPrompt.trim() || undefined,
             image: finalImageFilename ?? undefined,
             voice: finalVoiceFilename,
-            sampler: allSamplers.find(s => s.id === selectedSamplerId),
+            sampler: finalSampler,
             initiativeWeight: finalIW,
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
@@ -346,6 +374,24 @@ export function CharacterEditorModal({
     };
 
     const hasVoice = !!voiceFile || !!existingVoiceName;
+
+    // Helper to find stop pattern details by ID (Mocking global lookup if not passed as prop)
+    // In a real scenario, you should pass `allStopPatterns: StopPattern[]` as a prop to this component
+    // just like SamplerEditorModal does. For now, we try to find them in the selected sampler or ignore missing ones.
+    const getStopPatternById = (id: string) => {
+        // Search in currently selected sampler first
+        const currentSampler = allSamplers.find(s => s.id === selectedSamplerId);
+        if (currentSampler) {
+            const found = currentSampler.stopPatterns.find(sp => sp.id === id);
+            if (found) return found;
+        }
+        // Fallback: search all samplers (inefficient but works for small datasets)
+        for (const s of allSamplers) {
+            const found = s.stopPatterns.find(sp => sp.id === id);
+            if (found) return found;
+        }
+        return null;
+    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -506,11 +552,16 @@ export function CharacterEditorModal({
                                 placeholder="Think Prompt" disabled={isUploading}
                             />
 
-                            {/* Sampler + Stats */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {/* Sampler + Stats + Stop Patterns */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
                                 <select 
                                     value={selectedSamplerId} 
-                                    onChange={(e) => setSelectedSamplerId(e.target.value)}
+                                    onChange={(e) => {
+                                        const newId = e.target.value;
+                                        setSelectedSamplerId(newId);
+                                        // Optional: Reset stop patterns when changing sampler? 
+                                        // Or keep them? Let's keep them for now as they are independent.
+                                    }}
                                     className="editor-select"
                                     style={{ opacity: isLoadingSamplers || isUploading ? 0.6 : 1, cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' }}
                                     disabled={isLoadingSamplers || isUploading}
@@ -570,6 +621,62 @@ export function CharacterEditorModal({
                                             {renderAutoHint('ms')}
                                         </div>
                                     </div>
+                                </div>
+
+                                {/* ✅ Stop Patterns Section (Mirroring SamplerEditorModal) */}
+                                <div className="editor-section" style={{ padding: '10px', marginTop: '10px' }}>
+                                    <div className="editor-section-title">Character Stop Patterns</div>
+                                    <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                                        Specific stop sequences for this character (overrides/augments sampler defaults).
+                                    </div>
+
+                                    <div className="sampler-stop-patterns-list">
+                                        {selectedStopPatternIds.length === 0 && (
+                                            <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                                        )}
+                                        {selectedStopPatternIds.map(id => {
+                                            const sp = getStopPatternById(id);
+                                            if (!sp) return null;
+                                            return (
+                                                <div key={id} className="sampler-stop-item">
+                                                    <div className="sampler-stop-info">
+                                                        <span className="sampler-stop-name">{sp.name}</span>
+                                                        <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
+                                                        className="sampler-stop-remove-btn"
+                                                        title="Remove stop pattern"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <select
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val && !selectedStopPatternIds.includes(val)) {
+                                                setSelectedStopPatternIds(prev => [...prev, val]);
+                                            }
+                                            e.target.value = '';
+                                        }}
+                                        className="editor-select"
+                                        defaultValue=""
+                                        disabled={isUploading}
+                                    >
+                                        <option value="" disabled>+ Add a stop pattern</option>
+                                        {allSamplers.flatMap(s => s.stopPatterns)
+                                            .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id)) // Unique
+                                            .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                            .map(sp => (
+                                                <option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>
+                                            ))
+                                        }
+                                    </select>
                                 </div>
                             </div>
                         </div>

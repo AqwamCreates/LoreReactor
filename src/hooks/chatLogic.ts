@@ -289,7 +289,17 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const chatMessageHistory = chatData.chatMessageHistory;
     const contexts = chatData.contexts || [];
     const sampler = character.sampler;
-    const allStopPatterns = sampler?.stopPatterns || [];
+    
+    // ✅ 1. Get Stop Patterns from Sampler (Global/Model-specific)
+    const samplerStopPatterns = sampler?.stopPatterns || [];
+    
+    // ✅ 2. Get Stop Patterns defined directly on the Character (Character-specific)
+    const characterStopPatterns = character.stopPatterns || [];
+
+    // Combine both lists. Character-specific patterns are added to the pool.
+    // You can adjust priority here if needed, but generally they are merged.
+    const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
+
     const currentCharacterId = character.id;
     const characterName = character.name;
     const protagonistName = chatData.protagonist.name;
@@ -354,14 +364,20 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    // STOP PATTERNS
+    // ✅ STOP PATTERNS LOGIC
+    // Iterate through the combined list (Sampler + Character)
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
         const regexTrigger = stopPattern.regularExpressionTrigger;
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
-        if (!regexTrigger) { activeStopPatterns.push(stopPattern); continue; }
+        // If no regex trigger, pattern is always active
+        if (!regexTrigger) { 
+            activeStopPatterns.push(stopPattern); 
+            continue; 
+        }
+        
         if (filteredTexts.length === 0) continue;
 
         const searchSpace = filteredTexts.join('\n');
@@ -417,7 +433,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         nameInjection = ` Known participants: ${allNames}.`;
     }
 
-    metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting that satisfies the prompt. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information. I will never generate an empty response.${nameInjection}${thinkEndString}${contextEndString}`);
+    metaThinkLines.push(`${contextStartString}${thinkStartString}I have thought out on how to respond as Character ${participantId} (${characterName}) without repeating phrases and with clean formatting that satisfies the prompt. If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. If I find myself wanting to repeat myself, I will talk about something else. Anytime a character ignores me talking, I would feel awkward. If I don't know a character's name, I would use any information that I could use to describe the character and stick with what I know. If I don't know anything, I will not create non-existent information. I will never generate an empty response.${nameInjection}.${thinkEndString}${contextEndString}`);
 
     // FATIGUE BLOCK
     const fatigueLines: string[] = [];
