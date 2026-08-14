@@ -34,7 +34,6 @@ import type {
   ChatData, RawChatData, Extension, InterjectableAction, Profile 
 } from '../types';
 
-
 interface NavButtonProps {
   icon: string;
   label: string;
@@ -84,7 +83,9 @@ function App() {
     selectedModelId
   } = useModelManager();
   
+  // ✅ Budget Strategy Manager
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
+  
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
   const { profiles: allProfiles, saveProfile, deleteProfile } = useProfileManager();
 
@@ -109,10 +110,13 @@ function App() {
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
+  
+  // ✅ Budget Strategy State
   const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
+  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
+  
   const [isProfileListOpen, setIsProfileListOpen] = useState(false);
   
-  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
 
@@ -133,7 +137,10 @@ function App() {
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
+  
+  // ✅ Budget Modal Hook
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
+  
   const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
@@ -195,11 +202,14 @@ function App() {
     }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
+  // ✅ Sync Active Budget Strategy
   useEffect(() => {
     if (selectedBudgetStrategyId) {
       const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
       setActiveBudgetStrategy(strategy || null);
-    } else { setActiveBudgetStrategy(null); }
+    } else { 
+      setActiveBudgetStrategy(null); 
+    }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
@@ -374,9 +384,15 @@ function App() {
 
   const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
 
+  // ✅ Activate/Deactivate Budget Strategy
   const handleActivateBudgetStrategy = (strategyId: string) => {
-    if (selectedBudgetStrategyId === strategyId) { setSelectedBudgetStrategyId(null); addToast("Budget strategy deactivated.", "info"); }
-    else { setSelectedBudgetStrategyId(strategyId); addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === strategyId)?.name}" activated!`, "success"); }
+    if (selectedBudgetStrategyId === strategyId) { 
+      setSelectedBudgetStrategyId(null); 
+      addToast("Budget strategy deactivated.", "info"); 
+    } else { 
+      setSelectedBudgetStrategyId(strategyId); 
+      addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === strategyId)?.name}" activated!`, "success"); 
+    }
   };
 
   const handleActivateProfile = async (profileId: string) => {
@@ -496,7 +512,6 @@ function App() {
   };
 
   // ✅ Find top-most visible real message by index in chatMessageHistory
-  // Returns the array INDEX (not ID) so we can use it consistently across layouts
   const getTopVisibleMessageIndex = (): number => {
     if (!chatHistoryRef.current || !chatData) return -1;
     const container = chatHistoryRef.current;
@@ -504,7 +519,7 @@ function App() {
     const realMessageIds = new Set(chatData.chatMessageHistory.map(m => m.id));
     const messages = container.querySelectorAll('[data-message-id]');
     let bestIndex = -1;
-    let bestTop = Infinity;
+    let bestTop = Number.POSITIVE_INFINITY;
     messages.forEach((el) => {
       const id = el.getAttribute('data-message-id');
       if (!id || !realMessageIds.has(id)) return;
@@ -520,29 +535,16 @@ function App() {
   };
 
   const toggleViewMode = () => {
-    // ✅ Capture the MESSAGE INDEX at the top of the viewport before switching
-    // Index-based tracking is layout-agnostic — works identically in both modes
     const topVisibleIndex = getTopVisibleMessageIndex();
-    
-    // Fall back to ref tracking if nothing visible
     let targetIndex = topVisibleIndex;
     if (targetIndex === -1 && lastViewedMessageIdRef.current && chatData) {
       targetIndex = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
     }
-
-    // Store the message ID for future fallbacks
     if (targetIndex >= 0 && chatData) {
       lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIndex].id;
     }
-
     suppressAutoScrollRef.current = true;
-
     setViewMode(prev => prev === 'ladder' ? 'cinematic' : 'ladder');
-
-    // ✅ After render, find the SAME index in the new layout and scroll to it
-    // In cinematic (reversed array), index N maps to reversed position
-    // In ladder (normal array), index N maps directly
-    // Using scrollIntoView with block:'start' aligns to top of viewport in both layouts
     setTimeout(() => {
       if (targetIndex >= 0 && chatData && chatHistoryRef.current) {
         const targetMessageId = chatData.chatMessageHistory[targetIndex].id;
@@ -604,6 +606,7 @@ function App() {
     );
   };
 
+  // ✅ Render Budget Strategy Subtext
   const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => (
     <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
       <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
@@ -714,6 +717,7 @@ function App() {
               <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
               <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
               <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
+              {/* ✅ Budget Button */}
               <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
               <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
             </div>
@@ -742,8 +746,36 @@ function App() {
         {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
         {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(sp) => stopModal.open(sp)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionTrigger ? '🔍' : '📌'} Pattern: {s.pattern}</span>)} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
         {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
-        {isBudgetStrategyListOpen && (<ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={(strategy) => budgetModal.open(strategy)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />)}
-        {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
+        
+        {/* ✅ Budget Strategy List Modal */}
+        {isBudgetStrategyListOpen && (<ManagerModal 
+          title="Budget Strategies" 
+          items={allBudgetStrategies} 
+          isOpen={isBudgetStrategyListOpen} 
+          onClose={() => setIsBudgetStrategyListOpen(false)} 
+          onSelect={(strategy) => budgetModal.open(strategy)} 
+          onDelete={budgetModal.handleDelete} 
+          onCreateNew={() => budgetModal.open()} 
+          renderSubtext={renderBudgetStrategySubtext} 
+          emptyMessage="No budget strategies found." 
+          actionLabel="Delete" 
+          orderedListMode={false} 
+          activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+          specialActionIcon="★" 
+          onSpecialAction={handleActivateBudgetStrategy} 
+          specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
+        />)}
+        
+        {/* ✅ Budget Strategy Editor Modal */}
+        {budgetModal.isOpen && (<BudgetStrategyEditorModal 
+          isOpen={budgetModal.isOpen} 
+          onClose={budgetModal.close} 
+          onSave={budgetModal.handleSave} 
+          onDelete={budgetModal.handleDelete} 
+          existingStrategy={budgetModal.itemToEdit} 
+          allModels={allModels} 
+        />)}
+
         {isProfileListOpen && (<ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={(profile) => profileModal.open(profile)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={chatData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={(p) => chatData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />)}
         {profileModal.isOpen && (<ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />)}
         {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}

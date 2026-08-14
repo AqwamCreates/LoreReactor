@@ -1080,6 +1080,12 @@
     font-family: inherit; transition: all 0.2s;
 }
 
+.editor-btn-test {
+  background-color: var(--accent);
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+
 .editor-btn-cancel { background: transparent; color: var(--text-h); border: 1px solid var(--border); }
 .editor-btn-cancel:hover { background: var(--social-bg); }
 

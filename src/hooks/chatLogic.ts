@@ -497,10 +497,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === participantId;
             const isRevealed = revealedNamesMap.has(otherParticipantId);
-            const displayName = (isRevealed || isCurrent) ? otherCharacter.name : otherParticipantId;
 
-            if (isRevealed) {
-                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${displayName}): ${p.text}${turnEndString}`);
+            if (isCurrent || isRevealed) {
+                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${otherCharacter.name}): ${p.text}${turnEndString}`);
             } else {
                 historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${p.text}${turnEndString}`);
             }

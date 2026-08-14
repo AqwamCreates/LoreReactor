@@ -5,19 +5,19 @@ import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacter
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator.ts';
+import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 
-import { LanguageModelEngine, estimateTokens, type LanguageModelContext } from '../services/LanguageModelEngine.ts';
-import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine.ts';
+import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
+import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
 
-const now = Date.now()
+const now = Date.now();
 
 const convertFileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -207,7 +207,6 @@ function getDefaultCharacter(): Character {
 
 /**
  * ✅ Runs background summarization after messages are saved.
- * Checks trigger threshold, runs applicable strategies in order, persists results.
  */
 async function runBackgroundSummarization(
     data: ChatData,
@@ -440,18 +439,15 @@ export function useChatSession() {
         streamingCharacterRef.current = null;
     }, []);
 
-    // ✅ TTS auto-speak helper — fire-and-forget, never blocks UI
-    // Respects profile narration filters (normal, quoted, bold, italic)
+    // ✅ TTS auto-speak helper
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
 
-        // ✅ Filter text based on profile narration settings
         const profile = chatDataRef.current?.Profile;
         if (profile) {
             let filteredParts: string[] = [];
 
             if (profile.narrateNormalText !== false) {
-                // Normal text = everything minus quoted, bold, italic markers
                 let normal = text;
                 normal = normal.replace(/"[^"]*"|'[^']*'/g, '');
                 normal = normal.replace(/\*\*[^*]+\*\*/g, '');
@@ -480,7 +476,6 @@ export function useChatSession() {
             text = filteredText;
         }
 
-        // Fire async work without awaiting — prevents UI freeze
         (async () => {
             try {
                 const ttsContext: TextToSpeedLanguageModelContext = {
@@ -488,11 +483,8 @@ export function useChatSession() {
                     backend: 'Qwen3-TTS',
                 };
 
-                // ✅ USE CHARACTER.ID INSTEAD OF NAME/FILENAME
-                // This guarantees uniqueness even if two characters are named "Alice"
                 const voiceLabel = character.id; 
 
-                // Upload voice to TTS server if not already cached this session
                 if (!uploadedTtsVoicesRef.current.has(voiceLabel)) {
                     const voiceUrl = getCharacterVoiceUrl(character.voice);
                     if (!voiceUrl) return;
@@ -501,21 +493,17 @@ export function useChatSession() {
                     if (!res.ok) return;
 
                     const blob = await res.blob();
-                    
-                    // ✅ Pass the UUID as the label to the TTS server
                     const file = new File([blob], `${voiceLabel}.wav`, { type: blob.type || 'audio/wav' });
 
                     const uploaded = await textToSpeechModelEngine.uploadVoice(voiceLabel, file, ttsContext);
                     if (!uploaded) return;
 
                     uploadedTtsVoicesRef.current.add(voiceLabel);
-
                 }
 
                 await new Promise(resolve => setTimeout(resolve, 500)); 
 
                 const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
-                    // ✅ Use UUID for synthesis too
                     voice: voiceLabel, 
                 });
 
@@ -614,7 +602,8 @@ export function useChatSession() {
         signal: AbortSignal, 
         onToken?: (text: string) => void,
         userImagesBase64?: string[],
-        strategy?: BudgetStrategy | null
+        strategy?: BudgetStrategy | null,
+        complexityScore?: number
     ): Promise<ChatData | null> => {
         
         let imageData: string | null = null;
@@ -639,28 +628,40 @@ export function useChatSession() {
             let rawText: string;
 
             if (currentStrategy) {
+                // ✅ USE ROBUST BUDGET STRATEGY ENGINE
                 const strategyEngine = new BudgetStrategyEngine(currentStrategy);
-                const wrappedCallbacks = onToken ? {
-                    onToken: (stats: any) => {
+                
+                const wrappedCallbacks: StreamCallbacks | undefined = onToken ? {
+                    onToken: (stats) => {
                         setGenerationSpeed(stats.msPerToken);
                         streamingTextRef.current = stats.fullText;
                         onToken(stats.fullText);
                     }
                 } : undefined;
 
+                // Pass complexityScore to allow strategy to switch based on task difficulty
                 rawText = await strategyEngine.generateStream(
-                    data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
+                    data, 
+                    character, 
+                    { signal } as AbortController, 
+                    wrappedCallbacks, 
+                    userImagesBase64,
+                    complexityScore
                 );
 
+                // Update global stats with real costs calculated by the engine
                 if (strategyEngine.currentCost > 0) {
                     setStats(prev => ({
                         ...prev,
                         numberOfRequests: prev.numberOfRequests + 1,
                         totalCost: prev.totalCost + strategyEngine.currentCost,
+                        // We don't have cache miss details from the engine easily here, 
+                        // but we track the cost accurately.
                     }));
                 }
 
             } else {
+                // ✅ FALLBACK TO STANDARD MODEL ENGINE IF NO STRATEGY
                 if (!currentModel) {
                     if (!signal.aborted) {
                         addToast("No model selected. Please select a model from the Models list.", "error");
@@ -720,55 +721,48 @@ export function useChatSession() {
             
             if (!rawText || !rawText.trim()) {
                 if (!signal.aborted) {
+                    // Retry logic is now handled INSIDE BudgetStrategyEngine.generateStream
+                    // If we reach here with a strategy, it means all attempts failed.
                     if (currentStrategy) {
-                        const retryEngine = new BudgetStrategyEngine(currentStrategy);
-                        const wrappedCallbacks = onToken ? {
-                            onToken: (stats: any) => {
-                                setGenerationSpeed(stats.msPerToken);
-                                streamingTextRef.current = stats.fullText;
-                                onToken(stats.fullText);
-                            }
-                        } : undefined;
-                        rawText = await retryEngine.generateStream(
-                            data, character, { signal } as AbortController, wrappedCallbacks, userImagesBase64
-                        );
+                         addToast("All models failed according to budget strategy.", "error");
                     } else if (currentModel) {
-                        const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
-                        const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
-                        
-                        const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
-                        
-                        const retryLanguageModelContext: LanguageModelContext = {
-                            apiKey: currentModel.apiKey,
-                            backend: currentModel.backend,
-                            modelPath: currentModel.model,
-                            runtimePort: retryEffectivePort
-                        };
-                        rawText = await languageModelEngine.generateStream(
-                            retryRequestBody,
-                            { signal } as AbortController,
-                            {
-                                onToken: (stats) => {
-                                    setGenerationSpeed(stats.msPerToken);
-                                    streamingTextRef.current = stats.fullText;
-                                    if (onToken) onToken(stats.fullText);
-                                },
-                                onFinish: (responseStats) => {
-                                    const promptTokens = responseStats.promptTokens || 0;
-                                    const completionTokens = responseStats.completionTokens || 0;
-                                    const isCacheMiss = responseStats.cacheMiss || false;
-                                    const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
-                                    setStats(prev => ({
-                                        numberOfRequests: prev.numberOfRequests + 1,
-                                        numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                                        totalCost: prev.totalCost + costResult.totalCost,
-                                        costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
-                                    }));
-                                }
-                            },
-                            retryLanguageModelContext,
-                            maxParagraphs
-                        );
+                        // Simple retry for non-strategy mode
+                         const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
+                         const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
+                         
+                         const retryRequestBody = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
+                         
+                         const retryLanguageModelContext: LanguageModelContext = {
+                             apiKey: currentModel.apiKey,
+                             backend: currentModel.backend,
+                             modelPath: currentModel.model,
+                             runtimePort: retryEffectivePort
+                         };
+                         rawText = await languageModelEngine.generateStream(
+                             retryRequestBody,
+                             { signal } as AbortController,
+                             {
+                                 onToken: (stats) => {
+                                     setGenerationSpeed(stats.msPerToken);
+                                     streamingTextRef.current = stats.fullText;
+                                     if (onToken) onToken(stats.fullText);
+                                 },
+                                 onFinish: (responseStats) => {
+                                     const promptTokens = responseStats.promptTokens || 0;
+                                     const completionTokens = responseStats.completionTokens || 0;
+                                     const isCacheMiss = responseStats.cacheMiss || false;
+                                     const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+                                     setStats(prev => ({
+                                         numberOfRequests: prev.numberOfRequests + 1,
+                                         numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                                         totalCost: prev.totalCost + costResult.totalCost,
+                                         costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                                     }));
+                                 }
+                             },
+                             retryLanguageModelContext,
+                             maxParagraphs
+                         );
                     }
 
                     if (!rawText || !rawText.trim()) {
@@ -876,7 +870,6 @@ export function useChatSession() {
                     setChatData(result);
                     chatDataRef.current = result;
 
-                    // ✅ Auto-speak AI response (fire-and-forget)
                     const lastMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
                     if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
                         speakMessage(lastMsg.textContent, lastMsg.character);
@@ -1056,10 +1049,8 @@ export function useChatSession() {
                 setChatData(updatedData);
                 chatDataRef.current = updatedData;
 
-                // ✅ Trigger background summarization after AI response
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
 
-                // ✅ Auto-speak AI response (fire-and-forget)
                 const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
                 if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);
@@ -1173,10 +1164,8 @@ export function useChatSession() {
                 setChatData(updatedData);
                 chatDataRef.current = updatedData;
 
-                // ✅ Trigger background summarization after regeneration
                 runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
 
-                // ✅ Auto-speak AI response (fire-and-forget)
                 const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
                 if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);
