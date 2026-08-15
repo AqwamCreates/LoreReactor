@@ -14,12 +14,14 @@ interface ProfileEditorModalProps {
 const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'System Prompt',
     'Think Prompt',
+    'Meta Think Instruction',
+    'Fatigue Information',
     'Context',
     'Chat History',
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Context', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [

@@ -443,7 +443,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     // ✅ Build chat history with summarization pipeline applied in step order
-    const historyLines: string[] = [];
+    const chatHistoryLines: string[] = [];
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
             .sort((a, b) => a.order - b.order);
@@ -502,9 +502,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const isRevealed = revealedNamesMap.has(otherParticipantId);
 
             if (isCurrent || isRevealed) {
-                historyLines.push(`${turnStartString}Character ${otherParticipantId} (${otherCharacter.name}): ${p.text}${turnEndString}`);
+                chatHistoryLines.push(`${turnStartString}Character ${otherParticipantId} (${otherCharacter.name}): ${p.text}${turnEndString}`);
             } else {
-                historyLines.push(`${turnStartString}Character ${otherParticipantId}: ${p.text}${turnEndString}`);
+                chatHistoryLines.push(`${turnStartString}Character ${otherParticipantId}: ${p.text}${turnEndString}`);
             }
         }
     }
@@ -513,10 +513,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     // ✅ Assemble prompt blocks according to inputStrategy order
     const blockMap: Record<string, string[]> = {
-        'Context': contextLines,
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
-        'Chat History': [...metaThinkLines, ...fatigueLines, ...historyLines],
+        'Meta Think Instruction': metaThinkLines,
+        'Fatigue Information': fatigueLines,
+        'Context': contextLines,
+        'Chat History': chatHistoryLines,
     };
 
     const promptLines: string[] = [];
