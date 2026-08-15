@@ -287,7 +287,9 @@ export interface RawSummarizationStep extends RawData{
 export type PromptBlockType = 
   'System Prompt'        // Character system prompts
   | 'Think Prompt'
-  | 'Context'              // Active context entries (regex-matched)     // Think/meta-instruction prompts  
+  | 'Context'
+  | 'Meta Think Instruction'
+  | 'Fatigue Information'              // Active context entries (regex-matched)     // Think/meta-instruction prompts  
   | 'Chat History'         // Conversation history messages
 
 export interface Profile extends ObjectData {
