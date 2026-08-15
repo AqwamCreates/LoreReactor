@@ -142,9 +142,8 @@ export function ProfileEditorModal({
                 setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
                 setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
                 setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-                const savedStrategy = existingProfile.inputStrategy?.length
-                    ? existingProfile.inputStrategy.filter(b => b !== 'Character Description' && b !== 'User Input')
-                    : [...DEFAULT_STRATEGY];
+                const inputStrategy = existingProfile.inputStrategy
+                const savedStrategy = inputStrategy?.length ? inputStrategy : [...DEFAULT_STRATEGY];
                 setInputStrategy(savedStrategy);
                 setSummarizationSteps(
                     existingProfile.summarizationSteps?.length
@@ -263,7 +262,7 @@ export function ProfileEditorModal({
 
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newOrder = [...inputStrategy];
         const [removed] = newOrder.splice(dragIndex, 1);
@@ -307,7 +306,7 @@ export function ProfileEditorModal({
 
     const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newSteps = [...summarizationSteps];
         const [removed] = newSteps.splice(dragIndex, 1);
@@ -438,7 +437,7 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === 0 ? '(Character default)' : ``}
+                                    {chatProbability === 0 ? '(Character default)' : ""}
                                 </span>
                             </div>
                             <SliderInput
@@ -457,7 +456,7 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === 0 ? '(Character default)' : ``}
+                                    {maximumChatStamina === 0 ? '(Character default)' : ""}
                                 </span>
                             </div>
                             <SliderInput
