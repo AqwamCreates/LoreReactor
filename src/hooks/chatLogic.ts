@@ -1,8 +1,8 @@
 // src/services/chatLogic.ts
-import { v4 as uuidv4 } from 'uuid';
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
+import { v4 as uuidv4 } from 'uuid';
 
 const contextStartString = "{"
 const contextEndString = "}"

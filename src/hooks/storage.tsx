@@ -7,6 +7,7 @@ import type {
 } from '../types';
 
 import { localURL } from '../configurations';
+import { v4 as uuidv4 } from 'uuid';
 
 const now = Date.now()
 
@@ -550,7 +551,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
     const rawSteps = rawProfile.summarizationSteps || [];
     const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
         ? rawSteps.map((step, i) => ({
-            id: step.id || `step-${crypto.randomUUID()}`,
+            id: step.id || `step-${uuidv4()}`,
             name: step.name || step.strategyType,
             description: step.description,
             strategyType: step.strategyType,
@@ -820,7 +821,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   if (!sourceChat) throw new Error("Source chat not found");
   const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === parentChatMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
-  const newChatId = crypto.randomUUID();
+  const newChatId = uuidv4();
   const newPayload: RawChatData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistId: sourceChat.protagonist.id,

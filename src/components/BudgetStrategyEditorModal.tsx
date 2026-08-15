@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { SliderInput } from './SliderInput';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface BudgetStrategyEditorModalProps {
@@ -108,7 +109,7 @@ export function BudgetStrategyEditorModal({
 
         const now = Date.now();
         const strategy: BudgetStrategy = {
-            id: existingStrategy?.id || crypto.randomUUID(),
+            id: existingStrategy?.id || uuidv4(),
             name: name.trim(),
             description: description.trim() || '',
             onlineModel,
@@ -142,7 +143,7 @@ export function BudgetStrategyEditorModal({
 
         const now = Date.now();
         const clonedStrategy: BudgetStrategy = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             name: `${name.trim()} (Clone)`,
             description: description.trim() || '',
             onlineModel,

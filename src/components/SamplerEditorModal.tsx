@@ -3,6 +3,7 @@ import type React from 'react';
 import { useState, useEffect } from 'react';
 import type { Sampler, StopPattern } from '../types';
 import { SliderInput } from './SliderInput';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface SamplerEditorModalProps {
@@ -275,7 +276,7 @@ export function SamplerEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? crypto.randomUUID() : (existingSampler?.id || crypto.randomUUID()),
+            id: isNewClone ? uuidv4() : (existingSampler?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             parameters: paramsWithEnabled,
