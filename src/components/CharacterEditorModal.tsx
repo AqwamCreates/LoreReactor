@@ -5,6 +5,7 @@ import type { Character, Sampler, StopPattern } from '../types';
 import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
@@ -330,7 +331,7 @@ export function CharacterEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? crypto.randomUUID() : (existingCharacter?.id || crypto.randomUUID()),
+            id: isNewClone ? uuidv4() : (existingCharacter?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description,
             systemPrompt,

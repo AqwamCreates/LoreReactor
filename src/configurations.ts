@@ -1,4 +1,4 @@
-export const address = "http://localhost"
+export const address = `http://${import.meta.env.VITE_HOST_IP}`
 
 export const port = "3001"
 

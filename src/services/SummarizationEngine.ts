@@ -1,14 +1,15 @@
 // src/services/SummarizationEngine.ts
 import type { ChatData, ChatMessage, Context } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { v4 as uuidv4 } from 'uuid';
 
 const engine = new LanguageModelEngine();
 
-const SUMMARIZE_SYSTEM_PROMPT = `You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.`;
+const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
-const COMPRESS_CHUNK_PROMPT = `You are a narrative compressor for roleplay chat history. Given a chunk of conversation messages, produce a single dense paragraph that preserves: character names, key actions, dialogue substance, emotional beats, and plot progression. Write in past tense, third person. Output ONLY the compressed paragraph with no preamble, no markdown, no quotes.`;
+const COMPRESS_CHUNK_PROMPT = "You are a narrative compressor for roleplay chat history. Given a chunk of conversation messages, produce a single dense paragraph that preserves: character names, key actions, dialogue substance, emotional beats, and plot progression. Write in past tense, third person. Output ONLY the compressed paragraph with no preamble, no markdown, no quotes.";
 
-const RECURSIVE_MERGE_PROMPT = `You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.`;
+const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.";
 
 /**
  * Generates a summary for a single chat message using the LLM.
@@ -118,7 +119,7 @@ export async function generatePeriodicCompression(
         if (!compressed) continue;
 
         newContexts.push({
-            id: `auto-summary-${crypto.randomUUID()}`,
+            id: `auto-summary-${uuidv4()}`,
             name: `[Auto-Summary] Messages ${startIdx + 1}–${endIdx}`,
             description: `msgs:${startIdx}-${endIdx}`,
             text: compressed,
@@ -198,7 +199,7 @@ export async function generateRecursiveSummary(
         layer0Summaries.push(compressed);
 
         newContexts.push({
-            id: `auto-recursive-l0-${crypto.randomUUID()}`,
+            id: `auto-recursive-l0-${uuidv4()}`,
             name: `[Recursive L0] Messages ${startIdx + 1}–${endIdx}`,
             description: `recursive-l0:${startIdx}-${endIdx}`,
             text: compressed,
@@ -229,7 +230,7 @@ export async function generateRecursiveSummary(
                 nextLayerSummaries.push(merged);
 
                 newContexts.push({
-                    id: `auto-recursive-l${currentLayerIndex}-${crypto.randomUUID()}`,
+                    id: `auto-recursive-l${currentLayerIndex}-${uuidv4()}`,
                     name: `[Recursive L${currentLayerIndex}] Merged segment ${Math.floor(i / 2) + 1}`,
                     description: `recursive-l${currentLayerIndex}:segment-${Math.floor(i / 2)}`,
                     text: merged,
@@ -252,7 +253,7 @@ export async function generateRecursiveSummary(
         const globalSummary = await mergeSummaries(currentLayerSummaries, LanguageModelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
-                id: `auto-recursive-global-${crypto.randomUUID()}`,
+                id: `auto-recursive-global-${uuidv4()}`,
                 name: `[Recursive Global] Full conversation summary`,
                 description: fullRangeKey,
                 text: globalSummary,
@@ -267,7 +268,7 @@ export async function generateRecursiveSummary(
         }
     } else if (currentLayerSummaries.length === 1 && currentLayerIndex > 0) {
         newContexts.push({
-            id: `auto-recursive-global-${crypto.randomUUID()}`,
+            id: `auto-recursive-global-${uuidv4()}`,
             name: `[Recursive Global] Full conversation summary`,
             description: fullRangeKey,
             text: currentLayerSummaries[0],

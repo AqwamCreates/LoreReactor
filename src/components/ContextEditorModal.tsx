@@ -3,6 +3,7 @@ import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character } from '../types';
 import { uploadContextImage } from '../hooks/storage';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface ContextEditorModalProps {
@@ -164,7 +165,7 @@ export function ContextEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? crypto.randomUUID() : (existingContext?.id || crypto.randomUUID()),
+            id: isNewClone ? uuidv4() : (existingContext?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,

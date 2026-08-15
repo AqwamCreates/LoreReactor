@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import type { Profile, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
 import { SliderInput } from './SliderInput';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface ProfileEditorModalProps {
@@ -49,7 +50,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
         {
-            id: `step-${crypto.randomUUID()}`,
+            id: `step-${uuidv4()}`,
             name: 'Sliding Window Replace',
             strategyType: 'Sliding Window Replace',
             enabled: true,
@@ -61,7 +62,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${crypto.randomUUID()}`,
+            id: `step-${uuidv4()}`,
             name: 'Periodic Compression',
             strategyType: 'Periodic Compression',
             enabled: false,
@@ -74,7 +75,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${crypto.randomUUID()}`,
+            id: `step-${uuidv4()}`,
             name: 'Recursive Summary',
             strategyType: 'Recursive Summary',
             enabled: false,
@@ -87,7 +88,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${crypto.randomUUID()}`,
+            id: `step-${uuidv4()}`,
             name: 'Observation Masking',
             strategyType: 'Observation Masking',
             enabled: false,
@@ -185,7 +186,7 @@ export function ProfileEditorModal({
 
         const now = Date.now();
         const profile: Profile = {
-            id: existingProfile?.id || crypto.randomUUID(),
+            id: existingProfile?.id || uuidv4(),
             name: name.trim(),
             description: description.trim() || undefined,
             forceNameReveal,
@@ -213,7 +214,7 @@ export function ProfileEditorModal({
 
         const now = Date.now();
         const cloned: Profile = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             name: `${name.trim()} (Clone)`,
             description: description.trim() || undefined,
             forceNameReveal,
@@ -229,7 +230,7 @@ export function ProfileEditorModal({
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s,
-                id: `step-${crypto.randomUUID()}`,
+                id: `step-${uuidv4()}`,
                 order: i,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
@@ -332,7 +333,7 @@ export function ProfileEditorModal({
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
         const newStep: SummarizationStep = {
-            id: `step-${crypto.randomUUID()}`,
+            id: `step-${uuidv4()}`,
             name: strategyType,
             strategyType,
             enabled: true,

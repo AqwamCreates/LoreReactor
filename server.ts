@@ -40,7 +40,10 @@ const log = {
   llama: (msg: string) => console.log(`${Colors.FgMagenta}[LLAMA]${Colors.Reset} ${msg}`)
 };
 
-app.use(cors());
+app.use(cors({
+  origin: '*', 
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 
 function resolveModelPath(inputPath: string): string {
@@ -247,7 +250,7 @@ const startServer = () => {
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Model Control Enabled.`);
   console.log("");
-  app.listen(PORT, () => {});
+  app.listen(PORT, '0.0.0.0', () => {});
 };
 
 startServer();
