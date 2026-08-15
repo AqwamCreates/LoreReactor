@@ -34,6 +34,7 @@ import type {
   ChatData, RawChatData, Extension, InterjectableAction, Profile 
 } from '../types';
 
+
 interface NavButtonProps {
   icon: string;
   label: string;
@@ -69,10 +70,6 @@ function App() {
     updateRunningModels
   } = useChatSession();
 
-  // ✅ Ref to access latest chatData synchronously in callbacks without stale closures
-  const chatDataRef = useRef<ChatData | null>(null);
-  useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
-
   const { addToast } = useToast();
 
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
@@ -87,7 +84,6 @@ function App() {
     selectedModelId
   } = useModelManager();
   
-  // ✅ Budget Strategy Manager
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
@@ -115,7 +111,6 @@ function App() {
   const [isModelListOpen, setIsModelListOpen] = useState(false);
   const [isStopListOpen, setIsStopListOpen] = useState(false);
   
-  // ✅ Budget Strategy State
   const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
   const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
   
@@ -142,7 +137,6 @@ function App() {
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   
-  // ✅ Budget Modal Hook
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
   
   const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
@@ -206,14 +200,11 @@ function App() {
     }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
-  // ✅ Sync Active Budget Strategy
   useEffect(() => {
     if (selectedBudgetStrategyId) {
       const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
       setActiveBudgetStrategy(strategy || null);
-    } else { 
-      setActiveBudgetStrategy(null); 
-    }
+    } else { setActiveBudgetStrategy(null); }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
@@ -306,48 +297,63 @@ function App() {
     chatHistoryRef.current.scrollTop = 0;
   }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
 
-  // ✅ UPDATED: Save current chat state BEFORE switching to prevent data loss
+  /**
+   * ✅ SAFE AUTO-SAVE HELPER
+   * Prevents saving "shell" chat data (empty history but known message count)
+   * which would overwrite and destroy existing messages on disk.
+   */
+  const safeAutoSave = async (data: ChatData | null): Promise<void> => {
+    if (!data) return;
+    
+    // If history is empty BUT we know messages exist (messageCount > 0),
+    // this is an unloaded shell. DO NOT SAVE.
+    const isUnloadedShell = data.chatMessageHistory.length === 0 && (data.messageCount ?? 0) > 0;
+    if (isUnloadedShell) {
+      console.warn("Skipping auto-save: Chat messages not yet loaded (shell state).");
+      return;
+    }
+
+    try {
+      await saveRawChatData(data);
+    } catch (err) {
+      console.error("Failed to auto-save session:", err);
+    }
+  };
+
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
 
-    // ✅ Persist current chat's session-only changes (participants, contexts, etc.)
-    if (chatDataRef.current) {
-      try {
-        await saveRawChatData(chatDataRef.current);
-      } catch (err) {
-        console.error("Failed to save current chat before switching:", err);
-      }
-    }
+    // ✅ Safe auto-save before switching
+    await safeAutoSave(chatData);
 
     let chatWithMessages = selected;
     if (selected.chatMessageHistory.length === 0) {
       try { chatWithMessages = await loadChatMessages(selected); } catch (err) { console.error("Failed to load chat messages:", err); addToast("Failed to load chat messages.", "error"); }
     }
+    
     setChatData(chatWithMessages); 
     if (chatWithMessages.protagonist) setCurrentCharacter(chatWithMessages.protagonist);
+    
     refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null;
-  }, [allChats, setChatData, setCurrentCharacter, refreshChatList, addToast]);
+  }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast]);
 
-  // ✅ UPDATED: Save current chat state BEFORE creating new chat
   const handleNewChat = useCallback(async () => {
-    // ✅ Persist current chat's session-only changes before leaving
-    if (chatDataRef.current) {
-      try {
-        await saveRawChatData(chatDataRef.current);
-      } catch (err) {
-        console.error("Failed to save current chat before creating new:", err);
-      }
-    }
+    // ✅ Safe auto-save before creating new
+    await safeAutoSave(chatData);
 
     let charToUse = currentCharacter;
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
     if (charToUse) { startNewChat(charToUse); refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null; }
-  }, [currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
+  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); if (!window.confirm("Delete this session?")) return;
+
+    // ✅ Safe auto-save before deleting (in case we're deleting a different chat)
+    await safeAutoSave(chatData);
+
     const success = await deleteChatFromList(id);
     if (success) { addToast("Chat session deleted.", "info"); if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter); }
     else { addToast("Failed to delete chat.", "error"); }
@@ -364,10 +370,8 @@ function App() {
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
     const updatedChat = { ...chatData, participants: newParticipants };
     setChatData(updatedChat);
-    // ✅ Persist immediately so it survives a chat switch
-    await saveRawChatData(updatedChat);
     if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
-    addToast("Participants updated.", "info");
+    addToast("Participants updated (Session Only).", "info");
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
@@ -375,11 +379,8 @@ function App() {
     const char = allCharacters.find(c => c.id === charId); if (!char) return;
     const updatedChat = { ...chatData, protagonist: char };
     if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
-    setChatData(updatedChat); 
-    // ✅ Persist immediately
-    await saveRawChatData(updatedChat);
-    setCurrentCharacter(char);
-    addToast("Protagonist switched.", "info");
+    setChatData(updatedChat); setCurrentCharacter(char);
+    addToast("Protagonist switched (Session Only).", "info");
   };
 
   const handleToggleDefaultContext = (contextId: string) => {
@@ -392,11 +393,8 @@ function App() {
     if (!chatData) return;
     const currentIds = chatData.contexts?.map(i => i.id) || [];
     let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
-    const updatedChat = { ...chatData, contexts: allContexts.filter(i => newIds.includes(i.id)) };
-    setChatData(updatedChat);
-    // ✅ Persist immediately
-    await saveRawChatData(updatedChat);
-    addToast("Contexts updated.", "info");
+    setChatData({ ...chatData, contexts: allContexts.filter(i => newIds.includes(i.id)) });
+    addToast("Contexts updated (Session Only).", "info");
   };
 
   const getChatExtensions = (): string[] => {
@@ -412,23 +410,14 @@ function App() {
     let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = allExtensions.filter(e => newIds.includes(e.id));
-    setChatData(updatedChat); 
-    // ✅ Persist immediately
-    await saveRawChatData(updatedChat);
-    addToast("Extensions updated.", "info");
+    setChatData(updatedChat); addToast("Extensions updated (Session Only).", "info");
   };
 
   const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
 
-  // ✅ Activate/Deactivate Budget Strategy
   const handleActivateBudgetStrategy = (strategyId: string) => {
-    if (selectedBudgetStrategyId === strategyId) { 
-      setSelectedBudgetStrategyId(null); 
-      addToast("Budget strategy deactivated.", "info"); 
-    } else { 
-      setSelectedBudgetStrategyId(strategyId); 
-      addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === strategyId)?.name}" activated!`, "success"); 
-    }
+    if (selectedBudgetStrategyId === strategyId) { setSelectedBudgetStrategyId(null); addToast("Budget strategy deactivated.", "info"); }
+    else { setSelectedBudgetStrategyId(strategyId); addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === strategyId)?.name}" activated!`, "success"); }
   };
 
   const handleActivateProfile = async (profileId: string) => {
@@ -499,6 +488,16 @@ function App() {
     } catch (err) { addToast("Failed to navigate to source chat.", "error"); }
   };
 
+  // ✅ Copy message text to clipboard
+  const handleCopyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      addToast("Copied to clipboard", "success");
+    } catch (err) {
+      addToast("Failed to copy text", "error");
+    }
+  };
+
   const handleSend = () => { if (!inputText.trim() && pendingFiles.length === 0) return; sendMessage(inputText, pendingFiles); setInputText(''); setPendingFiles([]); };
 
   const handleAvatarClick = (e: React.MouseEvent, messageId: string, char: Character) => {
@@ -547,7 +546,6 @@ function App() {
     return currentIndex !== -1 && currentIndex <= branchIndex;
   };
 
-  // ✅ Find top-most visible real message by index in chatMessageHistory
   const getTopVisibleMessageIndex = (): number => {
     if (!chatHistoryRef.current || !chatData) return -1;
     const container = chatHistoryRef.current;
@@ -555,7 +553,7 @@ function App() {
     const realMessageIds = new Set(chatData.chatMessageHistory.map(m => m.id));
     const messages = container.querySelectorAll('[data-message-id]');
     let bestIndex = -1;
-    let bestTop = Number.POSITIVE_INFINITY;
+    let bestTop = Infinity;
     messages.forEach((el) => {
       const id = el.getAttribute('data-message-id');
       if (!id || !realMessageIds.has(id)) return;
@@ -642,7 +640,6 @@ function App() {
     );
   };
 
-  // ✅ Render Budget Strategy Subtext
   const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => (
     <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
       <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
@@ -668,33 +665,11 @@ function App() {
       {isLoading && streamingCharacter && !streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column">
-              <div style={{ position: 'relative' }}>
-                {getCharacterImageUrl(streamingCharacter.image) ? (
-                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
-                ) : (
-                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
-                )}
-              </div>
-              {/* ✅ FIX: Use length - 1 to force history scan */}
-              <span className="avatar-name" style={{ opacity: 0.5 }}>
-                {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
-              </span>
-            </div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />) : (<div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />)}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
-            {viewMode === 'cinematic' && (
-              <div className="cinematic-bubble-header">
-                <span>
-                  {/* ✅ FIX: Use length - 1 to force history scan */}
-                  {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
-                </span>
-              </div>
-            )}
-            <span className="thinking-indicator">
-              <span className="thinking-text">Thinking</span>
-              <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-            </span>
+            {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
+            <span className="thinking-indicator"><span className="thinking-text">Thinking</span><span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span></span>
           </div>
         </div>
       )}
@@ -702,33 +677,11 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column">
-              <div style={{ position: 'relative' }}>
-                {getCharacterImageUrl(streamingCharacter.image) ? (
-                  <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                ) : (
-                  <div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />
-                )}
-              </div>
-              {/* ✅ FIX: Use length - 1 to force history scan */}
-              <span className="avatar-name">
-                {getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
-              </span>
-            </div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
-            {viewMode === 'cinematic' && (
-              <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}>
-                <span>
-                  {/* ✅ FIX: Use length - 1 to force history scan */}
-                  {streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}
-                </span>
-              </div>
-            )}
-            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-              <span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span>
-              <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
-            </div>
+            {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
+            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div>
           </div>
         </div>
       )}
@@ -777,7 +730,34 @@ function App() {
                         {isEditing ? (<div className="edit-mode"><textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} /><div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div></div>) : (<>
                           <span className="message-text">{formatMessageText(message.textContent)}</span>
                           <div className="message-toolbar">
-                            {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (<><button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>{!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}{isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}<button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">⑂</button><button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">📋</button><button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button><button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button></>) : isMassStart ? (<div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div>) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
+                            {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
+                              <>
+                                {/* ✅ Copy Text Button */}
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleCopyText(message.textContent)} 
+                                  className="toolbar-btn" 
+                                  title="Copy text to clipboard"
+                                >
+                                  📋
+                                </button>
+                                
+                                <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
+                                
+                                {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                                
+                                {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                                
+                                {/* ✅ Branch uses 🌿 */}
+                                <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">🌿</button>
+                                
+                                {/* ✅ Clone uses ⑂ */}
+                                <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">⑂</button>
+                                
+                                <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                                <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                              </>
+                            ) : isMassStart ? (<div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div>) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
                           </div>
                         </>)}
                       </div>
@@ -798,7 +778,6 @@ function App() {
               <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
               <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
               <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
-              {/* ✅ Budget Button */}
               <NavButton icon="💰" label="Budget" onClick={() => setIsBudgetStrategyListOpen(true)} />
               <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
             </div>
@@ -828,7 +807,6 @@ function App() {
         {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(sp) => stopModal.open(sp)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionTrigger ? '🔍' : '📌'} Pattern: {s.pattern}</span>)} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
         {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
         
-        {/* ✅ Budget Strategy List Modal */}
         {isBudgetStrategyListOpen && (<ManagerModal 
           title="Budget Strategies" 
           items={allBudgetStrategies} 
@@ -847,7 +825,6 @@ function App() {
           specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} 
         />)}
         
-        {/* ✅ Budget Strategy Editor Modal */}
         {budgetModal.isOpen && (<BudgetStrategyEditorModal 
           isOpen={budgetModal.isOpen} 
           onClose={budgetModal.close} 
