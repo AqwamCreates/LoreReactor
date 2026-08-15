@@ -30,11 +30,11 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
 
-function replacePlaceholders(text: string, characterParticipantId: number, characterName: string, protagonistParticipantId: number, protagonistName: string): string {
+function replacePlaceholders(text: string, characterParticipantId: string, characterName: string, protagonistParticipantId: string, protagonistName: string): string {
     if (!text) return text;
     let result = text;
-    result = result.replace(/\{\{char\}\}/g, `Character ${characterParticipantId} (${characterName})`);
-    result = result.replace(/\{\{user\}\}/g, `Character ${protagonistParticipantId} (${protagonistName})`);
+    result = result.replace(/\{\{char\}\}/g, `${characterParticipantId} (${characterName})`);
+    result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantId} (${protagonistName})`);
     return result;
 }
 
