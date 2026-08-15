@@ -11,7 +11,7 @@ const turnEndString = "}"
 const commonThinkStartString = "<think>"
 const commonThinkEndString = "</think>"
 const gemmaThinkStartString = "<|channel>"
-const gemmaThinkEndString = "<|channel>"
+const gemmaThinkEndString = "<channel|>"
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`
 
@@ -198,10 +198,6 @@ async function resolveContextEntries(
     }
 
     // --- Phase 2: Recursive scanning ---
-    // Each context can specify its own maximumRecursionDepth.
-    // A context is only eligible for recursive activation if the current
-    // recursion depth is within its personal limit.
-    // maximumRecursionDepth: 0 means direct scan only, never recursive.
     let recursionDepth = 0;
     let newActivations = true;
 
@@ -219,7 +215,6 @@ async function resolveContextEntries(
             if (activated.has(context.id)) continue;
             if (!isCharacterBound(context, currentCharacterId)) continue;
 
-            // ✅ Per-context recursion depth limit
             const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
             if (recursionDepth > contextMaxDepth) continue;
 
@@ -232,7 +227,6 @@ async function resolveContextEntries(
     }
 
     // --- Phase 3: Format, enforce budget by list order, sort by depth ---
-
     const orderedActivated: Context[] = [];
     for (const context of contexts) {
         if (activatedMap.has(context.id)) {
@@ -296,8 +290,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     // ✅ 2. Get Stop Patterns defined directly on the Character (Character-specific)
     const characterStopPatterns = character.stopPatterns || [];
 
-    // Combine both lists. Character-specific patterns are added to the pool.
-    // You can adjust priority here if needed, but generally they are merged.
+    // Combine both lists
     const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
 
     const currentCharacterId = character.id;
@@ -334,7 +327,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         return combinationCache[ctxType][tgtType];
     };
 
-    // ✅ CONTEXT BLOCK — lorebook-style resolution with async token counting
+    // ✅ CONTEXT BLOCK
     const contextLines: string[] = [];
     const globalChatSearch = textContentArray.join('\n');
 
@@ -365,14 +358,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     // ✅ STOP PATTERNS LOGIC
-    // Iterate through the combined list (Sampler + Character)
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
         const regexTrigger = stopPattern.regularExpressionTrigger;
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
-        // If no regex trigger, pattern is always active
         if (!regexTrigger) { 
             activeStopPatterns.push(stopPattern); 
             continue; 
@@ -449,20 +440,17 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     // ✅ Build chat history with summarization pipeline applied in step order
-    // All steps in the list are considered active (presence = enabled)
     const historyLines: string[] = [];
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
             .sort((a, b) => a.order - b.order);
 
-        // Start with full message list — each step may transform it
         let processedMessages = chatMessageHistory.map((msg, idx) => ({
             msg,
             idx,
             text: msg.textContent,
         }));
 
-        // Apply each active step in order
         for (const step of activeSteps) {
             if (step.strategyType === 'Sliding Window Replace') {
                 const windowSize = step.slidingWindowSize ?? 10;
@@ -479,7 +467,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                 const keywordWeight = step.maskingKeywordWeight ?? 0.7;
                 const recencyWeight = 1 - keywordWeight;
 
-                // Build keyword set from recent messages (last 5)
                 const recentText = processedMessages
                     .slice(-5)
                     .map(p => p.text.toLowerCase())
@@ -488,7 +475,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                     recentText.split(/\s+/).filter(w => w.length > 3)
                 );
 
-                // Score each message and filter
                 processedMessages = processedMessages.filter((p, i) => {
                     const totalMessages = processedMessages.length;
                     const recencyScore = (i + 1) / totalMessages;
@@ -504,12 +490,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                     return combinedScore >= threshold;
                 });
             }
-
-            // Periodic Compression and Recursive Summary produce Context entries
-            // and are handled by SummarizationEngine, not here
         }
 
-        // Render processed messages into prompt lines
         for (const p of processedMessages) {
             const otherCharacter = p.msg.character;
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
@@ -590,7 +572,13 @@ export async function prepareRequestBody(
     const allImageData: { data: string; id: number }[] = [];
     let imageIdCounter = 13;
 
-    if (characterImageBase64) allImageData.push({ data: characterImageBase64, id: 12 });
+    // ✅ Strip Data URI prefix for llama-server compatibility
+    if (characterImageBase64) {
+        const rawData = characterImageBase64.includes(',') 
+            ? characterImageBase64.split(',')[1] 
+            : characterImageBase64;
+        allImageData.push({ data: rawData, id: 12 });
+    }
 
     if (activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
@@ -606,7 +594,9 @@ export async function prepareRequestBody(
                         reader.onloadend = () => resolve(reader.result as string);
                         reader.readAsDataURL(blob);
                     });
-                    return { data: base64, id: imageIdCounter++ };
+                    // ✅ Strip Data URI prefix
+                    const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                    return { data: rawData, id: imageIdCounter++ };
                 } catch (e) {
                     console.warn(`Failed to load context image ${filename}`, e);
                     return null;
@@ -619,7 +609,9 @@ export async function prepareRequestBody(
 
     if (userImageBase64s && userImageBase64s.length > 0) {
         for (const base64 of userImageBase64s) {
-            allImageData.push({ data: base64, id: imageIdCounter++ });
+            // ✅ Strip Data URI prefix
+            const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+            allImageData.push({ data: rawData, id: imageIdCounter++ });
         }
     }
 
