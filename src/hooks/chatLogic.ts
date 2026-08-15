@@ -30,11 +30,11 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
 
-function replacePlaceholders(text: string, characterName: string, protagonistName: string): string {
+function replacePlaceholders(text: string, characterParticipantId: number, characterName: string, protagonistParticipantId: number, protagonistName: string): string {
     if (!text) return text;
     let result = text;
-    result = result.replace(/\{\{char\}\}/g, characterName);
-    result = result.replace(/\{\{user\}\}/g, protagonistName);
+    result = result.replace(/\{\{char\}\}/g, `Character ${characterParticipantId} (${characterName})`);
+    result = result.replace(/\{\{user\}\}/g, `Character ${protagonistParticipantId} (${protagonistName})`);
     return result;
 }
 
@@ -293,9 +293,14 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     // Combine both lists
     const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
 
-    const currentCharacterId = character.id;
+    const participants = chatData.participants
+
+    const characterId = character.id;
+    const characterParticipantId = getParticipantId(character, participants)
     const characterName = character.name;
-    const protagonistName = chatData.protagonist.name;
+    const protagonist = chatData.protagonist
+    const protagonistParticipantId = getParticipantId(protagonist, participants)
+    const protagonistName = protagonist.name;
     let systemPrompt = character.systemPrompt;
     let thinkPrompt = character.thinkPrompt;
 
@@ -320,8 +325,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const getFilteredData = (ctxType: string, tgtType: string) => {
         if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
         if (!combinationCache[ctxType][tgtType]) {
-            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, currentCharacterId, ctxType as any);
-            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, currentCharacterId, tgtType as any);
+            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType as any);
+            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType as any);
             combinationCache[ctxType][tgtType] = step2;
         }
         return combinationCache[ctxType][tgtType];
@@ -334,7 +339,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const resolvedContexts = await resolveContextEntries(
         contexts,
         globalChatSearch,
-        currentCharacterId,
+        characterId,
         getFilteredData,
         runtimePort
     );
@@ -342,7 +347,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     for (const { context, formattedLine } of resolvedContexts) {
         let line = formattedLine;
         if (context.text) {
-            const replacedText = replacePlaceholders(context.text, characterName, protagonistName);
+            const replacedText = replacePlaceholders(context.text, characterParticipantId, characterName, protagonistParticipantId, protagonistName);
             if (context.useBase64Encoding) {
                 const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
                 line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
@@ -390,11 +395,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             if (p.systemPrompt) {
                 const pId = getParticipantId(p, chatData.participants);
                 const pName = p.name;
-                systemPromptLines.push(`${contextStartString}Character ${pId} (${pName}) Prompt: ${replacePlaceholders(p.systemPrompt, characterName, protagonistName)}${contextEndString}`);
+                systemPromptLines.push(`${contextStartString}Character ${pId} (${pName}) Prompt: ${replacePlaceholders(p.systemPrompt, characterParticipantId, characterName, protagonistParticipantId, protagonistName)}${contextEndString}`);
             }
         }
     } else if (systemPrompt) {
-        systemPrompt = replacePlaceholders(systemPrompt, characterName, chatData.protagonist.name);
+        systemPrompt = replacePlaceholders(systemPrompt, characterParticipantId, characterName, protagonistParticipantId, protagonistName);
         systemPromptLines.push(`${contextStartString}Character ${participantId} (${characterName}) Prompt: ${systemPrompt}${contextEndString}`);
     }
 
@@ -403,13 +408,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (cacheLevel >= 3) {
         for (const p of chatData.participants) {
             if (p.thinkPrompt) {
-                const pId = getParticipantId(p, chatData.participants);
-                const pName = p.name;
-                thinkPromptLines.push(`${contextStartString}${thinkStartString}${replacePlaceholders(p.thinkPrompt, characterName, protagonistName)}${thinkEndString}${contextEndString}`);
+                thinkPromptLines.push(`${contextStartString}${thinkStartString}${replacePlaceholders(p.thinkPrompt, characterParticipantId, characterName, protagonistParticipantId, protagonistName)}${thinkEndString}${contextEndString}`);
             }
         }
     } else if (thinkPrompt) {
-        thinkPrompt = replacePlaceholders(thinkPrompt, characterName, protagonistName);
+        thinkPrompt = replacePlaceholders(thinkPrompt, characterParticipantId, characterName, protagonistParticipantId, protagonistName);
         thinkPromptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextEndString}`);
     }
 
