@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from './storage';
 import { useToast } from '../context/ToastContext';
-import { localURL } from '../configurations';
+import { localAddress, localURL } from '../configurations';
 
 interface ModelState {
   isRunning: boolean;
@@ -44,7 +44,7 @@ export function useModelManager() {
 
                 if (m.status === 'ready' && m.port) {
                     try {
-                        const slotsRes = await fetch(`http://localhost:${m.port}/slots`);
+                        const slotsRes = await fetch(`${localAddress}:${m.port}/slots`);
                         
                         if (!slotsRes.ok) {
                             continue;
