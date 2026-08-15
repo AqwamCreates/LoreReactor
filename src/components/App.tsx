@@ -69,6 +69,10 @@ function App() {
     updateRunningModels
   } = useChatSession();
 
+  // ✅ Ref to access latest chatData synchronously in callbacks without stale closures
+  const chatDataRef = useRef<ChatData | null>(null);
+  useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
+
   const { addToast } = useToast();
 
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
@@ -302,9 +306,20 @@ function App() {
     chatHistoryRef.current.scrollTop = 0;
   }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
 
+  // ✅ UPDATED: Save current chat state BEFORE switching to prevent data loss
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
+
+    // ✅ Persist current chat's session-only changes (participants, contexts, etc.)
+    if (chatDataRef.current) {
+      try {
+        await saveRawChatData(chatDataRef.current);
+      } catch (err) {
+        console.error("Failed to save current chat before switching:", err);
+      }
+    }
+
     let chatWithMessages = selected;
     if (selected.chatMessageHistory.length === 0) {
       try { chatWithMessages = await loadChatMessages(selected); } catch (err) { console.error("Failed to load chat messages:", err); addToast("Failed to load chat messages.", "error"); }
@@ -314,7 +329,17 @@ function App() {
     refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null;
   }, [allChats, setChatData, setCurrentCharacter, refreshChatList, addToast]);
 
-  const handleNewChat = useCallback(() => {
+  // ✅ UPDATED: Save current chat state BEFORE creating new chat
+  const handleNewChat = useCallback(async () => {
+    // ✅ Persist current chat's session-only changes before leaving
+    if (chatDataRef.current) {
+      try {
+        await saveRawChatData(chatDataRef.current);
+      } catch (err) {
+        console.error("Failed to save current chat before creating new:", err);
+      }
+    }
+
     let charToUse = currentCharacter;
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
@@ -339,8 +364,10 @@ function App() {
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) newParticipants.unshift(chatData.protagonist);
     const updatedChat = { ...chatData, participants: newParticipants };
     setChatData(updatedChat);
+    // ✅ Persist immediately so it survives a chat switch
+    await saveRawChatData(updatedChat);
     if (!newIds.includes(currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
-    addToast("Participants updated (Session Only).", "info");
+    addToast("Participants updated.", "info");
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
@@ -348,8 +375,11 @@ function App() {
     const char = allCharacters.find(c => c.id === charId); if (!char) return;
     const updatedChat = { ...chatData, protagonist: char };
     if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
-    setChatData(updatedChat); setCurrentCharacter(char);
-    addToast("Protagonist switched (Session Only).", "info");
+    setChatData(updatedChat); 
+    // ✅ Persist immediately
+    await saveRawChatData(updatedChat);
+    setCurrentCharacter(char);
+    addToast("Protagonist switched.", "info");
   };
 
   const handleToggleDefaultContext = (contextId: string) => {
@@ -362,8 +392,11 @@ function App() {
     if (!chatData) return;
     const currentIds = chatData.contexts?.map(i => i.id) || [];
     let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
-    setChatData({ ...chatData, contexts: allContexts.filter(i => newIds.includes(i.id)) });
-    addToast("Contexts updated (Session Only).", "info");
+    const updatedChat = { ...chatData, contexts: allContexts.filter(i => newIds.includes(i.id)) };
+    setChatData(updatedChat);
+    // ✅ Persist immediately
+    await saveRawChatData(updatedChat);
+    addToast("Contexts updated.", "info");
   };
 
   const getChatExtensions = (): string[] => {
@@ -379,7 +412,10 @@ function App() {
     let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
     const updatedChat = { ...chatData } as any;
     updatedChat.extensions = allExtensions.filter(e => newIds.includes(e.id));
-    setChatData(updatedChat); addToast("Extensions updated (Session Only).", "info");
+    setChatData(updatedChat); 
+    // ✅ Persist immediately
+    await saveRawChatData(updatedChat);
+    addToast("Extensions updated.", "info");
   };
 
   const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
