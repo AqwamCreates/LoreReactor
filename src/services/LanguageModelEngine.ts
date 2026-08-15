@@ -1,5 +1,7 @@
 // src/services/LargeLanguageModelInferenceEngine.ts
 
+import { localAddress } from "../configurations";
+
 export interface TokenStats {
   fullText: string;
   msPerToken: number;
@@ -100,7 +102,7 @@ export class LanguageModelEngine {
 
     } else if (runtimePort) {
       // --- Local llama-server ---
-      url = `http://127.0.0.1:${runtimePort}/completion`;
+      url = `${localAddress}:${runtimePort}/completion`;
 
       body = JSON.stringify({
         prompt,
@@ -189,7 +191,7 @@ export class LanguageModelEngine {
     if (!runtimePort) return estimateTokens(text);
 
     try {
-      const res = await fetch(`http://127.0.0.1:${runtimePort}/tokenize`, {
+      const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text }),
