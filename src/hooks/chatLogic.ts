@@ -17,7 +17,7 @@ const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`
 
 // ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Context', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History'
 ];
 
 // ✅ Default maximum recursion depth for lorebook scanning — prevents infinite loops
