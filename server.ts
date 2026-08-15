@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 
 // --- Configuration ---
@@ -67,7 +67,7 @@ async function waitForModelReady(port: number, timeoutMs: number = 60000): Promi
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     try {
-      await fetch(`http://localhost:${port}/health`);
+      await fetch(`http://127.0.0.1:${port}/health`);
       return true;
     } catch (e) {
       await new Promise(r => setTimeout(r, 500));
@@ -162,7 +162,7 @@ app.post('/models/load', async (req, res) => {
   log.info(`Starting model ${id} on port ${port}...`);
   log.info(`Model Path: ${absoluteModelPath}`);
 
-  const launchArgs = ['-m', absoluteModelPath, '--port', port.toString(), '--host', '127.0.0.1', ...args];
+  const launchArgs = ['-m', absoluteModelPath, '--port', port.toString(), '--host', '0.0.0.0', ...args];
 
   const proc = spawn(LLAMA_SERVER_PATH, launchArgs, {
     cwd: path.dirname(LLAMA_SERVER_PATH),
@@ -244,7 +244,7 @@ const startServer = () => {
   console.log(`  ${title}`);
   console.log(`  🤖 Llama Path: ${Colors.Dim}${LLAMA_SERVER_PATH}${Colors.Reset}`);
   console.log(border);
-  console.log(`  📡 API Port:  ${Colors.FgGreen}http://localhost:${PORT}${Colors.Reset}`);
+  console.log(`  📡 API Port:  ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
   console.log(`  💾 Data Path: ${Colors.Dim}/user_data/${Colors.Reset}`);
   console.log(border);
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);

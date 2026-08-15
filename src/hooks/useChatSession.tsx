@@ -9,7 +9,7 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/SummarizationEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
-import { localURL } from '../configurations';
+import { localAddress, localURL } from '../configurations';
 
 import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
@@ -395,7 +395,7 @@ export function useChatSession() {
     
     const { addToast } = useToast();
 
-    const [ttsServerUrl] = useState<string>('http://localhost:7860');
+    const [ttsServerUrl] = useState<string>(`${localAddress}:7860`);
 
     useEffect(() => {
         const fetchRunningModels = async () => {
