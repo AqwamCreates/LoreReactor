@@ -3,7 +3,7 @@ import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelE
 
 const engine = new LanguageModelEngine();
 
-const WEBPAGE_SUMMARIZE_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text and associated image descriptions, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, visual details from images, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
+const WEBPAGE_SUMMARIZE_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text and associated images, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, visual details from images, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
 
 const WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
 
@@ -11,29 +11,14 @@ const MULTI_PAGE_MERGE_PROMPT = "You are a context merger for roleplay lore. Giv
 
 export interface WebpageImageInfo {
     url: string;
-    alt?: string;
-    description?: string;
-}
-
-/**
- * Formats image info into a text block for inclusion in summarization prompts.
- */
-function formatImageBlock(images: WebpageImageInfo[]): string {
-    if (images.length === 0) return '';
-
-    const entries = images.map((img, i) => {
-        const parts: string[] = [`Image ${i + 1}: ${img.url}`];
-        if (img.alt) parts.push(`Alt text: ${img.alt}`);
-        if (img.description) parts.push(`Description: ${img.description}`);
-        return parts.join('\n');
-    });
-
-    return `\n\nAssociated Images:\n${entries.join('\n\n')}`;
+    base64?: string;
+    mimeType?: string;
 }
 
 /**
  * Summarizes a single webpage's extracted text content using the LLM.
- * Optionally includes image metadata when images were extracted from the page.
+ * When images are provided with base64 data, they are passed via the
+ * same image_data format used by chatLogic.ts (llama.cpp native format).
  */
 export async function summarizeWebpageContent(
     content: string,
@@ -43,14 +28,26 @@ export async function summarizeWebpageContent(
 ): Promise<string | null> {
     const hasImages = images && images.length > 0;
     const basePrompt = hasImages ? WEBPAGE_SUMMARIZE_PROMPT : WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT;
-    const imageBlock = hasImages ? formatImageBlock(images) : '';
 
-    const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}${imageBlock}\n\nSummary:`;
+    const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}\n\nSummary:`;
+
+    // Build image_data array in the same format as chatLogic.ts prepareRequestBody
+    let imageData: { data: string; id: number }[] | undefined;
+    if (hasImages) {
+        imageData = [];
+        let imageIdCounter = 100; // Start high to avoid collisions with chat images
+        for (const img of images) {
+            if (img.base64) {
+                imageData.push({ data: img.base64, id: imageIdCounter++ });
+            }
+        }
+        if (imageData.length === 0) imageData = undefined;
+    }
 
     return engine.generateCompletion(prompt, modelContext, {
-        temperature: 0.3,
+        temperature: 1,
         stop: ['\n\n\n', '```', '\nSource:'],
-    });
+    }, imageData);
 }
 
 /**
@@ -71,7 +68,7 @@ export async function mergeWebpageSummaries(
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
     return engine.generateCompletion(prompt, modelContext, {
-        temperature: 0.3,
+        temperature: 1,
         stop: ['\n\n\n\n', '```'],
     });
 }

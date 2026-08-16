@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_TIMEOUT_MS = 10000;
+const IMAGE_FETCH_TIMEOUT_MS = 5000;
 
 interface FetchResult {
     url: string;
@@ -46,7 +47,63 @@ export function buildSearchUrl(terms: string[], engine: searchEngine): string {
     }
 }
 
-function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; images: WebpageImageInfo[] } {
+/**
+ * Cleans an image URL by stripping everything after the file extension.
+ * Handles Fandom/Wikipedia-style URLs where clicking an image redirects
+ * to a wiki article page instead of serving the raw image.
+ * e.g., "https://static.wikia.nocookie.net/lore/images/a/ab/Dragon.png/revision/latest?cb=20240101"
+ *     → "https://static.wikia.nocookie.net/lore/images/a/ab/Dragon.png"
+ */
+function cleanImageUrl(url: string): string {
+    const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?))/i);
+    if (extensionMatch && extensionMatch.index !== undefined) {
+        return url.substring(0, extensionMatch.index + extensionMatch[1].length);
+    }
+    return url;
+}
+
+/**
+ * Downloads an image from a URL and returns it as base64 + mime type.
+ * Returns null if the fetch fails or the response isn't an image.
+ */
+async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string } | null> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+
+        const response = await fetch(imageUrl, {
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
+                'Accept': 'image/*',
+            },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return null;
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.startsWith('image/')) return null;
+
+        const blob = await response.blob();
+        const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result as string;
+                resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+
+        return { base64, mimeType: contentType.split(';')[0].trim() };
+    } catch {
+        return null;
+    }
+}
+
+function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; imageUrls: string[] } {
     const linkRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
     const links: string[] = [];
     let match: RegExpExecArray | null;
@@ -54,11 +111,9 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
         links.push(match[1]);
     }
 
-    // Extract images from <img> tags
+    // Extract image URLs from <img> tags
     const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
-    const altRegex = /alt=["']([^"']*)["']/i;
-    const titleRegex = /title=["']([^"']*)["']/i;
-    const images: WebpageImageInfo[] = [];
+    const imageUrls: string[] = [];
     let imgMatch: RegExpExecArray | null;
 
     while ((imgMatch = imgRegex.exec(html)) !== null) {
@@ -73,21 +128,16 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
             }
         }
 
-        // Skip tiny tracking pixels, icons, and data URIs
+        // Skip tracking pixels, icons, and data URIs
         if (imgUrl.startsWith('data:') || imgUrl.includes('pixel') || imgUrl.includes('spacer') || imgUrl.includes('1x1') || imgUrl.includes('blank.gif')) {
             continue;
         }
 
-        const tagStr = imgMatch[0];
-        const altMatch = altRegex.exec(tagStr);
-        const titleMatch = titleRegex.exec(tagStr);
-        const alt = altMatch?.[1]?.trim() || undefined;
-        const title = titleMatch?.[1]?.trim() || undefined;
-
-        images.push({
-            url: imgUrl,
-            alt: alt || title,
-        });
+        // Clean URL — strip query params after file extension
+        const cleaned = cleanImageUrl(imgUrl);
+        if (!imageUrls.includes(cleaned)) {
+            imageUrls.push(cleaned);
+        }
     }
 
     let cleaned = html
@@ -111,7 +161,7 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
 
     cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
-    return { text: cleaned, links, images };
+    return { text: cleaned, links, imageUrls };
 }
 
 /**
@@ -154,7 +204,7 @@ function extractStructuredContent(text: string): string {
     return result || '[No structured content extracted]';
 }
 
-async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode: string): Promise<FetchResult> {
+async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode: string, includeImages: boolean): Promise<FetchResult> {
     const now = Date.now();
 
     // Layer 1: In-memory cache
@@ -209,15 +259,34 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         let content: string;
         let links: string[] = [];
-        let images: WebpageImageInfo[] = [];
+        let imageUrls: string[] = [];
 
         if (contentType.includes('text/html')) {
             const parsed = parseHtml(rawBody, url);
             content = parsed.text;
             links = parsed.links;
-            images = parsed.images;
+            imageUrls = parsed.imageUrls;
         } else {
             content = rawBody;
+        }
+
+        // Download actual image binaries as base64
+        let images: WebpageImageInfo[] = [];
+        if (includeImages && imageUrls.length > 0) {
+            const downloadPromises = imageUrls.map(async (imgUrl) => {
+                const downloaded = await downloadImageAsBase64(imgUrl);
+                if (downloaded) {
+                    return {
+                        url: imgUrl,
+                        base64: downloaded.base64,
+                        mimeType: downloaded.mimeType,
+                    } as WebpageImageInfo;
+                }
+                return null;
+            });
+
+            const downloadResults = await Promise.all(downloadPromises);
+            images = downloadResults.filter((r): r is WebpageImageInfo => r !== null);
         }
 
         const result: FetchResult = {
@@ -231,7 +300,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         fetchCache.set(cacheKey, result);
 
-        // Save to persistent disk cache
+        // Save to persistent disk cache (text content only — images are re-downloaded on cache miss)
         try {
             await saveRawWebpage({
                 id: uuidv4(),
@@ -280,6 +349,7 @@ export async function fetchLinkContent(
         visitedUrls?: Set<string>;
         currentDepth?: number;
         fetchMode?: 'full' | 'summary' | 'extract';
+        includeImages?: boolean;
     } = {}
 ): Promise<FetchResult[]> {
     const maxDepth = options.maxDepth ?? MAX_FETCH_DEPTH;
@@ -287,13 +357,14 @@ export async function fetchLinkContent(
     const visited = options.visitedUrls ?? new Set<string>();
     const depth = options.currentDepth ?? 0;
     const fetchMode = options.fetchMode ?? 'full';
+    const includeImages = options.includeImages ?? false;
 
     if (depth > maxDepth) return [];
     if (visited.has(url)) return [];
 
     visited.add(url);
 
-    const result = await fetchSingleUrl(url, cacheTimeToLiveMs, fetchMode);
+    const result = await fetchSingleUrl(url, cacheTimeToLiveMs, fetchMode, includeImages);
 
     if (result.error || !result.content) {
         return [result];
@@ -314,6 +385,7 @@ export async function fetchLinkContent(
                 visitedUrls: visited,
                 currentDepth: depth + 1,
                 fetchMode,
+                includeImages,
             })
         );
 
@@ -332,7 +404,7 @@ export async function fetchLinkContent(
  * Returns combined results and aggregated error list.
  *
  * For 'summary' fetchMode, each page is individually summarized via
- * WebpageSummarizationEngine (including image metadata when available),
+ * WebpageSummarizationEngine (including real image data when available),
  * then multi-page results are merged.
  *
  * Also accepts searchTerms + searchEngine — converts them to search URLs
@@ -360,11 +432,13 @@ export async function fetchMultipleContextUrls(
     const visited = new Set<string>();
     const allResults: FetchResult[] = [];
     const errors: string[] = [];
+    const includeImages = options.includeImages ?? false;
 
     const promises = allUrls.map(url =>
         fetchLinkContent(url, {
             ...options,
             visitedUrls: visited,
+            includeImages,
         })
     );
 
@@ -379,10 +453,9 @@ export async function fetchMultipleContextUrls(
         }
     }
 
-    // Summary mode: summarize each page individually (with images), then merge if multiple
+    // Summary mode: summarize each page individually (with real images), then merge if multiple
     if (options.fetchMode === 'summary' && options.modelContext) {
         const validResults = allResults.filter(r => !r.error && r.content.length > 0);
-        const includeImages = options.includeImages ?? false;
 
         if (validResults.length > 0) {
             const summarizedEntries: { url: string; summary: string }[] = [];
