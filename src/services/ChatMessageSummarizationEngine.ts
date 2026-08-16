@@ -23,7 +23,7 @@ export async function generateMessageSummary(
 
     return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
-        temperature: 0.3,
+        temperature: 1,
         stop: ['\n\n', '\nMessage from', '```'],
     });
 }
@@ -72,7 +72,7 @@ async function compressChunk(
 
     return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
-        temperature: 0.3,
+        temperature: 1,
         stop: ['\n\n\n', '```'],
     });
 }
@@ -152,7 +152,7 @@ async function mergeSummaries(
 
     return engine.generateCompletion(prompt, LanguageModelContext, {
         maxTokens,
-        temperature: 0.3,
+        temperature: 1,
         stop: ['\n\n\n', '```'],
     });
 }

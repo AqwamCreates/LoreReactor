@@ -1,4 +1,4 @@
-// src/services/LargeLanguageModelInferenceEngine.ts
+// src/services/LanguageModelEngine.ts
 
 import { localAddress } from "../configurations";
 
@@ -149,6 +149,10 @@ export class LanguageModelEngine {
 
   /**
    * ✅ Non-streaming completion for internal use (summarization, compression).
+   * Supports optional image_data in llama.cpp native format:
+   *   [{ data: "<base64>", id: <number> }]
+   * Images are injected into the request body after resolution so they
+   * work identically to how chatLogic.ts prepareRequestBody attaches images.
    */
   async generateCompletion(
     prompt: string,
@@ -157,18 +161,27 @@ export class LanguageModelEngine {
       maxTokens?: number;
       temperature?: number;
       stop?: string[];
-    } = {}
+    } = {},
+    imageData?: { data: string; id: number }[]
   ): Promise<string | null> {
     const { maxTokens = 512, temperature = 0.3, stop } = options;
 
     try {
-      const { url, headers, body } = this.resolveRequest(prompt, false, modelContext, {
+      const { url, headers, body: bodyStr } = this.resolveRequest(prompt, false, modelContext, {
         maxTokens,
         temperature,
         stop,
       });
 
-      const res = await fetch(url, { method: 'POST', headers, body });
+      // Inject image_data into the resolved body if provided
+      let finalBody = bodyStr;
+      if (imageData && imageData.length > 0) {
+        const bodyObj = JSON.parse(bodyStr);
+        bodyObj.image_data = imageData;
+        finalBody = JSON.stringify(bodyObj);
+      }
+
+      const res = await fetch(url, { method: 'POST', headers, body: finalBody });
       if (!res.ok) return null;
 
       const data = await res.json();
@@ -258,7 +271,7 @@ export class LanguageModelEngine {
     let firstTokenTime = 0;
     let tokenCount = 0;
     let paragraphCount = 0;
-    let hasReceivedNonWhitespace = false; // ✅ Track whether we've seen a non-whitespace char yet
+    let hasReceivedNonWhitespace = false;
 
     try {
       while (true) {
@@ -286,15 +299,11 @@ export class LanguageModelEngine {
               }
 
               if (token) {
-                // ✅ Strip leading whitespace: skip tokens that are purely whitespace
-                // until we've received at least one non-whitespace character
                 if (!hasReceivedNonWhitespace) {
                   const trimmed = token.trimStart();
                   if (trimmed.length === 0) {
-                    // Token is entirely whitespace and we haven't started content yet — skip it
                     continue;
                   }
-                  // Token has leading whitespace followed by real content — strip the leading part
                   token = trimmed;
                   hasReceivedNonWhitespace = true;
                 }
