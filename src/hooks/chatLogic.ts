@@ -9,8 +9,7 @@ const noRestrictionsInstructions = "I understand that the amount and intensity o
 const formatInstructions = "I will also make sure that my responses have clean formatting that satisfies the prompts.";
 const callingOtherCharacterInstructions = "I will also refer characters by their names instead of generic ones if possible, otherwise I will use any relevant information to describe different characters.";
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
-const noRepeatInstructions = "If I want to repeat myself, I will talk about something else.";
-const uniqueResponseInstructions = "I will also make sure every single response is unique and I will not repeat phrases, including from other characters.";
+const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, I would feel awkward.";
 const noHallucinationInstructions = "I will not create non-existent information.";
 const noEmptyResponseInstructions = "I will also not create an empty response.";
@@ -537,7 +536,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
-    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${uniqueResponseInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
+    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
