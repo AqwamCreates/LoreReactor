@@ -200,12 +200,12 @@ export function useModelManager() {
             args.push('-ngl', '99');
 
             // Add mmproj if configured
-            if (model.mmproj?.trim()) {
+            if (model.mmproj && model.mmproj.trim()) {
                 args.push('--mmproj', model.mmproj.trim());
             }
 
             // Add LoRA adapter if configured
-            if (model.lora?.trim()) {
+            if (model.lora && model.lora.trim()) {
                 args.push('--lora', model.lora.trim());
             }
 

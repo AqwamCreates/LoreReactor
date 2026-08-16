@@ -538,7 +538,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
     const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
-    const characterInstructions = `I have thought out on how to respond as ${characterParticipantTag} and I will not respond as other characters.`;
+    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
 
     let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${uniqueResponseInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
@@ -635,8 +635,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    const userInputLine = `${turnStartString}${characterParticipantTag}:`;
-
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
@@ -665,6 +663,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             }
         }
     }
+
+    const userInputLine = `${turnStartString}${characterParticipantTag}:`;
 
     promptLines.push(userInputLine);
 
