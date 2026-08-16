@@ -1,3 +1,4 @@
+// server.ts
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -158,11 +159,54 @@ app.post('/models/load', async (req, res) => {
   if (!fs.existsSync(LLAMA_SERVER_PATH)) return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
   if (!fs.existsSync(absoluteModelPath)) return res.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
 
+  // ✅ Validate mmproj path if provided in args
+  const mmprojIndex = args.indexOf('--mmproj');
+  if (mmprojIndex !== -1 && args[mmprojIndex + 1]) {
+    const mmprojPath = resolveModelPath(args[mmprojIndex + 1]);
+    if (!fs.existsSync(mmprojPath)) {
+      log.warn(`MMProj file not found at ${mmprojPath}, removing --mmproj flag`);
+      args.splice(mmprojIndex, 2);
+    } else {
+      // Replace with absolute path
+      args[mmprojIndex + 1] = mmprojPath;
+      log.info(`MMProj: ${mmprojPath}`);
+    }
+  }
+
+  // ✅ Validate LoRA path if provided in args
+  const loraIndex = args.indexOf('--lora');
+  if (loraIndex !== -1 && args[loraIndex + 1]) {
+    const loraPath = resolveModelPath(args[loraIndex + 1]);
+    if (!fs.existsSync(loraPath)) {
+      log.warn(`LoRA file not found at ${loraPath}, removing --lora flag`);
+      args.splice(loraIndex, 2);
+    } else {
+      // Replace with absolute path
+      args[loraIndex + 1] = loraPath;
+      log.info(`LoRA: ${loraPath}`);
+    }
+  }
+
+  // ✅ Validate draft model path if provided in args
+  const draftModelIndex = args.indexOf('-md');
+  if (draftModelIndex !== -1 && args[draftModelIndex + 1]) {
+    const draftPath = resolveModelPath(args[draftModelIndex + 1]);
+    if (!fs.existsSync(draftPath)) {
+      log.warn(`Draft model not found at ${draftPath}, removing -md flag`);
+      args.splice(draftModelIndex, 2);
+    } else {
+      args[draftModelIndex + 1] = draftPath;
+      log.info(`Draft Model: ${draftPath}`);
+    }
+  }
+
   const port = requestedPort || await getFreePort();
   log.info(`Starting model ${id} on port ${port}...`);
   log.info(`Model Path: ${absoluteModelPath}`);
 
   const launchArgs = ['-m', absoluteModelPath, '--port', port.toString(), '--host', '0.0.0.0', ...args];
+
+  log.info(`Launch args: ${launchArgs.join(' ')}`);
 
   const proc = spawn(LLAMA_SERVER_PATH, launchArgs, {
     cwd: path.dirname(LLAMA_SERVER_PATH),
@@ -218,7 +262,6 @@ app.post('/models/unload', (req, res) => {
   res.json({ success: true, message: 'Model unloaded' });
 });
 
-// ✅ FIXED: Express 5 requires named wildcard parameter {*path} instead of bare *
 app.all('/proxy/:modelId/{*path}', (req, res) => {
   const modelId = req.params.modelId;
   const remainingPath = req.params.path || '';

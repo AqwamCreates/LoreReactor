@@ -157,6 +157,7 @@ export function ModelEditorModal({
     const [contextLength, setContextLength] = useState<number>(0);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
+    const [loraPath, setLoraPath] = useState('');
     const [apiKey, setApiKey] = useState('');
     const [showApiKey, setShowApiKey] = useState(false);
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
@@ -193,6 +194,7 @@ export function ModelEditorModal({
                 setContextLength(existingModel.contextLength || 0);
                 setModelPath(existingModel.model || '');
                 setMmprojPath(existingModel.mmproj || '');
+                setLoraPath(existingModel.lora || '');
                 setApiKey(existingModel.apiKey || '');
                 setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
                 setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
@@ -245,6 +247,7 @@ export function ModelEditorModal({
                 setContextLength(0);
                 setModelPath('');
                 setMmprojPath('');
+                setLoraPath('');
                 setApiKey('');
                 setCacheHitCostPerMillion(0);
                 setCacheMissCostPerMillion(0);
@@ -368,6 +371,7 @@ export function ModelEditorModal({
             contextLength: contextLength || 0,
             model: modelPath.trim() || undefined,
             mmproj: mmprojPath.trim() || undefined,
+            lora: loraPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
             cacheHitCostPerOneMillionOfTokens: cacheHitCostPerMillion,
@@ -457,7 +461,14 @@ export function ModelEditorModal({
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
-                    {/* ✅ Context Length — single source of truth, sent to server as -c */}
+                    {/* ✅ LoRA Adapter Path */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <label className="editor-label">LoRA Adapter Path</label>
+                        <input type="text" value={loraPath} onChange={(e) => setLoraPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/lora-adapter.gguf" />
+                        {loraPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Language model has been modified.</div>}
+                    </div>
+
+                    {/* Context Length */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Context Length</label>
                         <input 
