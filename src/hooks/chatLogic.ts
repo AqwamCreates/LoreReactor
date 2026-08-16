@@ -6,13 +6,13 @@ import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEn
 import { v4 as uuidv4 } from 'uuid';
 
 const noRestrictionsInstructions = "I understand that the amount and intensity of moralizing, refusal or filter must satisfy the prompts.";
-const uniqueResponseInstructions = "I will also make sure every single response is unique and I will not repeat phrases, including from other characters.";
 const formatInstructions = "I will also make sure that my responses have clean formatting that satisfies the prompts.";
 const callingOtherCharacterInstructions = "I will also refer characters by their names instead of generic ones if possible, otherwise I will use any relevant information to describe different characters.";
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
-const noRepeatInstructions = "If I find myself wanting to repeat myself, I will talk about something else.";
+const noRepeatInstructions = "If I want to repeat myself, I will talk about something else.";
+const uniqueResponseInstructions = "I will also make sure every single response is unique and I will not repeat phrases, including from other characters.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, I would feel awkward.";
-const noHallucinationInstructions = "If I don't know anything, I will not create non-existent information.";
+const noHallucinationInstructions = "I will not create non-existent information.";
 const noEmptyResponseInstructions = "I will also not create an empty response.";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
 const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
@@ -537,10 +537,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
-    const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
-    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
-
-    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${uniqueResponseInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
+    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${uniqueResponseInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
@@ -551,10 +548,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
     }
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions} ${thinkEndString}${contextEndString}`;
-
-    metaThinkLines.push(constructedMetaThinkLines);
-
     // FATIGUE BLOCK
     const fatigueLines: string[] = [];
 
@@ -562,6 +555,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) fatigueLines.push(fatigue);
     }
+
+    let hasBeenSummarized = false
 
     // CHAT HISTORY
     const chatHistoryLines: string[] = [];
@@ -580,8 +575,13 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                 const windowSize = step.slidingWindowSize ?? 10;
                 const cutoff = Math.max(0, processedMessages.length - windowSize);
                 for (let i = 0; i < processedMessages.length; i++) {
-                    if (i < cutoff && processedMessages[i].msg.textContentSummary) {
-                        processedMessages[i].text = processedMessages[i].msg.textContentSummary;
+                    const processedMessage = processedMessages[i]
+                    const textContentSummary = processedMessage.msg.textContentSummary
+                    if (i < cutoff && textContentSummary) {
+                        if (!processedMessage) {continue}
+                        if (!textContentSummary) {continue}
+                        processedMessage.text = textContentSummary;
+                        hasBeenSummarized = true
                     }
                 }
             }
@@ -634,6 +634,15 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             chatHistoryLines.push(chatHistoryText);
         }
     }
+
+    if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
+
+    const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
+    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
+
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${remainingChatStaminaInstructions} ${characterInstructions} ${thinkEndString}${contextEndString}`;
+
+    metaThinkLines.push(constructedMetaThinkLines);
 
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
