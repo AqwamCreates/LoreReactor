@@ -1,7 +1,7 @@
 // src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Context, Character } from '../types';
+import type { Context, Character, searchEngine } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
@@ -14,6 +14,8 @@ interface ContextEditorModalProps {
     existingContext?: Context | null;
     allCharacters?: Character[];
 }
+
+const SEARCH_ENGINE_OPTIONS: searchEngine[] = ['Google', 'Bing', 'DuckDuckGo', 'Yandex', 'Baidu'];
 
 export function ContextEditorModal({
     isOpen,
@@ -29,7 +31,7 @@ export function ContextEditorModal({
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isUploading, setIsUploading] = useState(false);
-    
+
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
 
     const [regexTrigger, setRegexTrigger] = useState('');
@@ -37,15 +39,28 @@ export function ContextEditorModal({
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; urls?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // ✅ Lorebook fields
+    // Lorebook fields
     const [tokenBudget, setTokenBudget] = useState<number>(0);
     const [recursiveScan, setRecursiveScan] = useState<boolean>(false);
     const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(5);
     const [insertionDepth, setInsertionDepth] = useState<number>(0);
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
+
+    // Multiple URL fields
+    const [urls, setUrls] = useState<string[]>([]);
+    const [newUrlInput, setNewUrlInput] = useState('');
+    const [linkRecursionEnabled, setLinkRecursionEnabled] = useState(false);
+    const [linkMaxDepth, setLinkMaxDepth] = useState<number>(3);
+    const [linkFetchMode, setLinkFetchMode] = useState<string>('full');
+    const [fetchCacheTimeToLiveMs, setFetchCacheTimeToLiveMs] = useState<number>(300000);
+
+    // Search term fields
+    const [searchTerms, setSearchTerms] = useState<string[]>([]);
+    const [newSearchTermInput, setNewSearchTermInput] = useState('');
+    const [searchEngine, setSearchEngine] = useState<searchEngine>('Google');
 
     useEffect(() => {
         if (isOpen) {
@@ -53,27 +68,37 @@ export function ContextEditorModal({
                 setName(existingContext.name || '');
                 setDescription(existingContext.description || '');
                 setText(existingContext.text || '');
-                
+
                 if (existingContext.images && existingContext.images.length > 0) {
                     const previews = existingContext.images.map(img => `/user_data/context_data/${img}`);
                     setImagePreviews(previews);
                 } else {
                     setImagePreviews([]);
                 }
-                
+
                 setImageFiles([]);
                 setRegexTrigger(existingContext.regularExpressionTrigger || '');
                 setRegexContext(existingContext.regularExpressionContext || 'global');
                 setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
-                
+
                 setUseBase64Encoding(existingContext.useBase64Encoding ?? false);
 
-                // ✅ Load lorebook fields
                 setTokenBudget(existingContext.tokenBudget ?? 0);
                 setRecursiveScan(existingContext.recursiveScan ?? false);
                 setMaximumRecursionDepth(existingContext.maximumRecursionDepth ?? 5);
                 setInsertionDepth(existingContext.insertionDepth ?? 0);
                 setCharacterBindings(existingContext.characterBindings ?? []);
+
+                setUrls(existingContext.urls ?? []);
+                setNewUrlInput('');
+                setLinkRecursionEnabled(existingContext.linkRecursionEnabled ?? false);
+                setLinkMaxDepth(existingContext.linkMaxDepth ?? 3);
+                setLinkFetchMode(existingContext.linkFetchMode || 'full');
+                setFetchCacheTimeToLiveMs(existingContext.fetchCacheTimeToLiveMs ?? 300000);
+
+                setSearchTerms(existingContext.searchTerms ?? []);
+                setNewSearchTermInput('');
+                setSearchEngine(existingContext.searchEngine || 'Google');
             } else {
                 setName('');
                 setDescription('');
@@ -85,12 +110,22 @@ export function ContextEditorModal({
                 setRegexContext('global');
                 setRegexTarget('everyone');
 
-                // ✅ Default lorebook fields
                 setTokenBudget(0);
                 setRecursiveScan(false);
                 setMaximumRecursionDepth(5);
                 setInsertionDepth(0);
                 setCharacterBindings([]);
+
+                setUrls([]);
+                setNewUrlInput('');
+                setLinkRecursionEnabled(false);
+                setLinkMaxDepth(3);
+                setLinkFetchMode('full');
+                setFetchCacheTimeToLiveMs(300000);
+
+                setSearchTerms([]);
+                setNewSearchTermInput('');
+                setSearchEngine('Google');
             }
             setErrors({});
             setTestText('');
@@ -99,17 +134,79 @@ export function ContextEditorModal({
     }, [isOpen, existingContext]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string; images?: string } = {};
+        const newErrors: { name?: string; text?: string; regex?: string; images?: string; urls?: string } = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
-        if (!text.trim() && imagePreviews.length === 0 && imageFiles.length === 0) {
-            newErrors.text = 'Either text or images are required.';
-            newErrors.images = 'Either text or images are required.';
+
+        const hasUrls = urls.length > 0;
+        const hasSearchTerms = searchTerms.length > 0;
+        const hasText = text.trim().length > 0;
+        const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+
+        if (!hasText && !hasImages && !hasUrls && !hasSearchTerms) {
+            newErrors.text = 'Either text, images, at least one URL, or search terms are required.';
+            newErrors.images = 'Either text, images, at least one URL, or search terms are required.';
         }
+
         if (regexTrigger.trim()) {
             try { new RegExp(regexTrigger); } catch (e) { newErrors.regex = 'Invalid regular expression pattern.'; }
         }
+
+        for (const url of urls) {
+            if (!/^https?:\/\//i.test(url)) continue;
+
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    newErrors.urls = `URL "${url}" must use http:// or https:// protocol.`;
+                    break;
+                }
+            } catch {
+                newErrors.urls = `URL "${url}" is not a valid URL.`;
+                break;
+            }
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
+    };
+
+    const handleAddUrl = () => {
+        const trimmed = newUrlInput.trim();
+        if (!trimmed) return;
+        if (urls.includes(trimmed)) return;
+        setUrls(prev => [...prev, trimmed]);
+        setNewUrlInput('');
+        if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined }));
+    };
+
+    const handleRemoveUrl = (index: number) => {
+        setUrls(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleUrlInputKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddUrl();
+        }
+    };
+
+    const handleAddSearchTerm = () => {
+        const trimmed = newSearchTermInput.trim();
+        if (!trimmed) return;
+        if (searchTerms.includes(trimmed)) return;
+        setSearchTerms(prev => [...prev, trimmed]);
+        setNewSearchTermInput('');
+    };
+
+    const handleRemoveSearchTerm = (index: number) => {
+        setSearchTerms(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSearchTermInputKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddSearchTerm();
+        }
     };
 
     const handleTestRegex = () => {
@@ -142,7 +239,6 @@ export function ContextEditorModal({
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    // ✅ Shared logic to build a context object from current form state
     const buildContextFromForm = async (isNewClone: boolean): Promise<Context | null> => {
         if (!validate()) return null;
 
@@ -164,6 +260,10 @@ export function ContextEditorModal({
         }
 
         const now = Date.now();
+        const hasUrls = urls.length > 0;
+        const hasSearchTerms = searchTerms.length > 0;
+        const hasWebContent = hasUrls || hasSearchTerms;
+
         return {
             id: isNewClone ? uuidv4() : (existingContext?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
@@ -174,12 +274,21 @@ export function ContextEditorModal({
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
             useBase64Encoding: useBase64Encoding,
-            // ✅ Lorebook fields — only include non-default values to keep data clean
             tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
             recursiveScan: recursiveScan || undefined,
             maximumRecursionDepth: maximumRecursionDepth !== 5 ? maximumRecursionDepth : undefined,
             insertionDepth: insertionDepth !== 0 ? insertionDepth : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
+
+            urls: hasUrls ? [...urls] : undefined,
+            linkRecursionEnabled: hasWebContent ? linkRecursionEnabled : undefined,
+            linkMaxDepth: hasWebContent ? linkMaxDepth : undefined,
+            linkFetchMode: hasWebContent ? (linkFetchMode as any) : undefined,
+            fetchCacheTimeToLiveMs: hasWebContent ? fetchCacheTimeToLiveMs : undefined,
+
+            searchTerms: hasSearchTerms ? [...searchTerms] : undefined,
+            searchEngine: hasSearchTerms ? searchEngine : undefined,
+
             firstCreatedTimestamp: isNewClone ? now : (existingContext?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -192,7 +301,6 @@ export function ContextEditorModal({
         onClose();
     };
 
-    // ✅ Clone: save as new context with a new ID and "(Clone)" suffix
     const handleClone = async () => {
         const clonedContext = await buildContextFromForm(true);
         if (!clonedContext) return;
@@ -211,10 +319,12 @@ export function ContextEditorModal({
 
     const hasText = text.trim().length > 0;
     const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
-    const textRequiresAsterisk = !hasImages;
-    const imagesRequiresAsterisk = !hasText;
+    const hasUrls = urls.length > 0;
+    const hasSearchTerms = searchTerms.length > 0;
+    const hasWebContent = hasUrls || hasSearchTerms;
+    const textRequiresAsterisk = !hasImages && !hasWebContent;
+    const imagesRequiresAsterisk = !hasText && !hasWebContent;
 
-    // ✅ Helper to get character by ID
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
 
     return (
@@ -224,7 +334,6 @@ export function ContextEditorModal({
                     <h2>{existingContext ? 'Edit Context' : 'Create New Context'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing context */}
                         {existingContext && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>
                                 Clone
@@ -253,7 +362,7 @@ export function ContextEditorModal({
                     {/* Text */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Text {textRequiresAsterisk && <span style={{ color: '#ff4444' }}>*</span>}</label>
-                        <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content" rows={6} />
+                        <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using URLs or search terms)" rows={6} />
                         {errors.text && <div className="editor-error-message">{errors.text}</div>}
                     </div>
 
@@ -276,6 +385,179 @@ export function ContextEditorModal({
                         </div>
                         <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading} />
                         {errors.images && <div className="editor-error-message">{errors.images}</div>}
+                    </div>
+
+                    {/* Web Content Sources — Search Terms first, then Direct URLs */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Web Content Sources</span>
+
+                        {/* Search Terms — TOP */}
+                        <div style={{ marginBottom: '16px' }}>
+                            <label className="editor-label editor-label-small">Search Terms</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', justifyContent: searchTerms.length === 0 ? 'center' : 'flex-start' }}>
+                                {searchTerms.length === 0 && (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', width: '100%', padding: '8px 0' }}>No search terms added.</div>
+                                )}
+                                {searchTerms.map((term, index) => (
+                                    <div key={`${term}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: 'var(--social-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-h)' }}>{term}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveSearchTerm(index)}
+                                            style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: '0 2px' }}
+                                            title="Remove term"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                <input
+                                    type="text"
+                                    value={newSearchTermInput}
+                                    onChange={(e) => setNewSearchTermInput(e.target.value)}
+                                    onKeyDown={handleSearchTermInputKeyDown}
+                                    className="editor-input"
+                                    placeholder="magic system eldoria"
+                                    style={{ flex: 1, fontSize: '0.75rem' }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAddSearchTerm}
+                                    className="editor-btn editor-btn-save"
+                                    style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                    disabled={!newSearchTermInput.trim()}
+                                >
+                                    Add
+                                </button>
+                            </div>
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Press Enter or click Add to add a term.</div>
+                        </div>
+
+                        {/* Search Engine selector — shown when search terms exist */}
+                        {hasSearchTerms && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label editor-label-small">Search Engine</label>
+                                <select
+                                    value={searchEngine}
+                                    onChange={(e) => setSearchEngine(e.target.value as searchEngine)}
+                                    className="editor-select"
+                                >
+                                    {SEARCH_ENGINE_OPTIONS.map(engine => (
+                                        <option key={engine} value={engine}>{engine}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Direct URLs — BELOW search terms */}
+                        <div style={{ marginBottom: '12px' }}>
+                            <label className="editor-label editor-label-small">Direct URLs</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                                {urls.length === 0 && (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>No direct URLs added.</div>
+                                )}
+                                {urls.map((url, index) => (
+                                    <div key={`${url}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--text-h)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{url}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveUrl(index)}
+                                            style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}
+                                            title="Remove URL"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                <input
+                                    type="text"
+                                    value={newUrlInput}
+                                    onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }}
+                                    onKeyDown={handleUrlInputKeyDown}
+                                    className={`editor-input ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`}
+                                    placeholder="https://example.com/lore-page"
+                                    style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAddUrl}
+                                    className="editor-btn editor-btn-save"
+                                    style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                    disabled={!newUrlInput.trim()}
+                                >
+                                    Add
+                                </button>
+                            </div>
+                            {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
+                        </div>
+
+                        {/* Shared fetch options — shown when any web content exists */}
+                        {hasWebContent && (
+                            <>
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label className="editor-label">Fetch Mode</label>
+                                    <select
+                                        value={linkFetchMode}
+                                        onChange={(e) => setLinkFetchMode(e.target.value)}
+                                        className="editor-select"
+                                    >
+                                        <option value="full">Full — Use entire page content as-is</option>
+                                        <option value="extract">Extract — Keep only structured data (headings, lists, definitions)</option>
+                                        <option value="summary">Summary — Condense via LLM before injecting</option>
+                                    </select>
+                                </div>
+
+                                <label className="editor-checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={linkRecursionEnabled}
+                                        onChange={(e) => setLinkRecursionEnabled(e.target.checked)}
+                                        className="editor-checkbox-input"
+                                    />
+                                    <span>Follow Links Recursively</span>
+                                </label>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                    Also fetch pages linked from the fetched content.
+                                </div>
+
+                                {linkRecursionEnabled && (
+                                    <div style={{ marginTop: '8px', marginBottom: '12px' }}>
+                                        <label className="editor-label">Max Link Depth</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="5"
+                                            value={linkMaxDepth}
+                                            onChange={(e) => setLinkMaxDepth(Math.max(1, Math.min(5, Number(e.target.value) || 3)))}
+                                            className="editor-input"
+                                            style={{ textAlign: 'right' }}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>How many levels of links to follow (1–5)</div>
+                                    </div>
+                                )}
+
+                                <div style={{ marginTop: '8px' }}>
+                                    <label className="editor-label">Cache Time-To-Live (seconds)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="86400"
+                                        step="60"
+                                        value={Math.round(fetchCacheTimeToLiveMs / 1000)}
+                                        onChange={(e) => setFetchCacheTimeToLiveMs(Math.max(0, Number(e.target.value) || 300) * 1000)}
+                                        className="editor-input"
+                                        style={{ textAlign: 'right' }}
+                                    />
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>How long to cache fetched content. 0 = always refetch.</div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Regular Expression Section */}
@@ -305,66 +587,82 @@ export function ContextEditorModal({
                         {regexTrigger.trim() && (
                             <div style={{ marginTop: '8px' }}>
                                 <label className="editor-label editor-label-small">Test Pattern</label>
-                                <div className="editor-tester-row">
-                                    <input type="text" value={testText} onChange={(e) => { setTestText(e.target.value); setTestResult(null); }} className="editor-input" style={{ fontFamily: 'monospace', fontSize: '0.75rem' }} placeholder="Test text" />
-                                    <button type="button" onClick={handleTestRegex} className="editor-btn editor-btn-test">Test</button>
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                    <input
+                                        type="text"
+                                        value={testText}
+                                        onChange={(e) => { setTestText(e.target.value); setTestResult(null); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }}
+                                        className="editor-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                        placeholder="Test text"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleTestRegex}
+                                        className="editor-btn editor-btn-save"
+                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                        disabled={!testText.trim()}
+                                    >
+                                        Test
+                                    </button>
                                 </div>
-                                <div className="editor-test-result-container">
-                                    {testResult !== null && (<div className={testResult ? 'editor-success-message' : 'editor-error-message'}>{testResult ? '✅ Matches!' : '❌ No match'}</div>)}
-                                </div>
+                                {testResult !== null && (
+                                    <div className={testResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
+                                        {testResult ? '✅ Matches!' : '❌ No match'}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
 
-                    {/* ✅ Lorebook Section */}
+                    {/* Lorebook Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Lorebook</span>
 
-                        {/* Token Budget + Insertion Depth row */}
                         <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">Token Budget</label>
-                                <input 
-                                    type="number" 
-                                    step="1" 
+                                <input
+                                    type="number"
+                                    step="1"
                                     min="0"
-                                    value={tokenBudget} 
+                                    value={tokenBudget}
                                     onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))}
                                     className="editor-input"
-                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }}
                                     title="Max tokens this entry can consume. 0 = auto-estimate. Total budget: 2048. Bottom entries dropped first on overflow."
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = auto · bottom dropped first</div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Insertion Depth</label>
-                                <input 
-                                    type="number" 
-                                    step="1" 
+                                <input
+                                    type="number"
+                                    step="1"
                                     min="0"
-                                    value={insertionDepth} 
+                                    value={insertionDepth}
                                     onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))}
                                     className="editor-input"
-                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }}
                                     title="Where in the prompt to place this entry. 0 = top of context block, higher = closer to chat history"
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = top · higher = closer to chat</div>
                             </div>
                         </div>
 
-                        {/* Max Recursion Depth + Recursive Scan toggle */}
                         <div className="editor-row" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Max Recursion Depth</label>
-                                <input 
-                                    type="number" 
-                                    step="1" 
+                                <input
+                                    type="number"
+                                    step="1"
                                     min="0"
                                     max="10"
-                                    value={maximumRecursionDepth} 
+                                    value={maximumRecursionDepth}
                                     onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))}
                                     className="editor-input"
-                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                    style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }}
                                     title="Max recursion depth for lorebook scanning. 0 = direct scan only, never recursive. Default: 5."
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = no recursion · default: 5</div>
@@ -385,7 +683,6 @@ export function ContextEditorModal({
                             This entry's text can trigger other entries during recursion
                         </div>
 
-                        {/* ✅ Character Bindings — dropdown-add pattern like ModelEditorModal stop patterns */}
                         {allCharacters.length > 0 && (
                             <div style={{ marginTop: '12px' }}>
                                 <span className="editor-label editor-label-small">Character Bindings</span>
@@ -393,10 +690,9 @@ export function ContextEditorModal({
                                     Only inject when these characters speak. Empty = all characters.
                                 </div>
 
-                                {/* Selected bindings list */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
                                     {characterBindings.length === 0 && (
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No character bindings — applies to all.</div>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>No character bindings — applies to all.</div>
                                     )}
                                     {characterBindings.map(id => {
                                         const char = getCharacterById(id);
@@ -417,7 +713,6 @@ export function ContextEditorModal({
                                     })}
                                 </div>
 
-                                {/* Dropdown to add */}
                                 <select
                                     onChange={(e) => {
                                         const val = e.target.value;

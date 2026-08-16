@@ -1,31 +1,21 @@
 // src/services/chatLogic.ts
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
+import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 
 const noRestrictionsInstructions = "I understand that the amount and intensity of moralizing, refusal or filter must satisfy the prompts.";
-
 const uniqueResponseInstructions = "I will also make sure every single response is unique and I will not repeat phrases, including from other characters.";
-
 const formatInstructions = "I will also make sure that my responses have clean formatting that satisfies the prompts.";
-
 const callingOtherCharacterInstructions = "I will also refer characters by their names instead of generic ones if possible, otherwise I will use any relevant information to describe different characters.";
-
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
-
 const noRepeatInstructions = "If I find myself wanting to repeat myself, I will talk about something else.";
-
 const beingIgnoredInstructions = "Anytime a character ignores me talking, I would feel awkward.";
-
 const noHallucinationInstructions = "If I don't know anything, I will not create non-existent information.";
-
 const noEmptyResponseInstructions = "I will also not create an empty response.";
-
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
-
 const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
-
 const summarizationAwarenessInstructions = "If previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
 
 const contextStartString = "{";
@@ -39,18 +29,26 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
-// ✅ Default prompt order: System Prompt → Think Prompt → Context → Chat History
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History'
 ];
 
-// ✅ Default maximum recursion depth for lorebook scanning — prevents infinite loops
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
-
-// ✅ Default total token budget for all context entries combined
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
+
+function getCurrentDateAndTimeString(): string {
+    return new Date().toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
 
 function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string): string {
     if (!text) return text;
@@ -79,7 +77,6 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${thinkEndString}${contextEndString}`;
     if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${thinkEndString}${contextEndString}`;
     if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${thinkEndString}${contextEndString}`;
-    // ✅ FIX: Close the think tag in the final fatigue case
     return `${initialString} have no energy left to speak.${thinkEndString}${contextEndString}`;
 }
 
@@ -103,13 +100,9 @@ function filterArrayBasedOnContext(
     if (contextType === "global") return { characterIdArray, textContentArray };
 
     if (contextType === "previous") {
-        // ✅ FIX: Return only the most recent message from the CURRENT character, not just the last message overall
         for (let i = length - 1; i >= 0; i--) {
             if (characterIdArray[i] === currentCharacterId) {
-                return {
-                    characterIdArray: [characterIdArray[i]],
-                    textContentArray: [textContentArray[i]]
-                };
+                return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
             }
         }
         return { characterIdArray: [], textContentArray: [] };
@@ -179,10 +172,6 @@ export function getEffectiveInitiativeWeight(character: Character, profile?: Pro
     return character.initiativeWeight ?? 1;
 }
 
-/**
- * ✅ Checks if a context entry's keyword/regex matches against a search string.
- * Returns false if the regex is invalid (fail-safe).
- */
 function doesContextMatch(context: Context, searchSpace: string): boolean {
     const regexTrigger = context.regularExpressionTrigger;
     if (!regexTrigger) return true;
@@ -191,33 +180,31 @@ function doesContextMatch(context: Context, searchSpace: string): boolean {
         return regex.test(searchSpace);
     } catch (e) {
         console.warn(`Invalid regex in context ${context.name}`, e);
-        return false; // ✅ FIX: Fail-safe — don't activate on broken regex
+        return false;
     }
 }
 
-/**
- * ✅ Checks if a context entry is bound to the current speaking character.
- */
 function isCharacterBound(context: Context, currentCharacterId: string): boolean {
     if (!context.characterBindings || context.characterBindings.length === 0) return true;
     return context.characterBindings.includes(currentCharacterId);
 }
 
 /**
- * ✅ Lorebook-style recursive context resolution.
- * Respects per-entry maximumRecursionDepth and tokenBudget.
+ * resolveContextEntries accepts fetchedContentMap so token budgeting
+ * accounts for fetched web content, not just static context.text.
+ * Fetched content is included in recursive scan search space.
  */
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
     currentCharacterId: string,
     getFilteredData: (ctxType: string, tgtType: string) => { characterIdArray: string[]; textContentArray: string[] },
-    runtimePort?: number
+    runtimePort?: number,
+    fetchedContentMap?: Map<string, string>
 ): Promise<{ context: Context; formattedLine: string }[]> {
     const activated = new Set<string>();
     const activatedMap = new Map<string, Context>();
 
-    // --- Phase 1: Direct scan (preserves list order) ---
     for (const context of contexts) {
         if (activated.has(context.id)) continue;
         if (!isCharacterBound(context, currentCharacterId)) continue;
@@ -226,12 +213,8 @@ async function resolveContextEntries(
         const tgtType = context.regularExpressionTarget || 'everyone';
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
-        // ✅ FIX: For non-global/non-everyone entries with no matching filtered texts,
-        // skip unless there's an explicit regex trigger that might match the chat search space
         if (filteredTexts.length === 0) {
             if (!context.regularExpressionTrigger) continue;
-            // Even with a trigger, if context/target filtering produced nothing,
-            // only match against the raw chat search space
             if (doesContextMatch(context, chatSearchSpace)) {
                 activated.add(context.id);
                 activatedMap.set(context.id, context);
@@ -248,8 +231,6 @@ async function resolveContextEntries(
         }
     }
 
-    // --- Phase 2: Recursive scanning ---
-    // ✅ Track per-entry activation depth to respect individual maximumRecursionDepth
     const activationDepth = new Map<string, number>();
     for (const id of activated) {
         activationDepth.set(id, 0);
@@ -262,9 +243,14 @@ async function resolveContextEntries(
         newActivations = false;
         recursionDepth++;
 
-        const activatedText = Array.from(activatedMap.values())
-            .map(c => c.text || '')
-            .join('\n');
+        // Include fetched content in recursive scan search space
+        const activatedTextParts: string[] = [];
+        for (const c of activatedMap.values()) {
+            if (c.text) activatedTextParts.push(c.text);
+            const fetched = fetchedContentMap?.get(c.id);
+            if (fetched) activatedTextParts.push(fetched);
+        }
+        const activatedText = activatedTextParts.join('\n');
 
         if (!activatedText.trim()) break;
 
@@ -272,9 +258,8 @@ async function resolveContextEntries(
             if (activated.has(context.id)) continue;
             if (!isCharacterBound(context, currentCharacterId)) continue;
 
-            // ✅ FIX: Respect per-entry maximumRecursionDepth
             const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
-            if (contextMaxDepth === 0) continue; // Entry explicitly opts out of recursion
+            if (contextMaxDepth === 0) continue;
             if (recursionDepth > contextMaxDepth) continue;
 
             if (doesContextMatch(context, activatedText)) {
@@ -286,7 +271,6 @@ async function resolveContextEntries(
         }
     }
 
-    // --- Phase 3: Format, enforce budget by list order, sort by insertion depth ---
     const orderedActivated: Context[] = [];
     for (const context of contexts) {
         if (activatedMap.has(context.id)) {
@@ -297,10 +281,20 @@ async function resolveContextEntries(
     const formattedEntries: { context: Context; formattedLine: string; tokenCount: number }[] = [];
 
     for (const context of orderedActivated) {
-        const contextText = context.text;
-        if (!contextText) continue;
+        const fetchedContent = fetchedContentMap?.get(context.id);
+        let combinedText = '';
 
-        const formattedLine = `${contextStartString}${contextText}${contextEndString}`;
+        if (context.text && fetchedContent) {
+            combinedText = `${context.text}\n\n--- Web Content ---\n\n${fetchedContent}`;
+        } else if (fetchedContent) {
+            combinedText = fetchedContent;
+        } else if (context.text) {
+            combinedText = context.text;
+        } else {
+            continue;
+        }
+
+        const formattedLine = `${contextStartString}${combinedText}${contextEndString}`;
 
         let tokenCount: number;
         if (context.tokenBudget && context.tokenBudget > 0) {
@@ -314,7 +308,6 @@ async function resolveContextEntries(
         formattedEntries.push({ context, formattedLine, tokenCount });
     }
 
-    // ✅ Enforce total token budget — drop from bottom of list first
     let totalTokens = 0;
     const budgetEntries: typeof formattedEntries = [];
 
@@ -323,10 +316,8 @@ async function resolveContextEntries(
             totalTokens += entry.tokenCount;
             budgetEntries.push(entry);
         }
-        // Once budget exceeded, stop adding (bottom entries dropped first since we iterate in list order)
     }
 
-    // Sort by insertion depth (lower depth = closer to top of context block)
     budgetEntries.sort((a, b) => {
         const depthA = a.context.insertionDepth ?? 0;
         const depthB = b.context.insertionDepth ?? 0;
@@ -340,6 +331,7 @@ interface BuildResult {
     prompt: string;
     activeStopPatterns: StopPattern[];
     activeContextsForImages: Context[];
+    fetchErrors: string[];
 }
 
 export async function buildPromptAndStopPatterns(chatData: ChatData, character: Character, runtimePort?: number): Promise<BuildResult> {
@@ -347,13 +339,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const contexts = chatData.contexts || [];
     const sampler = character.sampler;
 
-    // ✅ 1. Get Stop Patterns from Sampler (Global/Model-specific)
     const samplerStopPatterns = sampler?.stopPatterns || [];
-
-    // ✅ 2. Get Stop Patterns defined directly on the Character (Character-specific)
     const characterStopPatterns = character.stopPatterns || [];
-
-    // Combine both lists
     const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
 
     const participants = chatData.participants;
@@ -369,6 +356,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     let thinkPrompt = character.thinkPrompt;
 
     const profile = chatData.Profile;
+    const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
 
@@ -385,6 +373,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
     const activeStopPatterns: StopPattern[] = [];
     const activeContextsForImages: Context[] = [];
+    const fetchErrors: string[] = [];
 
     const getFilteredData = (ctxType: string, tgtType: string) => {
         if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
@@ -396,7 +385,77 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         return combinationCache[ctxType][tgtType];
     };
 
-    // ✅ CONTEXT BLOCK
+    // ✅ LINK-BASED CONTEXT FETCHING — supports multiple URLs and search terms per context entry
+    const fetchedContentMap = new Map<string, string>();
+    const webContexts = contexts.filter(c =>
+        (c.urls && c.urls.length > 0) ||
+        (c.searchTerms && c.searchTerms.length > 0 && c.searchEngine)
+    );
+
+    if (webContexts.length > 0) {
+        const fetchPromises = webContexts.map(async (ctx) => {
+            const cacheTimeToLive = ctx.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
+            const maxDepth = ctx.linkMaxDepth ?? (ctx.linkRecursionEnabled ? 3 : 0);
+            const fetchMode = ctx.linkFetchMode ?? 'full';
+
+            // Pass both direct URLs and search terms to the batch fetcher
+            const { results, errors } = await fetchMultipleContextUrls(
+                ctx.urls ?? [],
+                {
+                    maxDepth,
+                    cacheTimeToLiveMs: cacheTimeToLive,
+                    fetchMode,
+                    searchTerms: ctx.searchTerms,
+                    searchEngine: ctx.searchEngine,
+                }
+            );
+
+            // Collect errors
+            for (const err of errors) {
+                fetchErrors.push(`${ctx.name}: ${err}`);
+            }
+
+            const validResults = results.filter(r => !r.error && r.content.length > 0);
+
+            if (validResults.length === 0) return;
+
+            // Summary mode: send through LLM
+            if (fetchMode === 'summary') {
+                const combinedRaw = validResults
+                    .map(r => `[Source: ${r.url}]\n${r.content}`)
+                    .join('\n\n---\n\n');
+
+                try {
+                    const summary = await tokenEngine.generateCompletion(
+                        `Summarize the following web content concisely, preserving all key facts, names, dates, and relationships. Output only the summary:\n\n${combinedRaw}`,
+                        { runtimePort },
+                        { maxTokens: 512, temperature: 0.3 }
+                    );
+
+                    if (summary && summary.trim().length > 0) {
+                        fetchedContentMap.set(ctx.id, `[Summarized Web Content]\n${summary.trim()}`);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn(`Summary generation failed for ${ctx.name}, falling back to full content`, e);
+                    fetchErrors.push(`${ctx.name}: Summary generation failed, using full content`);
+                }
+            }
+
+            // Full / extract mode (extract already processed in linkFetcher)
+            const combinedContent = validResults
+                .map(r => `[Source: ${r.url}]\n${r.content}`)
+                .join('\n\n---\n\n');
+
+            if (combinedContent.length > 0) {
+                fetchedContentMap.set(ctx.id, combinedContent);
+            }
+        });
+
+        await Promise.all(fetchPromises);
+    }
+
+    // CONTEXT BLOCK — pass fetchedContentMap for accurate token budgeting
     const contextLines: string[] = [];
     const globalChatSearch = textContentArray.join('\n');
 
@@ -405,20 +464,24 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         globalChatSearch,
         characterId,
         getFilteredData,
-        runtimePort
+        runtimePort,
+        fetchedContentMap
     );
 
     for (const { context, formattedLine } of resolvedContexts) {
         let line = formattedLine;
-        if (context.text) {
-            const replacedText = replacePlaceholders(context.text, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-            if (context.useBase64Encoding) {
-                const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
-                line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
-            } else {
-                line = `${contextStartString}${replacedText}${contextEndString}`;
-            }
+
+        if (context.useBase64Encoding) {
+            const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
+            const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+            const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
+            line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
+        } else {
+            const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
+            const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+            line = `${contextStartString}${replacedText}${contextEndString}`;
         }
+
         contextLines.push(line);
 
         if (context.images && context.images.length > 0) {
@@ -426,7 +489,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    // ✅ STOP PATTERNS LOGIC
+    // STOP PATTERNS LOGIC
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
@@ -446,7 +509,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             if (regex.test(searchSpace)) activeStopPatterns.push(stopPattern);
         } catch (e) {
             console.warn(`Invalid regex in stop pattern ${stopPattern.name}`, e);
-            // ✅ Don't add stop patterns with broken regex
         }
     }
 
@@ -486,12 +548,18 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
     const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
-
     const characterInstructions = `I have thought out on how to respond as ${characterParticipantTag} and I will not respond as other characters.`;
 
     let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${uniqueResponseInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
-    if (contextLines.length > 0) { constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`; }
+    if (useCurrentDateAndTime) {
+        const dateAndTimeString = getCurrentDateAndTimeString();
+        constructedMetaThinkLines = `${constructedMetaThinkLines} Today's date and time is ${dateAndTimeString}.`;
+    }
+
+    if (contextLines.length > 0) {
+        constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
+    }
 
     constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}.${thinkEndString}${contextEndString}`;
 
@@ -505,7 +573,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (fatigue) fatigueLines.push(fatigue);
     }
 
-    // ✅ Build chat history with summarization pipeline applied in step order
+    // CHAT HISTORY
     const chatHistoryLines: string[] = [];
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
@@ -565,20 +633,20 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = otherCharacter.name;
-            const isRevealed = revealedNamesMap.has(otherCharacter.id); // ✅ FIX: Check by ID, not name
-            let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`
+            const isRevealed = revealedNamesMap.has(otherCharacter.id);
+            let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`;
 
-            if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {chatHistoryText = `${chatHistoryText} (${otherCharacterName})`}
+            if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
+                chatHistoryText = `${chatHistoryText} (${otherCharacterName})`;
+            }
 
-            chatHistoryText = `${chatHistoryText}: ${p.text}${turnEndString}`
-
+            chatHistoryText = `${chatHistoryText}: ${p.text}${turnEndString}`;
             chatHistoryLines.push(chatHistoryText);
         }
     }
-    
+
     const userInputLine = `${turnStartString}${characterParticipantTag}:`;
 
-    // ✅ Assemble prompt blocks according to inputStrategy order
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
@@ -599,7 +667,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         usedTypes.add(blockType);
     }
 
-    // Append any blocks not in the strategy (safety net)
     for (const blockType of DEFAULT_INPUT_STRATEGY) {
         if (!usedTypes.has(blockType)) {
             const lines = blockMap[blockType];
@@ -611,7 +678,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     promptLines.push(userInputLine);
 
-    return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages };
+    return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages, fetchErrors };
 }
 
 export async function prepareRequestBody(
@@ -620,10 +687,10 @@ export async function prepareRequestBody(
     characterImageBase64?: string | null,
     userImageBase64s?: string[],
     runtimePort?: number
-): Promise<any> {
+): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    const { prompt, activeStopPatterns, activeContextsForImages } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
+    const { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -645,7 +712,6 @@ export async function prepareRequestBody(
     const allImageData: { data: string; id: number }[] = [];
     let imageIdCounter = 13;
 
-    // ✅ Strip Data URI prefix for llama-server compatibility
     if (characterImageBase64) {
         const rawData = characterImageBase64.includes(',')
             ? characterImageBase64.split(',')[1]
@@ -667,7 +733,6 @@ export async function prepareRequestBody(
                         reader.onloadend = () => resolve(reader.result as string);
                         reader.readAsDataURL(blob);
                     });
-                    // ✅ Strip Data URI prefix
                     const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                     return { data: rawData, id: imageIdCounter++ };
                 } catch (e) {
@@ -682,7 +747,6 @@ export async function prepareRequestBody(
 
     if (userImageBase64s && userImageBase64s.length > 0) {
         for (const base64 of userImageBase64s) {
-            // ✅ Strip Data URI prefix
             const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
             allImageData.push({ data: rawData, id: imageIdCounter++ });
         }
@@ -698,8 +762,10 @@ export async function prepareRequestBody(
 
     if (allImageData.length > 0) body.image_data = allImageData;
 
-    return body;
+    return { body, fetchErrors };
 }
+
+export { clearFetchCache };
 
 export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
     const profile = chatData.Profile;
@@ -708,7 +774,6 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
     let result = text;
 
     if (stripThinkTokens) {
-        // ✅ FIX: Use non-greedy match per think block, not cross-block greedy match
         result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
         result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
         result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
@@ -731,7 +796,7 @@ export function createNewChatData(character: Character): ChatData {
         participants: [character],
         contexts: [],
         chatMessageHistory: [],
-        messageCount: 0, // ✅ FIX: Include messageCount field
+        messageCount: 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentChatDataId: null,
@@ -764,7 +829,7 @@ export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMes
     return {
         ...chatData,
         chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-        messageCount: (chatData.messageCount ?? chatData.chatMessageHistory.length) + 1, // ✅ Keep messageCount in sync
+        messageCount: (chatData.messageCount ?? chatData.chatMessageHistory.length) + 1,
         lastUpdatedTimestamp: Date.now()
     };
 }
@@ -806,7 +871,7 @@ export function branchChatMessage(chatData: ChatData, branchPointMessageId: stri
         protagonist: chatData.protagonist,
         participants: chatData.participants,
         chatMessageHistory: branchedHistory,
-        messageCount: branchedHistory.length, // ✅ Include messageCount
+        messageCount: branchedHistory.length,
         firstCreatedTimestamp: currentTimestamp,
         lastUpdatedTimestamp: currentTimestamp,
         Profile: chatData.Profile,

@@ -53,10 +53,10 @@ export function StopPatternEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; pattern?: string; regex?: string } = {};
-        
+
         if (!name.trim()) newErrors.name = 'Name is required.';
         if (!pattern.trim()) newErrors.pattern = 'Stop pattern is required.';
-        
+
         if (regexTrigger.trim()) {
             try {
                 new RegExp(regexTrigger);
@@ -64,7 +64,7 @@ export function StopPatternEditorModal({
                 newErrors.regex = 'Invalid regular expression pattern.';
             }
         }
-        
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -83,7 +83,6 @@ export function StopPatternEditorModal({
         }
     };
 
-    // ✅ Shared logic to build a stop pattern object from current form state
     const buildStopPatternFromForm = (isNewClone: boolean): StopPattern | null => {
         if (!validate()) return null;
 
@@ -108,7 +107,6 @@ export function StopPatternEditorModal({
         onClose();
     };
 
-    // ✅ Clone: save as new stop pattern with a new ID and "(Clone)" suffix
     const handleClone = () => {
         const clonedStopPattern = buildStopPatternFromForm(true);
         if (!clonedStopPattern) return;
@@ -125,7 +123,6 @@ export function StopPatternEditorModal({
                     <h2>{existingStopPattern ? 'Edit Stop Pattern' : 'Create New Stop Pattern'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing stop pattern */}
                         {existingStopPattern && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
                                 Clone
@@ -227,30 +224,35 @@ export function StopPatternEditorModal({
                             </div>
                         </div>
 
-                        {/* Regex Tester */}
+                        {/* Regex Tester — same style as Add buttons */}
                         {regexTrigger.trim() && (
                             <div style={{ marginTop: '8px' }}>
                                 <label className="editor-label editor-label-small">Test Pattern</label>
-                                <div className="editor-tester-row">
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
                                     <input
                                         type="text"
                                         value={testText}
                                         onChange={(e) => { setTestText(e.target.value); setTestResult(null); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }}
                                         className="editor-input"
-                                        style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
                                         placeholder="Enter text to test against the regex"
                                     />
-                                    <button type="button" onClick={handleTestRegex} className="editor-btn editor-btn-test">
+                                    <button
+                                        type="button"
+                                        onClick={handleTestRegex}
+                                        className="editor-btn editor-btn-save"
+                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                        disabled={!testText.trim()}
+                                    >
                                         Test
                                     </button>
                                 </div>
-                                <div className="editor-test-result-container">
-                                    {testResult !== null && (
-                                        <div className={testResult ? 'editor-success-message' : 'editor-error-message'}>
-                                            {testResult ? '✅ Matches!' : '❌ No match'}
-                                        </div>
-                                    )}
-                                </div>
+                                {testResult !== null && (
+                                    <div className={testResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
+                                        {testResult ? '✅ Matches!' : '❌ No match'}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

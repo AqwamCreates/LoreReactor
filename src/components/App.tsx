@@ -14,6 +14,7 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
+import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
@@ -384,10 +385,12 @@ function App() {
     }
   };
 
+  // ✅ FIX #3: Clear fetch cache on chat switch
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
     await safeAutoSave(chatData);
+    clearFetchCache();
     let chatWithMessages = selected;
     if (selected.chatMessageHistory.length === 0) {
       try { chatWithMessages = await loadChatMessages(selected); } catch (err) { console.error("Failed to load chat messages:", err); addToast("Failed to load chat messages.", "error"); }
@@ -399,6 +402,7 @@ function App() {
 
   const handleNewChat = useCallback(async () => {
     await safeAutoSave(chatData);
+    clearFetchCache();
     let charToUse = currentCharacter;
     if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
     if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
@@ -423,16 +427,13 @@ function App() {
 
     let newParticipants: Character[];
     if (isRemoving) {
-      // Remove: filter out the character, preserve order of remaining
       newParticipants = chatData.participants.filter(p => p.id !== charId);
     } else {
-      // Add: find the character object and append to end, preserving existing order
       const charToAdd = allCharacters.find(c => c.id === charId);
       if (!charToAdd) return;
       newParticipants = [...chatData.participants, charToAdd];
     }
 
-    // Ensure protagonist is always first
     if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
       newParticipants.unshift(chatData.protagonist);
     }
@@ -727,6 +728,7 @@ function App() {
     if (profile.forceNameReveal) flags.push('Force Names');
     if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
     if (profile.stripThinkTokens) flags.push('Strip Think');
+    if (profile.useCurrentDateAndTime) flags.push('Clock');
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
         {flags.length > 0 ? flags.map((f, i) => (<span key={i} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>)) : <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>No special settings</span>}
@@ -752,7 +754,7 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar.placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
             {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
@@ -799,7 +801,7 @@ function App() {
                 return (
                   <React.Fragment key={message.id}>
                     <div className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
-                      {showSideAvatar && (<div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(message.character.image) ? (<img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{displayName}</span></div>)}
+                      {showSideAvatar && (<div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(message.character.image) ? (<img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar.placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{displayName}</span></div>)}
                       <div
                         className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`}
                         onTouchStart={(e) => handleBubbleTouchStart(e, message.id)}
@@ -877,7 +879,8 @@ function App() {
         {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: () => { } } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => { const parts: string[] = []; if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`); parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`); parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`); if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`); return parts.join(' • '); }} emptyMessage="No saved chat sessions found." />)}
         {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
         {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
-        {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => `${i.regularExpressionTrigger ? '🔍' : '📌'} ${i.images && i.images.length > 0 ? '🖼️' : ''} ${(i.text?.substring(0, 50) || '')}...`} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />)}
+        {/* ✅ FIX #6: Context list subtext uses i.urls (array) instead of nonexistent i.url, shows count */}
+        {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => `${i.regularExpressionTrigger ? '🔍' : '📌'} ${i.images && i.images.length > 0 ? '🖼️' : ''} ${i.urls && i.urls.length > 0 ? `🔗${i.urls.length} ` : ''}${(i.text?.substring(0, 50) || '')}...`} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />)}
         {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />)}
         {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={(id) => toggleModelLoad(id)} specialActionTooltip={(m) => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return `⏹ Stop & Deselect`; if (ms?.isRunning && ms?.isIdle) return `⏹ Stop Model`; if (ms?.isRunning && !ms?.isIdle) return `⏳ Loading...`; if (selectedModelId === m.id) return `✓ Already Selected — Click to Load`; return `▶ Load & Select Model`; }} />)}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
