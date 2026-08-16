@@ -41,6 +41,10 @@ interface SamplerParameters {
     dry_multiplier: number;
     dry_sequence_breaker: string;
     ignore_eos: boolean;
+    dynamic_temperature: boolean;
+    dynatemp_low: number;
+    dynatemp_high: number;
+    dynatemp_exponent: number;
     [key: string]: number | string | boolean | unknown;
 }
 
@@ -71,13 +75,17 @@ const DEFAULT_PARAMETERS: SamplerParameters = {
     dry_multiplier: 0,
     dry_sequence_breaker: "\n",
     ignore_eos: false,
+    dynamic_temperature: false,
+    dynatemp_low: 0.8,
+    dynatemp_high: 1.2,
+    dynatemp_exponent: 1.0,
 };
 
-const PARAMETER_CONFIGS: Record<string, { 
-    min: number; max: number; step: number; 
-    description: string; label: string; category: string; 
-    defaultEnabled: boolean; decimals?: number; 
-    isString?: boolean; isBoolean?: boolean 
+const PARAMETER_CONFIGS: Record<string, {
+    min: number; max: number; step: number;
+    description: string; label: string; category: string;
+    defaultEnabled: boolean; decimals?: number;
+    isString?: boolean; isBoolean?: boolean;
 }> = {
     temperature: { min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 },
     top_k: { min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 },
@@ -105,6 +113,10 @@ const PARAMETER_CONFIGS: Record<string, {
     dry_multiplier: { min: 0, max: 2, step: 0.05, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 },
     dry_sequence_breaker: { min: 0, max: 0, step: 0, description: 'Characters that break DRY sequence', label: 'DRY Sequence Breaker', category: 'DRY', defaultEnabled: false, isString: true },
     ignore_eos: { min: 0, max: 1, step: 1, description: 'Ignore End-Of-Sequence token', label: 'Ignore EOS', category: 'Other', defaultEnabled: false, isBoolean: true },
+    dynamic_temperature: { min: 0, max: 1, step: 1, description: 'Enable dynamic temperature scaling based on context entropy', label: 'Dynamic Temperature', category: 'Core', defaultEnabled: false, isBoolean: true },
+    dynatemp_low: { min: 0, max: 2, step: 0.05, description: 'Lower bound for dynamic temperature range', label: 'Dynatemp Low', category: 'Core', defaultEnabled: false, decimals: 2 },
+    dynatemp_high: { min: 0, max: 3, step: 0.05, description: 'Upper bound for dynamic temperature range', label: 'Dynatemp High', category: 'Core', defaultEnabled: false, decimals: 2 },
+    dynatemp_exponent: { min: 0.1, max: 5, step: 0.1, description: 'Exponent controlling how aggressively temperature scales', label: 'Dynatemp Exponent', category: 'Core', defaultEnabled: false, decimals: 1 },
 };
 
 const getParamValue = (params: Record<string, unknown> | undefined, key: string, defaultValue: number | string | boolean): number | string | boolean => {
@@ -129,12 +141,11 @@ export function SamplerEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [parameters, setParameters] = useState<SamplerParameters>({ ...DEFAULT_PARAMETERS });
-    // ✅ NEW: Active parameter keys (ordered list) replaces enabledParams map
     const [activeParamKeys, setActiveParamKeys] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [maxTokens, setMaxTokens] = useState<number>(512);
     const [errors, setErrors] = useState<{ name?: string }>({});
-    
+
     // Drag state for reordering active params
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -475,7 +486,7 @@ export function SamplerEditorModal({
                         </div>
                     </div>
 
-                    {/* Stop Patterns (unchanged) */}
+                    {/* Stop Patterns */}
                     <div className="editor-section">
                         <div className="editor-section-title">Stop Patterns</div>
                         <div className="sampler-stop-patterns-list">
