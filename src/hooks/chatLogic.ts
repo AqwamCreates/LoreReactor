@@ -418,7 +418,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                     searchTerms: ctx.searchTerms,
                     searchEngine: ctx.searchEngine,
                     modelContext,
-                    summaryMaxTokens: 512,
                     includeImages: ctx.includeLinkImages ?? false,
                 }
             );

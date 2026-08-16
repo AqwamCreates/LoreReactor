@@ -39,7 +39,6 @@ export async function summarizeWebpageContent(
     content: string,
     sourceUrl: string,
     modelContext: LanguageModelContext,
-    maxTokens = 512,
     images?: WebpageImageInfo[]
 ): Promise<string | null> {
     const hasImages = images && images.length > 0;
@@ -49,7 +48,6 @@ export async function summarizeWebpageContent(
     const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}${imageBlock}\n\nSummary:`;
 
     return engine.generateCompletion(prompt, modelContext, {
-        maxTokens,
         temperature: 0.3,
         stop: ['\n\n\n', '```', '\nSource:'],
     });
@@ -62,7 +60,6 @@ export async function summarizeWebpageContent(
 export async function mergeWebpageSummaries(
     summaries: { url: string; summary: string }[],
     modelContext: LanguageModelContext,
-    maxTokens = 1024
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0].summary;
@@ -74,7 +71,6 @@ export async function mergeWebpageSummaries(
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
     return engine.generateCompletion(prompt, modelContext, {
-        maxTokens,
         temperature: 0.3,
         stop: ['\n\n\n\n', '```'],
     });
