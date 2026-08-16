@@ -724,45 +724,45 @@ export function useChatSession() {
                     // Retry logic is now handled INSIDE BudgetStrategyEngine.generateStream
                     // If we reach here with a strategy, it means all attempts failed.
                     if (currentStrategy) {
-                         addToast("All models failed according to budget strategy.", "error");
-                    } else if (currentModel) {
-                        // Simple retry for non-strategy mode
-                         const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
-                         const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
-                         
-                        const { body: retryRequestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
-                         
-                         const retryLanguageModelContext: LanguageModelContext = {
-                             apiKey: currentModel.apiKey,
-                             backend: currentModel.backend,
-                             modelPath: currentModel.model,
-                             runtimePort: retryEffectivePort
-                         };
-                         rawText = await languageModelEngine.generateStream(
-                             retryRequestBody,
-                             { signal } as AbortController,
-                             {
-                                 onToken: (stats) => {
-                                     setGenerationSpeed(stats.msPerToken);
-                                     streamingTextRef.current = stats.fullText;
-                                     if (onToken) onToken(stats.fullText);
-                                 },
-                                 onFinish: (responseStats) => {
-                                     const promptTokens = responseStats.promptTokens || 0;
-                                     const completionTokens = responseStats.completionTokens || 0;
-                                     const isCacheMiss = responseStats.cacheMiss || false;
-                                     const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
-                                     setStats(prev => ({
-                                         numberOfRequests: prev.numberOfRequests + 1,
-                                         numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                                         totalCost: prev.totalCost + costResult.totalCost,
-                                         costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
-                                     }));
-                                 }
-                             },
-                             retryLanguageModelContext,
-                             maxParagraphs
-                         );
+                            addToast("All models failed according to budget strategy.", "error");
+                        } else if (currentModel) {
+                            // Simple retry for non-strategy mode
+                            const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
+                            const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
+                            
+                            const { body: retryRequestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
+                            
+                            const retryLanguageModelContext: LanguageModelContext = {
+                                apiKey: currentModel.apiKey,
+                                backend: currentModel.backend,
+                                modelPath: currentModel.model,
+                                runtimePort: retryEffectivePort
+                            };
+                            rawText = await languageModelEngine.generateStream(
+                                retryRequestBody,
+                                { signal } as AbortController,
+                                {
+                                    onToken: (stats) => {
+                                        setGenerationSpeed(stats.msPerToken);
+                                        streamingTextRef.current = stats.fullText;
+                                        if (onToken) onToken(stats.fullText);
+                                    },
+                                    onFinish: (responseStats) => {
+                                        const promptTokens = responseStats.promptTokens || 0;
+                                        const completionTokens = responseStats.completionTokens || 0;
+                                        const isCacheMiss = responseStats.cacheMiss || false;
+                                        const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+                                        setStats(prev => ({
+                                            numberOfRequests: prev.numberOfRequests + 1,
+                                            numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                                            totalCost: prev.totalCost + costResult.totalCost,
+                                            costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                                        }));
+                                    }
+                                },
+                                retryLanguageModelContext,
+                                maxParagraphs
+                            );
                     }
 
                     if (!rawText || !rawText.trim()) {
