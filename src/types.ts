@@ -295,6 +295,7 @@ export type PromptBlockType =
 export interface Profile extends ObjectData {
 
   forceNameReveal: boolean;
+  useCurrentTime: boolean;
   forceEqualInitiative: boolean;
   chatProbability: number; // 0 means it is disabled and uses character default.
   maximumChatStamina: number; // 0 means it is disabled and uses character default..
@@ -312,6 +313,7 @@ export interface Profile extends ObjectData {
 export interface RawProfile extends RawData{
 
   forceNameReveal: boolean;
+  useCurrentTime: boolean;
   forceEqualInitiative: boolean;
   chatProbability: number; // -1 means it is disabled and uses character default.
   maximumChatStamina: number; // -1 means it is disabled and uses character default..

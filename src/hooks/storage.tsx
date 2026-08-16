@@ -577,6 +577,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
+        useCurrentTime: rawProfile.useCurrentTime ?? false,
         forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
         chatProbability: rawProfile.chatProbability ?? 0,
         maximumChatStamina: rawProfile.maximumChatStamina ?? 0,

@@ -26,10 +26,10 @@ const DEFAULT_STRATEGY: PromptBlockType[] = [
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
-    'No injection. Names revealed only through detection.',
+    'No injection.',
     'Inject all participant names into prompt header.',
     'Inject names + all system prompts upfront.',
-    'Inject names + system prompts + think prompts upfront. Maximum stability.',
+    'Inject names + system prompts + think prompts upfront.',
 ];
 
 const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
@@ -111,6 +111,7 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
+    const [useCurrentTime, setUseCurrentTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
     const [chatProbability, setChatProbability] = useState<number>(0);
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
@@ -134,6 +135,7 @@ export function ProfileEditorModal({
                 setName(existingProfile.name || '');
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
+                setUseCurrentTime(existingProfile.useCurrentTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
                 setChatProbability(existingProfile.chatProbability ?? 0);
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
@@ -155,6 +157,7 @@ export function ProfileEditorModal({
                 setName('');
                 setDescription('');
                 setForceNameReveal(false);
+                setUseCurrentTime(false);
                 setForceEqualInitiative(false);
                 setChatProbability(0);
                 setMaximumChatStamina(0);
@@ -190,6 +193,7 @@ export function ProfileEditorModal({
             name: name.trim(),
             description: description.trim() || undefined,
             forceNameReveal,
+            useCurrentTime,
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
@@ -218,6 +222,7 @@ export function ProfileEditorModal({
             name: `${name.trim()} (Clone)`,
             description: description.trim() || undefined,
             forceNameReveal,
+            useCurrentTime,
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
@@ -415,6 +420,19 @@ export function ProfileEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Always show character names instead of "Unknown Name". Skips name detection entirely.
                         </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={useCurrentTime}
+                                onChange={(e) => setUseCurrentTime(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Use Current Time</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
+                        </div>
                     </div>
 
                     {/* Turn Sequencing Overrides */}
@@ -434,7 +452,7 @@ export function ProfileEditorModal({
                             All participants get equal initiative weight regardless of character settings.
                         </div>
 
-                        {/* ✅ Chat Probability: label passed directly to SliderInput */}
+                        {/* Chat Probability Override */}
                         <div style={{ marginBottom: '12px' }}>
                             <SliderInput
                                 label="Chat Probability Override"
@@ -451,7 +469,7 @@ export function ProfileEditorModal({
                             />
                         </div>
 
-                        {/* ✅ Maximum Chat Stamina: label passed directly to SliderInput */}
+                        {/* Maximum Chat Stamina Override */}
                         <div>
                             <SliderInput
                                 label="Maximum Chat Stamina Override"
@@ -469,7 +487,7 @@ export function ProfileEditorModal({
                         </div>
                     </div>
 
-                    {/* ✅ Cache Invalidation Reduction: label passed directly to SliderInput */}
+                    {/* Cache Invalidation Reduction */}
                     <div className="editor-section">
                         <SliderInput
                             label="Cache Invalidation Reduction"
@@ -483,7 +501,7 @@ export function ProfileEditorModal({
                         />
                     </div>
 
-                    {/* Voice Narration — two-column layout */}
+                    {/* Voice Narration */}
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
