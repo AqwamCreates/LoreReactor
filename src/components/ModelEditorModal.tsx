@@ -428,7 +428,7 @@ export function ModelEditorModal({
                 <div className="modal-body editor-modal-body">
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
-                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Llama-3-70B-Instruct" />
+                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Gemma-4-E4B" />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
