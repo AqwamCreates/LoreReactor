@@ -364,6 +364,7 @@ export function useChatSession() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
+    const chatHistoryRef = useRef<HTMLDivElement>(null);
     
     const selectedModelRef = useRef<LanguageModel | null>(null);
     const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
@@ -376,8 +377,10 @@ export function useChatSession() {
     const chatDataRef = useRef<ChatData | null>(null);
 
     // ✅ Tracks text captured when generation is interrupted (stop, error, network failure).
-    // The caller patches the last AI message with isPartial after runTurnSequence resolves.
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
+
+    // ✅ Track whether user is scrolled to bottom — only auto-scroll when at bottom
+    const isAtBottomRef = useRef(true);
 
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     
@@ -766,7 +769,6 @@ export function useChatSession() {
             const err = error as Error;
 
             // ✅ On ANY error that interrupts generation, capture partial text for resume.
-            // This covers: Stop button (AbortError), network failures, API errors, model crashes.
             const partialText = streamingTextRef.current;
             const partialChar = streamingCharacterRef.current;
             if (partialText && partialText.trim().length > 0 && partialChar) {
@@ -873,6 +875,7 @@ export function useChatSession() {
             setStreamingCharacter(targetChar);
             streamingCharacterRef.current = targetChar;
             setGenerationSpeed(0);
+            isAtBottomRef.current = true; // User initiated action — snap to bottom
             
             try {
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, undefined);
@@ -988,9 +991,27 @@ export function useChatSession() {
         init();
     }, []);
 
+    // ✅ Track whether user is at bottom of chat history
     useEffect(() => {
-        if (isLoading && streamingText && messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        else if (messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        const chatEl = chatHistoryRef.current;
+        if (!chatEl) return;
+        const onScroll = () => {
+            const threshold = 80;
+            const atBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < threshold;
+            isAtBottomRef.current = atBottom;
+        };
+        chatEl.addEventListener('scroll', onScroll, { passive: true });
+        return () => chatEl.removeEventListener('scroll', onScroll);
+    }, []);
+
+    // ✅ Auto-scroll only when user is at bottom AND streaming/loading
+    useEffect(() => {
+        if (!isAtBottomRef.current) return;
+        if (isLoading && streamingText && messageEndRef.current) {
+            messageEndRef.current.scrollIntoView({ behavior: 'auto' });
+        } else if (!isLoading && messageEndRef.current && chatData?.chatMessageHistory.length) {
+            messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
 
     const stopGeneration = useCallback(() => {
@@ -1018,6 +1039,7 @@ export function useChatSession() {
         setChatData(newChat);
         setCurrentCharacter(character);
         setIsInitialImageProcessed(false);
+        isAtBottomRef.current = true;
         saveRawChatData(newChat).catch(err => console.error("Failed to save new chat:", err));
     }, []);
 
@@ -1048,6 +1070,7 @@ export function useChatSession() {
         setStreamingCharacter(null);
         streamingCharacterRef.current = null;
         setGenerationSpeed(0);
+        isAtBottomRef.current = true; // User sent a message — snap to bottom
         
         try {
             let userImagesBase64: string[] | undefined = undefined;
@@ -1152,6 +1175,7 @@ export function useChatSession() {
         setStreamingCharacter(msg.character);
         streamingCharacterRef.current = msg.character;
         setGenerationSpeed(0);
+        isAtBottomRef.current = true; // User initiated resume — snap to bottom
 
         try {
             const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t: string) => void) => {
@@ -1266,6 +1290,7 @@ export function useChatSession() {
         setStreamingCharacter(null);
         streamingCharacterRef.current = null;
         setGenerationSpeed(0);
+        isAtBottomRef.current = true; // User initiated regenerate — snap to bottom
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
@@ -1335,7 +1360,7 @@ export function useChatSession() {
 
     return {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
-        sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage, messageEndRef, parentChatMessageIds,
+        sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef, parentChatMessageIds,
         generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,
