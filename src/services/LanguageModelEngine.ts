@@ -258,6 +258,7 @@ export class LanguageModelEngine {
     let firstTokenTime = 0;
     let tokenCount = 0;
     let paragraphCount = 0;
+    let hasReceivedNonWhitespace = false; // ✅ Track whether we've seen a non-whitespace char yet
 
     try {
       while (true) {
@@ -285,6 +286,19 @@ export class LanguageModelEngine {
               }
 
               if (token) {
+                // ✅ Strip leading whitespace: skip tokens that are purely whitespace
+                // until we've received at least one non-whitespace character
+                if (!hasReceivedNonWhitespace) {
+                  const trimmed = token.trimStart();
+                  if (trimmed.length === 0) {
+                    // Token is entirely whitespace and we haven't started content yet — skip it
+                    continue;
+                  }
+                  // Token has leading whitespace followed by real content — strip the leading part
+                  token = trimmed;
+                  hasReceivedNonWhitespace = true;
+                }
+
                 const now = performance.now();
                 if (tokenCount === 0) firstTokenTime = now;
                 tokenCount++;
