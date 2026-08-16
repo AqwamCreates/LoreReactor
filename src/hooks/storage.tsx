@@ -484,6 +484,7 @@ export async function loadRawModel(id: string): Promise<LanguageModel | null> {
         contextLength: rawModel.contextLength,
         model: rawModel.model,
         mmproj: rawModel.mmproj,
+        lora: rawModel.lora,
         apiKey: rawModel.apiKey,
         parameters: rawModel.parameters,
         cacheHitCostPerOneMillionOfTokens: rawModel.cacheHitCostPerOneMillionOfTokens,

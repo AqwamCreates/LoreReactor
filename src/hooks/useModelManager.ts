@@ -21,7 +21,6 @@ export function useModelManager() {
     const { addToast } = useToast();
     const API_BASE = localURL;
     const idleNotifiedRef = useRef<Set<string>>(new Set());
-    // ✅ Track whether we've done the initial auto-select on first load
     const hasAutoSelectedRef = useRef(false);
 
     const fetchStatus = async () => {
@@ -76,11 +75,8 @@ export function useModelManager() {
 
             setRunningModels(newStatus);
 
-            // ✅ AUTO-SELECT: On first successful poll, if a model is running but nothing
-            // is selected, auto-select it so the UI reflects the server state after refresh
             if (!hasAutoSelectedRef.current && data.activeModels && data.activeModels.length > 0) {
                 hasAutoSelectedRef.current = true;
-                // Find the first ready model, or fall back to the first running model
                 const readyModel = data.activeModels.find((m: any) => m.status === 'ready');
                 const modelToSelect = readyModel || data.activeModels[0];
                 if (modelToSelect) {
@@ -198,6 +194,90 @@ export function useModelManager() {
 
             const modelPath = model.model || '';
             
+            // ✅ Build args array with context length, GPU layers, mmproj, and lora
+            const args: string[] = [];
+            args.push('-c', model.contextLength.toString());
+            args.push('-ngl', '99');
+
+            // Add mmproj if configured
+            if (model.mmproj?.trim()) {
+                args.push('--mmproj', model.mmproj.trim());
+            }
+
+            // Add LoRA adapter if configured
+            if (model.lora?.trim()) {
+                args.push('--lora', model.lora.trim());
+            }
+
+            // Append any extra args from model parameters
+            const params = model.parameters || {};
+            if (params.gpu_layers !== undefined) {
+                // Override default -ngl if user specified custom value
+                const nglIndex = args.indexOf('-ngl');
+                if (nglIndex !== -1) {
+                    args[nglIndex + 1] = String(params.gpu_layers);
+                }
+            }
+            if (params.cache_type_k) {
+                args.push('-ctk', String(params.cache_type_k));
+            }
+            if (params.cache_type_v) {
+                args.push('-ctv', String(params.cache_type_v));
+            }
+            if (params.split_mode && params.split_mode !== 'layer') {
+                args.push('-sm', String(params.split_mode));
+            }
+            if (params.draft_model && String(params.draft_model).trim()) {
+                args.push('-md', String(params.draft_model).trim());
+            }
+            if (params.draft_max !== undefined) {
+                args.push('-n', String(params.draft_max));
+            }
+            if (params.gpu_layers_draft !== undefined) {
+                args.push('-ngld', String(params.gpu_layers_draft));
+            }
+            if (params.parallel !== undefined && params.parallel !== 1) {
+                args.push('-np', String(params.parallel));
+            }
+            if (params.threads !== undefined && params.threads !== 0) {
+                args.push('-t', String(params.threads));
+            }
+            if (params.threads_batch !== undefined && params.threads_batch !== 0) {
+                args.push('-tb', String(params.threads_batch));
+            }
+            if (params.batch_size !== undefined && params.batch_size !== 1024) {
+                args.push('-b', String(params.batch_size));
+            }
+            if (params.ubatch_size !== undefined && params.ubatch_size !== 1024) {
+                args.push('-ub', String(params.ubatch_size));
+            }
+            if (params.tensor_split && String(params.tensor_split).trim()) {
+                args.push('-ts', String(params.tensor_split).trim());
+            }
+            if (params.fit_target && String(params.fit_target).trim()) {
+                args.push('-fit', String(params.fit_target).trim());
+            }
+            if (params.cpu_moe) {
+                args.push('--cpu-moe');
+            }
+            if (params.no_kv_offload) {
+                args.push('-nkvo');
+            }
+            if (params.no_mmap) {
+                args.push('--no-mmap');
+            }
+            if (params.mlock) {
+                args.push('--mlock');
+            }
+            if (params.numa) {
+                args.push('--numa');
+            }
+            if (params.extra_flags && String(params.extra_flags).trim()) {
+                // Split extra flags by space and append each as separate arg
+                const extraArgs = String(params.extra_flags).trim().split(/\s+/);
+                args.push(...extraArgs);
+            }
+            
             try {
                 addToast(`Starting model ${model.name}...`, "info");
                 const res = await fetch(`${API_BASE}/models/load`, {
@@ -206,7 +286,7 @@ export function useModelManager() {
                     body: JSON.stringify({
                         id: model.id,
                         modelPath: modelPath,
-                        args: [`-c`, model.contextLength.toString(), `-ngl`, "99"]
+                        args
                     })
                 });
 

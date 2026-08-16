@@ -103,6 +103,7 @@ export interface LanguageModel extends ObjectData {
   contextLength: number;
   model?: string;
   mmproj?: string;
+  lora?: string;
   apiKey?: string;
   parameters?: Record<string, unknown>;
   cacheHitCostPerOneMillionOfTokens?: number,
@@ -117,6 +118,7 @@ export interface RawLanguageModel extends RawData {
   contextLength: number;
   model?: string;
   mmproj?: string;
+  lora?: string;
   apiKey?: string;
   parameters?: Record<string, unknown>;
   cacheHitCostPerOneMillionOfTokens?: number,
