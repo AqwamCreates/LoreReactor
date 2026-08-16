@@ -342,6 +342,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       chatProbability: rawCharacter.chatProbability, 
       maximumChatStamina: rawCharacter.maximumChatStamina, 
       sampler,
+      doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
       firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || Date.now(),
       lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || Date.now(),
     };

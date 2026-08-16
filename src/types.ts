@@ -137,6 +137,7 @@ export interface Character extends ObjectData  {
   maximumChatStamina?: number | undefined;
   sampler?: Sampler | undefined;
   stopPatterns?: [StopPattern]
+  doNotInjectCharacterImage?: boolean;
 
 }
 
@@ -151,6 +152,7 @@ export interface RawCharacter extends RawData {
   maximumChatStamina?: number | undefined;
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
+  doNotInjectCharacterImage?: boolean;
 
 }
 
