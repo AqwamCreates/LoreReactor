@@ -794,7 +794,7 @@ export function createNewChatData(character: Character): ChatData {
     };
 }
 
-export function createChatMessage(chatData: ChatData, character: Character, textContent: string): ChatMessage {
+export function createChatMessage(chatData: ChatData, character: Character, textContent: string, options?: { isPartial?: boolean }): ChatMessage {
     const previousMessage = findPreviousChatMessage(chatData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
@@ -809,6 +809,7 @@ export function createChatMessage(chatData: ChatData, character: Character, text
         textContent,
         remainingChatStamina,
         isNameRevealed,
+        isPartial: options?.isPartial || undefined,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentChatMessageId: lastMessageId,

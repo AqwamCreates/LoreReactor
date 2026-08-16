@@ -13,6 +13,7 @@ import { localAddress, localURL } from '../configurations';
 
 import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
+import { clearPartialFlag } from './messageLogic';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -86,7 +87,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     {
         keywords: ['room', 'inside', 'indoors', 'house', 'hall', 'chamber', 'apartment'],
         lines: [
-            "The room seTimeToLivees into its own particular silence.",
+            "The room settles into its own particular silence.",
             "Dust motes drift lazily through a shaft of light.",
             "The walls seem to absorb the quiet, holding it close.",
             "Something in the room creaks softly, then stills.",
@@ -113,9 +114,9 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
         ]
     },
     {
-        keywords: ['creak', 'groan', 'seTimeToLivee', 'shift', 'wood', 'old'],
+        keywords: ['creak', 'groan', 'settle', 'shift', 'wood', 'old'],
         lines: [
-            "Wood seTimeToLivees with a long, patient sigh.",
+            "Wood settles with a long, patient sigh.",
             "Something old shifts its weight and goes still again.",
             "A creak rises and dissolves into the silence.",
             "The structure around them breathes in its own slow way.",
@@ -160,7 +161,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     {
         keywords: ['book', 'page', 'read', 'paper', 'library', 'shelf', 'ink'],
         lines: [
-            "Pages seTimeToLivee against each other with a papery sigh.",
+            "Pages settle against each other with a papery sigh.",
             "The weight of unread words hangs quietly in the air.",
             "Ink and paper hold their stories in patient silence.",
             "A book lies open, waiting for eyes that have looked away.",
@@ -169,7 +170,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
 ];
 
 const AMBIENT_FALLBACK = [
-    "A heavy silence seTimeToLivees over everything.",
+    "A heavy silence settles over everything.",
     "The air grows still, thick with unspoken words.",
     "Quiet stretches between them like a held breath.",
     "The moment lingers, neither comfortable nor cruel.",
@@ -205,9 +206,6 @@ function getDefaultCharacter(): Character {
     };
 }
 
-/**
- * ✅ Runs background summarization after messages are saved.
- */
 async function runBackgroundSummarization(
     data: ChatData,
     setData: (d: ChatData) => void,
@@ -243,7 +241,6 @@ async function runBackgroundSummarization(
 
         let updatedData = data;
 
-        // --- Sliding Window Replace ---
         if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
             const budgetStep = data.Profile?.summarizationSteps?.find(
                 s => s.strategyType === 'Sliding Window Replace' && s.enabled
@@ -269,7 +266,6 @@ async function runBackgroundSummarization(
             }
         }
 
-        // --- Periodic Compression ---
         if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
             const budgetStep = data.Profile?.summarizationSteps?.find(
                 s => s.strategyType === 'Periodic Compression' && s.enabled
@@ -293,7 +289,6 @@ async function runBackgroundSummarization(
             }
         }
 
-        // --- Recursive Summary ---
         if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
             const budgetStep = data.Profile?.summarizationSteps?.find(
                 s => s.strategyType === 'Recursive Summary' && s.enabled
@@ -317,7 +312,6 @@ async function runBackgroundSummarization(
             }
         }
 
-        // Persist if anything changed
         if (updatedData !== data) {
             await saveRawChatData(updatedData);
             setData(updatedData);
@@ -377,12 +371,14 @@ export function useChatSession() {
     const isLoadingRef = useRef(false);
     const isProcessingSilentlyRef = useRef(false);
 
-    // ✅ Refs for synchronous access during abort
     const streamingTextRef = useRef("");
     const streamingCharacterRef = useRef<Character | null>(null);
     const chatDataRef = useRef<ChatData | null>(null);
 
-    // ✅ Cache of voice labels already uploaded to TTS server this session
+    // ✅ Tracks text captured when generation is interrupted (stop, error, network failure).
+    // The caller patches the last AI message with isPartial after runTurnSequence resolves.
+    const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
+
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -439,7 +435,6 @@ export function useChatSession() {
         streamingCharacterRef.current = null;
     }, []);
 
-    // ✅ TTS auto-speak helper
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
 
@@ -628,7 +623,6 @@ export function useChatSession() {
             let rawText: string;
 
             if (currentStrategy) {
-                // ✅ USE ROBUST BUDGET STRATEGY ENGINE
                 const strategyEngine = new BudgetStrategyEngine(currentStrategy);
                 
                 const wrappedCallbacks: StreamCallbacks | undefined = onToken ? {
@@ -639,7 +633,6 @@ export function useChatSession() {
                     }
                 } : undefined;
 
-                // Pass complexityScore to allow strategy to switch based on task difficulty
                 rawText = await strategyEngine.generateStream(
                     data, 
                     character, 
@@ -649,19 +642,15 @@ export function useChatSession() {
                     complexityScore
                 );
 
-                // Update global stats with real costs calculated by the engine
                 if (strategyEngine.currentCost > 0) {
                     setStats(prev => ({
                         ...prev,
                         numberOfRequests: prev.numberOfRequests + 1,
                         totalCost: prev.totalCost + strategyEngine.currentCost,
-                        // We don't have cache miss details from the engine easily here, 
-                        // but we track the cost accurately.
                     }));
                 }
 
             } else {
-                // ✅ FALLBACK TO STANDARD MODEL ENGINE IF NO STRATEGY
                 if (!currentModel) {
                     if (!signal.aborted) {
                         addToast("No model selected. Please select a model from the Models list.", "error");
@@ -721,48 +710,45 @@ export function useChatSession() {
             
             if (!rawText || !rawText.trim()) {
                 if (!signal.aborted) {
-                    // Retry logic is now handled INSIDE BudgetStrategyEngine.generateStream
-                    // If we reach here with a strategy, it means all attempts failed.
                     if (currentStrategy) {
-                            addToast("All models failed according to budget strategy.", "error");
-                        } else if (currentModel) {
-                            // Simple retry for non-strategy mode
-                            const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
-                            const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
-                            
-                            const { body: retryRequestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
-                            
-                            const retryLanguageModelContext: LanguageModelContext = {
-                                apiKey: currentModel.apiKey,
-                                backend: currentModel.backend,
-                                modelPath: currentModel.model,
-                                runtimePort: retryEffectivePort
-                            };
-                            rawText = await languageModelEngine.generateStream(
-                                retryRequestBody,
-                                { signal } as AbortController,
-                                {
-                                    onToken: (stats) => {
-                                        setGenerationSpeed(stats.msPerToken);
-                                        streamingTextRef.current = stats.fullText;
-                                        if (onToken) onToken(stats.fullText);
-                                    },
-                                    onFinish: (responseStats) => {
-                                        const promptTokens = responseStats.promptTokens || 0;
-                                        const completionTokens = responseStats.completionTokens || 0;
-                                        const isCacheMiss = responseStats.cacheMiss || false;
-                                        const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
-                                        setStats(prev => ({
-                                            numberOfRequests: prev.numberOfRequests + 1,
-                                            numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                                            totalCost: prev.totalCost + costResult.totalCost,
-                                            costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
-                                        }));
-                                    }
-                                },
-                                retryLanguageModelContext,
-                                maxParagraphs
-                            );
+                         addToast("All models failed according to budget strategy.", "error");
+                    } else if (currentModel) {
+                         const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
+                         const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
+                         
+                         const { body: retryRequestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
+                         
+                         const retryLanguageModelContext: LanguageModelContext = {
+                             apiKey: currentModel.apiKey,
+                             backend: currentModel.backend,
+                             modelPath: currentModel.model,
+                             runtimePort: retryEffectivePort
+                         };
+                         rawText = await languageModelEngine.generateStream(
+                             retryRequestBody,
+                             { signal } as AbortController,
+                             {
+                                 onToken: (stats) => {
+                                     setGenerationSpeed(stats.msPerToken);
+                                     streamingTextRef.current = stats.fullText;
+                                     if (onToken) onToken(stats.fullText);
+                                 },
+                                 onFinish: (responseStats) => {
+                                     const promptTokens = responseStats.promptTokens || 0;
+                                     const completionTokens = responseStats.completionTokens || 0;
+                                     const isCacheMiss = responseStats.cacheMiss || false;
+                                     const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
+                                     setStats(prev => ({
+                                         numberOfRequests: prev.numberOfRequests + 1,
+                                         numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
+                                         totalCost: prev.totalCost + costResult.totalCost,
+                                         costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
+                                     }));
+                                 }
+                             },
+                             retryLanguageModelContext,
+                             maxParagraphs
+                         );
                     }
 
                     if (!rawText || !rawText.trim()) {
@@ -778,20 +764,16 @@ export function useChatSession() {
             return addMessageToChatData(data, aiMessage);
         } catch (error) {
             const err = error as Error;
+
+            // ✅ On ANY error that interrupts generation, capture partial text for resume.
+            // This covers: Stop button (AbortError), network failures, API errors, model crashes.
+            const partialText = streamingTextRef.current;
+            const partialChar = streamingCharacterRef.current;
+            if (partialText && partialText.trim().length > 0 && partialChar) {
+                pendingPartialRef.current = { text: partialText, character: partialChar };
+            }
             
             if (err.name === 'AbortError') {
-                const savedText = streamingTextRef.current;
-                const savedChar = streamingCharacterRef.current;
-                const currentChatData = chatDataRef.current;
-                
-                if (savedText && savedText.trim().length > 0 && savedChar && currentChatData) {
-                    const displayText = convertIdsToDisplayNames(savedText, currentChatData);
-                    const aiMessage = createChatMessage(currentChatData, savedChar, displayText);
-                    const updatedData = addMessageToChatData(currentChatData, aiMessage);
-                    await saveRawChatData(updatedData);
-                    setChatData(updatedData);
-                    chatDataRef.current = updatedData;
-                }
                 return null;
             }
 
@@ -819,6 +801,35 @@ export function useChatSession() {
 
     const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
         setRunningModelsMap(models);
+    }, []);
+
+    /**
+     * ✅ Patches the last AI message in history with partial text and isPartial flag.
+     * Falls back to creating a new message if no AI message exists yet.
+     */
+    const applyPendingPartial = useCallback(async (
+        baseData: ChatData,
+        protagonistId: string
+    ): Promise<ChatData> => {
+        const pending = pendingPartialRef.current;
+        if (!pending) return baseData;
+
+        pendingPartialRef.current = null;
+        const displayText = convertIdsToDisplayNames(pending.text, baseData);
+        const history = baseData.chatMessageHistory;
+
+        if (history.length > 0) {
+            const lastIdx = history.length - 1;
+            const lastMsg = history[lastIdx];
+            if (lastMsg.character.id !== protagonistId) {
+                const patchedHistory = [...history];
+                patchedHistory[lastIdx] = { ...lastMsg, textContent: displayText, isPartial: true };
+                return { ...baseData, chatMessageHistory: patchedHistory, lastUpdatedTimestamp: Date.now() };
+            }
+        }
+
+        const partialMsg = createChatMessage(baseData, pending.character, displayText, { isPartial: true });
+        return addMessageToChatData(baseData, partialMsg);
     }, []);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
@@ -865,6 +876,16 @@ export function useChatSession() {
             
             try {
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingText, undefined, undefined);
+
+                if (pendingPartialRef.current) {
+                    const baseData = result || updatedData;
+                    const finalData = await applyPendingPartial(baseData, currentCharacter.id);
+                    await saveRawChatData(finalData);
+                    setChatData(finalData);
+                    chatDataRef.current = finalData;
+                    return;
+                }
+
                 if (result) {
                     await saveRawChatData(result);
                     setChatData(result);
@@ -885,7 +906,7 @@ export function useChatSession() {
             console.error("Failed to send action:", error);
             releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, speakMessage]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, speakMessage, applyPendingPartial]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
         if (!character.image) {
@@ -973,10 +994,20 @@ export function useChatSession() {
     }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
 
     const stopGeneration = useCallback(() => {
+        const savedText = streamingTextRef.current;
+        const savedChar = streamingCharacterRef.current;
+
+        if (savedText && savedText.trim().length > 0 && savedChar) {
+            pendingPartialRef.current = { text: savedText, character: savedChar };
+        } else {
+            pendingPartialRef.current = null;
+        }
+
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
             abortControllerRef.current = null; 
         }
+
         releaseGenerationLock();
         setGenerationSpeed(0);
     }, [releaseGenerationLock]);
@@ -1039,7 +1070,16 @@ export function useChatSession() {
             };
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
-            
+
+            // ✅ If interrupted (stop/error/network), patch last AI message as partial
+            if (pendingPartialRef.current) {
+                const finalData = await applyPendingPartial(updatedData, currentCharacter.id);
+                await saveRawChatData(finalData);
+                setChatData(finalData);
+                chatDataRef.current = finalData;
+                return;
+            }
+
             const originalMsgCount = tempData.chatMessageHistory.length;
             const newMsgCount = updatedData.chatMessageHistory.length;
             const hasAIResponse = newMsgCount > originalMsgCount;
@@ -1055,7 +1095,7 @@ export function useChatSession() {
                 if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);
                 }
-            } else if (!controller.signal.aborted) {
+            } else {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {
@@ -1077,7 +1117,94 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             releaseGenerationLock();
         }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage]);
+    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage, applyPendingPartial]);
+
+    const resumeGeneration = useCallback(async (messageId: string) => {
+        if (!chatData) return;
+        
+        const msgIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
+        if (msgIndex === -1) {
+            addToast("Message not found.", "error");
+            return;
+        }
+
+        const msg = chatData.chatMessageHistory[msgIndex];
+        if (!msg.isPartial) {
+            addToast("This message is not partial — use Regenerate instead.", "info");
+            return;
+        }
+
+        if (!acquireGenerationLock()) {
+            addToast("Already generating...", "info");
+            return;
+        }
+        if (!isModelReadyForGeneration()) {
+            addToast("Model is not ready yet. Please wait.", "error");
+            releaseGenerationLock();
+            return;
+        }
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        setStreamingText(msg.textContent);
+        streamingTextRef.current = msg.textContent;
+        setStreamingCharacter(msg.character);
+        streamingCharacterRef.current = msg.character;
+        setGenerationSpeed(0);
+
+        try {
+            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t: string) => void) => {
+                const existingText = msg.textContent;
+                const wrappedOnToken = (t: string) => {
+                    streamingTextRef.current = existingText + t;
+                    onToken(existingText + t);
+                };
+                return handleServerResponse(data, char, signal, wrappedOnToken, undefined, undefined);
+            };
+
+            const updatedData = await runTurnSequence(chatData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
+
+            if (pendingPartialRef.current) {
+                const finalData = await applyPendingPartial(updatedData, chatData.protagonist.id);
+                await saveRawChatData(finalData);
+                setChatData(finalData);
+                chatDataRef.current = finalData;
+                return;
+            }
+
+            const hasNewContent = updatedData.chatMessageHistory.length > chatData.chatMessageHistory.length ||
+                (updatedData.chatMessageHistory.length === chatData.chatMessageHistory.length &&
+                    updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1]?.textContent !== msg.textContent);
+
+            if (hasNewContent) {
+                const finalData = await clearPartialFlag(updatedData, 
+                    updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1]?.id || messageId
+                );
+                await saveRawChatData(finalData);
+                setChatData(finalData);
+                chatDataRef.current = finalData;
+
+                const lastMsg = finalData.chatMessageHistory[finalData.chatMessageHistory.length - 1];
+                if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
+                    speakMessage(lastMsg.textContent, lastMsg.character);
+                }
+            } else {
+                await saveRawChatData(updatedData);
+                setChatData(updatedData);
+                chatDataRef.current = updatedData;
+            }
+        } catch (err) {
+            const errorMsg = (err as Error).message;
+            if (errorMsg !== 'AbortError') {
+                console.error("Resume failed:", err);
+                addToast(`Resume error: ${errorMsg}`, "error");
+            }
+        } finally {
+            if (abortControllerRef.current === controller) abortControllerRef.current = null;
+            releaseGenerationLock();
+        }
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, applyPendingPartial]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData) return;
@@ -1156,6 +1283,14 @@ export function useChatSession() {
 
             const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingText, setChatData);
 
+            if (pendingPartialRef.current) {
+                const finalData = await applyPendingPartial(updatedData, chatData.protagonist.id);
+                await saveRawChatData(finalData);
+                setChatData(finalData);
+                chatDataRef.current = finalData;
+                return;
+            }
+
             const postRegenMsgCount = updatedData.chatMessageHistory.length;
             const hasAIResponse = postRegenMsgCount > preRegenMsgCount;
 
@@ -1170,7 +1305,7 @@ export function useChatSession() {
                 if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
                     speakMessage(lastMsg.textContent, lastMsg.character);
                 }
-            } else if (!controller.signal.aborted) {
+            } else {
                 const ambientData = await generateAmbientNarration(updatedData, controller.signal);
                 
                 if (ambientData) {
@@ -1193,14 +1328,14 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null; 
             releaseGenerationLock();
         }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage, applyPendingPartial]);
 
     const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
     const maxContextTokens = selectedModel?.contextLength || 8192;
 
     return {
         chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
-        sendMessage, stopGeneration, regenerateFromMessage, messageEndRef, parentChatMessageIds,
+        sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage, messageEndRef, parentChatMessageIds,
         generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
         maximumNumberOfTokens: maxContextTokens, startNewChat,
         sendActionAndGetResponse,

@@ -60,7 +60,7 @@ function App() {
   const {
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
-    regenerateFromMessage, messageEndRef,
+    resumeGeneration, regenerateFromMessage, messageEndRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
@@ -831,6 +831,7 @@ function App() {
                           <div className="message-toolbar">
                             {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                               <>
+                                {!isProtagonist && message.isPartial && <button type="button" onClick={() => resumeGeneration(message.id)} disabled={!isModelReady} className="toolbar-btn" title="Resume interrupted generation" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>▶</button>}
                                 <button type="button" onClick={() => handleCopyText(message.textContent)} className="toolbar-btn" title="Copy text to clipboard">📋</button>
                                 <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
                                 {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}

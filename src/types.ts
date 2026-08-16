@@ -159,6 +159,7 @@ export interface ChatMessage {
   textContent: string;
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
+  isPartial?: boolean; // ✅ True if generation was interrupted mid-stream
   textContentSummary?: string;
   kvCachePath?: string;
   firstCreatedTimestamp: number;
@@ -173,6 +174,7 @@ export interface RawChatMessage {
   textContent: string;
   remainingChatStamina: number | undefined;
   isNameRevealed?: boolean;
+  isPartial?: boolean; // ✅ True if generation was interrupted mid-stream
   textContentSummary?: string;
   kvCachePath?: string;
   firstCreatedTimestamp: number;
