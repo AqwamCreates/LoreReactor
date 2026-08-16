@@ -173,7 +173,8 @@ export function ModelEditorModal({
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
-        cacheType: settings.cache_type_k,
+        keyCacheType: settings.cache_type_k,
+        valueCacheType: settings.cache_type_v,
         contextSize: contextLength || 8192,
         backend: backend,
     });
