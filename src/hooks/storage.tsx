@@ -401,7 +401,6 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
         tokenBudget: rawContext.tokenBudget,
-        recursiveScan: rawContext.recursiveScan,
         maximumRecursionDepth: rawContext.maximumRecursionDepth,
         insertionDepth: rawContext.insertionDepth,
         characterBindings: rawContext.characterBindings,

@@ -44,7 +44,6 @@ export function ContextEditorModal({
 
     // Lorebook fields
     const [tokenBudget, setTokenBudget] = useState<number>(0);
-    const [recursiveScan, setRecursiveScan] = useState<boolean>(false);
     const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(5);
     const [insertionDepth, setInsertionDepth] = useState<number>(0);
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
@@ -86,7 +85,6 @@ export function ContextEditorModal({
                 setUseBase64Encoding(existingContext.useBase64Encoding ?? false);
 
                 setTokenBudget(existingContext.tokenBudget ?? 0);
-                setRecursiveScan(existingContext.recursiveScan ?? false);
                 setMaximumRecursionDepth(existingContext.maximumRecursionDepth ?? 5);
                 setInsertionDepth(existingContext.insertionDepth ?? 0);
                 setCharacterBindings(existingContext.characterBindings ?? []);
@@ -115,7 +113,6 @@ export function ContextEditorModal({
                 setRegexTarget('everyone');
 
                 setTokenBudget(0);
-                setRecursiveScan(false);
                 setMaximumRecursionDepth(5);
                 setInsertionDepth(0);
                 setCharacterBindings([]);
@@ -280,7 +277,6 @@ export function ContextEditorModal({
             regularExpressionTarget: regexTarget,
             useBase64Encoding: useBase64Encoding,
             tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
-            recursiveScan: recursiveScan || undefined,
             maximumRecursionDepth: maximumRecursionDepth !== 5 ? maximumRecursionDepth : undefined,
             insertionDepth: insertionDepth !== 0 ? insertionDepth : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
@@ -668,20 +664,6 @@ export function ContextEditorModal({
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = no recursion · default: 5</div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
-                                <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={recursiveScan}
-                                        onChange={(e) => setRecursiveScan(e.target.checked)}
-                                        className="editor-checkbox-input"
-                                    />
-                                    <span style={{ fontSize: '0.8rem' }}>Recursive Scan</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginLeft: '26px', marginTop: '-2px' }}>
-                            This entry's text can trigger other entries during recursion
                         </div>
 
                         {allCharacters.length > 0 && (
