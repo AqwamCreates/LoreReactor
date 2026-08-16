@@ -224,54 +224,7 @@ export function useModelManager() {
             if (params.cache_type_v) {
                 args.push('-ctv', String(params.cache_type_v));
             }
-            if (params.split_mode && params.split_mode !== 'layer') {
-                args.push('-sm', String(params.split_mode));
-            }
-            if (params.draft_model && String(params.draft_model).trim()) {
-                args.push('-md', String(params.draft_model).trim());
-            }
-            if (params.draft_max !== undefined) {
-                args.push('-n', String(params.draft_max));
-            }
-            if (params.gpu_layers_draft !== undefined) {
-                args.push('-ngld', String(params.gpu_layers_draft));
-            }
-            if (params.parallel !== undefined && params.parallel !== 1) {
-                args.push('-np', String(params.parallel));
-            }
-            if (params.threads !== undefined && params.threads !== 0) {
-                args.push('-t', String(params.threads));
-            }
-            if (params.threads_batch !== undefined && params.threads_batch !== 0) {
-                args.push('-tb', String(params.threads_batch));
-            }
-            if (params.batch_size !== undefined && params.batch_size !== 1024) {
-                args.push('-b', String(params.batch_size));
-            }
-            if (params.ubatch_size !== undefined && params.ubatch_size !== 1024) {
-                args.push('-ub', String(params.ubatch_size));
-            }
-            if (params.tensor_split && String(params.tensor_split).trim()) {
-                args.push('-ts', String(params.tensor_split).trim());
-            }
-            if (params.fit_target && String(params.fit_target).trim()) {
-                args.push('-fit', String(params.fit_target).trim());
-            }
-            if (params.cpu_moe) {
-                args.push('--cpu-moe');
-            }
-            if (params.no_kv_offload) {
-                args.push('-nkvo');
-            }
-            if (params.no_mmap) {
-                args.push('--no-mmap');
-            }
-            if (params.mlock) {
-                args.push('--mlock');
-            }
-            if (params.numa) {
-                args.push('--numa');
-            }
+            
             if (params.extra_flags && String(params.extra_flags).trim()) {
                 // Split extra flags by space and append each as separate arg
                 const extraArgs = String(params.extra_flags).trim().split(/\s+/);

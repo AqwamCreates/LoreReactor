@@ -551,7 +551,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
     }
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}.${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
@@ -664,7 +664,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    const userInputLine = `${turnStartString}${characterParticipantTag}:`;
+    const userInputLine = `${turnStartString}${characterParticipantTag}: `; // Be careful with the space here! If you do not add it, the models will not generate text properly!
 
     promptLines.push(userInputLine);
 

@@ -60,7 +60,7 @@ function App() {
   const {
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
-    resumeGeneration, regenerateFromMessage, messageEndRef,
+    resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
@@ -117,7 +117,6 @@ function App() {
   const [actions, setActions] = useState<InterjectableAction[]>([]);
   const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
-  const chatHistoryRef = useRef<HTMLDivElement>(null);
   const lastViewedMessageIdRef = useRef<string | null>(null);
   const suppressAutoScrollRef = useRef(false);
 
