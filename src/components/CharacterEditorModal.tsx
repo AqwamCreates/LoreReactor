@@ -35,7 +35,6 @@ export function CharacterEditorModal({
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [selectedSamplerId, setSelectedSamplerId] = useState<string>('');
     
-    // ✅ Stop Patterns State (Copied from SamplerEditorModal logic)
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
     const [isHoveringImage, setIsHoveringImage] = useState(false);
@@ -46,10 +45,12 @@ export function CharacterEditorModal({
     const [chatProbabilityStr, setChatProbabilityStr] = useState<string>('-1');
     const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>('-1');
 
-    // ✅ Voice state
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
     const [voiceName, setVoiceName] = useState<string>('');
     const [existingVoiceName, setExistingVoiceName] = useState<string>('');
+
+    // ✅ Do not inject character image into generation context
+    const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
         iw: null, cp: null, ms: null,
@@ -80,7 +81,6 @@ export function CharacterEditorModal({
                 setImageFile(null);
                 setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
                 
-                // ✅ Load Stop Patterns from existing character's sampler
                 const existingStopIds = existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || [];
                 setSelectedStopPatternIds(existingStopIds);
 
@@ -88,10 +88,12 @@ export function CharacterEditorModal({
                 setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
                 setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
 
-                // ✅ Load existing voice
                 setExistingVoiceName(existingCharacter.voice || '');
                 setVoiceName(existingCharacter.voice || '');
                 setVoiceFile(null);
+
+                // ✅ Load doNotInjectCharacterImage
+                setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
             } else {
                 setName('');
                 setDescription('');
@@ -101,15 +103,16 @@ export function CharacterEditorModal({
                 setImageFile(null);
                 setImagePreview(null);
                 setSelectedSamplerId(allSamplers[0]?.id || '');
-                setSelectedStopPatternIds([]); // Reset stop patterns for new character
+                setSelectedStopPatternIds([]);
                 setInitiativeWeightStr('-1');
                 setChatProbabilityStr('-1');
                 setMaximumChatStaminaStr('-1');
 
-                // ✅ Reset voice
                 setExistingVoiceName('');
                 setVoiceName('');
                 setVoiceFile(null);
+
+                setDoNotInjectCharacterImage(false);
             }
         }
     }, [isOpen, existingCharacter, allSamplers]);
@@ -172,7 +175,6 @@ export function CharacterEditorModal({
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    // ✅ Voice file handling with 5MB size validation
     const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const file = e.target.files[0];
@@ -182,7 +184,6 @@ export function CharacterEditorModal({
                 return;
             }
             setVoiceFile(file);
-            // Use filename without extension as voice label
             const label = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_');
             setVoiceName(label);
             setSubmitError(null);
@@ -196,7 +197,6 @@ export function CharacterEditorModal({
         if (voiceInputRef.current) voiceInputRef.current.value = '';
     };
 
-    // ✅ Import character card from PNG
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -215,21 +215,19 @@ export function CharacterEditorModal({
         setThinkPrompt(fields.thinkPrompt);
         setFirstMessage(fields.firstMessage);
 
-        // Also use the PNG itself as the character image
         setImageFile(file);
         setImagePreview(URL.createObjectURL(file));
 
-        // Reset auto-detection so blur triggers fresh detection on imported text
         setAutoDetected({ iw: null, cp: null, ms: null });
         setInitiativeWeightStr('-1');
         setChatProbabilityStr('-1');
         setMaximumChatStaminaStr('-1');
-        setSelectedStopPatternIds([]); // Reset stop patterns on import
+        setSelectedStopPatternIds([]);
+        setDoNotInjectCharacterImage(false);
 
         setSubmitError(null);
     };
 
-    // ✅ Shared logic to build a character object from current form state
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
         if (!name.trim()) {
@@ -252,7 +250,6 @@ export function CharacterEditorModal({
             setIsUploading(false);
         }
 
-        // ✅ Upload voice file if provided
         let finalVoiceFilename: string | undefined = isNewClone ? undefined : (existingCharacter?.voice);
 
         if (voiceFile) {
@@ -267,7 +264,6 @@ export function CharacterEditorModal({
             }
             setIsUploading(false);
         } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') {
-            // Voice was explicitly removed
             finalVoiceFilename = undefined;
         }
 
@@ -311,19 +307,8 @@ export function CharacterEditorModal({
             }
         }
 
-        // ✅ Reconstruct Sampler with selected Stop Patterns
         const baseSampler = allSamplers.find(s => s.id === selectedSamplerId);
-        const allStopPatterns = baseSampler ? baseSampler.stopPatterns : []; 
-        // Note: In a real app, you might need access to ALL global stop patterns here, 
-        // not just those attached to the selected sampler, if characters can mix-and-match globally.
-        // Assuming for now we filter the global list or the sampler provides the pool.
-        // If you have a global list of stop patterns passed as prop, use that instead.
-        // For this implementation, we assume the user selects patterns that exist in the system.
-        // We will filter the global 'allStopPatterns' if available, otherwise we rely on the sampler's list + new selections.
-        // To make this robust like SamplerEditor, we need the global list of StopPatterns. 
-        // Since it's not in props, we assume the 'selectedStopPatternIds' refer to valid IDs known by the backend.
         
-        // Construct the final sampler object with the specific stop patterns selected
         const finalSampler = baseSampler ? {
             ...baseSampler,
             stopPatterns: baseSampler.stopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id))
@@ -342,6 +327,7 @@ export function CharacterEditorModal({
             initiativeWeight: finalIW,
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
+            doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -354,7 +340,6 @@ export function CharacterEditorModal({
         onClose();
     };
 
-    // ✅ Clone: save as new character with a new ID and "(Clone)" suffix
     const handleClone = async () => {
         const clonedChar = await buildCharacterFromForm(true);
         if (!clonedChar) return;
@@ -376,17 +361,12 @@ export function CharacterEditorModal({
 
     const hasVoice = !!voiceFile || !!existingVoiceName;
 
-    // Helper to find stop pattern details by ID (Mocking global lookup if not passed as prop)
-    // In a real scenario, you should pass `allStopPatterns: StopPattern[]` as a prop to this component
-    // just like SamplerEditorModal does. For now, we try to find them in the selected sampler or ignore missing ones.
     const getStopPatternById = (id: string) => {
-        // Search in currently selected sampler first
         const currentSampler = allSamplers.find(s => s.id === selectedSamplerId);
         if (currentSampler) {
             const found = currentSampler.stopPatterns.find(sp => sp.id === id);
             if (found) return found;
         }
-        // Fallback: search all samplers (inefficient but works for small datasets)
         for (const s of allSamplers) {
             const found = s.stopPatterns.find(sp => sp.id === id);
             if (found) return found;
@@ -401,13 +381,11 @@ export function CharacterEditorModal({
                     <h2>{existingCharacter ? 'Edit Character' : 'Create New Character'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing character */}
                         {existingCharacter && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>
                                 Clone
                             </button>
                         )}
-                        {/* ✅ Import character card button — only when creating new */}
                         {!existingCharacter && (
                             <>
                                 <button type="button" className="editor-btn editor-btn-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>
@@ -491,7 +469,7 @@ export function CharacterEditorModal({
                                 placeholder="First message" disabled={isUploading}
                             />
 
-                            {/* ✅ Voice Upload */}
+                            {/* Voice Upload */}
                             <div className="editor-section" style={{ padding: '10px', marginBottom: 0 }}>
                                 <span className="editor-section-title" style={{ fontSize: '0.7rem' }}>Voice</span>
                                 <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '6px' }}>
@@ -553,15 +531,13 @@ export function CharacterEditorModal({
                                 placeholder="Think Prompt" disabled={isUploading}
                             />
 
-                            {/* Sampler + Stats + Stop Patterns */}
+                            {/* Sampler + Stats + Stop Patterns + Image Injection Toggle */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
                                 <select 
                                     value={selectedSamplerId} 
                                     onChange={(e) => {
                                         const newId = e.target.value;
                                         setSelectedSamplerId(newId);
-                                        // Optional: Reset stop patterns when changing sampler? 
-                                        // Or keep them? Let's keep them for now as they are independent.
                                     }}
                                     className="editor-select"
                                     style={{ opacity: isLoadingSamplers || isUploading ? 0.6 : 1, cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' }}
@@ -624,8 +600,8 @@ export function CharacterEditorModal({
                                     </div>
                                 </div>
 
-                                {/* ✅ Stop Patterns Section (Mirroring SamplerEditorModal) */}
-                                <div className="editor-section" style={{ padding: '10px', marginTop: '10px' }}>
+                                {/* Stop Patterns Section */}
+                                <div className="editor-section">
                                     <div className="editor-section-title">Character Stop Patterns</div>
                                     <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
                                         Specific stop sequences for this character (overrides/augments sampler defaults).
@@ -671,13 +647,27 @@ export function CharacterEditorModal({
                                     >
                                         <option value="" disabled>+ Add a stop pattern</option>
                                         {allSamplers.flatMap(s => s.stopPatterns)
-                                            .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id)) // Unique
+                                            .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
                                             .filter(sp => !selectedStopPatternIds.includes(sp.id))
                                             .map(sp => (
                                                 <option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>
                                             ))
                                         }
                                     </select>
+                                </div>
+
+                                {/* ✅ Do Not Inject Character Image Toggle */}
+                                <div className="editor-section">
+                                    <label className="editor-checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={doNotInjectCharacterImage}
+                                            onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)}
+                                            className="editor-checkbox-input"
+                                            disabled={isUploading}
+                                        />
+                                        <span>Do Not Inject Character Image</span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
