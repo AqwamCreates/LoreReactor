@@ -24,6 +24,10 @@ const noEmptyResponseInstructions = "I will also not create an empty response."
 
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts."
 
+const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question."
+
+const summarizationAwarenessInstructions = "If previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
+
 const contextStartString = "{"
 const contextEndString = "}"
 const turnStartString = "{"
@@ -456,7 +460,13 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const characterInstructions = `I have thought out on how to respond as Character ${participantId} (${characterName}) and I will not respond as other characters.`
 
-    metaThinkLines.push(`${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${uniqueResponseInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${nameInjection}.${thinkEndString}${contextEndString}`);
+    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${uniqueResponseInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`
+
+    if (contextLines.length > 0) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`}
+
+    constructedMetaThinkLines = `${constructedMetaThinkLines}${summarizationAwarenessInstructions}${nameInjection}.${thinkEndString}${contextEndString}`
+
+    metaThinkLines.push(constructedMetaThinkLines);
 
     // FATIGUE BLOCK
     const fatigueLines: string[] = [];
