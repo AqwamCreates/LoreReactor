@@ -373,6 +373,41 @@ export async function deleteRawCharacter(id: string): Promise<void> {
   await updateManifest(PATHS.characters, id, 'remove');
 }
 
+/**
+ * ✅ Loads a lightweight character shell WITHOUT sampler hydration.
+ * Used for list display — full hydration happens on demand via loadRawCharacter.
+ */
+export async function loadCharacterShell(id: string): Promise<Character | null> {
+    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!rawCharacter) return null;
+
+    return {
+        id,
+        name: rawCharacter.name || 'Unknown Character',
+        image: rawCharacter.image,
+        voice: rawCharacter.voice,
+        description: rawCharacter.description,
+        systemPrompt: rawCharacter.systemPrompt,
+        thinkPrompt: rawCharacter.thinkPrompt,
+        initiativeWeight: rawCharacter.initiativeWeight,
+        chatProbability: rawCharacter.chatProbability,
+        maximumChatStamina: rawCharacter.maximumChatStamina,
+        sampler: undefined, // ← Not hydrated — loaded on demand
+        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || Date.now(),
+        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || Date.now(),
+    };
+}
+
+/**
+ * ✅ Loads all characters as lightweight shells (no sampler hydration).
+ * Fast enough for mobile — full hydration deferred to editor/chat selection.
+ */
+export async function loadAllCharacterShells(): Promise<Character[]> {
+    const ids = await loadRawCharacterManifest();
+    const results = await loadInBatches(ids, loadCharacterShell);
+    return results.filter((c): c is Character => c !== null);
+}
+
 // --- Context Repository ---
 export async function loadRawContextManifest(): Promise<string[]> { 
     return await fetchJson<string[]>(`${PATHS.contexts}/${MANIFEST_FILE}`) || []; 
