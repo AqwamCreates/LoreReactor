@@ -322,7 +322,7 @@
 .message-bubble {
   position: relative;
   padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.5rem, 1.5vw, 1rem);
-  border-radius: 30px;
+  border-radius: 50px;
   font-size: clamp(0.75rem, 1.8vw, 0.875rem);
   line-height: 1.6;
   border: 1px solid var(--border);
@@ -334,13 +334,7 @@
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
-/* ✅ Desktop ONLY: hover reveals toolbar */
-@media (hover: hover) and (pointer: fine) {
-  .message-bubble:hover .message-toolbar {
-    opacity: 1;
-  }
-}
-
+.message-bubble:hover .message-toolbar { opacity: 1; }
 .message-bubble:hover {
   transform: scale(1.03) translateY(-2px);
   box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
@@ -357,7 +351,7 @@
   white-space: pre-wrap;
   user-select: text;
   display: block;
-  width: 98.5%;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -1053,7 +1047,7 @@
 }
 
 /* =============================================================================
-   6. STATISTICS BAR
+   6. STATISTICS BAR — MATCHES HEADER BUTTON SIZE ON MOBILE
    ============================================================================= */
 .chat-stats-bar {
   display: flex; justify-content: center; align-items: center;
@@ -1115,15 +1109,45 @@
   50% { opacity: 0.6; }
 }
 
+/* ✅ Mobile: match header button touch-target size (40px) instead of shrinking */
+@media (max-width: 768px) {
+  .chat-stats-bar {
+    min-height: 40px;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    border-radius: 8px;
+  }
+  .chat-stats-items { gap: 8px; }
+  .chat-stat-context-bar { width: 32px; }
+  .chat-stat-value { min-width: 18px; }
+  .chat-stat-percentage { min-width: 24px; }
+  .chat-stat-tokens { min-width: 32px; }
+  .chat-stats-details {
+    right: auto; left: 0;
+    min-width: 200px;
+    font-size: 0.7rem;
+    padding: 10px 14px;
+  }
+}
+
 @media (max-width: 480px) {
-  .chat-stats-bar { padding: 2px 6px; gap: 4px; min-height: 20px; font-size: 0.5rem; }
+  .chat-stats-bar {
+    min-height: 40px; /* ✅ Stay at 40px, NOT 20px */
+    padding: 4px 8px;
+    font-size: 0.65rem; /* ✅ Readable, NOT 0.5rem */
+  }
   .chat-stats-items { gap: 6px; }
-  .chat-stat-context-bar { width: 24px; }
-  .chat-stat-value { min-width: 12px; }
-  .chat-stat-percentage { min-width: 20px; }
+  .chat-stat-context-bar { width: 28px; }
+  .chat-stat-value { min-width: 16px; }
+  .chat-stat-percentage { min-width: 22px; }
   .chat-stat-tokens { min-width: 28px; font-size: 0.9em; }
   .chat-stat-max { font-size: 0.8em; }
-  .chat-stats-details { right: auto; left: 0; min-width: 160px; font-size: 0.6rem; padding: 8px 12px; }
+  .chat-stats-details {
+    right: auto; left: 0;
+    min-width: 180px;
+    font-size: 0.65rem;
+    padding: 8px 12px;
+  }
 }
 
 .chat-stat-context-bar {
@@ -1374,7 +1398,7 @@ select {
   animation: slideInRight 0.3s ease-out forwards;
   font-size: 0.85rem;
   font-weight: 500;
-  box-sizing: border-box; /* ✅ Prevents padding from adding to width */
+  box-sizing: border-box;
 }
 
 .toast-success { border-left-color: #10b981; }
@@ -1383,7 +1407,7 @@ select {
 
 .toast-message {
   flex: 1;
-  min-width: 0; /* ✅ Allows text to shrink below content size */
+  min-width: 0;
   margin-right: 12px;
   word-break: break-word;
   overflow: hidden;
@@ -1401,7 +1425,7 @@ select {
   line-height: 1;
   min-width: 32px; min-height: 32px;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; /* ✅ Never compress the close button */
+  flex-shrink: 0;
 }
 
 .toast-close:hover {
@@ -1421,8 +1445,8 @@ select {
   }
   .toast {
     min-width: 0;
-    max-width: 360px;  /* ← Cap width so short messages don't stretch */
-    width: auto;       /* ← Let content determine width instead of forcing 100% */
+    max-width: 360px;
+    width: auto;
   }
 }
 

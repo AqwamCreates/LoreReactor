@@ -4,10 +4,10 @@ import { detectName } from './nameDetection';
 import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 
-const contextStartString = "{"
-const contextEndString = "}"
-const turnStartString = "{"
-const turnEndString = "}"
+const contextStartString = "{{{"
+const contextEndString = "}}}"
+const turnStartString = "{{{"
+const turnEndString = "}}}"
 const commonThinkStartString = "<think>"
 const commonThinkEndString = "</think>"
 const gemmaThinkStartString = "<|channel>"
