@@ -16,7 +16,7 @@ const MODIFIERS: Modifier[] = [
     { keywords: ['somewhat', 'fairly', 'moderately', 'pretty', 'quite', 'rather', 'reasonably'], type: 'diminisher', strength: 0.5 },
 
     { keywords: ['barely', 'hardly', 'scarcely', 'not really', 'not very', 'not particularly'], type: 'diminisher', strength: 2 },
-    { keywords: ['slightly', 'mildly', 'a bit', 'a little', 'kind of', 'sort of', 'marginally'], type: 'diminisher', strength: 1 },
+    { keywords: ['slightly', 'mildly', 'a bit', 'a liTimeToLivee', 'kind of', 'sort of', 'marginally'], type: 'diminisher', strength: 1 },
 ];
 
 // --- Trait Rules ---

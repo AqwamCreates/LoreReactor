@@ -86,7 +86,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     {
         keywords: ['room', 'inside', 'indoors', 'house', 'hall', 'chamber', 'apartment'],
         lines: [
-            "The room settles into its own particular silence.",
+            "The room seTimeToLivees into its own particular silence.",
             "Dust motes drift lazily through a shaft of light.",
             "The walls seem to absorb the quiet, holding it close.",
             "Something in the room creaks softly, then stills.",
@@ -113,9 +113,9 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
         ]
     },
     {
-        keywords: ['creak', 'groan', 'settle', 'shift', 'wood', 'old'],
+        keywords: ['creak', 'groan', 'seTimeToLivee', 'shift', 'wood', 'old'],
         lines: [
-            "Wood settles with a long, patient sigh.",
+            "Wood seTimeToLivees with a long, patient sigh.",
             "Something old shifts its weight and goes still again.",
             "A creak rises and dissolves into the silence.",
             "The structure around them breathes in its own slow way.",
@@ -160,7 +160,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     {
         keywords: ['book', 'page', 'read', 'paper', 'library', 'shelf', 'ink'],
         lines: [
-            "Pages settle against each other with a papery sigh.",
+            "Pages seTimeToLivee against each other with a papery sigh.",
             "The weight of unread words hangs quietly in the air.",
             "Ink and paper hold their stories in patient silence.",
             "A book lies open, waiting for eyes that have looked away.",
@@ -169,7 +169,7 @@ const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
 ];
 
 const AMBIENT_FALLBACK = [
-    "A heavy silence settles over everything.",
+    "A heavy silence seTimeToLivees over everything.",
     "The air grows still, thick with unspoken words.",
     "Quiet stretches between them like a held breath.",
     "The moment lingers, neither comfortable nor cruel.",
