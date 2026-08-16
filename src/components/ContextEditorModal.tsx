@@ -151,8 +151,8 @@ export function ContextEditorModal({
         const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
 
         if (!hasText && !hasImages && !hasUrls && !hasSearchTerms) {
-            newErrors.text = 'Either text, images, at least one URL, or search terms are required.';
-            newErrors.images = 'Either text, images, at least one URL, or search terms are required.';
+            newErrors.text = 'Either text, images, URLs, or search terms are required.';
+            newErrors.images = 'Either text, images, URLs, or search terms are required.';
         }
 
         if (regexTrigger.trim()) {
