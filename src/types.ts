@@ -59,10 +59,10 @@ export interface Context extends ObjectData {
     searchTerms?: string[]
     searchEngine?: searchEngine
     urls?: string[];              // URL to fetch content from
+    includeLinkImages?: boolean
     linkRecursionEnabled?: boolean;  // Can fetched content trigger further context entries?
     linkMaxDepth?: number;           // Max depth for recursive link following (overrides global)
     linkFetchMode?: 'full' | 'summary' | 'extract'; // How to process fetched content
-    lastFetchedTimestamp?: number;   // When was this URL last fetched?
     fetchCacheTimeToLiveMs?: number;        // Cache TimeToLive in ms (0 = always refetch, default = 300000 / 5min)
     regularExpressionTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
@@ -84,10 +84,10 @@ export interface RawContext extends RawData {
     searchTerms?: string[]
     searchEngine?: searchEngine
     urls?: string[];
+    includeLinkImages?: boolean
     linkRecursionEnabled?: boolean;
     linkMaxDepth?: number;
     linkFetchMode?: 'full' | 'summary' | 'extract';
-    lastFetchedTimestamp?: number;
     fetchCacheTimeToLiveMs?: number;
     regularExpressionTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
@@ -362,4 +362,18 @@ export interface ParsedCharacterCard {
     tags?: string[];
     creator?: string;
     characterVersion?: string;
+}
+
+export interface Webpage extends ObjectData {
+
+  url: string
+  content: string
+
+}
+
+export interface RawWebpage extends RawData {
+
+  url: string
+  content: string
+
 }

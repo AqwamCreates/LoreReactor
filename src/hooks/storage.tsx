@@ -3,7 +3,7 @@ import type {
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
-  SummarizationStep, RawSummarizationStep
+  SummarizationStep, RawSummarizationStep, Webpage, RawWebpage
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -45,7 +45,6 @@ const DEFAULT_ACTIONS: InterjectableAction[] = [
   { label: 'Pout At', count: 0 }
 ];
 
-// ✅ Default summarization steps for new profiles or profiles without steps
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
@@ -116,6 +115,7 @@ const PATHS = {
   kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
   profiles: "/user_data/profile_data",
+  webpages: "/user_data/webpage_data",
   actions: "/user_data/actions.json",
 };
 const MANIFEST_FILE = 'manifest.json';
@@ -191,7 +191,6 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
   await putJson(manifestUrl, newIds);
 }
 
-// Image Upload Helper
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -205,7 +204,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// --- Batch Loading Utility ---
 async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize: number = 5): Promise<(T | null)[]> {
   const results: (T | null)[] = [];
   for (let i = 0; i < ids.length; i += batchSize) {
@@ -395,10 +393,10 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         searchTerms: rawContext.searchTerms || [],
         searchEngine: rawContext.searchEngine,
         urls: rawContext.urls || [],
+        includeLinkImages: rawContext.includeLinkImages,
         linkRecursionEnabled: rawContext.linkRecursionEnabled,
         linkMaxDepth: rawContext.linkMaxDepth,
-        linkFetchMode: rawContext.linkFetchMode|| 'full',
-        lastFetchedTimestamp: rawContext.lastFetchedTimestamp,
+        linkFetchMode: rawContext.linkFetchMode || 'full',
         fetchCacheTimeToLiveMs: rawContext.fetchCacheTimeToLiveMs,
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
@@ -558,7 +556,6 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
 
     const now = Date.now();
 
-    // ✅ Hydrate summarization steps — add ids/timestamps if missing, fall back to defaults
     const rawSteps = rawProfile.summarizationSteps || [];
     const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
         ? rawSteps.map((step, i) => ({
@@ -615,7 +612,6 @@ export async function loadAllRawProfiles(): Promise<Profile[]> {
 
 export async function saveRawProfile(profile: Profile): Promise<void> {
     const { id, summarizationSteps, ...rawProfile } = profile;
-    // ✅ Strip id from each step since RawSummarizationStep extends RawData (no id)
     const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ id: _stepId, ...rest }) => rest);
     const payload: RawProfile = {
         ...rawProfile,
@@ -631,6 +627,56 @@ export async function deleteRawProfile(id: string): Promise<void> {
     await updateManifest(PATHS.profiles, id, 'remove');
 }
 
+// --- Webpage Repository ---
+export async function loadRawWebpageManifest(): Promise<string[]> {
+    return await fetchJson<string[]>(`${PATHS.webpages}/${MANIFEST_FILE}`) || [];
+}
+
+export async function loadRawWebpage(id: string): Promise<Webpage | null> {
+    const rawWebpage = await fetchJson<RawWebpage>(`${PATHS.webpages}/${id}.json`);
+    if (!rawWebpage) return null;
+
+    return {
+        id,
+        name: rawWebpage.name || 'Untitled Webpage',
+        description: rawWebpage.description,
+        url: rawWebpage.url,
+        content: rawWebpage.content,
+        firstCreatedTimestamp: rawWebpage.firstCreatedTimestamp || Date.now(),
+        lastUpdatedTimestamp: rawWebpage.lastUpdatedTimestamp || Date.now(),
+    };
+}
+
+export async function loadAllRawWebpages(): Promise<Webpage[]> {
+    const ids = await loadRawWebpageManifest();
+    const results = await loadInBatches(ids, loadRawWebpage);
+    return results.filter((w): w is Webpage => w !== null);
+}
+
+export async function saveRawWebpage(webpage: Webpage): Promise<void> {
+    const { id, ...rawWebpage } = webpage;
+    const payload: RawWebpage = {
+        ...rawWebpage,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.webpages}/${id}.json`, payload);
+    await updateManifest(PATHS.webpages, id, 'add');
+}
+
+export async function deleteRawWebpage(id: string): Promise<void> {
+    await deleteResource(`${PATHS.webpages}/${id}.json`);
+    await updateManifest(PATHS.webpages, id, 'remove');
+}
+
+/**
+ * Looks up a cached webpage by URL. Returns null if not found.
+ * Used by linkFetcher to check persistent cache before fetching.
+ */
+export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
+    const all = await loadAllRawWebpages();
+    return all.find(w => w.url === url) || null;
+}
+
 // --- Chat Message Repository ---
 export async function deleteRawChatMessage(id: string): Promise<void> { 
     await deleteResource(`${PATHS.chatMessages}/${id}.json`); 
@@ -641,10 +687,6 @@ export async function loadRawChatManifest(): Promise<string[]> {
     return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
 }
 
-/**
- * ✅ Builds a ChatData shell WITHOUT loading messages.
- * Messages are loaded separately via loadChatMessages() on demand.
- */
 async function buildChatDataShell(
   id: string, 
   rawChatData: RawChatData, 
@@ -679,8 +721,8 @@ async function buildChatDataShell(
     protagonist, 
     participants, 
     contexts, 
-    chatMessageHistory: [], // ✅ Empty — loaded on demand
-    messageCount: rawChatData.chatMessageIdHistory?.length ?? 0, // ✅ Available without loading messages
+    chatMessageHistory: [],
+    messageCount: rawChatData.chatMessageIdHistory?.length ?? 0,
     firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
     parentChatDataId: rawChatData.parentChatDataId || null, 
@@ -689,19 +731,12 @@ async function buildChatDataShell(
   };
 }
 
-/**
- * ✅ Loads chat messages for a specific chat on demand.
- * Called when user selects a chat, not during bulk init.
- */
 export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
-    // Already loaded — skip
     if (chatData.chatMessageHistory.length > 0) return chatData;
 
-    // Get message IDs from storage
     const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${chatData.id}.json`);
     if (!rawChatData || !rawChatData.chatMessageIdHistory?.length) return chatData;
 
-    // Build character map from current participants for resolving message authors
     const charMap = new Map<string, Character>();
     charMap.set(chatData.protagonist.id, chatData.protagonist);
     for (const p of chatData.participants) {
@@ -732,10 +767,6 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
     return { ...chatData, chatMessageHistory, messageCount: chatMessageHistory.length };
 }
 
-/**
- * ✅ Loads a single chat's full data including messages.
- * Used when switching to a specific chat or for operations needing messages.
- */
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
@@ -753,19 +784,13 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   const shell = await buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
   if (!shell) return null;
 
-  // ✅ Load messages inline for single-chat loads
   return loadChatMessages(shell);
 }
 
-/**
- * ✅ Bulk loads ALL chats WITHOUT messages for list display.
- * Messages are loaded on demand when user selects a chat.
- */
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  // Only load metadata dependencies — NOT messages
   const [allCharacters, allContexts, allProfiles] = await Promise.all([
     loadAllRawCharacters(),
     loadAllRawContexts(),
