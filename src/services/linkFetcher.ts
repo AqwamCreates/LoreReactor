@@ -1,17 +1,21 @@
 // src/services/linkFetcher.ts
-
-import { estimateTokens } from './LanguageModelEngine';
+import { estimateTokens, type LanguageModelContext } from './LanguageModelEngine';
+import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
+import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
 import type { searchEngine } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_CONTENT_LENGTH = 8000;
+const MAX_IMAGES_PER_PAGE = 10;
 
 interface FetchResult {
     url: string;
     content: string;
     links: string[];
+    images: WebpageImageInfo[];
     fetchedAt: number;
     tokenEstimate: number;
     error?: string;
@@ -44,12 +48,48 @@ export function buildSearchUrl(terms: string[], engine: searchEngine): string {
     }
 }
 
-function parseHtml(html: string): { text: string; links: string[] } {
+function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; images: WebpageImageInfo[] } {
     const linkRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
     const links: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = linkRegex.exec(html)) !== null) {
         links.push(match[1]);
+    }
+
+    // Extract images from <img> tags
+    const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
+    const altRegex = /alt=["']([^"']*)["']/i;
+    const titleRegex = /title=["']([^"']*)["']/i;
+    const images: WebpageImageInfo[] = [];
+    let imgMatch: RegExpExecArray | null;
+
+    while ((imgMatch = imgRegex.exec(html)) !== null && images.length < MAX_IMAGES_PER_PAGE) {
+        let imgUrl = imgMatch[1];
+
+        // Resolve relative URLs against base
+        if (!imgUrl.startsWith('http')) {
+            try {
+                imgUrl = new URL(imgUrl, baseUrl).href;
+            } catch {
+                continue;
+            }
+        }
+
+        // Skip tiny tracking pixels, icons, and data URIs
+        if (imgUrl.startsWith('data:') || imgUrl.includes('pixel') || imgUrl.includes('spacer') || imgUrl.includes('1x1') || imgUrl.includes('blank.gif')) {
+            continue;
+        }
+
+        const tagStr = imgMatch[0];
+        const altMatch = altRegex.exec(tagStr);
+        const titleMatch = titleRegex.exec(tagStr);
+        const alt = altMatch?.[1]?.trim() || undefined;
+        const title = titleMatch?.[1]?.trim() || undefined;
+
+        images.push({
+            url: imgUrl,
+            alt: alt || title,
+        });
     }
 
     let cleaned = html
@@ -74,10 +114,10 @@ function parseHtml(html: string): { text: string; links: string[] } {
     cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
     if (cleaned.length > MAX_CONTENT_LENGTH) {
-        cleaned = cleaned.substring(0, MAX_CONTENT_LENGTH) + '\n\n[...content truncated...]';
+        cleaned = `${cleaned.substring(0, MAX_CONTENT_LENGTH)}\n\n[...content truncated...]`;
     }
 
-    return { text: cleaned, links };
+    return { text: cleaned, links, images };
 }
 
 /**
@@ -118,19 +158,43 @@ function extractStructuredContent(text: string): string {
 
     const result = kept.join('\n');
     if (result.length > MAX_CONTENT_LENGTH) {
-        return result.substring(0, MAX_CONTENT_LENGTH) + '\n\n[...extracted content truncated...]';
+        return `${result.substring(0, MAX_CONTENT_LENGTH)}\n\n[...extracted content truncated...]`;
     }
     return result || '[No structured content extracted]';
 }
 
 async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode: string): Promise<FetchResult> {
     const now = Date.now();
+
+    // Layer 1: In-memory cache
     const cacheKey = getCacheKey(url, fetchMode);
     const cached = fetchCache.get(cacheKey);
     if (cached && (now - cached.fetchedAt) < cacheTimeToLiveMs) {
         return cached;
     }
 
+    // Layer 2: Persistent disk cache
+    if (cacheTimeToLiveMs > 0) {
+        try {
+            const diskCached = await findWebpageByUrl(url);
+            if (diskCached && (now - diskCached.lastUpdatedTimestamp) < cacheTimeToLiveMs) {
+                const result: FetchResult = {
+                    url,
+                    content: diskCached.content,
+                    links: [],
+                    images: [],
+                    fetchedAt: diskCached.lastUpdatedTimestamp,
+                    tokenEstimate: estimateTokens(diskCached.content),
+                };
+                fetchCache.set(cacheKey, result);
+                return result;
+            }
+        } catch (e) {
+            console.warn(`Failed to check disk cache for ${url}:`, e);
+        }
+    }
+
+    // Layer 3: Network fetch
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -154,14 +218,16 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         let content: string;
         let links: string[] = [];
+        let images: WebpageImageInfo[] = [];
 
         if (contentType.includes('text/html')) {
-            const parsed = parseHtml(rawBody);
+            const parsed = parseHtml(rawBody, url);
             content = parsed.text;
             links = parsed.links;
+            images = parsed.images;
         } else {
             content = rawBody.length > MAX_CONTENT_LENGTH
-                ? rawBody.substring(0, MAX_CONTENT_LENGTH) + '\n\n[...content truncated...]'
+                ? `${rawBody.substring(0, MAX_CONTENT_LENGTH)}\n\n[...content truncated...]`
                 : rawBody;
         }
 
@@ -169,11 +235,27 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             url,
             content,
             links,
+            images,
             fetchedAt: now,
             tokenEstimate: estimateTokens(content),
         };
 
         fetchCache.set(cacheKey, result);
+
+        // Save to persistent disk cache
+        try {
+            await saveRawWebpage({
+                id: uuidv4(),
+                name: url,
+                url,
+                content,
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now,
+            });
+        } catch (e) {
+            console.warn(`Failed to persist webpage cache for ${url}:`, e);
+        }
+
         return result;
 
     } catch (e) {
@@ -187,6 +269,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             url,
             content: '',
             links: [],
+            images: [],
             fetchedAt: now,
             tokenEstimate: 0,
             error: errorMsg,
@@ -259,7 +342,11 @@ export async function fetchLinkContent(
  * Shares a visited set across all URLs to prevent duplicate fetches.
  * Returns combined results and aggregated error list.
  *
- * ✅ Also accepts searchTerms + searchEngine — converts them to search URLs
+ * For 'summary' fetchMode, each page is individually summarized via
+ * WebpageSummarizationEngine (including image metadata when available),
+ * then multi-page results are merged.
+ *
+ * Also accepts searchTerms + searchEngine — converts them to search URLs
  * and merges them into the fetch pipeline alongside direct URLs.
  */
 export async function fetchMultipleContextUrls(
@@ -270,9 +357,11 @@ export async function fetchMultipleContextUrls(
         fetchMode?: 'full' | 'summary' | 'extract';
         searchTerms?: string[];
         searchEngine?: searchEngine;
+        modelContext?: LanguageModelContext;
+        summaryMaxTokens?: number;
+        includeImages?: boolean;
     } = {}
 ): Promise<{ results: FetchResult[]; errors: string[] }> {
-    // Build the full URL list: direct URLs + search URLs from terms
     const allUrls = [...urls];
 
     if (options.searchTerms && options.searchTerms.length > 0 && options.searchEngine) {
@@ -298,6 +387,66 @@ export async function fetchMultipleContextUrls(
             allResults.push(result);
             if (result.error) {
                 errors.push(`${result.url}: ${result.error}`);
+            }
+        }
+    }
+
+    // Summary mode: summarize each page individually (with images), then merge if multiple
+    if (options.fetchMode === 'summary' && options.modelContext) {
+        const validResults = allResults.filter(r => !r.error && r.content.length > 0);
+        const maxTokens = options.summaryMaxTokens ?? 512;
+        const includeImages = options.includeImages ?? false;
+
+        if (validResults.length > 0) {
+            const summarizedEntries: { url: string; summary: string }[] = [];
+
+            for (const result of validResults) {
+                const imagesForSummary = includeImages && result.images.length > 0
+                    ? result.images
+                    : undefined;
+
+                const summary = await summarizeWebpageContent(
+                    result.content,
+                    result.url,
+                    options.modelContext,
+                    maxTokens,
+                    imagesForSummary
+                );
+                if (summary) {
+                    summarizedEntries.push({ url: result.url, summary });
+                }
+            }
+
+            if (summarizedEntries.length > 0) {
+                let finalContent: string;
+
+                if (summarizedEntries.length === 1) {
+                    finalContent = `[Summarized: ${summarizedEntries[0].url}]\n${summarizedEntries[0].summary}`;
+                } else {
+                    const merged = await mergeWebpageSummaries(
+                        summarizedEntries,
+                        options.modelContext,
+                        maxTokens * 2
+                    );
+                    if (merged) {
+                        const sourceList = summarizedEntries.map(e => e.url).join(', ');
+                        finalContent = `[Summarized & Merged from: ${sourceList}]\n${merged}`;
+                    } else {
+                        finalContent = summarizedEntries
+                            .map(e => `[Summarized: ${e.url}]\n${e.summary}`)
+                            .join('\n\n---\n\n');
+                    }
+                }
+
+                allResults.length = 0;
+                allResults.push({
+                    url: summarizedEntries.length === 1 ? summarizedEntries[0].url : 'merged-summary',
+                    content: finalContent,
+                    links: [],
+                    images: [],
+                    fetchedAt: Date.now(),
+                    tokenEstimate: estimateTokens(finalContent),
+                });
             }
         }
     }

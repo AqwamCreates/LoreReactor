@@ -1,4 +1,4 @@
-// src/services/chatLogic.ts
+// src/hooks/chatLogic.ts
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
@@ -385,12 +385,21 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         return combinationCache[ctxType][tgtType];
     };
 
-    // ✅ LINK-BASED CONTEXT FETCHING — supports multiple URLs and search terms per context entry
+    // ✅ LINK-BASED CONTEXT FETCHING — delegates summarization to linkFetcher/WebpageSummarizationEngine
     const fetchedContentMap = new Map<string, string>();
     const webContexts = contexts.filter(c =>
         (c.urls && c.urls.length > 0) ||
-        (c.searchTerms && c.searchTerms.length > 0 && c.searchEngine)
+        (c.searchTerms && c.searchTerms.length > 0)
     );
+
+    // Build model context for summary mode
+    const selectedModelParams = (sampler?.parameters as any)?._selectedModel;
+    const modelContext = selectedModelParams ? {
+        apiKey: selectedModelParams.apiKey,
+        backend: selectedModelParams.backend,
+        modelPath: selectedModelParams.model,
+        runtimePort: runtimePort || selectedModelParams.parameters?._runtimePort,
+    } : { runtimePort };
 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (ctx) => {
@@ -398,7 +407,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const maxDepth = ctx.linkMaxDepth ?? (ctx.linkRecursionEnabled ? 3 : 0);
             const fetchMode = ctx.linkFetchMode ?? 'full';
 
-            // Pass both direct URLs and search terms to the batch fetcher
+            // Delegate everything to linkFetcher — it handles fetching, summarization,
+            // image extraction, merging, and persistent caching internally
             const { results, errors } = await fetchMultipleContextUrls(
                 ctx.urls ?? [],
                 {
@@ -407,6 +417,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                     fetchMode,
                     searchTerms: ctx.searchTerms,
                     searchEngine: ctx.searchEngine,
+                    modelContext,
+                    summaryMaxTokens: 512,
+                    includeImages: ctx.includeLinkImages ?? false,
                 }
             );
 
@@ -419,30 +432,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
             if (validResults.length === 0) return;
 
-            // Summary mode: send through LLM
-            if (fetchMode === 'summary') {
-                const combinedRaw = validResults
-                    .map(r => `[Source: ${r.url}]\n${r.content}`)
-                    .join('\n\n---\n\n');
-
-                try {
-                    const summary = await tokenEngine.generateCompletion(
-                        `Summarize the following web content concisely, preserving all key facts, names, dates, and relationships. Output only the summary:\n\n${combinedRaw}`,
-                        { runtimePort },
-                        { maxTokens: 512, temperature: 0.3 }
-                    );
-
-                    if (summary && summary.trim().length > 0) {
-                        fetchedContentMap.set(ctx.id, `[Summarized Web Content]\n${summary.trim()}`);
-                        return;
-                    }
-                } catch (e) {
-                    console.warn(`Summary generation failed for ${ctx.name}, falling back to full content`, e);
-                    fetchErrors.push(`${ctx.name}: Summary generation failed, using full content`);
-                }
-            }
-
-            // Full / extract mode (extract already processed in linkFetcher)
+            // Results are already summarized/merged by linkFetcher when fetchMode === 'summary'
+            // For full/extract modes, concatenate multiple results
             const combinedContent = validResults
                 .map(r => `[Source: ${r.url}]\n${r.content}`)
                 .join('\n\n---\n\n');

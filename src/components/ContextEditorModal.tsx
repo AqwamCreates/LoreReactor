@@ -62,6 +62,9 @@ export function ContextEditorModal({
     const [newSearchTermInput, setNewSearchTermInput] = useState('');
     const [searchEngine, setSearchEngine] = useState<searchEngine>('Google');
 
+    // ✅ Include link images toggle
+    const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(false);
+
     useEffect(() => {
         if (isOpen) {
             if (existingContext) {
@@ -99,6 +102,9 @@ export function ContextEditorModal({
                 setSearchTerms(existingContext.searchTerms ?? []);
                 setNewSearchTermInput('');
                 setSearchEngine(existingContext.searchEngine || 'Google');
+
+                // ✅ Restore includeLinkImages
+                setIncludeLinkImages(existingContext.includeLinkImages ?? false);
             } else {
                 setName('');
                 setDescription('');
@@ -126,6 +132,8 @@ export function ContextEditorModal({
                 setSearchTerms([]);
                 setNewSearchTermInput('');
                 setSearchEngine('Google');
+
+                setIncludeLinkImages(false);
             }
             setErrors({});
             setTestText('');
@@ -281,6 +289,7 @@ export function ContextEditorModal({
             characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
 
             urls: hasUrls ? [...urls] : undefined,
+            includeLinkImages: hasWebContent ? includeLinkImages : undefined,
             linkRecursionEnabled: hasWebContent ? linkRecursionEnabled : undefined,
             linkMaxDepth: hasWebContent ? linkMaxDepth : undefined,
             linkFetchMode: hasWebContent ? (linkFetchMode as any) : undefined,
@@ -435,6 +444,24 @@ export function ContextEditorModal({
                             </div>
                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Press Enter or click Add to add a term.</div>
                         </div>
+
+                        {/* ✅ Include Link Images — ABOVE Search Engine */}
+                        {hasWebContent && (
+                            <div style={{ marginBottom: '12px' }}>
+                                <label className="editor-checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={includeLinkImages}
+                                        onChange={(e) => setIncludeLinkImages(e.target.checked)}
+                                        className="editor-checkbox-input"
+                                    />
+                                    <span>Include Link Images</span>
+                                </label>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                    Extract images from fetched pages and include them in summaries.
+                                </div>
+                            </div>
+                        )}
 
                         {/* Search Engine selector — shown when search terms exist */}
                         {hasSearchTerms && (
