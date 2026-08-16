@@ -8,8 +8,6 @@ import { v4 as uuidv4 } from 'uuid';
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_TIMEOUT_MS = 10000;
-const MAX_CONTENT_LENGTH = 8000;
-const MAX_IMAGES_PER_PAGE = 10;
 
 interface FetchResult {
     url: string;
@@ -63,7 +61,7 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
     const images: WebpageImageInfo[] = [];
     let imgMatch: RegExpExecArray | null;
 
-    while ((imgMatch = imgRegex.exec(html)) !== null && images.length < MAX_IMAGES_PER_PAGE) {
+    while ((imgMatch = imgRegex.exec(html)) !== null) {
         let imgUrl = imgMatch[1];
 
         // Resolve relative URLs against base
@@ -113,10 +111,6 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
 
     cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
-    if (cleaned.length > MAX_CONTENT_LENGTH) {
-        cleaned = `${cleaned.substring(0, MAX_CONTENT_LENGTH)}\n\n[...content truncated...]`;
-    }
-
     return { text: cleaned, links, images };
 }
 
@@ -157,9 +151,6 @@ function extractStructuredContent(text: string): string {
     }
 
     const result = kept.join('\n');
-    if (result.length > MAX_CONTENT_LENGTH) {
-        return `${result.substring(0, MAX_CONTENT_LENGTH)}\n\n[...extracted content truncated...]`;
-    }
     return result || '[No structured content extracted]';
 }
 
@@ -226,9 +217,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             links = parsed.links;
             images = parsed.images;
         } else {
-            content = rawBody.length > MAX_CONTENT_LENGTH
-                ? `${rawBody.substring(0, MAX_CONTENT_LENGTH)}\n\n[...content truncated...]`
-                : rawBody;
+            content = rawBody;
         }
 
         const result: FetchResult = {
@@ -358,7 +347,6 @@ export async function fetchMultipleContextUrls(
         searchTerms?: string[];
         searchEngine?: searchEngine;
         modelContext?: LanguageModelContext;
-        summaryMaxTokens?: number;
         includeImages?: boolean;
     } = {}
 ): Promise<{ results: FetchResult[]; errors: string[] }> {
@@ -394,7 +382,6 @@ export async function fetchMultipleContextUrls(
     // Summary mode: summarize each page individually (with images), then merge if multiple
     if (options.fetchMode === 'summary' && options.modelContext) {
         const validResults = allResults.filter(r => !r.error && r.content.length > 0);
-        const maxTokens = options.summaryMaxTokens ?? 512;
         const includeImages = options.includeImages ?? false;
 
         if (validResults.length > 0) {
@@ -409,7 +396,6 @@ export async function fetchMultipleContextUrls(
                     result.content,
                     result.url,
                     options.modelContext,
-                    maxTokens,
                     imagesForSummary
                 );
                 if (summary) {
@@ -426,7 +412,6 @@ export async function fetchMultipleContextUrls(
                     const merged = await mergeWebpageSummaries(
                         summarizedEntries,
                         options.modelContext,
-                        maxTokens * 2
                     );
                     if (merged) {
                         const sourceList = summarizedEntries.map(e => e.url).join(', ');
