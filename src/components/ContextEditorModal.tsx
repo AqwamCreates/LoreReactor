@@ -52,7 +52,6 @@ export function ContextEditorModal({
     // Multiple URL fields
     const [urls, setUrls] = useState<string[]>([]);
     const [newUrlInput, setNewUrlInput] = useState('');
-    const [linkRecursionEnabled, setLinkRecursionEnabled] = useState(false);
     const [linkMaxDepth, setLinkMaxDepth] = useState<number>(3);
     const [linkFetchMode, setLinkFetchMode] = useState<string>('full');
     const [fetchCacheTimeToLiveMs, setFetchCacheTimeToLiveMs] = useState<number>(300000);
@@ -94,8 +93,7 @@ export function ContextEditorModal({
 
                 setUrls(existingContext.urls ?? []);
                 setNewUrlInput('');
-                setLinkRecursionEnabled(existingContext.linkRecursionEnabled ?? false);
-                setLinkMaxDepth(existingContext.linkMaxDepth ?? 3);
+                setLinkMaxDepth(existingContext.maximumLinkDepth ?? 0);
                 setLinkFetchMode(existingContext.linkFetchMode || 'full');
                 setFetchCacheTimeToLiveMs(existingContext.fetchCacheTimeToLiveMs ?? 300000);
 
@@ -124,8 +122,7 @@ export function ContextEditorModal({
 
                 setUrls([]);
                 setNewUrlInput('');
-                setLinkRecursionEnabled(false);
-                setLinkMaxDepth(3);
+                setLinkMaxDepth(0);
                 setLinkFetchMode('full');
                 setFetchCacheTimeToLiveMs(300000);
 
@@ -290,8 +287,7 @@ export function ContextEditorModal({
 
             urls: hasUrls ? [...urls] : undefined,
             includeLinkImages: hasWebContent ? includeLinkImages : undefined,
-            linkRecursionEnabled: hasWebContent ? linkRecursionEnabled : undefined,
-            linkMaxDepth: hasWebContent ? linkMaxDepth : undefined,
+            maximumLinkDepth: hasWebContent ? linkMaxDepth : undefined,
             linkFetchMode: hasWebContent ? (linkFetchMode as any) : undefined,
             fetchCacheTimeToLiveMs: hasWebContent ? fetchCacheTimeToLiveMs : undefined,
 
@@ -314,13 +310,6 @@ export function ContextEditorModal({
         const clonedContext = await buildContextFromForm(true);
         if (!clonedContext) return;
         onSave(clonedContext);
-        onClose();
-    };
-
-    const handleDelete = () => {
-        if (!existingContext) return;
-        if (!window.confirm(`Delete context "${existingContext.name}" permanently?`)) return;
-        onDelete?.(existingContext.id);
         onClose();
     };
 
@@ -540,34 +529,19 @@ export function ContextEditorModal({
                                     </select>
                                 </div>
 
-                                <label className="editor-checkbox-label">
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label className="editor-label">Max Link Depth</label>
                                     <input
-                                        type="checkbox"
-                                        checked={linkRecursionEnabled}
-                                        onChange={(e) => setLinkRecursionEnabled(e.target.checked)}
-                                        className="editor-checkbox-input"
+                                        type="number"
+                                        min="0"
+                                        max="5"
+                                        value={linkMaxDepth}
+                                        onChange={(e) => setLinkMaxDepth(Math.max(0, Math.min(5, Number(e.target.value) || 0)))}
+                                        className="editor-input"
+                                        style={{ textAlign: 'right' }}
                                     />
-                                    <span>Follow Links Recursively</span>
-                                </label>
-                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                    Also fetch pages linked from the fetched content.
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>How many levels of links to follow. 0 = no recursion.</div>
                                 </div>
-
-                                {linkRecursionEnabled && (
-                                    <div style={{ marginTop: '8px', marginBottom: '12px' }}>
-                                        <label className="editor-label">Max Link Depth</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="5"
-                                            value={linkMaxDepth}
-                                            onChange={(e) => setLinkMaxDepth(Math.max(1, Math.min(5, Number(e.target.value) || 3)))}
-                                            className="editor-input"
-                                            style={{ textAlign: 'right' }}
-                                        />
-                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>How many levels of links to follow (1–5)</div>
-                                    </div>
-                                )}
 
                                 <div style={{ marginTop: '8px' }}>
                                     <label className="editor-label">Cache Time-To-Live (seconds)</label>

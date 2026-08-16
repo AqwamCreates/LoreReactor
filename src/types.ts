@@ -59,9 +59,8 @@ export interface Context extends ObjectData {
     searchTerms?: string[]
     searchEngine?: searchEngine
     urls?: string[];              // URL to fetch content from
-    includeLinkImages?: boolean
-    linkRecursionEnabled?: boolean;  // Can fetched content trigger further context entries?
-    linkMaxDepth?: number;           // Max depth for recursive link following (overrides global)
+    includeLinkImages?: boolean// Can fetched content trigger further context entries?
+    maximumLinkDepth?: number;           // Max depth for recursive link following (overrides global)
     linkFetchMode?: 'full' | 'summary' | 'extract'; // How to process fetched content
     fetchCacheTimeToLiveMs?: number;        // Cache TimeToLive in ms (0 = always refetch, default = 300000 / 5min)
     regularExpressionTrigger?: string;
@@ -85,8 +84,7 @@ export interface RawContext extends RawData {
     searchEngine?: searchEngine
     urls?: string[];
     includeLinkImages?: boolean
-    linkRecursionEnabled?: boolean;
-    linkMaxDepth?: number;
+    maximumLinkDepth?: number;
     linkFetchMode?: 'full' | 'summary' | 'extract';
     fetchCacheTimeToLiveMs?: number;
     regularExpressionTrigger?: string;
