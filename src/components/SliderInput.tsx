@@ -19,7 +19,7 @@ interface SliderInputProps {
 const formatNumber = (num: number, decimals: number): string => {
     if (decimals === 0) return String(num);
     const formatted = num.toFixed(decimals);
-    return parseFloat(formatted).toString();
+    return Number.parseFloat(formatted).toString();
 };
 
 export function SliderInput({
@@ -56,10 +56,10 @@ export function SliderInput({
         const rect = sliderRef.current.getBoundingClientRect();
         const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const newValue = min! + (max! - min!) * percent;
-        const steppedValue = Math.round(newValue / step) * step;
-        const clampedValue = Math.max(min!, Math.min(max!, steppedValue));
+        const steppedVal = Math.round(newValue / step) * step;
+        const clampedVal = Math.max(min!, Math.min(max!, steppedVal));
         
-        onChange(clampedValue);
+        onChange(clampedVal);
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -118,7 +118,6 @@ export function SliderInput({
                 const stepped = Math.round(clamped / step) * step;
                 onChange(stepped);
             } else {
-                // Free input - no clamping or stepping
                 onChange(val);
             }
         }
@@ -130,7 +129,31 @@ export function SliderInput({
         }
     };
 
-    // For free input mode, just show a number input with description
+    // ✅ Shared header row: label left, number input right, baseline-aligned
+    const headerRow = (
+        <div className="slider-header-row">
+            {label && (
+                <span className="editor-label slider-label">
+                    {label}
+                </span>
+            )}
+            <input
+                type="number"
+                value={formattedDisplay}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                disabled={disabled}
+                step={step}
+                className={`slider-number-input ${isFreeInput ? 'slider-number-input-full' : ''}`}
+                style={{
+                    opacity: disabled ? 0.5 : 1,
+                    cursor: disabled ? 'not-allowed' : 'text',
+                }}
+            />
+        </div>
+    );
+
+    // ✅ FREE INPUT MODE
     if (isFreeInput) {
         return (
             <div className="slider-input-container" style={{ 
@@ -141,42 +164,10 @@ export function SliderInput({
                 opacity: disabled ? 0.6 : 1,
                 cursor: disabled ? 'not-allowed' : 'default',
             }}>
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    gap: '8px',
-                }}>
-                    <input
-                        type="number"
-                        value={formattedDisplay}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        disabled={disabled}
-                        step={step}
-                        style={{
-                            width: '100%',
-                            padding: '4px 8px',
-                            fontSize: '0.75rem',
-                            fontFamily: 'monospace',
-                            borderRadius: '4px',
-                            border: `1px solid ${disabled ? 'var(--border)' : 'var(--border)'}`,
-                            background: disabled ? 'var(--social-bg)' : 'var(--bg)',
-                            color: disabled ? 'var(--text-h)' : 'var(--text-h)',
-                            textAlign: 'right',
-                            outline: 'none',
-                            opacity: disabled ? 0.5 : 1,
-                            cursor: disabled ? 'not-allowed' : 'text',
-                        }}
-                    />
-                </div>
+                {headerRow}
                 {description && (
-                    <div style={{
-                        fontSize: '0.6rem',
-                        color: 'var(--text-h)',
+                    <div className="slider-description" style={{
                         opacity: disabled ? 0.3 : 0.5,
-                        marginTop: '2px',
-                        textAlign: 'right',
                     }}>
                         {description}
                     </div>
@@ -185,7 +176,7 @@ export function SliderInput({
         );
     }
 
-    // Full slider mode (with range)
+    // ✅ FULL SLIDER MODE
     return (
         <div className="slider-input-container" style={{ 
             display: 'flex', 
@@ -195,36 +186,7 @@ export function SliderInput({
             opacity: disabled ? 0.6 : 1,
             cursor: disabled ? 'not-allowed' : 'default',
         }}>
-            <div style={{ 
-                display: 'flex', 
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                gap: '8px',
-            }}>
-                <input
-                    type="number"
-                    value={formattedDisplay}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    disabled={disabled}
-                    step={step}
-                    style={{
-                        width: '70px',
-                        padding: '2px 6px',
-                        fontSize: '0.75rem',
-                        fontFamily: 'monospace',
-                        borderRadius: '4px',
-                        border: `1px solid ${disabled ? 'var(--border)' : 'var(--border)'}`,
-                        background: disabled ? 'var(--social-bg)' : 'var(--bg)',
-                        color: disabled ? 'var(--text-h)' : 'var(--text-h)',
-                        textAlign: 'right',
-                        outline: 'none',
-                        flexShrink: 0,
-                        opacity: disabled ? 0.5 : 1,
-                        cursor: disabled ? 'not-allowed' : 'text',
-                    }}
-                />
-            </div>
+            {headerRow}
             
             <div
                 ref={sliderRef}
@@ -234,9 +196,6 @@ export function SliderInput({
                 style={{
                     position: 'relative',
                     width: '100%',
-                    height: '6px',
-                    borderRadius: '3px',
-                    background: disabled ? 'var(--border)' : 'var(--border)',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     touchAction: 'none',
                     userSelect: 'none',
@@ -250,7 +209,7 @@ export function SliderInput({
                         left: 0,
                         top: 0,
                         height: '100%',
-                        borderRadius: '3px',
+                        borderRadius: '4px',
                         background: disabled ? 'var(--border)' : 'var(--accent)',
                         width: `${Math.min(100, Math.max(0, percentage))}%`,
                         transition: isDragging ? 'none' : 'width 0.1s ease',
@@ -265,9 +224,6 @@ export function SliderInput({
                         top: '50%',
                         left: `${Math.min(100, Math.max(0, percentage))}%`,
                         transform: 'translate(-50%, -50%)',
-                        width: '16px',
-                        height: '16px',
-                        borderRadius: '50%',
                         background: disabled ? 'var(--border)' : 'var(--accent)',
                         border: `2px solid ${disabled ? 'var(--bg)' : 'var(--bg)'}`,
                         boxShadow: disabled ? 'none' : '0 2px 4px rgba(0,0,0,0.2)',
@@ -281,19 +237,11 @@ export function SliderInput({
                         className="slider-tooltip"
                         style={{
                             position: 'absolute',
-                            bottom: '20px',
+                            bottom: '24px',
                             left: `${Math.min(100, Math.max(0, percentage))}%`,
                             transform: 'translateX(-50%)',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            background: 'var(--bg)',
-                            border: '1px solid var(--border)',
-                            fontSize: '0.7rem',
-                            fontFamily: 'monospace',
-                            color: 'var(--text-h)',
                             pointerEvents: 'none',
                             whiteSpace: 'nowrap',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                             opacity: 1,
                         }}
                     >
@@ -303,11 +251,8 @@ export function SliderInput({
             </div>
             
             {description && (
-                <div style={{
-                    fontSize: '0.6rem',
-                    color: 'var(--text-h)',
+                <div className="slider-description" style={{
                     opacity: disabled ? 0.3 : 0.5,
-                    marginTop: '2px',
                 }}>
                     {description}
                 </div>
