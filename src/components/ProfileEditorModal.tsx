@@ -143,7 +143,7 @@ export function ProfileEditorModal({
                 setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
                 setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
                 setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-                const inputStrategy = existingProfile.inputStrategy
+                const inputStrategy = existingProfile.inputStrategy;
                 const savedStrategy = inputStrategy?.length ? inputStrategy : [...DEFAULT_STRATEGY];
                 setInputStrategy(savedStrategy);
                 setSummarizationSteps(
@@ -434,52 +434,45 @@ export function ProfileEditorModal({
                             All participants get equal initiative weight regardless of character settings.
                         </div>
 
+                        {/* ✅ Chat Probability: label passed directly to SliderInput */}
                         <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === 0 ? '(Character default)' : ""}
-                                </span>
-                            </div>
                             <SliderInput
-                                label=""
+                                label="Chat Probability Override"
                                 value={chatProbability}
                                 minimumValue={0}
                                 maximumValue={1}
                                 stepValue={0.05}
                                 decimals={2}
                                 onChange={setChatProbability}
-                                description="0 = disabled (use per-character setting). Slide right to override all participants."
+                                description={chatProbability === 0
+                                    ? 'Disabled — using per-character setting. Slide right to override all participants.'
+                                    : `Override active (${chatProbability.toFixed(2)}). Set to 0 to use per-character setting.`
+                                }
                             />
                         </div>
 
+                        {/* ✅ Maximum Chat Stamina: label passed directly to SliderInput */}
                         <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === 0 ? '(Character default)' : ""}
-                                </span>
-                            </div>
                             <SliderInput
-                                label=""
+                                label="Maximum Chat Stamina Override"
                                 value={maximumChatStamina}
                                 minimumValue={0}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setMaximumChatStamina(Math.round(val))}
-                                description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
+                                description={maximumChatStamina === 0
+                                    ? 'Disabled — using per-character setting. Slide right to set a shared stamina cap.'
+                                    : `Override active (${Math.round(maximumChatStamina)}). Set to 0 to use per-character setting.`
+                                }
                             />
                         </div>
                     </div>
 
-                    {/* Cache Invalidation Reduction */}
+                    {/* ✅ Cache Invalidation Reduction: label passed directly to SliderInput */}
                     <div className="editor-section">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
-                        </div>
                         <SliderInput
-                            label=""
+                            label="Cache Invalidation Reduction"
                             value={cacheLevel}
                             minimumValue={0}
                             maximumValue={3}
@@ -490,7 +483,7 @@ export function ProfileEditorModal({
                         />
                     </div>
 
-                    {/* ✅ Voice Narration — two-column layout */}
+                    {/* Voice Narration — two-column layout */}
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -824,7 +817,7 @@ export function ProfileEditorModal({
                             })}
                         </div>
 
-                        {/* ✅ Always show all strategy types — duplicates allowed */}
+                        {/* Always show all strategy types — duplicates allowed */}
                         <div style={{ marginTop: '8px' }}>
                             <select
                                 onChange={(e) => {

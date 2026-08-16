@@ -59,7 +59,7 @@ export function useModelManager() {
                         
                         if (allIdle && !idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.add(m.id);
-                            addToast(`✅ Model idle and ready`, "success");
+                            addToast("Model idle and ready", "success");
                         } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.delete(m.id);
                         }

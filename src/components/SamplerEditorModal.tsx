@@ -44,36 +44,6 @@ interface SamplerParameters {
     [key: string]: number | string | boolean | unknown;
 }
 
-interface EnabledParams {
-    temperature: boolean;
-    top_k: boolean;
-    top_p: boolean;
-    repeat_penalty: boolean;
-    frequency_penalty: boolean;
-    presence_penalty: boolean;
-    min_p: boolean;
-    typical_p: boolean;
-    tfs_z: boolean;
-    top_a: boolean;
-    mirostat: boolean;
-    mirostat_tau: boolean;
-    mirostat_eta: boolean;
-    rep_penalty_range: boolean;
-    rep_penalty_slope: boolean;
-    encoder_repetition_penalty: boolean;
-    no_repeat_ngram_size: boolean;
-    penalty_alpha: boolean;
-    smoothing_factor: boolean;
-    smoothing_curve: boolean;
-    dry_allowed_length: boolean;
-    dry_penalty_last_n: boolean;
-    dry_base: boolean;
-    dry_multiplier: boolean;
-    dry_sequence_breaker: boolean;
-    ignore_eos: boolean;
-    [key: string]: boolean;
-}
-
 const DEFAULT_PARAMETERS: SamplerParameters = {
     temperature: 0.8,
     top_k: 40,
@@ -103,36 +73,12 @@ const DEFAULT_PARAMETERS: SamplerParameters = {
     ignore_eos: false,
 };
 
-const DEFAULT_ENABLED: EnabledParams = {
-    temperature: true,
-    top_k: true,
-    top_p: true,
-    repeat_penalty: true,
-    frequency_penalty: false,
-    presence_penalty: false,
-    min_p: false,
-    typical_p: false,
-    tfs_z: false,
-    top_a: false,
-    mirostat: false,
-    mirostat_tau: false,
-    mirostat_eta: false,
-    rep_penalty_range: false,
-    rep_penalty_slope: false,
-    encoder_repetition_penalty: false,
-    no_repeat_ngram_size: false,
-    penalty_alpha: false,
-    smoothing_factor: false,
-    smoothing_curve: false,
-    dry_allowed_length: false,
-    dry_penalty_last_n: false,
-    dry_base: false,
-    dry_multiplier: false,
-    dry_sequence_breaker: false,
-    ignore_eos: false,
-};
-
-const PARAMETER_CONFIGS: Record<string, { min: number; max: number; step: number; description: string; label: string; category: string; defaultEnabled: boolean; decimals?: number; isString?: boolean; isBoolean?: boolean }> = {
+const PARAMETER_CONFIGS: Record<string, { 
+    min: number; max: number; step: number; 
+    description: string; label: string; category: string; 
+    defaultEnabled: boolean; decimals?: number; 
+    isString?: boolean; isBoolean?: boolean 
+}> = {
     temperature: { min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 },
     top_k: { min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 },
     top_p: { min: 0, max: 1, step: 0.05, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 },
@@ -183,12 +129,13 @@ export function SamplerEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [parameters, setParameters] = useState<SamplerParameters>({ ...DEFAULT_PARAMETERS });
-    const [enabledParams, setEnabledParams] = useState<EnabledParams>({ ...DEFAULT_ENABLED });
+    // ✅ NEW: Active parameter keys (ordered list) replaces enabledParams map
+    const [activeParamKeys, setActiveParamKeys] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [maxTokens, setMaxTokens] = useState<number>(512);
     const [errors, setErrors] = useState<{ name?: string }>({});
-
-    const [parameterOrder, setParameterOrder] = useState<string[]>(Object.keys(PARAMETER_CONFIGS));
+    
+    // Drag state for reordering active params
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     useEffect(() => {
@@ -204,27 +151,32 @@ export function SamplerEditorModal({
                 });
                 setParameters(loadedParams);
 
-                // Restore enabled states
-                const storedEnabled: Partial<EnabledParams> = {};
-                Object.keys(DEFAULT_ENABLED).forEach(key => {
-                    const stored = existingSampler.parameters?.[`_enabled_${key}`];
-                    if (typeof stored === 'boolean') {
-                        storedEnabled[key as keyof EnabledParams] = stored;
-                    } else {
-                        storedEnabled[key as keyof EnabledParams] = DEFAULT_ENABLED[key as keyof EnabledParams];
-                    }
-                });
-                setEnabledParams({ ...DEFAULT_ENABLED, ...storedEnabled });
-
-                // ✅ RESTORE PARAMETER ORDER FROM SAVED DATA
-                const storedOrder = existingSampler.parameters?.['_parameterOrder'];
+                // ✅ RESTORE ACTIVE PARAMETER ORDER FROM SAVED DATA
+                const storedOrder = existingSampler.parameters?.['_parameterOrder'] as string[] | undefined;
                 if (Array.isArray(storedOrder) && storedOrder.length > 0) {
                     const validKeys = Object.keys(PARAMETER_CONFIGS);
                     const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
-                    const missingKeys = validKeys.filter(k => !safeOrder.includes(k));
-                    setParameterOrder([...safeOrder, ...missingKeys]);
+                    // Include any keys that were enabled but missing from order
+                    const missingEnabled = validKeys.filter(k => {
+                        const wasEnabled = existingSampler.parameters?.[`_enabled_${k}`];
+                        return wasEnabled === true && !safeOrder.includes(k);
+                    });
+                    setActiveParamKeys([...safeOrder, ...missingEnabled]);
                 } else {
-                    setParameterOrder(Object.keys(PARAMETER_CONFIGS));
+                    // Fallback: reconstruct from _enabled_ flags
+                    const enabledKeys: string[] = [];
+                    Object.keys(PARAMETER_CONFIGS).forEach(key => {
+                        const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
+                        if (wasEnabled === true) enabledKeys.push(key);
+                    });
+                    // If nothing was explicitly enabled, use defaults
+                    if (enabledKeys.length === 0) {
+                        setActiveParamKeys(
+                            Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled)
+                        );
+                    } else {
+                        setActiveParamKeys(enabledKeys);
+                    }
                 }
 
                 setSelectedStopPatternIds(existingSampler.stopPatterns.map(sp => sp.id));
@@ -234,21 +186,31 @@ export function SamplerEditorModal({
                 setName('');
                 setDescription('');
                 setParameters({ ...DEFAULT_PARAMETERS });
-                setEnabledParams({ ...DEFAULT_ENABLED });
-                setParameterOrder(Object.keys(PARAMETER_CONFIGS));
+                setActiveParamKeys(
+                    Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled)
+                );
                 setSelectedStopPatternIds([]);
                 setMaxTokens(512);
             }
             setErrors({});
+            setDraggedIndex(null);
         }
     }, [isOpen, existingSampler]);
 
-    const handleParameterChange = (key: keyof SamplerParameters, value: number | string | boolean) => {
+    const handleParameterChange = (key: string, value: number | string | boolean) => {
         setParameters(prev => ({ ...prev, [key]: value }));
     };
 
-    const handleEnableToggle = (key: keyof EnabledParams) => {
-        setEnabledParams(prev => ({ ...prev, [key]: !prev[key] }));
+    // ✅ ADD a parameter to the active list
+    const handleAddParam = (key: string) => {
+        if (!activeParamKeys.includes(key)) {
+            setActiveParamKeys(prev => [...prev, key]);
+        }
+    };
+
+    // ✅ REMOVE a parameter from the active list
+    const handleRemoveParam = (key: string) => {
+        setActiveParamKeys(prev => prev.filter(k => k !== key));
     };
 
     const validate = (): boolean => {
@@ -264,14 +226,14 @@ export function SamplerEditorModal({
         if (!validate()) return null;
 
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
+        const paramsWithEnabled: Record<string, unknown> = { ...parameters };
 
-        const paramsWithEnabled = { ...parameters };
+        // ✅ Persist the active parameter order
+        paramsWithEnabled['_parameterOrder'] = [...activeParamKeys];
 
-        // ✅ PERSIST THE CURRENT PARAMETER ORDER
-        paramsWithEnabled['_parameterOrder'] = [...parameterOrder];
-
-        Object.keys(enabledParams).forEach(key => {
-            paramsWithEnabled[`_enabled_${key}`] = enabledParams[key as keyof EnabledParams];
+        // ✅ Mark active params as enabled (backwards compatibility)
+        Object.keys(PARAMETER_CONFIGS).forEach(key => {
+            paramsWithEnabled[`_enabled_${key}`] = activeParamKeys.includes(key);
         });
 
         const now = Date.now();
@@ -301,13 +263,12 @@ export function SamplerEditorModal({
         onClose();
     };
 
+    // --- Drag & Drop Reorder Handlers ---
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(index));
-        setTimeout(() => {
-            (e.target as HTMLElement).style.opacity = '0.5';
-        }, 0);
+        setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0);
     };
 
     const handleDragEnd = (e: React.DragEvent) => {
@@ -324,14 +285,17 @@ export function SamplerEditorModal({
         e.preventDefault();
         const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
-        const newOrder = [...parameterOrder];
+        const newOrder = [...activeParamKeys];
         const [removed] = newOrder.splice(dragIndex, 1);
         newOrder.splice(dropIndex, 0, removed);
-        setParameterOrder(newOrder);
+        setActiveParamKeys(newOrder);
         setDraggedIndex(null);
     };
 
     if (!isOpen) return null;
+
+    // Available params = all configs minus currently active ones
+    const availableParamKeys = Object.keys(PARAMETER_CONFIGS).filter(k => !activeParamKeys.includes(k));
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -348,8 +312,8 @@ export function SamplerEditorModal({
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
-
                 <div className="modal-body editor-modal-body">
+                    {/* Name */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input
@@ -362,6 +326,7 @@ export function SamplerEditorModal({
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
+                    {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Description</label>
                         <textarea
@@ -373,6 +338,7 @@ export function SamplerEditorModal({
                         />
                     </div>
 
+                    {/* Max Tokens */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Maximum Number Of Tokens</label>
                         <input
@@ -386,20 +352,23 @@ export function SamplerEditorModal({
                         />
                     </div>
 
-                    {/* Sampling Parameters */}
+                    {/* ✅ ACTIVE SAMPLING PARAMETERS — Add/Delete List Pattern */}
                     <div className="editor-section">
                         <div className="sampler-section-header editor-section-title">
-                            <span>Sampling Parameters ({parameterOrder.length})</span>
+                            <span>Active Parameters ({activeParamKeys.length})</span>
                             <span className="sampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
+
+                        {/* Active parameter list */}
                         <div className="sampler-param-list">
-                            {parameterOrder.map((key, index) => {
+                            {activeParamKeys.length === 0 && (
+                                <div className="sampler-stop-empty">No active parameters. Add some below.</div>
+                            )}
+
+                            {activeParamKeys.map((key, index) => {
                                 const config = PARAMETER_CONFIGS[key];
                                 if (!config) return null;
-
-                                const paramKey = key as keyof SamplerParameters;
                                 const isDragging = draggedIndex === index;
-                                const isEnabled = enabledParams[paramKey as keyof EnabledParams] ?? false;
 
                                 return (
                                     <div
@@ -409,73 +378,106 @@ export function SamplerEditorModal({
                                         onDragEnd={handleDragEnd}
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, index)}
-                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''} ${!isEnabled ? 'sampler-param-disabled' : ''}`}
+                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
                                     >
                                         <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
-
                                         <div className="sampler-param-content">
-                                            {/* Line 1: checkbox + label */}
-                                            <div
-                                                className="sampler-param-label-row"
-                                                onClick={() => handleEnableToggle(paramKey as keyof EnabledParams)}
-                                            >
-                                                <div className={`sampler-checkbox ${isEnabled ? 'checked' : ''}`}>
-                                                    {isEnabled && <span className="sampler-checkbox-tick">✓</span>}
-                                                </div>
-                                                <span className={`sampler-param-name ${isEnabled ? 'sampler-param-name-enabled' : ''}`}>
-                                                    {config.label}
-                                                </span>
-                                            </div>
-
-                                            {/* Line 2: full-width input */}
-                                            <div className="sampler-param-input-row">
-                                                {config.isBoolean ? (
-                                                    <button
-                                                        type="button"
-                                                        className={`editor-btn ${parameters[paramKey] ? 'editor-btn-save' : 'editor-btn-cancel'}`}
-                                                        onClick={() => handleParameterChange(paramKey, !parameters[paramKey])}
-                                                        disabled={!isEnabled}
-                                                        style={{ padding: '2px 12px', fontSize: '0.7rem' }}
-                                                    >
-                                                        {parameters[paramKey] ? 'ON' : 'OFF'}
-                                                    </button>
-                                                ) : config.isString ? (
-                                                    <input
-                                                        type="text"
-                                                        value={parameters[paramKey] as string}
-                                                        onChange={(e) => handleParameterChange(paramKey, e.target.value)}
-                                                        disabled={!isEnabled}
-                                                        className={`editor-input sampler-string-input ${!isEnabled ? 'disabled' : ''}`}
-                                                    />
-                                                ) : (
-                                                    <SliderInput
-                                                        label=""
-                                                        value={parameters[paramKey] as number}
-                                                        minimumValue={config.min}
-                                                        maximumValue={config.max}
-                                                        stepValue={config.step}
-                                                        decimals={config.decimals || 2}
-                                                        onChange={(value) => handleParameterChange(paramKey, value)}
-                                                        disabled={!isEnabled}
-                                                    />
-                                                )}
-                                            </div>
-
-                                            {/* Line 3: description centered */}
-                                            {config.description && (
-                                                <div className="sampler-param-description">{config.description}</div>
+                                            {/* ✅ SLIDER: Let SliderInput render its own label+number header */}
+                                            {!config.isBoolean && !config.isString ? (
+                                                <>
+                                                    <div className="slider-slider-header-with-remove">
+                                                        <SliderInput
+                                                            label={config.label}
+                                                            value={parameters[key] as number}
+                                                            minimumValue={config.min}
+                                                            maximumValue={config.max}
+                                                            stepValue={config.step}
+                                                            decimals={config.decimals || 2}
+                                                            onChange={(value) => handleParameterChange(key, value)}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveParam(key)}
+                                                            className="sampler-stop-remove-btn slider-remove-inline"
+                                                            title={`Remove ${config.label}`}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                    {config.description && (
+                                                        <div className="sampler-param-description">{config.description}</div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                /* ✅ BOOLEAN / STRING: Keep manual label row */
+                                                <>
+                                                    <div className="sampler-param-label-row" style={{ justifyContent: 'space-between' }}>
+                                                        <span className="sampler-param-name sampler-param-name-enabled">
+                                                            {config.label}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveParam(key)}
+                                                            className="sampler-stop-remove-btn"
+                                                            title={`Remove ${config.label}`}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                    <div className="sampler-param-input-row">
+                                                        {config.isBoolean ? (
+                                                            <button
+                                                                type="button"
+                                                                className={`editor-btn ${parameters[key] ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                                                onClick={() => handleParameterChange(key, !parameters[key])}
+                                                                style={{ padding: '2px 12px', fontSize: '0.7rem' }}
+                                                            >
+                                                                {parameters[key] ? 'ON' : 'OFF'}
+                                                            </button>
+                                                        ) : (
+                                                            <input
+                                                                type="text"
+                                                                value={parameters[key] as string}
+                                                                onChange={(e) => handleParameterChange(key, e.target.value)}
+                                                                className="editor-input sampler-string-input"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                    {config.description && (
+                                                        <div className="sampler-param-description">{config.description}</div>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
+
+                        {/* ✅ Add parameter dropdown */}
+                        <div style={{ marginTop: '8px' }}>
+                            <select
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val) handleAddParam(val);
+                                    e.target.value = '';
+                                }}
+                                className="editor-select"
+                                defaultValue=""
+                            >
+                                <option value="" disabled>+ Add a parameter</option>
+                                {availableParamKeys.map(key => (
+                                    <option key={key} value={key}>
+                                        {PARAMETER_CONFIGS[key].label} ({PARAMETER_CONFIGS[key].category})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
-                    {/* Stop Patterns */}
+                    {/* Stop Patterns (unchanged) */}
                     <div className="editor-section">
                         <div className="editor-section-title">Stop Patterns</div>
-
                         <div className="sampler-stop-patterns-list">
                             {selectedStopPatternIds.length === 0 && (
                                 <div className="sampler-stop-empty">No stop patterns assigned.</div>
@@ -501,7 +503,6 @@ export function SamplerEditorModal({
                                 );
                             })}
                         </div>
-
                         <select
                             onChange={(e) => {
                                 const val = e.target.value;
