@@ -404,7 +404,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (ctx) => {
             const cacheTimeToLive = ctx.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
-            const maxDepth = ctx.linkMaxDepth ?? (ctx.linkRecursionEnabled ? 3 : 0);
+            const maxDepth = ctx.maximumLinkDepth ?? 0
             const fetchMode = ctx.linkFetchMode ?? 'full';
 
             // Delegate everything to linkFetcher — it handles fetching, summarization,
