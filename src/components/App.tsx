@@ -70,7 +70,8 @@ function App() {
   const { addToast } = useToast();
 
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
-  const { characters: allCharacters, saveCharacter, deleteCharacter } = useCharacterManager();
+  // ✅ Lazy loading: shells for list, full hydration on demand
+  const { characters: allCharacters, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
@@ -419,6 +420,7 @@ function App() {
 
   const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
+  // ✅ Lazy hydrate character when adding as participant
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
     if (charId === chatData.protagonist.id) { addToast("Cannot remove the protagonist.", "error"); return; }
@@ -429,7 +431,10 @@ function App() {
     if (isRemoving) {
       newParticipants = chatData.participants.filter(p => p.id !== charId);
     } else {
-      const charToAdd = allCharacters.find(c => c.id === charId);
+      // ✅ Hydrate full character (with sampler) before adding to participants
+      const shellOrFull = allCharacters.find(c => c.id === charId);
+      if (!shellOrFull) return;
+      const charToAdd = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
       if (!charToAdd) return;
       newParticipants = [...chatData.participants, charToAdd];
     }
@@ -444,9 +449,14 @@ function App() {
     addToast("Participants updated (Session Only).", "info");
   };
 
+  // ✅ Lazy hydrate character when setting as protagonist
   const handleSetChatProtagonist = async (charId: string) => {
     if (!chatData) return;
-    const char = allCharacters.find(c => c.id === charId); if (!char) return;
+    const shellOrFull = allCharacters.find(c => c.id === charId);
+    if (!shellOrFull) return;
+    // ✅ Hydrate full character (with sampler) before setting as protagonist
+    const char = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
+    if (!char) return;
     const updatedChat = { ...chatData, protagonist: char };
     if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
     setChatData(updatedChat); setCurrentCharacter(char);
@@ -877,9 +887,9 @@ function App() {
         )}
 
         {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: () => { } } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => { const parts: string[] = []; if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`); parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`); parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`); if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`); return parts.join(' • '); }} emptyMessage="No saved chat sessions found." />)}
-        {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={(char) => charModal.open(char)} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
+        {/* ✅ Lazy load: hydrate full character on editor open, pass shell to list */}
+        {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async (char) => { const fullChar = char.sampler ? char : await loadFullCharacter(char.id); charModal.open(fullChar || char); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
         {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
-        {/* ✅ FIX #6: Context list subtext — 📌=always triggers (no regex), ⚡=regex-triggered, 🔎=search terms, 🔗=URLs, 🖼️=images */}
         {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const parts: string[] = []; if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡'); if (i.images && i.images.length > 0) parts.push(`🖼️${i.images.length}`); if (i.searchTerms && i.searchTerms.length > 0) parts.push(`🔎${i.searchTerms.length}`); if (i.urls && i.urls.length > 0) parts.push(`🔗${i.urls.length}`); parts.push((i.text?.substring(0, 50) || '') + '...'); return parts.join(' '); }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />)}
         {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />)}
         {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={(id) => toggleModelLoad(id)} specialActionTooltip={(m) => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return `⏹ Stop & Deselect`; if (ms?.isRunning && ms?.isIdle) return `⏹ Stop Model`; if (ms?.isRunning && !ms?.isIdle) return `⏳ Loading...`; if (selectedModelId === m.id) return `✓ Already Selected — Click to Load`; return `▶ Load & Select Model`; }} />)}
