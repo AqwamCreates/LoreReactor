@@ -15,7 +15,7 @@ const mistakeCorrectionInstructions = "If I accidentally create a text that devi
 const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
 const formatInstructions = "I will also make sure that my responses have clean formatting that satisfies the prompts.";
-const languageInstructions = "I will also not use languages that are not described in the prompts."
+const languageInstructions = "I will also not use languages that are not described in the prompts. I will also be consistent with my languages."
 
 const contextStartString = "{";
 const contextEndString = "}";
