@@ -1,7 +1,7 @@
 // src/hooks/chatLogic.ts
 import type { Character, ChatData, ChatMessage, Context, StopPattern, Profile, PromptBlockType } from '../types';
 import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
-import { detectName } from './nameDetection';
+import { detectName } from '../hooks/nameDetection';
 import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -535,7 +535,13 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
-    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
+    const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
+    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
+    const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
+
+    // Do not change this positioning!
+
+    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${remainingChatStaminaInstructions} ${characterInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}.${thinkEndString}${contextEndString}`;
 
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
@@ -635,11 +641,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
-    const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
-    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
-    const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
-
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${remainingChatStaminaInstructions} ${characterInstructions} ${formatInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
