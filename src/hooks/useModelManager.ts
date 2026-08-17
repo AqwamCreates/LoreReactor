@@ -214,6 +214,7 @@ export function useModelManager() {
             if (params.gpu_layers !== undefined) {
                 // Override default -ngl if user specified custom value
                 const nglIndex = args.indexOf('-ngl');
+
                 if (nglIndex !== -1) {
                     args[nglIndex + 1] = String(params.gpu_layers);
                 }
