@@ -70,7 +70,6 @@ function App() {
   const { addToast } = useToast();
 
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
-  // ✅ Lazy loading: shells for list, full hydration on demand
   const { characters: allCharacters, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
@@ -136,6 +135,7 @@ function App() {
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
 
   // ✅ LONG-PRESS TOOLBAR STATE
@@ -242,7 +242,7 @@ function App() {
     return () => clearTimeout(fallbackTimer);
   }, [loadSteps, isInitializing]);
 
-  // ✅ AUTO-EXPAND TEXTAREA ON INPUT CHANGE
+  // ✅ AUTO-EXPAND INPUT TEXTAREA ON CHANGE
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -251,6 +251,15 @@ function App() {
       textareaRef.current.style.height = `${newHeight}px`;
     }
   }, [inputText]);
+
+  // ✅ AUTO-EXPAND EDIT TEXTAREA TO MATCH MESSAGE BUBBLE SIZE
+  useEffect(() => {
+    if (editTextareaRef.current && editingId) {
+      editTextareaRef.current.style.height = 'auto';
+      const newHeight = editTextareaRef.current.scrollHeight;
+      editTextareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [editDraft, editingId]);
 
   // ✅ Cinematic avatar observer
   useEffect(() => {
@@ -368,9 +377,6 @@ function App() {
     };
   }, []);
 
-  /**
-   * ✅ SAFE AUTO-SAVE HELPER
-   */
   const safeAutoSave = async (data: ChatData | null): Promise<void> => {
     if (!data) return;
     const isUnloadedShell = data.chatMessageHistory.length === 0 && (data.messageCount ?? 0) > 0;
@@ -385,7 +391,6 @@ function App() {
     }
   };
 
-  // ✅ Clear fetch cache on chat switch
   const handleSwitchChat = useCallback(async (id: string) => {
     const selected = allChats.find(c => c.id === id);
     if (!selected) return;
@@ -419,7 +424,6 @@ function App() {
 
   const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
-  // ✅ Lazy hydrate character when adding as participant
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
     if (charId === chatData.protagonist.id) { addToast("Cannot remove the protagonist.", "error"); return; }
@@ -430,7 +434,6 @@ function App() {
     if (isRemoving) {
       newParticipants = chatData.participants.filter(p => p.id !== charId);
     } else {
-      // ✅ Hydrate full character (with sampler) before adding to participants
       const shellOrFull = allCharacters.find(c => c.id === charId);
       if (!shellOrFull) return;
       const charToAdd = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
@@ -448,12 +451,10 @@ function App() {
     addToast("Participants updated (Session Only).", "info");
   };
 
-  // ✅ Lazy hydrate character when setting as protagonist
   const handleSetChatProtagonist = async (charId: string) => {
     if (!chatData) return;
     const shellOrFull = allCharacters.find(c => c.id === charId);
     if (!shellOrFull) return;
-    // ✅ Hydrate full character (with sampler) before setting as protagonist
     const char = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
     if (!char) return;
     const updatedChat = { ...chatData, protagonist: char };
@@ -825,7 +826,21 @@ function App() {
                         }}
                       >
                         {viewMode === 'cinematic' && (<div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}><span>{isAmbient ? '✦' : displayName}</span></div>)}
-                        {isEditing ? (<div className="edit-mode"><textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" rows={Math.max(3, editDraft.split('\n').length)} /><div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div></div>) : (<>
+                        {isEditing ? (
+                          <div className="edit-mode">
+                            <textarea
+                              ref={editTextareaRef}
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }}
+                              className="edit-textarea"
+                            />
+                            <div className="edit-actions">
+                              <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                              <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                            </div>
+                          </div>
+                        ) : (<>
                           <span className="message-text">{formatMessageText(message.textContent)}</span>
                           <div className="message-toolbar">
                             {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
@@ -887,7 +902,6 @@ function App() {
         )}
 
         {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: () => { } } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => { const parts: string[] = []; if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`); parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`); parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`); if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`); return parts.join(' • '); }} emptyMessage="No saved chat sessions found." />)}
-        {/* ✅ Lazy load: hydrate full character on editor open, pass shell to list */}
         {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async (char) => { const fullChar = char.sampler ? char : await loadFullCharacter(char.id); charModal.open(fullChar || char); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
         {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
         {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const parts: string[] = []; if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡'); if (i.images && i.images.length > 0) parts.push(`🖼️${i.images.length}`); if (i.searchTerms && i.searchTerms.length > 0) parts.push(`🔎${i.searchTerms.length}`); if (i.urls && i.urls.length > 0) parts.push(`🔗${i.urls.length}`); parts.push((i.text?.substring(0, 50) || '') + '...'); return parts.join(' '); }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />)}
