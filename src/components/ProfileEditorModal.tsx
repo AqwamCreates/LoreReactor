@@ -443,7 +443,7 @@ export function ProfileEditorModal({
                             <span>Force No Character Image Injection</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent character images from being sent to the model, even if the character has one assigned. Useful for text-only models or saving tokens.
+                            Prevent character images from being sent to the model, even if the character has one assigned.
                         </div>
 
                         {/* ✅ NEW: Force No Context Image Injection */}
@@ -457,7 +457,7 @@ export function ProfileEditorModal({
                             <span>Force No Context Image Injection</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent context images from being sent to the model. Text content of contexts will still be injected normally.
+                            Prevent context images from being sent to the model.
                         </div>
 
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
