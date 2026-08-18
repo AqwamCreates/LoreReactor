@@ -689,7 +689,7 @@ export async function prepareRequestBody(
 ): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    const { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -708,16 +708,19 @@ export async function prepareRequestBody(
 
     const profile = chatData.Profile
 
+    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection
+
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const allImageData: { data: string; id: number }[] = [];
-    let imageIdCounter = 13;
+    let imageIdCounter = 1;
 
-    if (!profile?.forceNoCharacterImageInjection && !character.doNotInjectCharacterImage && characterImageBase64) {
+    if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage && characterImageBase64) {
         const rawData = characterImageBase64.includes(',')
             ? characterImageBase64.split(',')[1]
             : characterImageBase64;
-        allImageData.push({ data: rawData, id: 12 });
+        allImageData.push({ data: rawData, id: imageIdCounter });
+        prompt = `${contextStartString}${thinkStartString}The first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
     }
 
     if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {

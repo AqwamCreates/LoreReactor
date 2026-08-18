@@ -415,7 +415,7 @@ function App() {
   }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); if (!window.confirm("Delete this session?")) return;
+    e.stopPropagation();
     await safeAutoSave(chatData);
     const success = await deleteChatFromList(id);
     if (success) { addToast("Chat session deleted.", "info"); if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter); }
