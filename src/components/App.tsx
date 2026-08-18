@@ -12,7 +12,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl } from '../hooks/storage';
+import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawProfile, loadRawContext } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -451,6 +451,26 @@ function App() {
     addToast("Participants updated (Session Only).", "info");
   };
 
+  const handleToggleContext = async (contextId: string) => {
+    if (!chatData) return;
+    const contexts = chatData.contexts
+    if (!contexts) return;
+    const currentIds = contexts.map(c => c.id);
+    const isRemoving = currentIds.includes(contextId);
+
+    let newContexts: Context[];
+    if (isRemoving) {
+      newContexts = contexts.filter(p => p.id !== contextId);
+    } else {
+      const contextToAdd = await loadRawContext(contextId);
+      if (!contextToAdd) return;
+      newContexts = [...contexts, contextToAdd];
+    }
+    const updatedChat = { ...chatData, contexts: newContexts };
+    setChatData(updatedChat);
+    addToast("Contexts updated (Session Only).", "info");
+  };
+
   const handleSetChatProtagonist = async (charId: string) => {
     if (!chatData) return;
     const shellOrFull = allCharacters.find(c => c.id === charId);
@@ -461,12 +481,6 @@ function App() {
     if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
     setChatData(updatedChat); setCurrentCharacter(char);
     addToast("Protagonist switched (Session Only).", "info");
-  };
-
-  const handleToggleDefaultContext = (contextId: string) => {
-    let newIds = defaultContextIds.includes(contextId) ? defaultContextIds.filter(id => id !== contextId) : [...defaultContextIds, contextId];
-    setDefaultContextIds(newIds); localStorage.setItem('defaultContextIds', JSON.stringify(newIds));
-    addToast("Default contexts updated.", "info");
   };
 
   const handleToggleChatContext = async (contextId: string) => {
@@ -904,7 +918,7 @@ function App() {
         {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: () => { } } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => { const parts: string[] = []; if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`); parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`); parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`); if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`); return parts.join(' • '); }} emptyMessage="No saved chat sessions found." />)}
         {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async (char) => { const fullChar = char.sampler ? char : await loadFullCharacter(char.id); charModal.open(fullChar || char); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
         {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
-        {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const parts: string[] = []; if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡'); if (i.images && i.images.length > 0) parts.push(`🖼️${i.images.length}`); if (i.searchTerms && i.searchTerms.length > 0) parts.push(`🔎${i.searchTerms.length}`); if (i.urls && i.urls.length > 0) parts.push(`🔗${i.urls.length}`); parts.push((i.text?.substring(0, 50) || '') + '...'); return parts.join(' '); }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={isContextListMode ? handleToggleChatContext : handleToggleDefaultContext} />)}
+        {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const parts: string[] = []; if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡'); if (i.images && i.images.length > 0) parts.push(`🖼️${i.images.length}`); if (i.searchTerms && i.searchTerms.length > 0) parts.push(`🔎${i.searchTerms.length}`); if (i.urls && i.urls.length > 0) parts.push(`🔗${i.urls.length}`); parts.push((i.text?.substring(0, 50) || '') + '...'); return parts.join(' '); }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={handleToggleContext} />)}
         {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />)}
         {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={(id) => toggleModelLoad(id)} specialActionTooltip={(m) => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return `⏹ Stop & Deselect`; if (ms?.isRunning && ms?.isIdle) return `⏹ Stop Model`; if (ms?.isRunning && !ms?.isIdle) return `⏳ Loading...`; if (selectedModelId === m.id) return `✓ Already Selected — Click to Load`; return `▶ Load & Select Model`; }} />)}
         {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
