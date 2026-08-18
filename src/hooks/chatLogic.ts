@@ -706,19 +706,21 @@ export async function prepareRequestBody(
         ...activeStopPatterns.map(sp => sp.pattern),
     ];
 
+    const profile = chatData.Profile
+
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const allImageData: { data: string; id: number }[] = [];
     let imageIdCounter = 13;
 
-    if (!character.doNotInjectCharacterImage && characterImageBase64) {
+    if (!profile?.forceNoCharacterImageInjection && !character.doNotInjectCharacterImage && characterImageBase64) {
         const rawData = characterImageBase64.includes(',')
             ? characterImageBase64.split(',')[1]
             : characterImageBase64;
         allImageData.push({ data: rawData, id: 12 });
     }
 
-    if (activeContextsForImages.length > 0) {
+    if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
             if (!context.images) return [];
             return context.images.map(async (filename) => {
