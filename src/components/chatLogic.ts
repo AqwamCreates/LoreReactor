@@ -711,13 +711,13 @@ export async function prepareRequestBody(
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const allImageData: { data: string; id: number }[] = [];
-    let imageIdCounter = 1;
+    let imageIdCounter = 0;
 
     if (!character.doNotInjectCharacterImage && characterImageBase64) {
         const rawData = characterImageBase64.includes(',')
             ? characterImageBase64.split(',')[1]
             : characterImageBase64;
-        allImageData.push({ data: rawData, id: imageIdCounter });
+        allImageData.push({ data: rawData, id: imageIdCounter++ });
     }
 
     if (activeContextsForImages.length > 0) {
