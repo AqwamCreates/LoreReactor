@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import type { Profile, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
 import { SliderInput } from './SliderInput';
-import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface ProfileEditorModalProps {
@@ -50,7 +49,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
         {
-            id: `step-${uuidv4()}`,
+            id: `step-${crypto.randomUUID()}`,
             name: 'Sliding Window Replace',
             strategyType: 'Sliding Window Replace',
             enabled: true,
@@ -62,7 +61,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${uuidv4()}`,
+            id: `step-${crypto.randomUUID()}`,
             name: 'Periodic Compression',
             strategyType: 'Periodic Compression',
             enabled: false,
@@ -75,7 +74,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${uuidv4()}`,
+            id: `step-${crypto.randomUUID()}`,
             name: 'Recursive Summary',
             strategyType: 'Recursive Summary',
             enabled: false,
@@ -88,7 +87,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
             lastUpdatedTimestamp: now,
         },
         {
-            id: `step-${uuidv4()}`,
+            id: `step-${crypto.randomUUID()}`,
             name: 'Observation Masking',
             strategyType: 'Observation Masking',
             enabled: false,
@@ -111,7 +110,9 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
-    const [useCurrentDateAndTime, setuseCurrentDateAndTime] = useState(false);
+    const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
+    const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
+    const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
     const [chatProbability, setChatProbability] = useState<number>(0);
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
@@ -135,7 +136,9 @@ export function ProfileEditorModal({
                 setName(existingProfile.name || '');
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
-                setuseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
+                setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
+                setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
+                setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
                 setChatProbability(existingProfile.chatProbability ?? 0);
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
@@ -145,8 +148,9 @@ export function ProfileEditorModal({
                 setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
                 setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
                 setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-                const inputStrategy = existingProfile.inputStrategy;
-                const savedStrategy = inputStrategy?.length ? inputStrategy : [...DEFAULT_STRATEGY];
+                const savedStrategy = existingProfile.inputStrategy?.length
+                    ? existingProfile.inputStrategy
+                    : [...DEFAULT_STRATEGY];
                 setInputStrategy(savedStrategy);
                 setSummarizationSteps(
                     existingProfile.summarizationSteps?.length
@@ -157,7 +161,9 @@ export function ProfileEditorModal({
                 setName('');
                 setDescription('');
                 setForceNameReveal(false);
-                setuseCurrentDateAndTime(false);
+                setForceNoCharacterImageInjection(false);
+                setForceNoContextImageInjection(false);
+                setUseCurrentDateAndTime(false);
                 setForceEqualInitiative(false);
                 setChatProbability(0);
                 setMaximumChatStamina(0);
@@ -189,10 +195,12 @@ export function ProfileEditorModal({
 
         const now = Date.now();
         const profile: Profile = {
-            id: existingProfile?.id || uuidv4(),
+            id: existingProfile?.id || crypto.randomUUID(),
             name: name.trim(),
             description: description.trim() || undefined,
             forceNameReveal,
+            forceNoCharacterImageInjection,
+            forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
             chatProbability,
@@ -218,10 +226,12 @@ export function ProfileEditorModal({
 
         const now = Date.now();
         const cloned: Profile = {
-            id: uuidv4(),
+            id: crypto.randomUUID(),
             name: `${name.trim()} (Clone)`,
             description: description.trim() || undefined,
             forceNameReveal,
+            forceNoCharacterImageInjection,
+            forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
             chatProbability,
@@ -235,7 +245,7 @@ export function ProfileEditorModal({
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s,
-                id: `step-${uuidv4()}`,
+                id: `step-${crypto.randomUUID()}`,
                 order: i,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
@@ -268,7 +278,7 @@ export function ProfileEditorModal({
 
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newOrder = [...inputStrategy];
         const [removed] = newOrder.splice(dragIndex, 1);
@@ -312,7 +322,7 @@ export function ProfileEditorModal({
 
     const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newSteps = [...summarizationSteps];
         const [removed] = newSteps.splice(dragIndex, 1);
@@ -338,7 +348,7 @@ export function ProfileEditorModal({
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
         const newStep: SummarizationStep = {
-            id: `step-${uuidv4()}`,
+            id: `step-${crypto.randomUUID()}`,
             name: strategyType,
             strategyType,
             enabled: true,
@@ -408,6 +418,7 @@ export function ProfileEditorModal({
                     {/* Identity & Display */}
                     <div className="editor-section">
                         <span className="editor-section-title">Identity & Display</span>
+                        
                         <label className="editor-checkbox-label">
                             <input
                                 type="checkbox"
@@ -418,14 +429,42 @@ export function ProfileEditorModal({
                             <span>Force Name Reveal</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Always show character names instead of "Unknown Name". Skips name detection entirely.
+                            Always show character names instead of "Character X".
+                        </div>
+
+                        {/* ✅ NEW: Force No Character Image Injection */}
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={forceNoCharacterImageInjection}
+                                onChange={(e) => setForceNoCharacterImageInjection(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Force No Character Image Injection</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Prevent character avatar images from being sent to the model, even if the character has one assigned. Useful for text-only models or saving tokens.
+                        </div>
+
+                        {/* ✅ NEW: Force No Context Image Injection */}
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={forceNoContextImageInjection}
+                                onChange={(e) => setForceNoContextImageInjection(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Force No Context Image Injection</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Prevent context/lorebook images from being sent to the model. Text content of contexts will still be injected normally.
                         </div>
 
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
                             <input
                                 type="checkbox"
                                 checked={useCurrentDateAndTime}
-                                onChange={(e) => setuseCurrentDateAndTime(e.target.checked)}
+                                onChange={(e) => setUseCurrentDateAndTime(e.target.checked)}
                                 className="editor-checkbox-input"
                             />
                             <span>Use Current Date And Time</span>
@@ -454,43 +493,52 @@ export function ProfileEditorModal({
 
                         {/* Chat Probability Override */}
                         <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {chatProbability === 0 ? '(Character default)' : ``}
+                                </span>
+                            </div>
                             <SliderInput
-                                label="Chat Probability Override"
+                                label=""
                                 value={chatProbability}
                                 minimumValue={0}
                                 maximumValue={1}
                                 stepValue={0.05}
                                 decimals={2}
                                 onChange={setChatProbability}
-                                description={chatProbability === 0
-                                    ? 'Disabled — using per-character setting. Slide right to override all participants.'
-                                    : `Override active (${chatProbability.toFixed(2)}). Set to 0 to use per-character setting.`
-                                }
+                                description="0 = disabled (use per-character setting). Slide right to override all participants."
                             />
                         </div>
 
                         {/* Maximum Chat Stamina Override */}
                         <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {maximumChatStamina === 0 ? '(Character default)' : ``}
+                                </span>
+                            </div>
                             <SliderInput
-                                label="Maximum Chat Stamina Override"
+                                label=""
                                 value={maximumChatStamina}
                                 minimumValue={0}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setMaximumChatStamina(Math.round(val))}
-                                description={maximumChatStamina === 0
-                                    ? 'Disabled — using per-character setting. Slide right to set a shared stamina cap.'
-                                    : `Override active (${Math.round(maximumChatStamina)}). Set to 0 to use per-character setting.`
-                                }
+                                description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
                             />
                         </div>
                     </div>
 
                     {/* Cache Invalidation Reduction */}
                     <div className="editor-section">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
+                        </div>
                         <SliderInput
-                            label="Cache Invalidation Reduction"
+                            label=""
                             value={cacheLevel}
                             minimumValue={0}
                             maximumValue={3}
