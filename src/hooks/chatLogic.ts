@@ -692,8 +692,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const prompt = promptLines.join('\n')
 
-    console.log(prompt)
-
     return { prompt, activeStopPatterns, activeContextsForImages, fetchErrors };
 }
 
