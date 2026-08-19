@@ -10,1400 +10,580 @@ import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThre
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
-
 import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
-import { clearPartialFlag } from './messageLogic';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
-
 const now = Date.now();
 
-const convertFileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
+const convertFileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
   });
-};
+
+// ─── Ambient Narration ───────────────────────────────────────────────
 
 const AMBIENT_NARRATOR: Character = {
-    id: '__ambient_narrator__',
-    name: '',
-    description: 'Ambient environment narration',
-    systemPrompt: '',
-    initiativeWeight: 0,
-    chatProbability: 1,
-    maximumChatStamina: 1,
-    firstCreatedTimestamp: now,
-    lastUpdatedTimestamp: now,
+  id: '__ambient_narrator__', name: '', description: 'Ambient environment narration',
+  systemPrompt: '', initiativeWeight: 0, chatProbability: 1, maximumChatStamina: 1,
+  firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
 };
 
 const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
-    {
-        keywords: ['hello', 'hi', 'hey', 'greet', 'good morning', 'good evening', 'good night', 'howdy', 'yo', '?'],
-        lines: [
-            "A tentative quiet hangs in the air, waiting to be shaped.",
-            "The space between them hums with the possibility of conversation.",
-            "Words hover at the edge of silence, not yet committed.",
-            "The air shifts subtly, acknowledging a presence.",
-            "Something stirs in the stillness — an opening.",
-            "The moment balances on the edge of beginning.",
-        ]
-    },
-    {
-        keywords: ['night', 'dark', 'moon', 'star', 'midnight', 'dusk', 'evening', 'twilight'],
-        lines: [
-            "Crickets hum softly beyond the walls.",
-            "The darkness outside presses gently against the windows.",
-            "A cool night breeze carries distant sounds through the stillness.",
-            "Moonlight traces pale shapes across the floor.",
-            "The night holds its breath around them.",
-            "Somewhere outside, an owl calls once and falls silent.",
-        ]
-    },
-    {
-        keywords: ['morning', 'dawn', 'sunrise', 'sun', 'daybreak', 'early'],
-        lines: [
-            "Pale light filters through the gaps in the curtains.",
-            "Birdsong drifts in from somewhere far away.",
-            "The first warmth of morning touches the edges of the room.",
-            "Dew-laden air seeps through the cracks, fresh and quiet.",
-            "The world outside is just beginning to stir.",
-        ]
-    },
-    {
-        keywords: ['rain', 'storm', 'thunder', 'lightning', 'pouring', 'drizzle', 'wet'],
-        lines: [
-            "Rain taps a steady rhythm against the glass.",
-            "Thunder rumbles low and distant, then fades.",
-            "Water streaks down the windows in silver threads.",
-            "The storm mutters to itself beyond the walls.",
-            "Each raindrop sounds impossibly loud in the quiet.",
-        ]
-    },
-    {
-        keywords: ['room', 'inside', 'indoors', 'house', 'hall', 'chamber', 'apartment'],
-        lines: [
-            "The room settles into its own particular silence.",
-            "Dust motes drift lazily through a shaft of light.",
-            "The walls seem to absorb the quiet, holding it close.",
-            "Something in the room creaks softly, then stills.",
-            "The space between them feels measured and deliberate.",
-        ]
-    },
-    {
-        keywords: ['outside', 'garden', 'forest', 'tree', 'wind', 'grass', 'field', 'path'],
-        lines: [
-            "Leaves rustle in a wind that carries no warmth.",
-            "Branches sway overhead in slow, patient arcs.",
-            "The outdoors hums with a life that doesn't need words.",
-            "Grass bends and rises in waves of quiet motion.",
-            "The horizon holds still, watching.",
-        ]
-    },
-    {
-        keywords: ['footstep', 'walk', 'pace', 'approach', 'tread', 'floorboard'],
-        lines: [
-            "Footsteps echo faintly, then stop.",
-            "The floor groans under shifting weight somewhere nearby.",
-            "A measured tread passes and fades into distance.",
-            "Each step lands carefully, as if the walker doesn't want to be heard.",
-        ]
-    },
-    {
-        keywords: ['creak', 'groan', 'settle', 'shift', 'wood', 'old'],
-        lines: [
-            "Wood settles with a long, patient sigh.",
-            "Something old shifts its weight and goes still again.",
-            "A creak rises and dissolves into the silence.",
-            "The structure around them breathes in its own slow way.",
-        ]
-    },
-    {
-        keywords: ['fire', 'flame', 'hearth', 'warm', 'candle', 'ember', 'glow'],
-        lines: [
-            "Embers pop softly, casting brief orange light.",
-            "The fire murmurs to itself in a language of heat.",
-            "Warmth radiates outward in gentle, invisible waves.",
-            "A candle flickers though nothing has moved the air.",
-        ]
-    },
-    {
-        keywords: ['water', 'river', 'sea', 'ocean', 'wave', 'stream', 'lake', 'shore'],
-        lines: [
-            "Water moves endlessly in the distance, indifferent and constant.",
-            "Waves fold over themselves in a rhythm older than memory.",
-            "The sound of water fills the silence without breaking it.",
-            "Current pulls at something unseen beneath the surface.",
-        ]
-    },
-    {
-        keywords: ['crowd', 'people', 'voices', 'busy', 'market', 'street', 'city'],
-        lines: [
-            "Distant voices blur into a murmur that means nothing.",
-            "Life continues somewhere else, oblivious.",
-            "The noise of others fades to a hum, then less than a hum.",
-            "Footsteps pass without stopping, belonging to strangers.",
-        ]
-    },
-    {
-        keywords: ['cold', 'frost', 'ice', 'snow', 'winter', 'freeze', 'chill'],
-        lines: [
-            "Cold seeps in through places you can't quite find.",
-            "Frost crystals form silently on the other side of the glass.",
-            "The air bites at exposed skin, patient and persistent.",
-            "Ice shifts somewhere with a sound like a whisper.",
-        ]
-    },
-    {
-        keywords: ['book', 'page', 'read', 'paper', 'library', 'shelf', 'ink'],
-        lines: [
-            "Pages settle against each other with a papery sigh.",
-            "The weight of unread words hangs quietly in the air.",
-            "Ink and paper hold their stories in patient silence.",
-            "A book lies open, waiting for eyes that have looked away.",
-        ]
-    },
+  { keywords: ['hello','hi','hey','greet','good morning','good evening','good night','howdy','yo','?'], lines: ["A tentative quiet hangs in the air, waiting to be shaped.","The space between them hums with the possibility of conversation.","Words hover at the edge of silence, not yet committed.","The air shifts subtly, acknowledging a presence.","Something stirs in the stillness — an opening.","The moment balances on the edge of beginning."] },
+  { keywords: ['night','dark','moon','star','midnight','dusk','evening','twilight'], lines: ["Crickets hum softly beyond the walls.","The darkness outside presses gently against the windows.","A cool night breeze carries distant sounds through the stillness.","Moonlight traces pale shapes across the floor.","The night holds its breath around them.","Somewhere outside, an owl calls once and falls silent."] },
+  { keywords: ['morning','dawn','sunrise','sun','daybreak','early'], lines: ["Pale light filters through the gaps in the curtains.","Birdsong drifts in from somewhere far away.","The first warmth of morning touches the edges of the room.","Dew-laden air seeps through the cracks, fresh and quiet.","The world outside is just beginning to stir."] },
+  { keywords: ['rain','storm','thunder','lightning','pouring','drizzle','wet'], lines: ["Rain taps a steady rhythm against the glass.","Thunder rumbles low and distant, then fades.","Water streaks down the windows in silver threads.","The storm mutters to itself beyond the walls.","Each raindrop sounds impossibly loud in the quiet."] },
+  { keywords: ['room','inside','indoors','house','hall','chamber','apartment'], lines: ["The room settles into its own particular silence.","Dust motes drift lazily through a shaft of light.","The walls seem to absorb the quiet, holding it close.","Something in the room creaks softly, then stills.","The space between them feels measured and deliberate."] },
+  { keywords: ['outside','garden','forest','tree','wind','grass','field','path'], lines: ["Leaves rustle in a wind that carries no warmth.","Branches sway overhead in slow, patient arcs.","The outdoors hums with a life that doesn't need words.","Grass bends and rises in waves of quiet motion.","The horizon holds still, watching."] },
+  { keywords: ['footstep','walk','pace','approach','tread','floorboard'], lines: ["Footsteps echo faintly, then stop.","The floor groans under shifting weight somewhere nearby.","A measured tread passes and fades into distance.","Each step lands carefully, as if the walker doesn't want to be heard."] },
+  { keywords: ['creak','groan','settle','shift','wood','old'], lines: ["Wood settles with a long, patient sigh.","Something old shifts its weight and goes still again.","A creak rises and dissolves into the silence.","The structure around them breathes in its own slow way."] },
+  { keywords: ['fire','flame','hearth','warm','candle','ember','glow'], lines: ["Embers pop softly, casting brief orange light.","The fire murmurs to itself in a language of heat.","Warmth radiates outward in gentle, invisible waves.","A candle flickers though nothing has moved the air."] },
+  { keywords: ['water','river','sea','ocean','wave','stream','lake','shore'], lines: ["Water moves endlessly in the distance, indifferent and constant.","Waves fold over themselves in a rhythm older than memory.","The sound of water fills the silence without breaking it.","Current pulls at something unseen beneath the surface."] },
+  { keywords: ['crowd','people','voices','busy','market','street','city'], lines: ["Distant voices blur into a murmur that means nothing.","Life continues somewhere else, oblivious.","The noise of others fades to a hum, then less than a hum.","Footsteps pass without stopping, belonging to strangers."] },
+  { keywords: ['cold','frost','ice','snow','winter','freeze','chill'], lines: ["Cold seeps in through places you can't quite find.","Frost crystals form silently on the other side of the glass.","The air bites at exposed skin, patient and persistent.","Ice shifts somewhere with a sound like a whisper."] },
+  { keywords: ['book','page','read','paper','library','shelf','ink'], lines: ["Pages settle against each other with a papery sigh.","The weight of unread words hangs quietly in the air.","Ink and paper hold their stories in patient silence.","A book lies open, waiting for eyes that have looked away."] },
 ];
 
 const AMBIENT_FALLBACK = [
-    "A heavy silence settles over everything.",
-    "The air grows still, thick with unspoken words.",
-    "Quiet stretches between them like a held breath.",
-    "The moment lingers, neither comfortable nor cruel.",
-    "Stillness fills the space where words should be.",
-    "Time seems to slow in the absence of sound.",
-    "The pause grows teeth.",
-    "Nothing moves. Nothing breaks the stillness.",
-    "The silence has a texture now, rough and unresolved.",
-    "A beat passes. Then another.",
+  "A heavy silence settles over everything.","The air grows still, thick with unspoken words.",
+  "Quiet stretches between them like a held breath.","The moment lingers, neither comfortable nor cruel.",
+  "Stillness fills the space where words should be.","Time seems to slow in the absence of sound.",
+  "The pause grows teeth.","Nothing moves. Nothing breaks the stillness.",
+  "The silence has a texture now, rough and unresolved.","A beat passes. Then another.",
 ];
 
 function getDefaultCharacter(): Character {
-    const now = Date.now();
-    return {
-        id: 'default-user',
-        name: 'User',
-        description: 'Default user character',
-        systemPrompt: '',
-        initiativeWeight: 1,
-        chatProbability: 0.5,
-        maximumChatStamina: 5,
-        sampler: {
-            id: 'default-sampler',
-            name: 'Default',
-            parameters: { temperature: 0.7, top_p: 0.9 },
-            stopPatterns: [],
-            maximumNumberOfTokens: 256,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-    };
+  const ts = Date.now();
+  return {
+    id: 'default-user', name: 'User', description: 'Default user character', systemPrompt: '',
+    initiativeWeight: 1, chatProbability: 0.5, maximumChatStamina: 5,
+    sampler: { id: 'default-sampler', name: 'Default', parameters: { temperature: 0.7, top_p: 0.9 }, stopPatterns: [], maximumNumberOfTokens: 256, firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts },
+    firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts,
+  };
 }
+
+// ─── Background Summarization ────────────────────────────────────────
 
 async function runBackgroundSummarization(
-    data: ChatData,
-    setData: (d: ChatData) => void,
-    dataRef: React.MutableRefObject<ChatData | null>,
-    modelRef: React.MutableRefObject<LanguageModel | null>,
-    runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
-    addToast: (message: string, type: 'success' | 'error' | 'info') => void
+  data: ChatData, setData: (d: ChatData) => void,
+  dataRef: React.MutableRefObject<ChatData | null>,
+  modelRef: React.MutableRefObject<LanguageModel | null>,
+  runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
 ): Promise<void> {
-    try {
-        const modelCtxLen = modelRef.current?.contextLength || 8192;
-        const currentTokens = data.chatMessageHistory.reduce(
-            (acc, m) => acc + estimateTokens(m.textContent), 0
-        );
-        const triggered = checkTriggerThreshold(data, currentTokens, modelCtxLen);
+  try {
+    const ctxLen = modelRef.current?.contextLength || 8192;
+    const tokens = data.chatMessageHistory.reduce((a, m) => a + estimateTokens(m.textContent), 0);
+    const triggered = checkTriggerThreshold(data, tokens, ctxLen);
+    if (!triggered) return;
 
-        if (!triggered) return;
+    addToast(`Running ${triggered.strategyType}...`, 'info');
+    const port = modelRef.current?.id ? runningModelsRef.current[modelRef.current.id]?.port : undefined;
+    const effectivePort = port || (modelRef.current?.parameters as any)?._runtimePort;
+    const lmCtx: LanguageModelContext = { apiKey: modelRef.current?.apiKey, backend: modelRef.current?.backend, modelPath: modelRef.current?.model, runtimePort: effectivePort };
+    if (!effectivePort && !modelRef.current?.apiKey) return;
 
-        addToast(`Running ${triggered.strategyType}...`, "info");
-
-        const port = modelRef.current?.id
-            ? runningModelsRef.current[modelRef.current.id]?.port
-            : undefined;
-        const effectivePort = port || (modelRef.current?.parameters as any)?._runtimePort;
-
-        const LanguageModelContext: LanguageModelContext = {
-            apiKey: modelRef.current?.apiKey,
-            backend: modelRef.current?.backend,
-            modelPath: modelRef.current?.model,
-            runtimePort: effectivePort,
-        };
-
-        if (!effectivePort && !modelRef.current?.apiKey) return;
-
-        let updatedData = data;
-
-        if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
-            const budgetStep = data.Profile?.summarizationSteps?.find(
-                s => s.strategyType === 'Sliding Window Replace' && s.enabled
-            );
-            const summaryBudget = budgetStep?.summaryTokenBudget ?? 256;
-
-            const summaries = await generateMissingSummaries(
-                updatedData,
-                triggered.slidingWindowSize,
-                LanguageModelContext,
-                summaryBudget
-            );
-
-            if (summaries.size > 0) {
-                updatedData = {
-                    ...updatedData,
-                    chatMessageHistory: updatedData.chatMessageHistory.map(m => {
-                        const summary = summaries.get(m.id);
-                        if (summary) return { ...m, textContentSummary: summary };
-                        return m;
-                    }),
-                };
-            }
-        }
-
-        if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
-            const budgetStep = data.Profile?.summarizationSteps?.find(
-                s => s.strategyType === 'Periodic Compression' && s.enabled
-            );
-            const summaryBudget = budgetStep?.summaryTokenBudget ?? 512;
-
-            const newContexts = await generatePeriodicCompression(
-                updatedData,
-                triggered.compressionInterval,
-                triggered.compressionChunkSize,
-                LanguageModelContext,
-                summaryBudget
-            );
-
-            if (newContexts.length > 0) {
-                const existingContexts = updatedData.contexts || [];
-                updatedData = {
-                    ...updatedData,
-                    contexts: [...existingContexts, ...newContexts],
-                };
-            }
-        }
-
-        if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
-            const budgetStep = data.Profile?.summarizationSteps?.find(
-                s => s.strategyType === 'Recursive Summary' && s.enabled
-            );
-            const summaryBudget = budgetStep?.summaryTokenBudget ?? 1024;
-
-            const newContexts = await generateRecursiveSummary(
-                updatedData,
-                triggered.recursiveChunkSize,
-                triggered.recursiveMaxDepth,
-                LanguageModelContext,
-                summaryBudget
-            );
-
-            if (newContexts.length > 0) {
-                const existingContexts = updatedData.contexts || [];
-                updatedData = {
-                    ...updatedData,
-                    contexts: [...existingContexts, ...newContexts],
-                };
-            }
-        }
-
-        if (updatedData !== data) {
-            await saveRawChatData(updatedData);
-            setData(updatedData);
-            dataRef.current = updatedData;
-
-            const newSummaries = triggered.strategyType === 'Sliding Window Replace'
-                ? updatedData.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length
-                : 0;
-            const newContexts = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary')
-                ? (updatedData.contexts?.length ?? 0) - (data.contexts?.length ?? 0)
-                : 0;
-
-            if (newSummaries > 0) {
-                addToast(`Summarized ${newSummaries} message${newSummaries !== 1 ? 's' : ''}`, "success");
-            } else if (newContexts > 0) {
-                addToast(`Generated ${newContexts} context${newContexts !== 1 ? 's' : ''} (${triggered.strategyType})`, "success");
-            } else {
-                addToast(`${triggered.strategyType} complete`, "info");
-            }
-        } else {
-            addToast(`${triggered.strategyType} complete`, "info");
-        }
-    } catch (err) {
-        console.warn('Background summarization failed:', err);
-        addToast(`Summarization failed: ${(err as Error).message}`, "error");
+    let updated = data;
+    if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
+      const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Sliding Window Replace' && s.enabled)?.summaryTokenBudget ?? 256;
+      const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, lmCtx, budget);
+      if (summaries.size > 0) updated = { ...updated, chatMessageHistory: updated.chatMessageHistory.map(m => { const s = summaries.get(m.id); return s ? { ...m, textContentSummary: s } : m; }) };
     }
+    if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
+      const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Periodic Compression' && s.enabled)?.summaryTokenBudget ?? 512;
+      const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, lmCtx, budget);
+      if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
+    }
+    if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
+      const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Recursive Summary' && s.enabled)?.summaryTokenBudget ?? 1024;
+      const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, lmCtx, budget);
+      if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
+    }
+
+    if (updated !== data) {
+      await saveRawChatData(updated); setData(updated); dataRef.current = updated;
+      const ns = triggered.strategyType === 'Sliding Window Replace' ? updated.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length : 0;
+      const nc = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary') ? (updated.contexts?.length ?? 0) - (data.contexts?.length ?? 0) : 0;
+      if (ns > 0) addToast(`Summarized ${ns} message${ns !== 1 ? 's' : ''}`, 'success');
+      else if (nc > 0) addToast(`Generated ${nc} context${nc !== 1 ? 's' : ''} (${triggered.strategyType})`, 'success');
+      else addToast(`${triggered.strategyType} complete`, 'info');
+    } else { addToast(`${triggered.strategyType} complete`, 'info'); }
+  } catch (err) { console.warn('Background summarization failed:', err); addToast(`Summarization failed: ${(err as Error).message}`, 'error'); }
 }
 
+// ─── Hook ────────────────────────────────────────────────────────────
+
 export function useChatSession() {
-    const [chatData, setChatData] = useState<ChatData | null>(null);
-    const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [streamingText, setStreamingText] = useState("");
-    const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
-    const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
-    const [generationSpeed, setGenerationSpeed] = useState<number>(0);
-    const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
+  // State
+  const [chatData, setChatData] = useState<ChatData | null>(null);
+  const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
+  const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
+  const [generationSpeed, setGenerationSpeed] = useState(0);
+  const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
+  const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
+  const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
+  const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
+  const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
 
-    const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
-    const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
+  // Refs
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
+  const selectedModelRef = useRef<LanguageModel | null>(null);
+  const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
+  const activeStrategyRef = useRef<BudgetStrategy | null>(null);
+  const isLoadingRef = useRef(false);
+  const isProcessingSilentlyRef = useRef(false);
+  const streamingTextRef = useRef('');
+  const streamingCharacterRef = useRef<Character | null>(null);
+  const chatDataRef = useRef<ChatData | null>(null);
+  const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
+  const isAtBottomRef = useRef(true);
+  const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
 
-    const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
+  // Streaming throttle
+  const THROTTLE_MS = 60;
+  const lastFlushRef = useRef(0);
+  const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingStreamingTextRef = useRef('');
 
-    const [stats, setStats] = useState({
-        numberOfCacheInvalidations: 0,
-        numberOfRequests: 0,
-        totalCost: 0,
-        costWithoutCacheMisses: 0,
-    });
+  // Sync refs
+  useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
+  useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
+  useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
+  useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+  useEffect(() => { streamingTextRef.current = streamingText; }, [streamingText]);
+  useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
+  useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
 
-    const abortControllerRef = useRef<AbortController | null>(null);
-    const messageEndRef = useRef<HTMLDivElement>(null);
-    const chatHistoryRef = useRef<HTMLDivElement>(null);
-    
-    const selectedModelRef = useRef<LanguageModel | null>(null);
-    const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
-    const activeStrategyRef = useRef<BudgetStrategy | null>(null);
-    const isLoadingRef = useRef(false);
-    const isProcessingSilentlyRef = useRef(false);
+  const { addToast } = useToast();
+  const [ttsServerUrl] = useState(`${localAddress}:7860`);
 
-    const streamingTextRef = useRef("");
-    const streamingCharacterRef = useRef<Character | null>(null);
-    const chatDataRef = useRef<ChatData | null>(null);
+  // Fetch running models on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${localURL}/models/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const status: Record<string, { isRunning: boolean; port?: number }> = {};
+        for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
+        setRunningModelsMap(status);
+      } catch {}
+    })();
+  }, []);
 
-    const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
+  // ─── Helpers ─────────────────────────────────────────────────────
 
-    const isAtBottomRef = useRef(true);
+  const isModelReadyForGeneration = useCallback((): boolean => {
+    const m = selectedModelRef.current;
+    if (!m) return false;
+    if (m.apiKey) return true;
+    return !!(m.id && runningModelsMapRef.current[m.id]?.port);
+  }, []);
 
-    const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
+  const acquireLock = useCallback((): boolean => {
+    if (isLoadingRef.current) return false;
+    isLoadingRef.current = true; setIsLoading(true); return true;
+  }, []);
 
-    const STREAMING_THROTTLE_MS = 60;
-    const lastFlushRef = useRef(0);
-    const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingStreamingTextRef = useRef("");
-    
-    useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
-    useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
-    useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
-    useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
-    useEffect(() => { streamingTextRef.current = streamingText; }, [streamingText]);
-    useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
-    useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
-    
-    const { addToast } = useToast();
+  const releaseLock = useCallback(() => {
+    isLoadingRef.current = false; setIsLoading(false);
+    setStreamingText(''); setStreamingCharacter(null);
+    streamingTextRef.current = ''; streamingCharacterRef.current = null;
+    pendingStreamingTextRef.current = ''; lastFlushRef.current = 0;
+    if (pendingFlushRef.current) { clearTimeout(pendingFlushRef.current); pendingFlushRef.current = null; }
+  }, []);
 
-    const [ttsServerUrl] = useState<string>(`${localAddress}:7860`);
+  const throttledSetStreamingText = useCallback((text: string) => {
+    streamingTextRef.current = text; pendingStreamingTextRef.current = text;
+    const elapsed = performance.now() - lastFlushRef.current;
+    if (elapsed >= THROTTLE_MS) { lastFlushRef.current = performance.now(); setStreamingText(text); }
+    else if (!pendingFlushRef.current) {
+      pendingFlushRef.current = setTimeout(() => { lastFlushRef.current = performance.now(); setStreamingText(pendingStreamingTextRef.current); pendingFlushRef.current = null; }, THROTTLE_MS - elapsed);
+    }
+  }, []);
 
-    useEffect(() => {
-        const fetchRunningModels = async () => {
-            try {
-                const res = await fetch(`${localURL}/models/status`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const status: Record<string, { isRunning: boolean; port?: number }> = {};
-                for (const m of data.activeModels || []) {
-                    status[m.id] = { isRunning: true, port: m.port };
-                }
-                setRunningModelsMap(status);
-            } catch {
-                // Server not ready yet
-            }
-        };
-        fetchRunningModels();
-    }, []);
-
-    const isModelReadyForGeneration = useCallback((): boolean => {
-        const model = selectedModelRef.current;
-        if (!model) return false;
-        if (model.apiKey) return true;
-        const models = runningModelsMapRef.current;
-        return !!(model.id && models[model.id]?.port);
-    }, []);
-
-    const acquireGenerationLock = useCallback((): boolean => {
-        if (isLoadingRef.current) return false;
-        isLoadingRef.current = true;
-        setIsLoading(true);
-        return true;
-    }, []);
-
-    const releaseGenerationLock = useCallback(() => {
-        isLoadingRef.current = false;
-        setIsLoading(false);
-        setStreamingText("");
-        setStreamingCharacter(null);
-        streamingTextRef.current = "";
-        streamingCharacterRef.current = null;
-        pendingStreamingTextRef.current = "";
-        lastFlushRef.current = 0;
-        if (pendingFlushRef.current) {
-            clearTimeout(pendingFlushRef.current);
-            pendingFlushRef.current = null;
+  const speakMessage = useCallback((text: string, character: Character) => {
+    if (!character.voice) return;
+    const profile = chatDataRef.current?.Profile;
+    if (profile) {
+      const parts: string[] = [];
+      if (profile.narrateNormalText !== false) { let n = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/\*[^*]+\*/g, '').trim(); if (n) parts.push(n); }
+      if (profile.narrateQuotedText) { const m = text.match(/"[^"]*"|'[^']*'/g); if (m) parts.push(m.map(x => x.replace(/^["']|["']$/g, '')).join(' ')); }
+      if (profile.narrateBoldedText) { const m = text.match(/\*\*[^*]+\*\*/g); if (m) parts.push(m.map(x => x.replace(/\*\*/g, '')).join(' ')); }
+      if (profile.narrateItalicizedText) { const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g); if (m) parts.push(m.map(x => x.replace(/\*/g, '')).join(' ')); }
+      const filtered = parts.join(' ').trim(); if (!filtered) return; text = filtered;
+    }
+    (async () => {
+      try {
+        const ctx: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
+        const label = character.id;
+        if (!uploadedTtsVoicesRef.current.has(label)) {
+          const url = getCharacterVoiceUrl(character.voice); if (!url) return;
+          const res = await fetch(url); if (!res.ok) return;
+          const blob = await res.blob();
+          const file = new File([blob], `${label}.wav`, { type: blob.type || 'audio/wav' });
+          if (!await textToSpeechModelEngine.uploadVoice(label, file, ctx)) return;
+          uploadedTtsVoicesRef.current.add(label);
         }
-    }, []);
+        await new Promise(r => setTimeout(r, 500));
+        const blob = await textToSpeechModelEngine.synthesize(text, ctx, { voice: label });
+        if (blob) { const u = URL.createObjectURL(blob); const a = new Audio(u); a.onended = () => URL.revokeObjectURL(u); a.play().catch(e => console.warn('TTS playback failed:', e)); }
+      } catch (e) { console.warn('TTS speak failed:', e); }
+    })();
+  }, [ttsServerUrl]);
 
-    const setStreamingTextThrottled = useCallback((text: string) => {
-        streamingTextRef.current = text;
-        pendingStreamingTextRef.current = text;
+  const getDynamicParagraphLimit = useCallback((char: Character, data: ChatData): number => {
+    const max = char.maximumChatStamina ?? 4;
+    if (data.participants.filter(p => p.id !== data.protagonist.id).length > 1) return max;
+    const prev = [...data.chatMessageHistory].reverse().find(m => m.character.id === char.id);
+    const ratio = Math.max(0, Math.min(1, (prev?.remainingChatStamina ?? max) / max));
+    return Math.max(1, Math.round(max * ratio));
+  }, []);
 
-        const now = performance.now();
-        const elapsed = now - lastFlushRef.current;
+  const generateAmbientNarration = useCallback(async (data: ChatData, _signal: AbortSignal): Promise<ChatData | null> => {
+    const recent = data.chatMessageHistory.filter(m => m.character.id !== '__ambient_narrator__').slice(-8).map(m => m.textContent.toLowerCase()).join(' ');
+    let best: typeof AMBIENT_POOL[0] | null = null, bestScore = 0;
+    for (const cat of AMBIENT_POOL) { let s = 0; for (const kw of cat.keywords) if (recent.includes(kw)) s++; if (s > bestScore) { bestScore = s; best = cat; } }
+    const pool = best ? best.lines : AMBIENT_FALLBACK;
+    const recentAmbient = data.chatMessageHistory.filter(m => m.character.id === '__ambient_narrator__').slice(-3).map(m => m.textContent);
+    const avail = pool.filter(l => !recentAmbient.includes(l));
+    const final = avail.length > 0 ? avail : pool;
+    const selected = final[Math.floor(Math.random() * final.length)];
+    setStreamingCharacter(AMBIENT_NARRATOR); streamingCharacterRef.current = AMBIENT_NARRATOR;
+    setStreamingText(''); streamingTextRef.current = '';
+    for (let i = 0; i < selected.length; i++) { const p = selected.substring(0, i + 1); streamingTextRef.current = p; setStreamingText(p); await new Promise(r => setTimeout(r, 20)); }
+    return addMessageToChatData(data, createChatMessage(data, AMBIENT_NARRATOR, selected));
+  }, []);
 
-        if (elapsed >= STREAMING_THROTTLE_MS) {
-            lastFlushRef.current = now;
-            setStreamingText(text);
-        } else if (!pendingFlushRef.current) {
-            pendingFlushRef.current = setTimeout(() => {
-                lastFlushRef.current = performance.now();
-                setStreamingText(pendingStreamingTextRef.current);
-                pendingFlushRef.current = null;
-            }, STREAMING_THROTTLE_MS - elapsed);
+  // ─── Core Generation ─────────────────────────────────────────────
+
+  const handleServerResponse = useCallback(async (
+    data: ChatData, character: Character, signal: AbortSignal,
+    onToken?: (text: string) => void, userImagesBase64?: string[],
+    strategy?: BudgetStrategy | null, complexityScore?: number,
+    existingCharacterText?: string,
+  ): Promise<ChatData | null> => {
+    const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
+    const model = selectedModelRef.current;
+    const running = runningModelsMapRef.current;
+    const strat = strategy ?? activeStrategyRef.current;
+    const maxPara = getDynamicParagraphLimit(character, data);
+
+    try {
+      let rawText: string;
+
+      if (strat) {
+        const engine = new BudgetStrategyEngine(strat);
+        const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
+        rawText = await engine.generateStream(data, character, { signal } as AbortController, cb, userImagesBase64, complexityScore);
+        if (engine.currentCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + engine.currentCost }));
+      } else {
+        if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
+        const port = model.id ? running[model.id]?.port : undefined;
+        const ep = port || (model.parameters as any)?._runtimePort;
+        if (!ep && !model.apiKey) { if (!signal.aborted) addToast('Model not ready.', 'error'); return null; }
+
+        const { body } = await prepareRequestBody(data, character, existingCharacterText || '', userImagesBase64, ep);
+        const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
+
+        const doStream = async (reqBody: any, ctx: LanguageModelContext) => languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
+          onToken: (s) => { setGenerationSpeed(s.msPerToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
+          onFinish: (rs) => {
+            const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
+            setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
+          },
+        }, ctx, maxPara);
+
+        rawText = await doStream(body, lmCtx);
+
+        if ((!rawText || !rawText.trim()) && !signal.aborted) {
+          if (strat) { addToast('All models failed per budget strategy.', 'error'); }
+          else {
+            const rp = model.id ? running[model.id]?.port : undefined;
+            const rep = rp || (model.parameters as any)?._runtimePort;
+            const { body: rb } = await prepareRequestBody(data, character, existingCharacterText || '', userImagesBase64, rep);
+            const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
+            rawText = await doStream(rb, rc);
+          }
+          if (!rawText || !rawText.trim()) return null;
         }
-    }, []);
-
-    const speakMessage = useCallback((text: string, character: Character) => {
-        if (!character.voice) return;
-
-        const profile = chatDataRef.current?.Profile;
-        if (profile) {
-            const filteredParts: string[] = [];
-
-            if (profile.narrateNormalText !== false) {
-                let normal = text;
-                normal = normal.replace(/"[^"]*"|'[^']*'/g, '');
-                normal = normal.replace(/\*\*[^*]+\*\*/g, '');
-                normal = normal.replace(/\*[^*]+\*/g, '');
-                const trimmed = normal.trim();
-                if (trimmed) filteredParts.push(trimmed);
-            }
-
-            if (profile.narrateQuotedText) {
-                const matches = text.match(/"[^"]*"|'[^']*'/g);
-                if (matches) filteredParts.push(matches.map(m => m.replace(/^["']|["']$/g, '')).join(' '));
-            }
-
-            if (profile.narrateBoldedText) {
-                const matches = text.match(/\*\*[^*]+\*\*/g);
-                if (matches) filteredParts.push(matches.map(m => m.replace(/\*\*/g, '')).join(' '));
-            }
-
-            if (profile.narrateItalicizedText) {
-                const matches = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
-                if (matches) filteredParts.push(matches.map(m => m.replace(/\*/g, '')).join(' '));
-            }
-
-            const filteredText = filteredParts.join(' ').trim();
-            if (!filteredText) return;
-            text = filteredText;
-        }
-
-        (async () => {
-            try {
-                const ttsContext: TextToSpeedLanguageModelContext = {
-                    serverUrl: ttsServerUrl || undefined,
-                    backend: 'Qwen3-TTS',
-                };
-
-                const voiceLabel = character.id; 
-
-                if (!uploadedTtsVoicesRef.current.has(voiceLabel)) {
-                    const voiceUrl = getCharacterVoiceUrl(character.voice);
-                    if (!voiceUrl) return;
-
-                    const res = await fetch(voiceUrl);
-                    if (!res.ok) return;
-
-                    const blob = await res.blob();
-                    const file = new File([blob], `${voiceLabel}.wav`, { type: blob.type || 'audio/wav' });
-
-                    const uploaded = await textToSpeechModelEngine.uploadVoice(voiceLabel, file, ttsContext);
-                    if (!uploaded) return;
-
-                    uploadedTtsVoicesRef.current.add(voiceLabel);
-                }
-
-                await new Promise(resolve => setTimeout(resolve, 500)); 
-
-                const blob = await textToSpeechModelEngine.synthesize(text, ttsContext, {
-                    voice: voiceLabel, 
-                });
-
-                if (blob) {
-                    const audioUrl = URL.createObjectURL(blob);
-                    const audio = new Audio(audioUrl);
-                    audio.onended = () => URL.revokeObjectURL(audioUrl);
-                    audio.play().catch(e => console.warn('TTS playback failed:', e));
-                }
-            } catch (e) {
-                console.warn('TTS speak failed:', e);
-            }
-        })();
-    }, [ttsServerUrl]);
-
-    const getDynamicParagraphLimit = useCallback((character: Character, data: ChatData): number => {
-        const maxStamina = character.maximumChatStamina ?? 4;
-        const aiParticipants = data.participants.filter(p => p.id !== data.protagonist.id);
-        if (aiParticipants.length > 1) return maxStamina;
-        const prevMsg = data.chatMessageHistory.length > 0 
-            ? [...data.chatMessageHistory].reverse().find(m => m.character.id === character.id)
-            : null;
-        const currentStamina = prevMsg?.remainingChatStamina ?? maxStamina;
-        const ratio = Math.max(0, Math.min(1, currentStamina / maxStamina));
-        return Math.max(1, Math.round(maxStamina * ratio));
-    }, []);
-
-    const generateAmbientNarration = useCallback(async (data: ChatData, _signal: AbortSignal): Promise<ChatData | null> => {
-        const recentText = data.chatMessageHistory
-            .filter(m => m.character.id !== '__ambient_narrator__')
-            .slice(-8)
-            .map(m => m.textContent.toLowerCase())
-            .join(' ');
-
-        let bestCategory: typeof AMBIENT_POOL[0] | null = null;
-        let bestScore = 0;
-
-        for (const category of AMBIENT_POOL) {
-            let score = 0;
-            for (const keyword of category.keywords) {
-                if (recentText.includes(keyword)) score++;
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                bestCategory = category;
-            }
-        }
-
-        const pool = bestCategory ? bestCategory.lines : AMBIENT_FALLBACK;
-
-        const recentAmbient = data.chatMessageHistory
-            .filter(m => m.character.id === '__ambient_narrator__')
-            .slice(-3)
-            .map(m => m.textContent);
-
-        const available = pool.filter(line => !recentAmbient.includes(line));
-        const finalPool = available.length > 0 ? available : pool;
-        const selected = finalPool[Math.floor(Math.random() * finalPool.length)];
-
-        setStreamingCharacter(AMBIENT_NARRATOR);
-        streamingCharacterRef.current = AMBIENT_NARRATOR;
-        setStreamingText("");
-        streamingTextRef.current = "";
-
-        const chars = selected.split('');
-        for (let i = 0; i < chars.length; i++) {
-            const partial = selected.substring(0, i + 1);
-            streamingTextRef.current = partial;
-            setStreamingText(partial);
-            await new Promise(resolve => setTimeout(resolve, 20));
-        }
-
-        const ambientMessage = createChatMessage(data, AMBIENT_NARRATOR, selected);
-        return addMessageToChatData(data, ambientMessage);
-    }, []);
-
-    // ✅ FIXED: Added existingText parameter, passed through to all engine call sites
-    const handleServerResponse = useCallback(async (
-        data: ChatData, 
-        character: Character, 
-        signal: AbortSignal, 
-        onToken?: (text: string) => void,
-        userImagesBase64?: string[],
-        strategy?: BudgetStrategy | null,
-        complexityScore?: number,
-        existingText?: string
-    ): Promise<ChatData | null> => {
-
-        const pricing: ModelPricing = {
-            cacheHitPerMillion: 0, 
-            cacheMissPerMillion: 0, 
-            outputPerMillion: 0
-        };
-
-        const currentModel = selectedModelRef.current;
-        const currentRunningModels = runningModelsMapRef.current;
-        const currentStrategy = strategy ?? activeStrategyRef.current;
-
-        const maxParagraphs = getDynamicParagraphLimit(character, data);
-
-        try {
-            let rawText: string;
-
-            if (currentStrategy) {
-                const strategyEngine = new BudgetStrategyEngine(currentStrategy);
-                
-                const wrappedCallbacks: StreamCallbacks | undefined = onToken ? {
-                    onToken: (stats) => {
-                        setGenerationSpeed(stats.msPerToken);
-                        streamingTextRef.current = stats.fullText;
-                        onToken(stats.fullText);
-                    }
-                } : undefined;
-
-                rawText = await strategyEngine.generateStream(
-                    data, 
-                    character, 
-                    { signal } as AbortController, 
-                    wrappedCallbacks, 
-                    userImagesBase64,
-                    complexityScore,
-                    existingText
-                );
-
-                if (strategyEngine.currentCost > 0) {
-                    setStats(prev => ({
-                        ...prev,
-                        numberOfRequests: prev.numberOfRequests + 1,
-                        totalCost: prev.totalCost + strategyEngine.currentCost,
-                    }));
-                }
-
-            } else {
-                if (!currentModel) {
-                    if (!signal.aborted) {
-                        addToast("No model selected. Please select a model from the Models list.", "error");
-                    }
-                    return null;
-                }
-
-                const runtimePort = currentModel?.id 
-                    ? currentRunningModels[currentModel.id]?.port 
-                    : undefined;
-                
-                const effectivePort = runtimePort || (currentModel.parameters as any)?._runtimePort;
-                
-                if (!effectivePort && !currentModel.apiKey) {
-                    if (!signal.aborted) {
-                        addToast("Model is not ready yet. Please wait.", "error");
-                    }
-                    return null;
-                }
-
-                const { body: requestBody } = await prepareRequestBody(data, character, userImagesBase64, effectivePort);
-                
-                const LanguageModelContext: LanguageModelContext = {
-                    apiKey: currentModel.apiKey,
-                    backend: currentModel.backend,
-                    modelPath: currentModel.model,
-                    runtimePort: effectivePort
-                };
-
-                rawText = await languageModelEngine.generateStream(
-                    requestBody,
-                    { signal } as AbortController,
-                    {
-                        onToken: (stats) => {
-                            setGenerationSpeed(stats.msPerToken);
-                            setStreamingTextThrottled(stats.fullText);
-                            if (onToken) onToken(stats.fullText);
-                        },
-                        onFinish: (responseStats) => {
-                            const promptTokens = responseStats.promptTokens || 0;
-                            const completionTokens = responseStats.completionTokens || 0;
-                            const isCacheMiss = responseStats.cacheMiss || false;
-                            const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
-
-                            setStats(prev => ({
-                                numberOfRequests: prev.numberOfRequests + 1,
-                                numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                                totalCost: prev.totalCost + costResult.totalCost,
-                                costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
-                            }));
-                        }
-                    },
-                    LanguageModelContext,
-                    maxParagraphs,
-                    existingText
-                );
-            }
-            
-            if (!rawText || !rawText.trim()) {
-                if (!signal.aborted) {
-                    if (currentStrategy) {
-                            addToast("All models failed according to budget strategy.", "error");
-                        } else if (currentModel) {
-                            const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
-                            const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
-                            
-                            const { body: retryRequestBody } = await prepareRequestBody(data, character, userImagesBase64, retryEffectivePort);
-                            
-                            const retryLanguageModelContext: LanguageModelContext = {
-                                apiKey: currentModel.apiKey,
-                                backend: currentModel.backend,
-                                modelPath: currentModel.model,
-                                runtimePort: retryEffectivePort
-                            };
-                            rawText = await languageModelEngine.generateStream(
-                                retryRequestBody,
-                                { signal } as AbortController,
-                                {
-                                    onToken: (stats) => {
-                                        setGenerationSpeed(stats.msPerToken);
-                                        setStreamingTextThrottled(stats.fullText);
-                                        if (onToken) onToken(stats.fullText);
-                                    },
-                                    onFinish: (responseStats) => {
-                                        const promptTokens = responseStats.promptTokens || 0;
-                                        const completionTokens = responseStats.completionTokens || 0;
-                                        const isCacheMiss = responseStats.cacheMiss || false;
-                                        const costResult = calculateRequestCost(promptTokens, completionTokens, isCacheMiss, pricing);
-                                        setStats(prev => ({
-                                            numberOfRequests: prev.numberOfRequests + 1,
-                                            numberOfCacheInvalidations: prev.numberOfCacheInvalidations + (isCacheMiss ? 1 : 0),
-                                            totalCost: prev.totalCost + costResult.totalCost,
-                                            costWithoutCacheMisses: prev.costWithoutCacheMisses + costResult.potentialMaxCost,
-                                        }));
-                                    }
-                                },
-                                retryLanguageModelContext,
-                                maxParagraphs,
-                                existingText
-                            );
-                    }
-
-                    if (!rawText || !rawText.trim()) {
-                        return null;
-                    }
-                } else {
-                    return null;
-                }
-            }
-
-            const displayText = convertIdsToDisplayNames(rawText, data);
-            const aiMessage = createChatMessage(data, character, displayText);
-            return addMessageToChatData(data, aiMessage);
-        } catch (error) {
-            const err = error as Error;
-
-            const partialText = streamingTextRef.current;
-            const partialChar = streamingCharacterRef.current;
-            if (partialText && partialText.trim().length > 0 && partialChar) {
-                pendingPartialRef.current = { text: partialText, character: partialChar };
-            }
-            
-            if (err.name === 'AbortError') {
-                return null;
-            }
-
-            const isNetworkError = err.message.includes('Failed to fetch') || 
-                                    err.message.includes('NetworkError') ||
-                                    err.message.includes('ERR_ABORTED') ||
-                                    err.message.includes('502') ||
-                                    err.message.includes('503') ||
-                                    err.message.includes('504');
-
-            if (isNetworkError) {
-                if (!signal.aborted) {
-                    addToast("⚠️ Backend Connection Failed. Could not connect to the AI server.", "error");
-                }
-                return null;
-            }
-
-            console.error("Inference failed:", err);
-            if (!signal.aborted) {
-                addToast(`Inference Error: ${err.message}`, "error");
-            }
-            return null;
-        }
-    }, [addToast, getDynamicParagraphLimit, setStreamingTextThrottled]);
-
-    const updateRunningModels = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
-        setRunningModelsMap(models);
-    }, []);
-
-    const applyPendingPartial = useCallback(async (
-        baseData: ChatData,
-        protagonistId: string
-    ): Promise<ChatData> => {
-        const pending = pendingPartialRef.current;
-        if (!pending) return baseData;
-
-        pendingPartialRef.current = null;
-        const displayText = convertIdsToDisplayNames(pending.text, baseData);
-        const history = baseData.chatMessageHistory;
-
-        if (history.length > 0) {
-            const lastIdx = history.length - 1;
-            const lastMsg = history[lastIdx];
-            if (lastMsg.character.id !== protagonistId) {
-                const patchedHistory = [...history];
-                patchedHistory[lastIdx] = { ...lastMsg, textContent: displayText, isPartial: true };
-                return { ...baseData, chatMessageHistory: patchedHistory, lastUpdatedTimestamp: Date.now() };
-            }
-        }
-
-        const partialMsg = createChatMessage(baseData, pending.character, displayText, { isPartial: true });
-        return addMessageToChatData(baseData, partialMsg);
-    }, []);
-
-    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character): Promise<void> => {
-        if (!chatData || !currentCharacter) return;
-        
-        if (isLoadingRef.current) {
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-                abortControllerRef.current = null;
-            }
-            await new Promise(resolve => setTimeout(resolve, 300));
-        }
-        
-        if (!acquireGenerationLock()) {
-            addToast("Already generating...", "info");
-            return;
-        }
-        if (!isModelReadyForGeneration()) {
-            addToast("Model is not ready yet. Please wait.", "error");
-            releaseGenerationLock();
-            return;
-        }
-        try {
-            const latestChatData = chatDataRef.current;
-            if (!latestChatData) {
-                releaseGenerationLock();
-                return;
-            }
-
-            const actionMsg = createChatMessage(latestChatData, currentCharacter, actionText);
-            const updatedData = addMessageToChatData(latestChatData, actionMsg);
-            await saveRawChatData(updatedData);
-            setChatData(updatedData);
-            chatDataRef.current = updatedData;
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            const controller = new AbortController();
-            abortControllerRef.current = controller;
-            setStreamingText("");
-            streamingTextRef.current = "";
-            pendingStreamingTextRef.current = "";
-            setStreamingCharacter(targetChar);
-            streamingCharacterRef.current = targetChar;
-            setGenerationSpeed(0);
-            isAtBottomRef.current = true;
-            
-            try {
-                const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingTextThrottled, undefined, undefined);
-
-                if (pendingPartialRef.current) {
-                    const baseData = result || updatedData;
-                    const finalData = await applyPendingPartial(baseData, currentCharacter.id);
-                    await saveRawChatData(finalData);
-                    setChatData(finalData);
-                    chatDataRef.current = finalData;
-                    return;
-                }
-
-                if (result) {
-                    await saveRawChatData(result);
-                    setChatData(result);
-                    chatDataRef.current = result;
-
-                    const lastMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
-                    if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
-                        speakMessage(lastMsg.textContent, lastMsg.character);
-                    }
-                }
-            } catch (err) {
-                if ((err as Error).name !== 'AbortError') console.error("AI response failed:", err);
-            } finally {
-                if (abortControllerRef.current === controller) abortControllerRef.current = null;
-                releaseGenerationLock();
-            }
-        } catch (error) {
-            console.error("Failed to send action:", error);
-            releaseGenerationLock();
-        }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, speakMessage, applyPendingPartial, setStreamingTextThrottled]);
-
-    const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
-        if (!chatData?.Profile?.forceNoCharacterImageInjection && !character.image) {
-            setIsInitialImageProcessed(true);
-            return;
-        }
-        if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) {
-            setIsInitialImageProcessed(true);
-            return;
-        }
-
-        isProcessingSilentlyRef.current = true;
-        const sampler = character.sampler;
-        const silentCharacter: Character = {
-            ...character,
-            sampler: {
-                ...sampler,
-                id: sampler?.id || uuidv4(),
-                name: sampler?.name || 'silent',
-                maximumNumberOfTokens: 0,
-                parameters: { ...sampler?.parameters, n_predict: 0 },
-                stopPatterns: [],
-                firstCreatedTimestamp: sampler?.firstCreatedTimestamp || Date.now(),
-                lastUpdatedTimestamp: Date.now(),
-            }
-        };
-        try {
-            const controller = new AbortController();
-            await handleServerResponse(data, silentCharacter, controller.signal, undefined, undefined, undefined);
-        } catch (error) {
-            console.warn("Silent image processing failed:", error);
-        } finally {
-            isProcessingSilentlyRef.current = false;
-            setIsInitialImageProcessed(true);
-        }
-    }, [handleServerResponse, isModelReadyForGeneration]);
-
-    useEffect(() => {
-        const init = async () => {
-            const arr = await loadAllRawChatData();
-            const validChats = arr.filter((c): c is ChatData => c !== null);
-            let charToUse: Character | null = null;
-            let chatToLoad: ChatData | null = null;
-
-            if (validChats.length > 0) {
-                const sortedChats = [...validChats].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
-                const firstChat = sortedChats[0];
-                if (firstChat.protagonist && firstChat.protagonist.id !== 'default-user') {
-                    chatToLoad = firstChat;
-                    charToUse = firstChat.protagonist;
-                }
-            }
-
-            if (!charToUse) charToUse = getDefaultCharacter();
-            if (!currentCharacter && charToUse) setCurrentCharacter(charToUse);
-
-            if (!chatData && charToUse) {
-                if (chatToLoad) setChatData(chatToLoad);
-                else setChatData(createNewChatData(charToUse));
-            }
-
-            const dataToProcess = chatToLoad || (charToUse ? createNewChatData(charToUse) : null);
-            if (dataToProcess && charToUse && !isInitialImageProcessed) {
-                await processProtagonistImageSilently(dataToProcess, charToUse);
-            }
-
-            if (chatData || chatToLoad) {
-                const activeChat = chatToLoad || chatData;
-                if (activeChat) {
-                    const allChats = await loadAllRawChatData();
-                    const points = new Set<string>();
-                    for (const c of allChats) {
-                        if (c && c.parentChatDataId === activeChat.id && c.parentChatMessageId) points.add(c.parentChatMessageId);
-                    }
-                    setParentChatMessageIds(points);
-                }
-            }
-        };
-        init();
-    }, []);
-
-    useEffect(() => {
-        const chatEl = chatHistoryRef.current;
-        if (!chatEl) return;
-        const onScroll = () => {
-            const threshold = 80;
-            const atBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < threshold;
-            isAtBottomRef.current = atBottom;
-        };
-        chatEl.addEventListener('scroll', onScroll, { passive: true });
-        return () => chatEl.removeEventListener('scroll', onScroll);
-    }, []);
-
-    useEffect(() => {
-        if (!isAtBottomRef.current) return;
-        if (isLoading && streamingText && messageEndRef.current) {
-            messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        } else if (!isLoading && messageEndRef.current && chatData?.chatMessageHistory.length) {
-            messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
-
-    const stopGeneration = useCallback(() => {
-        const savedText = streamingTextRef.current;
-        const savedChar = streamingCharacterRef.current;
-
-        if (savedText && savedText.trim().length > 0 && savedChar) {
-            pendingPartialRef.current = { text: savedText, character: savedChar };
-        } else {
-            pendingPartialRef.current = null;
-        }
-
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null; 
-        }
-
-        releaseGenerationLock();
-        setGenerationSpeed(0);
-    }, [releaseGenerationLock]);
-
-    const startNewChat = useCallback((character: Character) => {
-        const newChat = createNewChatData(character);
-        newChat.name = "Untitled Chat";
-        setChatData(newChat);
-        setCurrentCharacter(character);
-        setIsInitialImageProcessed(false);
-        isAtBottomRef.current = true;
-        saveRawChatData(newChat).catch(err => console.error("Failed to save new chat:", err));
-    }, []);
-
-    const setActiveBudgetStrategy = useCallback((strategy: BudgetStrategy | null) => {
-        setActiveStrategy(strategy);
-    }, []);
-
-    const setSelectedGlobalModel = useCallback((model: LanguageModel | null) => {
-        setSelectedModel(model);
-    }, []);
-
-    const sendMessage = useCallback(async (text: string, files?: File[]) => {
-        if (!chatData || !currentCharacter || (!text.trim() && (!files || files.length === 0))) return;
-        if (!acquireGenerationLock()) {
-            addToast("Already generating...", "info");
-            return;
-        }
-        if (!isModelReadyForGeneration()) {
-            addToast("Model is not ready yet. Please wait.", "error");
-            releaseGenerationLock();
-            return;
-        }
-        
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        setStreamingText("");
-        streamingTextRef.current = "";
-        pendingStreamingTextRef.current = "";
-        setStreamingCharacter(null);
-        streamingCharacterRef.current = null;
-        setGenerationSpeed(0);
-        isAtBottomRef.current = true;
-        
-        try {
-            let userImagesBase64: string[] | undefined = undefined;
-            if (files && files.length > 0) {
-                userImagesBase64 = await Promise.all(files.map(f => convertFileToBase64(f)));
-            }
-
-            const userMsg = createChatMessage(chatData, currentCharacter, text);
-            const tempData = addMessageToChatData(chatData, userMsg);
-            setChatData(tempData);
-            chatDataRef.current = tempData;
-            await saveRawChatData(tempData);
-
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
-                setStreamingText("");
-                streamingTextRef.current = "";
-                pendingStreamingTextRef.current = "";
-                setStreamingCharacter(char);
-                streamingCharacterRef.current = char;
-                return handleServerResponse(data, char, signal, onToken, userImagesBase64, undefined);
-            };
-            
-            const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingTextThrottled, setChatData);
-
-            if (pendingPartialRef.current) {
-                const finalData = await applyPendingPartial(updatedData, currentCharacter.id);
-                await saveRawChatData(finalData);
-                setChatData(finalData);
-                chatDataRef.current = finalData;
-                return;
-            }
-
-            const originalMsgCount = tempData.chatMessageHistory.length;
-            const newMsgCount = updatedData.chatMessageHistory.length;
-            const hasAIResponse = newMsgCount > originalMsgCount;
-
-            if (hasAIResponse) {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
-                chatDataRef.current = updatedData;
-
-                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
-
-                const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
-                if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
-                    speakMessage(lastMsg.textContent, lastMsg.character);
-                }
-            } else {
-                const ambientData = await generateAmbientNarration(updatedData, controller.signal);
-                
-                if (ambientData) {
-                    await saveRawChatData(ambientData);
-                    setChatData(ambientData);
-                    chatDataRef.current = ambientData;
-                } else {
-                    await saveRawChatData(updatedData);
-                    setChatData(updatedData);
-                    chatDataRef.current = updatedData;
-                }
-            }
-        } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-                console.error("Send failed:", err);
-                addToast(`Send failed: ${(err as Error).message}`, "error");
-            }
-        } finally {
-            if (abortControllerRef.current === controller) abortControllerRef.current = null;
-            releaseGenerationLock();
-        }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage, applyPendingPartial, setStreamingTextThrottled]);
-
-    // ✅ FIXED: Bypasses runTurnSequence (which excludes last speaker), calls handleServerResponse directly,
-    // replaces partial message in-place instead of appending duplicate, passes existingText to engine
-    const resumeGeneration = useCallback(async (messageId: string) => {
-        if (!chatData) return;
-        
-        const msgIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
-        if (msgIndex === -1) {
-            addToast("Message not found.", "error");
-            return;
-        }
-
-        const msg = chatData.chatMessageHistory[msgIndex];
-        if (!msg.isPartial) {
-            addToast("This message is not partial — use Regenerate instead.", "info");
-            return;
-        }
-
-        if (!acquireGenerationLock()) {
-            addToast("Already generating...", "info");
-            return;
-        }
-        if (!isModelReadyForGeneration()) {
-            addToast("Model is not ready yet. Please wait.", "error");
-            releaseGenerationLock();
-            return;
-        }
-
-        const existingText = msg.textContent;
-        const targetCharacter = msg.character;
-        const workingData = { ...chatData };
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        setStreamingText(existingText);
-        streamingTextRef.current = existingText;
-        pendingStreamingTextRef.current = existingText;
-        setStreamingCharacter(targetCharacter);
-        streamingCharacterRef.current = targetCharacter;
-        setGenerationSpeed(0);
-        isAtBottomRef.current = true;
-
-        try {
-            // ✅ BYPASS runTurnSequence ENTIRELY.
-            // runTurnSequence sets lastSpeakerId to the partial message's character,
-            // then filters them out of eligible speakers. With one AI participant,
-            // eligible becomes empty and the loop breaks without calling the executor.
-            const result = await handleServerResponse(
-                workingData,
-                targetCharacter,
-                controller.signal,
-                (t) => {
-                    streamingTextRef.current = t;
-                    setStreamingTextThrottled(t);
-                },
-                undefined,
-                undefined,
-                undefined,
-                existingText
-            );
-
-            if (pendingPartialRef.current) {
-                const baseData = result || workingData;
-                const finalData = await applyPendingPartial(baseData, chatData.protagonist.id);
-                await saveRawChatData(finalData);
-                setChatData(finalData);
-                chatDataRef.current = finalData;
-                return;
-            }
-
-            if (result) {
-                // handleServerResponse appends a NEW message via addMessageToChatData.
-                // We must REPLACE the old partial at msgIndex, not keep both.
-                const newMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
-                const hasNewContent = newMsg && newMsg.textContent !== existingText;
-
-                if (hasNewContent) {
-                    const finalHistory = [...workingData.chatMessageHistory];
-                    finalHistory[msgIndex] = { ...newMsg, isPartial: false };
-
-                    const finalData: ChatData = {
-                        ...result,
-                        chatMessageHistory: finalHistory,
-                        messageCount: workingData.messageCount,
-                        lastUpdatedTimestamp: Date.now(),
-                    };
-
-                    await saveRawChatData(finalData);
-                    setChatData(finalData);
-                    chatDataRef.current = finalData;
-
-                    if (newMsg.character.id !== chatData.protagonist.id) {
-                        speakMessage(newMsg.textContent, newMsg.character);
-                    }
-                } else {
-                    await saveRawChatData(result);
-                    setChatData(result);
-                    chatDataRef.current = result;
-                }
-            } else {
-                addToast("Resume produced no output. Try again.", "info");
-            }
-        } catch (err) {
-            const errorMsg = (err as Error).message;
-            if (errorMsg !== 'AbortError') {
-                console.error("Resume failed:", err);
-                addToast(`Resume error: ${errorMsg}`, "error");
-            }
-        } finally {
-            if (abortControllerRef.current === controller) abortControllerRef.current = null;
-            releaseGenerationLock();
-        }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, applyPendingPartial, setStreamingTextThrottled, speakMessage]);
-
-    const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
-        if (!chatData) return;
-        if (!acquireGenerationLock()) {
-            addToast("Already generating...", "info");
-            return;
-        }
-        if (!isModelReadyForGeneration()) {
-            addToast("Model is not ready yet. Please wait.", "error");
-            releaseGenerationLock();
-            return;
-        }
-        
-        const history = chatData.chatMessageHistory;
-        const targetIndex = history.findIndex(m => m.id === messageId);
-
-        if (targetIndex === -1) {
-            addToast("Message not found.", "error");
-            releaseGenerationLock();
-            return;
-        }
-
-        const targetMessage = history[targetIndex];
-        const isTargetAI = targetMessage.character.id !== chatData.protagonist.id;
-
-        let trimIndex: number;
-        let messagesToDelete: ChatMessage[];
-
-        if (type === 'ai' && isTargetAI) {
-            trimIndex = targetIndex;
-            messagesToDelete = history.slice(trimIndex);
-        } else if (type === 'user' && !isTargetAI) {
-            trimIndex = targetIndex + 1;
-            messagesToDelete = history.slice(trimIndex);
-        } else {
-            addToast("Mismatched regeneration type.", "error");
-            releaseGenerationLock();
-            return;
-        }
-
-        if (messagesToDelete.length > 0) {
-            try { 
-                await Promise.all(messagesToDelete.map(m => deleteRawChatMessage(m.id))); 
-            } catch (err) { 
-                console.error("Failed to delete old messages:", err); 
-            }
-        }
-
-        const trimmedData: ChatData = { 
-            ...chatData, 
-            chatMessageHistory: history.slice(0, trimIndex), 
-            lastUpdatedTimestamp: Date.now() 
-        };
-        
-        setChatData(trimmedData);
-        chatDataRef.current = trimmedData;
-        setStreamingText("");
-        streamingTextRef.current = "";
-        pendingStreamingTextRef.current = "";
-        setStreamingCharacter(null);
-        streamingCharacterRef.current = null;
-        setGenerationSpeed(0);
-        isAtBottomRef.current = true;
-        
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        const preRegenMsgCount = trimmedData.chatMessageHistory.length;
-
-        try {
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t:string)=>void) => {
-                setStreamingText("");
-                streamingTextRef.current = "";
-                pendingStreamingTextRef.current = "";
-                setStreamingCharacter(char);
-                streamingCharacterRef.current = char;
-                return handleServerResponse(data, char, signal, onToken, undefined, undefined);
-            };
-
-            const updatedData = await runTurnSequence(trimmedData, executor, controller, setStreamingCharacter, setStreamingTextThrottled, setChatData);
-
-            if (pendingPartialRef.current) {
-                const finalData = await applyPendingPartial(updatedData, chatData.protagonist.id);
-                await saveRawChatData(finalData);
-                setChatData(finalData);
-                chatDataRef.current = finalData;
-                return;
-            }
-
-            const postRegenMsgCount = updatedData.chatMessageHistory.length;
-            const hasAIResponse = postRegenMsgCount > preRegenMsgCount;
-
-            if (hasAIResponse) {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
-                chatDataRef.current = updatedData;
-
-                runBackgroundSummarization(updatedData, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
-
-                const lastMsg = updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1];
-                if (lastMsg && lastMsg.character.id !== currentCharacter?.id) {
-                    speakMessage(lastMsg.textContent, lastMsg.character);
-                }
-            } else {
-                const ambientData = await generateAmbientNarration(updatedData, controller.signal);
-                
-                if (ambientData) {
-                    await saveRawChatData(ambientData);
-                    setChatData(ambientData);
-                    chatDataRef.current = ambientData;
-                } else {
-                    await saveRawChatData(updatedData);
-                    setChatData(updatedData);
-                    chatDataRef.current = updatedData;
-                }
-            }
-        } catch (err) { 
-            const errorMsg = (err as Error).message;
-            if (errorMsg !== 'AbortError') {
-                console.error("Regeneration failed:", err); 
-                addToast(`Regeneration error: ${errorMsg}`, "error");
-            }
-        } finally { 
-            if (abortControllerRef.current === controller) abortControllerRef.current = null; 
-            releaseGenerationLock();
-        }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage, applyPendingPartial, setStreamingTextThrottled]);
-
-    const currentTokenCount = chatData ? chatData.chatMessageHistory.reduce((acc, msg) => acc + estimateTokens(msg.textContent), 0) : 0;
-    const maxContextTokens = selectedModel?.contextLength || 8192;
-
-    return {
-        chatData, setChatData, currentCharacter, setCurrentCharacter, isLoading, streamingText, streamingCharacter,
-        sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef, parentChatMessageIds,
-        generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0, tokenCount: currentTokenCount,
-        maximumNumberOfTokens: maxContextTokens, startNewChat,
-        sendActionAndGetResponse,
-        setActiveBudgetStrategy,
-        setSelectedGlobalModel,
-        updateRunningModels,
-        numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
-        numberOfRequests: stats.numberOfRequests,
-        totalCost: stats.totalCost,
-        costWithoutCacheMisses: stats.costWithoutCacheMisses,
-    };
+      }
+
+      if (!rawText || !rawText.trim()) return null;
+      return addMessageToChatData(data, createChatMessage(data, character, convertIdsToDisplayNames(rawText, data)));
+    } catch (err) {
+      const e = err as Error;
+      const pt = streamingTextRef.current, pc = streamingCharacterRef.current;
+      if (pt && pt.trim() && pc) pendingPartialRef.current = { text: pt, character: pc };
+      if (e.name === 'AbortError') return null;
+      const isNet = ['Failed to fetch','NetworkError','ERR_ABORTED','502','503','504'].some(s => e.message.includes(s));
+      if (isNet) { if (!signal.aborted) addToast('⚠️ Backend Connection Failed.', 'error'); return null; }
+      console.error('Inference failed:', e);
+      if (!signal.aborted) addToast(`Inference Error: ${e.message}`, 'error');
+      return null;
+    }
+  }, [addToast, getDynamicParagraphLimit, throttledSetStreamingText]);
+
+  // ─── Pending Partial Helper ──────────────────────────────────────
+
+  const applyPendingPartial = useCallback(async (base: ChatData, protagonistId: string): Promise<ChatData> => {
+    const p = pendingPartialRef.current; if (!p) return base;
+    pendingPartialRef.current = null;
+    const dt = convertIdsToDisplayNames(p.text, base);
+    const h = base.chatMessageHistory;
+    if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
+      const ph = [...h]; ph[ph.length - 1] = { ...ph[ph.length - 1], textContent: dt, isPartial: true };
+      return { ...base, chatMessageHistory: ph, lastUpdatedTimestamp: Date.now() };
+    }
+    return addMessageToChatData(base, createChatMessage(base, p.character, dt, { isPartial: true }));
+  }, []);
+
+  // ─── Public Actions ──────────────────────────────────────────────
+
+  const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), []);
+  const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => setActiveStrategy(s), []);
+  const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
+
+  const startNewChat = useCallback((char: Character) => {
+    const c = createNewChatData(char); c.name = 'Untitled Chat';
+    setChatData(c); setCurrentCharacter(char); setIsInitialImageProcessed(false); isAtBottomRef.current = true;
+    saveRawChatData(c).catch(e => console.error('Failed to save new chat:', e));
+  }, []);
+
+  const stopGeneration = useCallback(() => {
+    const t = streamingTextRef.current, c = streamingCharacterRef.current;
+    pendingPartialRef.current = (t && t.trim() && c) ? { text: t, character: c } : null;
+    abortControllerRef.current?.abort(); abortControllerRef.current = null;
+    releaseLock(); setGenerationSpeed(0);
+  }, [releaseLock]);
+
+  const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
+    if (!chatData || !currentCharacter) return;
+    if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 300)); }
+    if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+    if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+    const d = chatDataRef.current; if (!d) { releaseLock(); return; }
+    const ud = addMessageToChatData(d, createChatMessage(d, currentCharacter, actionText));
+    await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
+    await new Promise(r => setTimeout(r, 50));
+    const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+    setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
+    setStreamingCharacter(targetChar); streamingCharacterRef.current = targetChar;
+    setGenerationSpeed(0); isAtBottomRef.current = true;
+    try {
+      const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, undefined, '');
+      if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
+      if (result) { await saveRawChatData(result); setChatData(result); chatDataRef.current = result; const lm = result.chatMessageHistory[result.chatMessageHistory.length - 1]; if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character); }
+    } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
+    finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
+  }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+
+  const sendMessage = useCallback(async (text: string, files?: File[]) => {
+    if (!chatData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
+    if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+    if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+    const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+    setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
+    setStreamingCharacter(null); streamingCharacterRef.current = null;
+    setGenerationSpeed(0); isAtBottomRef.current = true;
+    try {
+      const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
+      const td = addMessageToChatData(chatData, createChatMessage(chatData, currentCharacter, text));
+      setChatData(td); chatDataRef.current = td; await saveRawChatData(td);
+      const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
+        setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
+        setStreamingCharacter(c); streamingCharacterRef.current = c;
+        return handleServerResponse(d, c, s, ot, imgs, undefined, undefined, '');
+      };
+      const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
+      if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
+      if (ud.chatMessageHistory.length > td.chatMessageHistory.length) {
+        await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
+        runBackgroundSummarization(ud, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
+        const lm = ud.chatMessageHistory[ud.chatMessageHistory.length - 1];
+        if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
+      } else {
+        const ad = await generateAmbientNarration(ud, ctrl.signal);
+        const sd = ad || ud; await saveRawChatData(sd); setChatData(sd); chatDataRef.current = sd;
+      }
+    } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Send failed:', e); addToast(`Send failed: ${(e as Error).message}`, 'error'); } }
+    finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
+  }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+
+  // ─── Resume Generation ───────────────────────────────────────────
+  // Direct engine call. Edits existing message by ID. No new message created.
+  // Prompt includes existing text via Text Injection → model echoes it → we strip the echo.
+
+  const resumeGeneration = useCallback(async (messageId: string) => {
+    if (!chatData) return;
+    const msgIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
+    const msg = chatData.chatMessageHistory[msgIndex];
+    if (!msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
+    if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+    const model = selectedModelRef.current;
+    if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+    const existingText = msg.textContent;
+    const char = msg.character;
+    const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+
+    setStreamingText(existingText); streamingTextRef.current = existingText; pendingStreamingTextRef.current = existingText;
+    setStreamingCharacter(char); streamingCharacterRef.current = char;
+    setGenerationSpeed(0); isAtBottomRef.current = true;
+
+    try {
+      const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
+      const ep = port || (model?.parameters as any)?._runtimePort;
+      if (!ep && !model?.apiKey) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+      const { body } = await prepareRequestBody(chatData, char, existingText, undefined, ep);
+      const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
+
+      const rawOutput = await languageModelEngine.generateStream(body, ctrl, {
+        onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; throttledSetStreamingText(s.fullText); },
+      }, lmCtx, getDynamicParagraphLimit(char, chatData));
+
+      if (!rawOutput?.trim()) { addToast('Resume produced no output.', 'info'); return; }
+
+      // Strip echoed prefix — completion models repeat the prompt suffix
+      const newText = rawOutput.startsWith(existingText) ? rawOutput.slice(existingText.length) : rawOutput;
+      if (!newText.trim()) { addToast('No new content generated.', 'info'); return; }
+
+      // Convert only NEW text — existing text was already converted when saved
+      const combined = existingText + convertIdsToDisplayNames(newText, chatData);
+
+      const history = [...chatData.chatMessageHistory];
+      history[msgIndex] = { ...msg, textContent: combined, isPartial: false, lastUpdatedTimestamp: Date.now() };
+      const fd: ChatData = { ...chatData, chatMessageHistory: history, lastUpdatedTimestamp: Date.now() };
+
+      await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd;
+      if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') { console.error('Resume failed:', e); addToast(`Resume error: ${(e as Error).message}`, 'error'); }
+    } finally {
+      if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+      releaseLock();
+    }
+  }, [chatData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, getDynamicParagraphLimit, throttledSetStreamingText, speakMessage]);
+
+  // ─── Regenerate ──────────────────────────────────────────────────
+
+  const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
+    if (!chatData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
+    if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+    const history = chatData.chatMessageHistory;
+    const ti = history.findIndex(m => m.id === messageId);
+    if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
+    const tm = history[ti];
+    const isAI = tm.character.id !== chatData.protagonist.id;
+    let trimIdx: number;
+    if (type === 'ai' && isAI) trimIdx = ti;
+    else if (type === 'user' && !isAI) trimIdx = ti + 1;
+    else { addToast('Mismatched regeneration type.', 'error'); releaseLock(); return; }
+    const toDelete = history.slice(trimIdx);
+    if (toDelete.length) try { await Promise.all(toDelete.map(m => deleteRawChatMessage(m.id))); } catch (e) { console.error('Delete failed:', e); }
+    const td: ChatData = { ...chatData, chatMessageHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
+    setChatData(td); chatDataRef.current = td;
+    setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
+    setStreamingCharacter(null); streamingCharacterRef.current = null;
+    setGenerationSpeed(0); isAtBottomRef.current = true;
+    const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+    const preCount = td.chatMessageHistory.length;
+    try {
+      const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
+        setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
+        setStreamingCharacter(c); streamingCharacterRef.current = c;
+        return handleServerResponse(d, c, s, ot, undefined, undefined, undefined, '');
+      };
+      const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
+      if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, chatData.protagonist.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
+      if (ud.chatMessageHistory.length > preCount) {
+        await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
+        runBackgroundSummarization(ud, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
+        const lm = ud.chatMessageHistory[ud.chatMessageHistory.length - 1];
+        if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
+      } else {
+        const ad = await generateAmbientNarration(ud, ctrl.signal);
+        const sd = ad || ud; await saveRawChatData(sd); setChatData(sd); chatDataRef.current = sd;
+      }
+    } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
+    finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
+  }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+
+  // ─── Silent Image Processing ─────────────────────────────────────
+
+  const processProtagonistImageSilently = useCallback(async (data: ChatData, char: Character) => {
+    if (!chatData?.Profile?.forceNoCharacterImageInjection && !char.image) { setIsInitialImageProcessed(true); return; }
+    if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
+    isProcessingSilentlyRef.current = true;
+    const s = char.sampler;
+    const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
+    try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, undefined, ''); }
+    catch (e) { console.warn('Silent image processing failed:', e); }
+    finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }
+  }, [handleServerResponse, isModelReadyForGeneration]);
+
+  // ─── Init ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    (async () => {
+      const arr = await loadAllRawChatData();
+      const valid = arr.filter((c): c is ChatData => c !== null);
+      let char: Character | null = null, chat: ChatData | null = null;
+      if (valid.length) { const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp); if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') { chat = sorted[0]; char = sorted[0].protagonist; } }
+      if (!char) char = getDefaultCharacter();
+      if (!currentCharacter && char) setCurrentCharacter(char);
+      if (!chatData && char) { if (chat) setChatData(chat); else setChatData(createNewChatData(char)); }
+      const dp = chat || (char ? createNewChatData(char) : null);
+      if (dp && char && !isInitialImageProcessed) await processProtagonistImageSilently(dp, char);
+      if (chatData || chat) {
+        const ac = chat || chatData;
+        if (ac) { const all = await loadAllRawChatData(); const pts = new Set<string>(); for (const c of all) if (c && c.parentChatDataId === ac.id && c.parentChatMessageId) pts.add(c.parentChatMessageId); setParentChatMessageIds(pts); }
+      }
+    })();
+  }, []);
+
+  // ─── Scroll Tracking ────────────────────────────────────────────
+
+  useEffect(() => {
+    const el = chatHistoryRef.current; if (!el) return;
+    const fn = () => { isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
+    el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
+  }, []);
+
+  useEffect(() => {
+    if (!isAtBottomRef.current) return;
+    if (isLoading && streamingText && messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'auto' });
+    else if (!isLoading && messageEndRef.current && chatData?.chatMessageHistory.length) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
+
+  // ─── Return ──────────────────────────────────────────────────────
+
+  const tokenCount = chatData ? chatData.chatMessageHistory.reduce((a, m) => a + estimateTokens(m.textContent), 0) : 0;
+  const maxCtx = selectedModel?.contextLength || 8192;
+
+  return {
+    chatData, setChatData, currentCharacter, setCurrentCharacter,
+    isLoading, streamingText, streamingCharacter,
+    sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
+    messageEndRef, chatHistoryRef, parentChatMessageIds,
+    generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0,
+    tokenCount, maximumNumberOfTokens: maxCtx, startNewChat,
+    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
+    numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
+    numberOfRequests: stats.numberOfRequests,
+    totalCost: stats.totalCost,
+    costWithoutCacheMisses: stats.costWithoutCacheMisses,
+  };
 }

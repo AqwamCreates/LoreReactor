@@ -12,7 +12,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawProfile, loadRawContext } from '../hooks/storage';
+import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawContext } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -32,98 +32,149 @@ import type {
   ChatData, RawChatData, Extension, InterjectableAction, Profile
 } from '../types';
 
-interface NavButtonProps {
-  icon: string;
-  label: string;
-  onClick: () => void;
-}
+// ─── Constants & Types ──────────────────────────────────────────────
+
+const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+
+interface NavButtonProps { icon: string; label: string; onClick: () => void }
+interface LoadStep { id: string; label: string; icon: string; done: boolean }
+
+// ─── Sub-components ─────────────────────────────────────────────────
 
 function NavButton({ icon, label, onClick }: NavButtonProps) {
   return (
     <button type="button" className="nav-btn" onClick={onClick}>
-      <span style={{ marginRight: '6px' }}>{icon}</span>
-      {label}
+      <span style={{ marginRight: '6px' }}>{icon}</span>{label}
     </button>
   );
 }
 
-interface LoadStep {
-  id: string;
-  label: string;
-  icon: string;
-  done: boolean;
-}
-
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
-
-// ✅ FIX #2: Memoized message text to prevent re-formatting unchanged messages during streaming
 const MemoizedMessageText = React.memo(({ text }: { text: string }) => (
   <span className="message-text">{formatMessageText(text)}</span>
 ));
 
+// ─── Render Helpers ─────────────────────────────────────────────────
+
+function renderModelSubtext(model: LanguageModel, runningModels: Record<string, any>, selectedModelId: string | null) {
+  const ms = runningModels[model.id];
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
+      {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
+      {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
+      {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
+      {selectedModelId === model.id && !ms?.isRunning && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
+      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
+      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
+      <span>{model.description}</span>
+    </span>
+  );
+}
+
+function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
+      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
+    </span>
+  );
+}
+
+function renderProfileSubtext(profile: Profile) {
+  const flags: string[] = [];
+  if (profile.forceNameReveal) flags.push('Force Names');
+  if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
+  if (profile.stripThinkTokens) flags.push('Strip Think');
+  if (profile.useCurrentDateAndTime) flags.push('Clock');
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
+      {flags.length > 0
+        ? flags.map((f, i) => <span key={i} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>)
+        : <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>No special settings</span>}
+    </span>
+  );
+}
+
+function renderChatSubtext(c: any) {
+  const parts: string[] = [];
+  if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`);
+  parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`);
+  parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`);
+  if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`);
+  return parts.join(' • ');
+}
+
+function renderContextSubtext(i: any) {
+  const parts: string[] = [];
+  if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡');
+  if (i.images?.length > 0) parts.push(`🖼️${i.images.length}`);
+  if (i.searchTerms?.length > 0) parts.push(`🔎${i.searchTerms.length}`);
+  if (i.urls?.length > 0) parts.push(`🔗${i.urls.length}`);
+  parts.push((i.text?.substring(0, 50) || '') + '...');
+  return parts.join(' ');
+}
+
+function renderExtensionSubtext(ext: any) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}>
+      <span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span>
+      <span>{ext.description}</span>
+    </span>
+  );
+}
+
+// ─── Loading Screen ─────────────────────────────────────────────────
+
+function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boolean }) {
+  const done = steps.filter(s => s.done).length;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
+      <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '320px', maxWidth: '90vw' }}>
+        {steps.map(step => (
+          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0, background: step.done ? 'var(--accent)' : 'transparent', border: `1px solid ${step.done ? 'var(--accent)' : 'var(--border)'}`, color: step.done ? '#fff' : 'var(--text-h)', transition: 'all 0.3s ease', opacity: step.done ? 1 : 0.5 }}>
+              {step.done ? '✓' : step.icon}
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <span style={{ fontSize: '0.7rem', opacity: step.done ? 1 : 0.5, color: step.done ? 'var(--accent)' : 'var(--text-h)', transition: 'all 0.3s ease', fontWeight: step.done ? 'bold' : 'normal' }}>{step.label}</span>
+              <div style={{ width: '100%', height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ width: step.done ? '100%' : '0%', height: '100%', borderRadius: '2px', background: 'var(--accent)', transition: 'width 0.4s ease-out', boxShadow: step.done ? '0 0 6px rgba(var(--accent-rgb, 100, 200, 255), 0.5)' : 'none' }} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: '24px', fontSize: '0.75rem', opacity: 0.5 }}>{done}/{steps.length} systems initialized</div>
+    </div>
+  );
+}
+
+// ─── App ────────────────────────────────────────────────────────────
+
 function App() {
+  // Session
   const {
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
     resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
-    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
-    updateRunningModels
+    sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
   } = useChatSession();
 
   const { addToast } = useToast();
 
+  // Managers
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
-  const {
-    models: allModels, saveModel, deleteModel,
-    runningModels, toggleModelLoad,
-    selectedModelId
-  } = useModelManager();
+  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId } = useModelManager();
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
   const { profiles: allProfiles, saveProfile, deleteProfile } = useProfileManager();
 
-  const isModelReady = selectedModelId
-    ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true
-    : false;
-
-  const isModelLoading = selectedModelId
-    ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true
-    : false;
-
-  const modelStatusMessage = !selectedModelId
-    ? "No model selected — open Models to load one"
-    : isModelLoading
-      ? "Model is warming up... please wait"
-      : "";
-
-  const [isChatListOpen, setIsChatListOpen] = useState(false);
-  const [isCharListOpen, setIsCharListOpen] = useState(false);
-  const [isContextListMode, setIsContextListMode] = useState(false);
-  const [isSamplerListOpen, setIsSampListOpen] = useState(false);
-  const [isExtListOpen, setIsExtListOpen] = useState(false);
-  const [isModelListOpen, setIsModelListOpen] = useState(false);
-  const [isStopListOpen, setIsStopListOpen] = useState(false);
-  const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
-  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
-  const [isProfileListOpen, setIsProfileListOpen] = useState(false);
-  const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
-  const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editTitleValue, setEditTitleValue] = useState('');
-  const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string, charId: string, x: number, y: number } | null>(null);
-  const [menuSearchQuery, setMenuSearchQuery] = useState('');
-  const [actions, setActions] = useState<InterjectableAction[]>([]);
-  const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
-  const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
-  const lastViewedMessageIdRef = useRef<string | null>(null);
-  const suppressAutoScrollRef = useRef(false);
-
+  // Entity modals
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
@@ -131,25 +182,50 @@ function App() {
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
   const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
-  const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
-  const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
+  // UI state
+  const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState('');
+  const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
+  const [actions, setActions] = useState<InterjectableAction[]>([]);
+  const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
+  const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
+  const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
+  const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
+  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
+
+  // Panel visibility — all consistent open/close booleans, no "mode" toggles
+  const [isChatListOpen, setIsChatListOpen] = useState(false);
+  const [isCharListOpen, setIsCharListOpen] = useState(false);
+  const [isContextListOpen, setIsContextListOpen] = useState(false);
+  const [isSamplerListOpen, setIsSamplerListOpen] = useState(false);
+  const [isExtListOpen, setIsExtListOpen] = useState(false);
+  const [isModelListOpen, setIsModelListOpen] = useState(false);
+  const [isStopListOpen, setIsStopListOpen] = useState(false);
+  const [isBudgetStrategyListOpen, setIsBudgetStrategyListOpen] = useState(false);
+  const [isProfileListOpen, setIsProfileListOpen] = useState(false);
+  const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
+  const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
+
+  // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
-
-  // ✅ LONG-PRESS TOOLBAR STATE
-  const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
+  const lastViewedMessageIdRef = useRef<string | null>(null);
+  const suppressAutoScrollRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarAutoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressingRef = useRef(false);
   const suppressNextClickRef = useRef(false);
+  const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
 
+  // Loading state
   const [loadSteps, setLoadSteps] = useState<LoadStep[]>([
     { id: 'characters', label: 'Characters', icon: '🎭', done: false },
     { id: 'models', label: 'Models', icon: '🤖', done: false },
@@ -163,163 +239,156 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
+  // Derived
+  const isModelReady = selectedModelId ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true : false;
+  const isModelLoading = selectedModelId ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true : false;
+  const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
+  const hasSession = !!currentCharacter && !!chatData;
+  const isMassActive = massDeleteId !== null;
+  const massStartIndex = isMassActive && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
+  const branchOffIndex = chatData?.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
+  const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
+  const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
+
+  // ─── Effects: Data Loading ──────────────────────────────────────
+
   useEffect(() => { loadInterjectableActions().then(setActions); }, []);
   useEffect(() => { if (actions.length > 0) saveInterjectableActions(actions); }, [actions]);
 
   useEffect(() => {
-    const loadData = async () => {
-      const storedDefaultChar = localStorage.getItem('defaultCharacterId');
-      if (storedDefaultChar) setDefaultCharacterId(storedDefaultChar);
-      const storedDefaultContexts = localStorage.getItem('defaultContextIds');
-      if (storedDefaultContexts) {
-        try { setDefaultContextIds(JSON.parse(storedDefaultContexts)); } catch (e) { console.error(e); }
-      }
-    };
-    loadData();
+    (async () => {
+      const dc = localStorage.getItem('defaultCharacterId');
+      if (dc) setDefaultCharacterId(dc);
+      const dctx = localStorage.getItem('defaultContextIds');
+      if (dctx) try { setDefaultContextIds(JSON.parse(dctx)); } catch {}
+    })();
   }, []);
 
   useEffect(() => {
-    const loadBranchSource = async () => {
-      if (chatData?.parentChatDataId) {
-        try {
-          const sourceChat = await loadRawChatData(chatData.parentChatDataId);
-          setBranchSourceTitle(sourceChat ? (sourceChat.name || 'Untitled Chat') : null);
-        } catch (err) { setBranchSourceTitle(null); }
-      } else { setBranchSourceTitle(null); }
-    };
-    loadBranchSource();
+    (async () => {
+      if (!chatData?.parentChatDataId) { setBranchSourceTitle(null); return; }
+      try { const s = await loadRawChatData(chatData.parentChatDataId); setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null); }
+      catch { setBranchSourceTitle(null); }
+    })();
   }, [chatData?.parentChatDataId]);
 
   useEffect(() => {
     if (defaultCharacterId && allCharacters.length > 0) {
-      const char = allCharacters.find(c => c.id === defaultCharacterId);
-      if (char && currentCharacter?.id !== char.id) setCurrentCharacter(char);
+      const c = allCharacters.find(x => x.id === defaultCharacterId);
+      if (c && currentCharacter?.id !== c.id) setCurrentCharacter(c);
     }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
 
   useEffect(() => {
     if (selectedBudgetStrategyId) {
-      const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
-      setActiveBudgetStrategy(strategy || null);
-    } else { setActiveBudgetStrategy(null); }
+      const s = allBudgetStrategies.find(x => x.id === selectedBudgetStrategyId);
+      setActiveBudgetStrategy(s || null);
+    } else setActiveBudgetStrategy(null);
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
     if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
-      const model = allModels.find(m => m.id === selectedModelId);
-      const port = runningModels[selectedModelId].port;
-      if (model && port) {
-        setSelectedGlobalModel({ ...model, parameters: { ...model.parameters, _runtimePort: port } });
-      }
+      const m = allModels.find(x => x.id === selectedModelId);
+      const p = runningModels[selectedModelId].port;
+      if (m && p) setSelectedGlobalModel({ ...m, parameters: { ...m.parameters, _runtimePort: p } });
     } else if (selectedModelId) {
-      setSelectedGlobalModel(allModels.find(m => m.id === selectedModelId) || null);
-    } else {
-      setSelectedGlobalModel(null);
-    }
+      setSelectedGlobalModel(allModels.find(x => x.id === selectedModelId) || null);
+    } else setSelectedGlobalModel(null);
   }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
+  // Loading progress
   useEffect(() => {
-    setLoadSteps(prev => prev.map(step => {
-      switch (step.id) {
-        case 'characters': return { ...step, done: allCharacters.length > 0 };
-        case 'models': return { ...step, done: allModels.length > 0 };
-        case 'contexts': return { ...step, done: allContexts.length > 0 };
-        case 'samplers': return { ...step, done: allSamplers.length > 0 };
-        case 'stopPatterns': return { ...step, done: allStopPatterns.length > 0 };
-        case 'budget': return { ...step, done: allBudgetStrategies.length > 0 };
-        case 'profiles': return { ...step, done: allProfiles.length > 0 };
-        case 'chats': return { ...step, done: allChats.length > 0 };
-        default: return step;
-      }
-    }));
+    setLoadSteps(prev => prev.map(s => ({
+      ...s,
+      done: s.id === 'characters' ? allCharacters.length > 0
+        : s.id === 'models' ? allModels.length > 0
+        : s.id === 'contexts' ? allContexts.length > 0
+        : s.id === 'samplers' ? allSamplers.length > 0
+        : s.id === 'stopPatterns' ? allStopPatterns.length > 0
+        : s.id === 'budget' ? allBudgetStrategies.length > 0
+        : s.id === 'profiles' ? allProfiles.length > 0
+        : s.id === 'chats' ? allChats.length > 0
+        : s.done,
+    })));
   }, [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
 
   useEffect(() => {
     if (!isInitializing) return;
-    const allDone = loadSteps.every(s => s.done);
-    if (allDone) {
-      const timer = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 200);
-      return () => clearTimeout(timer);
+    if (loadSteps.every(s => s.done)) {
+      const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 200);
+      return () => clearTimeout(t);
     }
-    const fallbackTimer = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 4000);
-    return () => clearTimeout(fallbackTimer);
+    const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 4000);
+    return () => clearTimeout(t);
   }, [loadSteps, isInitializing]);
 
-  // ✅ AUTO-EXPAND INPUT TEXTAREA ON CHANGE
+  // ─── Effects: DOM Behavior ──────────────────────────────────────
+
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const maxHeight = window.innerHeight * 0.3;
-      const newHeight = Math.min(textareaRef.current.scrollHeight, maxHeight);
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = 'auto';
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`;
   }, [inputText]);
 
-  // ✅ AUTO-EXPAND EDIT TEXTAREA TO MATCH MESSAGE BUBBLE SIZE
   useEffect(() => {
-    if (editTextareaRef.current && editingId) {
-      editTextareaRef.current.style.height = 'auto';
-      const newHeight = editTextareaRef.current.scrollHeight;
-      editTextareaRef.current.style.height = `${newHeight}px`;
-    }
+    if (!editTextareaRef.current || !editingId) return;
+    editTextareaRef.current.style.height = 'auto';
+    editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
   }, [editDraft, editingId]);
 
-  // ✅ Cinematic avatar observer
+  // Cinematic avatar observer
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || chatData.chatMessageHistory.length === 0) {
-      setCenterAvatar(null);
-      return;
-    }
-    const options = { root: chatHistoryRef.current, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
-    const observer = new IntersectionObserver((entries) => {
-      const mostVisible = entries.reduce((prev, current) => (prev.intersectionRatio > current.intersectionRatio) ? prev : current);
-      if (mostVisible && mostVisible.intersectionRatio > 0.5) {
-        const messageId = mostVisible.target.getAttribute('data-message-id');
-        if (!messageId) return;
-        const msg = chatData.chatMessageHistory.find(m => m.id === messageId);
-        if (!msg || !msg.character) return;
-        if (msg.character.id === AMBIENT_NARRATOR_ID) return;
-        let avatarToShow: Character | null = msg.character;
-        if (msg.character.id === currentCharacter?.id) {
-          const currentIndex = chatData.chatMessageHistory.indexOf(msg);
-          const prevMessage = currentIndex > 0 ? chatData.chatMessageHistory[currentIndex - 1] : null;
-          if (prevMessage && prevMessage.character && prevMessage.character.id !== currentCharacter?.id && prevMessage.character.id !== AMBIENT_NARRATOR_ID) {
-            avatarToShow = prevMessage.character;
-          } else { avatarToShow = null; }
-        }
-        setCenterAvatar(avatarToShow);
-        document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
-        (mostVisible.target as HTMLElement).classList.add('is-active');
-        lastViewedMessageIdRef.current = messageId;
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) { setCenterAvatar(null); return; }
+    const opts = { root: chatHistoryRef.current, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
+    const obs = new IntersectionObserver(entries => {
+      const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
+      if (best.intersectionRatio <= 0.5) return;
+      const mid = best.target.getAttribute('data-message-id'); if (!mid) return;
+      const msg = chatData.chatMessageHistory.find(m => m.id === mid);
+      if (!msg?.character || msg.character.id === AMBIENT_NARRATOR_ID) return;
+      let avatar: Character | null = msg.character;
+      if (msg.character.id === currentCharacter?.id) {
+        const ci = chatData.chatMessageHistory.indexOf(msg);
+        const prev = ci > 0 ? chatData.chatMessageHistory[ci - 1] : null;
+        avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
       }
-    }, options);
-    const messages = chatHistoryRef.current.querySelectorAll('[data-message-id]');
-    messages.forEach((msg) => observer.observe(msg));
-    if (messages.length > 0 && !centerAvatar) {
+      setCenterAvatar(avatar);
+      document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+      (best.target as HTMLElement).classList.add('is-active');
+      lastViewedMessageIdRef.current = mid;
+    }, opts);
+    chatHistoryRef.current.querySelectorAll('[data-message-id]').forEach(el => obs.observe(el));
+    if (!centerAvatar) {
       for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
-        const msg = chatData.chatMessageHistory[i];
-        if (msg.character && msg.character.id !== currentCharacter?.id && msg.character.id !== AMBIENT_NARRATOR_ID) { setCenterAvatar(msg.character); break; }
+        const m = chatData.chatMessageHistory[i];
+        if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) { setCenterAvatar(m.character); break; }
       }
     }
-    return () => observer.disconnect();
+    return () => obs.disconnect();
   }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
-  // ✅ Cinematic auto-scroll — suppressed during mode switches
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current) return;
-    if (suppressAutoScrollRef.current) return;
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || suppressAutoScrollRef.current) return;
     chatHistoryRef.current.scrollTop = 0;
   }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
 
-  // ✅ LONG-PRESS TOOLBAR HANDLERS
-  const activateToolbar = useCallback((messageId: string) => {
+  // Long-press toolbar scroll reset
+  useEffect(() => {
+    const el = chatHistoryRef.current; if (!el) return;
+    const fn = () => { if (activeToolbarId) deactivateToolbar(); };
+    el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
+  }, [activeToolbarId]);
+
+  useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
+
+  // ─── Toolbar Handlers ───────────────────────────────────────────
+
+  const activateToolbar = useCallback((mid: string) => {
     if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
-    setActiveToolbarId(messageId);
-    toolbarAutoHideRef.current = setTimeout(() => {
-      setActiveToolbarId(prev => prev === messageId ? null : prev);
-    }, 8000);
+    setActiveToolbarId(mid);
+    toolbarAutoHideRef.current = setTimeout(() => setActiveToolbarId(p => p === mid ? null : p), 8000);
   }, []);
 
   const deactivateToolbar = useCallback(() => {
@@ -327,458 +396,275 @@ function App() {
     setActiveToolbarId(null);
   }, []);
 
-  const handleBubbleTouchStart = useCallback((e: React.TouchEvent, messageId: string) => {
-    isLongPressingRef.current = false;
-    suppressNextClickRef.current = false;
+  const handleBubbleTouchStart = useCallback((e: React.TouchEvent, mid: string) => {
+    isLongPressingRef.current = false; suppressNextClickRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
-      isLongPressingRef.current = true;
-      suppressNextClickRef.current = true;
-      const bubble = (e.target as HTMLElement).closest('.message-bubble');
-      if (bubble) bubble.classList.add('toolbar-longpress-hold');
-      activateToolbar(messageId);
-      setTimeout(() => {
-        if (bubble) bubble.classList.remove('toolbar-longpress-hold');
-      }, 300);
-      if (navigator.vibrate) navigator.vibrate(30);
+      isLongPressingRef.current = true; suppressNextClickRef.current = true;
+      const b = (e.target as HTMLElement).closest('.message-bubble');
+      b?.classList.add('toolbar-longpress-hold');
+      activateToolbar(mid);
+      setTimeout(() => b?.classList.remove('toolbar-longpress-hold'), 300);
+      navigator.vibrate?.(30);
     }, 500);
   }, [activateToolbar]);
 
   const handleBubbleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    const bubble = (e.target as HTMLElement).closest('.message-bubble');
-    if (bubble) bubble.classList.remove('toolbar-longpress-hold');
-    if (isLongPressingRef.current) {
-      e.preventDefault();
-      isLongPressingRef.current = false;
-    }
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    (e.target as HTMLElement).closest('.message-bubble')?.classList.remove('toolbar-longpress-hold');
+    if (isLongPressingRef.current) { e.preventDefault(); isLongPressingRef.current = false; }
   }, []);
 
   const handleBubbleTouchMove = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
   }, []);
 
-  // ✅ Reset active toolbar when scrolling starts
-  useEffect(() => {
-    const chatEl = chatHistoryRef.current;
-    if (!chatEl) return;
-    const onScroll = () => {
-      if (activeToolbarId) deactivateToolbar();
-    };
-    chatEl.addEventListener('scroll', onScroll, { passive: true });
-    return () => chatEl.removeEventListener('scroll', onScroll);
-  }, [activeToolbarId, deactivateToolbar]);
+  // ─── Chat Operations ────────────────────────────────────────────
 
-  // ✅ Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-      if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
-    };
-  }, []);
-
-  // ✅ FIX #2: Memoize streaming text formatting — MUST be before the isInitializing early return
-  const formattedStreamingText = useMemo(
-    () => formatMessageText(streamingText),
-    [streamingText]
-  );
-
-  const safeAutoSave = async (data: ChatData | null): Promise<void> => {
+  const safeAutoSave = async (data: ChatData | null) => {
     if (!data) return;
-    const isUnloadedShell = data.chatMessageHistory.length === 0 && (data.messageCount ?? 0) > 0;
-    if (isUnloadedShell) {
-      console.warn("Skipping auto-save: Chat messages not yet loaded (shell state).");
-      return;
-    }
-    try {
-      await saveRawChatData(data);
-    } catch (err) {
-      console.error("Failed to auto-save session:", err);
-    }
+    if (data.chatMessageHistory.length === 0 && (data.messageCount ?? 0) > 0) return;
+    try { await saveRawChatData(data); } catch (e) { console.error('Auto-save failed:', e); }
   };
 
   const handleSwitchChat = useCallback(async (id: string) => {
-    const selected = allChats.find(c => c.id === id);
-    if (!selected) return;
-    await safeAutoSave(chatData);
-    clearFetchCache();
-    let chatWithMessages = selected;
-    if (selected.chatMessageHistory.length === 0) {
-      try { chatWithMessages = await loadChatMessages(selected); } catch (err) { console.error("Failed to load chat messages:", err); addToast("Failed to load chat messages.", "error"); }
-    }
-    setChatData(chatWithMessages);
-    if (chatWithMessages.protagonist) setCurrentCharacter(chatWithMessages.protagonist);
+    const sel = allChats.find(c => c.id === id); if (!sel) return;
+    await safeAutoSave(chatData); clearFetchCache();
+    let chat = sel;
+    if (!sel.chatMessageHistory.length) try { chat = await loadChatMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
+    setChatData(chat); if (chat.protagonist) setCurrentCharacter(chat.protagonist);
     refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null;
   }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast]);
 
   const handleNewChat = useCallback(async () => {
-    await safeAutoSave(chatData);
-    clearFetchCache();
-    let charToUse = currentCharacter;
-    if (!charToUse && defaultCharacterId) charToUse = allCharacters.find(c => c.id === defaultCharacterId) || null;
-    if (!charToUse && allChats.length > 0) charToUse = allChats[0].protagonist;
-    if (charToUse) { startNewChat(charToUse); refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null; }
+    await safeAutoSave(chatData); clearFetchCache();
+    let c = currentCharacter;
+    if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
+    if (!c && allChats.length) c = allChats[0].protagonist;
+    if (c) { startNewChat(c); refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null; }
   }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    await safeAutoSave(chatData);
-    const success = await deleteChatFromList(id);
-    if (success) { addToast("Chat session deleted.", "info"); if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter); }
-    else { addToast("Failed to delete chat.", "error"); }
+    e.stopPropagation(); await safeAutoSave(chatData);
+    if (await deleteChatFromList(id)) { addToast('Chat session deleted.', 'info'); if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter); }
+    else addToast('Failed to delete chat.', 'error');
   };
-
-  const handleOpenCharacterManager = () => setIsCharListOpen(true);
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
-    if (charId === chatData.protagonist.id) { addToast("Cannot remove the protagonist.", "error"); return; }
-    const currentIds = chatData.participants.map(p => p.id);
-    const isRemoving = currentIds.includes(charId);
-
-    let newParticipants: Character[];
-    if (isRemoving) {
-      newParticipants = chatData.participants.filter(p => p.id !== charId);
-    } else {
-      const shellOrFull = allCharacters.find(c => c.id === charId);
-      if (!shellOrFull) return;
-      const charToAdd = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
-      if (!charToAdd) return;
-      newParticipants = [...chatData.participants, charToAdd];
+    if (charId === chatData.protagonist.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
+    const ids = chatData.participants.map(p => p.id);
+    let np: Character[];
+    if (ids.includes(charId)) { np = chatData.participants.filter(p => p.id !== charId); }
+    else {
+      const sh = allCharacters.find(c => c.id === charId); if (!sh) return;
+      const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
+      np = [...chatData.participants, ch];
     }
-
-    if (!newParticipants.find(p => p.id === chatData.protagonist.id)) {
-      newParticipants.unshift(chatData.protagonist);
-    }
-
-    const updatedChat = { ...chatData, participants: newParticipants };
-    setChatData(updatedChat);
-    if (!newParticipants.find(p => p.id === currentCharacter?.id)) setCurrentCharacter(updatedChat.protagonist);
-    addToast("Participants updated (Session Only).", "info");
+    if (!np.find(p => p.id === chatData.protagonist.id)) np.unshift(chatData.protagonist);
+    const uc = { ...chatData, participants: np };
+    setChatData(uc);
+    if (!np.find(p => p.id === currentCharacter?.id)) setCurrentCharacter(uc.protagonist);
+    addToast('Participants updated (Session Only).', 'info');
   };
 
   const handleToggleContext = async (contextId: string) => {
-    if (!chatData) return;
-    const contexts = chatData.contexts
-    if (!contexts) return;
-    const currentIds = contexts.map(c => c.id);
-    const isRemoving = currentIds.includes(contextId);
-
-    let newContexts: Context[];
-    if (isRemoving) {
-      newContexts = contexts.filter(p => p.id !== contextId);
-    } else {
-      const contextToAdd = await loadRawContext(contextId);
-      if (!contextToAdd) return;
-      newContexts = [...contexts, contextToAdd];
-    }
-    const updatedChat = { ...chatData, contexts: newContexts };
-    setChatData(updatedChat);
-    addToast("Contexts updated (Session Only).", "info");
+    if (!chatData?.contexts) return;
+    const ids = chatData.contexts.map(c => c.id);
+    const nc = ids.includes(contextId)
+      ? chatData.contexts.filter(c => c.id !== contextId)
+      : [...chatData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
+    setChatData({ ...chatData, contexts: nc });
+    addToast('Contexts updated (Session Only).', 'info');
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
     if (!chatData) return;
-    const shellOrFull = allCharacters.find(c => c.id === charId);
-    if (!shellOrFull) return;
-    const char = shellOrFull.sampler ? shellOrFull : await loadFullCharacter(charId);
-    if (!char) return;
-    const updatedChat = { ...chatData, protagonist: char };
-    if (!updatedChat.participants.find(p => p.id === charId)) updatedChat.participants = [char, ...updatedChat.participants];
-    setChatData(updatedChat); setCurrentCharacter(char);
-    addToast("Protagonist switched (Session Only).", "info");
+    const sh = allCharacters.find(c => c.id === charId); if (!sh) return;
+    const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
+    const uc = { ...chatData, protagonist: ch };
+    if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
+    setChatData(uc); setCurrentCharacter(ch); addToast('Protagonist switched (Session Only).', 'info');
   };
-
-  const handleToggleChatContext = async (contextId: string) => {
-    if (!chatData) return;
-    const currentIds = chatData.contexts?.map(i => i.id) || [];
-    let newIds = currentIds.includes(contextId) ? currentIds.filter(id => id !== contextId) : [...currentIds, contextId];
-    setChatData({ ...chatData, contexts: allContexts.filter(i => newIds.includes(i.id)) });
-    addToast("Contexts updated (Session Only).", "info");
-  };
-
-  const getChatExtensions = (): string[] => {
-    if (!chatData) return [];
-    return (chatData as any).extensions?.map((e: any) => e.id) || [];
-  };
-
-  const handleOpenExtensions = () => { if (!chatData) return; setIsExtListOpen(true); };
 
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
-    const currentIds = getChatExtensions();
-    let newIds = currentIds.includes(extId) ? currentIds.filter(id => id !== extId) : [...currentIds, extId];
-    const updatedChat = { ...chatData } as any;
-    updatedChat.extensions = allExtensions.filter(e => newIds.includes(e.id));
-    setChatData(updatedChat); addToast("Extensions updated (Session Only).", "info");
+    const cur = ((chatData as any).extensions || []).map((e: any) => e.id);
+    const ni = cur.includes(extId) ? cur.filter((i: string) => i !== extId) : [...cur, extId];
+    const uc = { ...chatData } as any;
+    uc.extensions = allExtensions.filter(e => ni.includes(e.id));
+    setChatData(uc); addToast('Extensions updated (Session Only).', 'info');
   };
 
-  const handleCreateExtension = () => addToast("Create Extension Modal coming soon!", "info");
-
-  const handleActivateBudgetStrategy = (strategyId: string) => {
-    if (selectedBudgetStrategyId === strategyId) { setSelectedBudgetStrategyId(null); addToast("Budget strategy deactivated.", "info"); }
-    else { setSelectedBudgetStrategyId(strategyId); addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === strategyId)?.name}" activated!`, "success"); }
+  const handleActivateBudgetStrategy = (sid: string) => {
+    if (selectedBudgetStrategyId === sid) { setSelectedBudgetStrategyId(null); addToast('Budget strategy deactivated.', 'info'); }
+    else { setSelectedBudgetStrategyId(sid); addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === sid)?.name}" activated!`, 'success'); }
   };
 
-  const handleActivateProfile = async (profileId: string) => {
+  const handleActivateProfile = async (pid: string) => {
     if (!chatData) return;
-    if (chatData.Profile?.id === profileId) {
-      const updatedChat = { ...chatData, Profile: undefined }; setChatData(updatedChat); await saveRawChatData(updatedChat); addToast("Profile deactivated.", "info");
+    if (chatData.Profile?.id === pid) {
+      const uc = { ...chatData, Profile: undefined }; setChatData(uc); await saveRawChatData(uc); addToast('Profile deactivated.', 'info');
     } else {
-      const profile = allProfiles.find(p => p.id === profileId); if (!profile) return;
-      const updatedChat = { ...chatData, Profile: profile }; setChatData(updatedChat); await saveRawChatData(updatedChat); addToast(`Profile "${profile.name}" activated!`, "success");
+      const p = allProfiles.find(x => x.id === pid); if (!p) return;
+      const uc = { ...chatData, Profile: p }; setChatData(uc); await saveRawChatData(uc); addToast(`Profile "${p.name}" activated!`, 'success');
     }
   };
-
-  const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerEditorOpen(true); };
-  const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
-  const handleDeleteSampler = (id: string) => { deleteSampler(id); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
   const handleStartEditTitle = (e: React.MouseEvent) => { e.stopPropagation(); setEditTitleValue(chatData?.name || ''); setIsEditingTitle(true); };
   const handleSaveTitle = () => {
     if (!chatData) return;
-    const newTitle = editTitleValue.trim() || 'Untitled Chat';
-    setChatData({ ...chatData, name: newTitle } as ChatData);
-    saveRawChatData({ ...chatData, name: newTitle } as RawChatData);
-    refreshChatList(); setIsEditingTitle(false); addToast("Chat title updated", "success");
+    const t = editTitleValue.trim() || 'Untitled Chat';
+    setChatData({ ...chatData, name: t } as ChatData);
+    saveRawChatData({ ...chatData, name: t } as RawChatData);
+    refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
   };
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    if (e.target.files) setPendingFiles(p => [...p, ...Array.from(e.target.files!)]);
     e.target.value = '';
   };
 
   const handleSaveEdit = async () => {
     if (!chatData || !editingId) return;
-    try { const updated = await editMessage(chatData, editingId, editDraft); setChatData(updated); setEditingId(null); setEditDraft(''); addToast("Message edited.", "success"); }
-    catch (err) { addToast((err as Error).message, "error"); }
+    try { setChatData(await editMessage(chatData, editingId, editDraft)); setEditingId(null); setEditDraft(''); addToast('Message edited.', 'success'); }
+    catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleDelete = async (id: string) => {
     if (!chatData) return;
-    try { const updated = await deleteMessage(chatData, id); setChatData(updated); addToast("Message deleted.", "info"); }
-    catch (err) { addToast((err as Error).message, "error"); }
+    try { setChatData(await deleteMessage(chatData, id)); addToast('Message deleted.', 'info'); }
+    catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleMassDeleteConfirm = async () => {
     if (!chatData || !massDeleteId) return;
-    const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId); if (idx === -1) return;
-    try { const updated = await massDeleteMessages(chatData, idx); setChatData(updated); setMassDeleteId(null); addToast("Messages deleted.", "info"); }
-    catch (err) { addToast((err as Error).message, "error"); }
+    const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId);
+    if (idx === -1) return;
+    try { setChatData(await massDeleteMessages(chatData, idx)); setMassDeleteId(null); addToast('Messages deleted.', 'info'); }
+    catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleBranch = async (id: string) => {
     if (!chatData) return;
-    try { const branchedChat = await branchMessage(chatData, id); setChatData(branchedChat); if (branchedChat.protagonist) setCurrentCharacter(branchedChat.protagonist); refreshChatList(); addToast(`Branched to "${branchedChat.name}"`, "success"); }
-    catch (err) { addToast("Failed to branch chat.", "error"); }
+    try { const b = await branchMessage(chatData, id); setChatData(b); if (b.protagonist) setCurrentCharacter(b.protagonist); refreshChatList(); addToast(`Branched to "${b.name}"`, 'success'); }
+    catch { addToast('Failed to branch chat.', 'error'); }
   };
 
   const handleClone = async (id: string) => {
     if (!chatData) return;
-    try { const clonedChat = await cloneChatUpToMessage(chatData, id); setChatData(clonedChat); if (clonedChat.protagonist) setCurrentCharacter(clonedChat.protagonist); refreshChatList(); addToast(`Cloned to "${clonedChat.name}"`, "success"); }
-    catch (err) { addToast("Failed to clone chat.", "error"); }
+    try { const c = await cloneChatUpToMessage(chatData, id); setChatData(c); if (c.protagonist) setCurrentCharacter(c.protagonist); refreshChatList(); addToast(`Cloned to "${c.name}"`, 'success'); }
+    catch { addToast('Failed to clone chat.', 'error'); }
   };
 
   const handleNavigateToSource = async () => {
     if (!chatData?.parentChatDataId) return;
     try {
-      const sourceChat = await loadRawChatData(chatData.parentChatDataId);
-      if (sourceChat) { const fullChat = sourceChat as unknown as ChatData; setChatData(fullChat); if (fullChat.protagonist) setCurrentCharacter(fullChat.protagonist); refreshChatList(); addToast(`Navigated back to "${sourceChat.name || 'Untitled Chat'}"`, "info"); }
-      else { addToast("Source chat not found.", "error"); }
-    } catch (err) { addToast("Failed to navigate to source chat.", "error"); }
+      const s = await loadRawChatData(chatData.parentChatDataId);
+      if (s) { const f = s as unknown as ChatData; setChatData(f); if (f.protagonist) setCurrentCharacter(f.protagonist); refreshChatList(); addToast(`Navigated back to "${f.name || 'Untitled Chat'}"`, 'info'); }
+      else addToast('Source chat not found.', 'error');
+    } catch { addToast('Failed to navigate to source chat.', 'error'); }
   };
 
   const handleCopyText = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      addToast("Copied to clipboard", "success");
-    } catch (err) {
-      addToast("Failed to copy text", "error");
-    }
+    try { await navigator.clipboard.writeText(text); addToast('Copied to clipboard', 'success'); }
+    catch { addToast('Failed to copy text', 'error'); }
   };
 
   const handleSend = () => {
-    if (!inputText.trim() && pendingFiles.length === 0) return;
-    sendMessage(inputText, pendingFiles);
-    setInputText('');
-    setPendingFiles([]);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (!inputText.trim() && !pendingFiles.length) return;
+    sendMessage(inputText, pendingFiles); setInputText(''); setPendingFiles([]);
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
-  const handleAvatarClick = (e: React.MouseEvent, messageId: string, char: Character) => {
+  const handleAvatarClick = (e: React.MouseEvent, mid: string, char: Character) => {
     e.stopPropagation();
-    if (actionMenuTarget?.messageId === messageId) setActionMenuTarget(null);
-    else setActionMenuTarget({ messageId, charId: char.id, x: e.clientX, y: e.clientY });
+    setActionMenuTarget(prev => prev?.messageId === mid ? null : { messageId: mid, charId: char.id, x: e.clientX, y: e.clientY });
   };
 
+  // Actions
   const incrementActionCount = async (label: string) => {
     setActions(prev => {
-      const exists = prev.find(a => a.label === label);
-      const newActions = exists ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a) : [...prev, { label, count: 1 }];
-      saveInterjectableActions(newActions); return newActions;
+      const ex = prev.find(a => a.label === label);
+      const na = ex ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a) : [...prev, { label, count: 1 }];
+      saveInterjectableActions(na); return na;
     });
   };
 
   const handleAddAction = (label: string) => {
-    const trimmed = label.trim(); if (!trimmed) return;
-    if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) { addToast(`Action "${trimmed}" already exists.`, "info"); return; }
-    const newActions = [...actions, { label: trimmed, count: 0 }];
-    setActions(newActions); saveInterjectableActions(newActions); setMenuSearchQuery(''); addToast(`Added action "${trimmed}".`, "success");
+    const t = label.trim(); if (!t) return;
+    if (actions.some(a => a.label.toLowerCase() === t.toLowerCase())) { addToast(`Action "${t}" already exists.`, 'info'); return; }
+    const na = [...actions, { label: t, count: 0 }];
+    setActions(na); saveInterjectableActions(na); setMenuSearchQuery(''); addToast(`Added action "${t}".`, 'success');
   };
 
   const handleDeleteAction = (label: string) => {
-    const newActions = actions.filter(a => a.label !== label); setActions(newActions); saveInterjectableActions(newActions); addToast(`Removed action "${label}".`, "info");
+    const na = actions.filter(a => a.label !== label); setActions(na); saveInterjectableActions(na); addToast(`Removed action "${label}".`, 'info');
   };
 
-  const handleActionInterject = async (actionLabel: string, targetChar: Character) => {
+  const handleActionInterject = async (label: string, targetChar: Character) => {
     setActionMenuTarget(null); setMenuSearchQuery('');
     if (!chatData || !currentCharacter) return;
-    await incrementActionCount(actionLabel);
-    if (isLoading) { stopGeneration(); await new Promise(resolve => setTimeout(resolve, 200)); }
-    try { await sendActionAndGetResponse(`*${actionLabel} ${targetChar.name}.*`, targetChar); }
-    catch (error) { console.error("Interjection failed:", error); addToast("Failed to interject action.", "error"); }
+    await incrementActionCount(label);
+    if (isLoading) { stopGeneration(); await new Promise(r => setTimeout(r, 200)); }
+    try { await sendActionAndGetResponse(`*${label} ${targetChar.name}.*`, targetChar); }
+    catch { addToast('Failed to interject action.', 'error'); }
   };
 
   const getFilteredActions = () => actions
     .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
     .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
 
-  const isStemMessage = (messageId: string): boolean => {
+  const isStemMessage = (mid: string): boolean => {
     if (!chatData?.parentChatMessageId) return false;
-    const branchIndex = chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId);
-    if (branchIndex === -1) return false;
-    const currentIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
-    return currentIndex !== -1 && currentIndex <= branchIndex;
-  };
-
-  const getTopVisibleMessageIndex = (): number => {
-    if (!chatHistoryRef.current || !chatData) return -1;
-    const container = chatHistoryRef.current;
-    const containerRect = container.getBoundingClientRect();
-    const realMessageIds = new Set(chatData.chatMessageHistory.map(m => m.id));
-    const messages = container.querySelectorAll('[data-message-id]');
-    let bestIndex = -1;
-    let bestTop = Infinity;
-    messages.forEach((el) => {
-      const id = el.getAttribute('data-message-id');
-      if (!id || !realMessageIds.has(id)) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
-        if (rect.top < bestTop) {
-          bestTop = rect.top;
-          bestIndex = chatData.chatMessageHistory.findIndex(m => m.id === id);
-        }
-      }
-    });
-    return bestIndex;
+    const bi = chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId);
+    if (bi === -1) return false;
+    const ci = chatData.chatMessageHistory.findIndex(m => m.id === mid);
+    return ci !== -1 && ci <= bi;
   };
 
   const toggleViewMode = () => {
-    const topVisibleIndex = getTopVisibleMessageIndex();
-    let targetIndex = topVisibleIndex;
-    if (targetIndex === -1 && lastViewedMessageIdRef.current && chatData) {
-      targetIndex = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
+    const container = chatHistoryRef.current;
+    let targetIdx = -1;
+    if (container && chatData) {
+      const cr = container.getBoundingClientRect();
+      const ids = new Set(chatData.chatMessageHistory.map(m => m.id));
+      let bestTop = Infinity;
+      container.querySelectorAll('[data-message-id]').forEach(el => {
+        const id = el.getAttribute('data-message-id'); if (!id || !ids.has(id)) return;
+        const r = el.getBoundingClientRect();
+        if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === id); }
+      });
     }
-    if (targetIndex >= 0 && chatData) {
-      lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIndex].id;
-    }
+    if (targetIdx === -1 && lastViewedMessageIdRef.current && chatData) targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
+    if (targetIdx >= 0 && chatData) lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIdx].id;
     suppressAutoScrollRef.current = true;
-    setViewMode(prev => prev === 'ladder' ? 'cinematic' : 'ladder');
+    setViewMode(p => p === 'ladder' ? 'cinematic' : 'ladder');
     setTimeout(() => {
-      if (targetIndex >= 0 && chatData && chatHistoryRef.current) {
-        const targetMessageId = chatData.chatMessageHistory[targetIndex].id;
-        const targetEl = chatHistoryRef.current.querySelector(`[data-message-id="${targetMessageId}"]`) as HTMLElement | null;
-        if (targetEl) {
-          targetEl.scrollIntoView({ block: 'start' });
-          setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
-          return;
-        }
+      if (targetIdx >= 0 && chatData && chatHistoryRef.current) {
+        const el = chatHistoryRef.current.querySelector(`[data-message-id="${chatData.chatMessageHistory[targetIdx].id}"]`) as HTMLElement | null;
+        if (el) { el.scrollIntoView({ block: 'start' }); setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); return; }
       }
       messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
     }, 50);
   };
 
-  if (isInitializing) {
-    const completedCount = loadSteps.filter(s => s.done).length;
-    const totalCount = loadSteps.length;
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
-        <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '320px', maxWidth: '90vw' }}>
-          {loadSteps.map((step) => (
-            <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0, background: step.done ? 'var(--accent)' : 'transparent', border: `1px solid ${step.done ? 'var(--accent)' : 'var(--border)'}`, color: step.done ? '#fff' : 'var(--text-h)', transition: 'all 0.3s ease', opacity: step.done ? 1 : 0.5 }}>
-                {step.done ? '✓' : step.icon}
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '0.7rem', opacity: step.done ? 1 : 0.5, color: step.done ? 'var(--accent)' : 'var(--text-h)', transition: 'all 0.3s ease', fontWeight: step.done ? 'bold' : 'normal' }}>{step.label}</span>
-                <div style={{ width: '100%', height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
-                  <div style={{ width: step.done ? '100%' : '0%', height: '100%', borderRadius: '2px', background: 'var(--accent)', transition: 'width 0.4s ease-out', boxShadow: step.done ? '0 0 6px rgba(var(--accent-rgb, 100, 200, 255), 0.5)' : 'none' }} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: '24px', fontSize: '0.75rem', opacity: 0.5 }}>{completedCount}/{totalCount} systems initialized</div>
-      </div>
-    );
-  }
+  // Sampler editor helpers
+  const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
+  const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
-  const hasSession = !!currentCharacter && !!chatData;
-  const isMassActive = massDeleteId !== null;
-  const startIndex = isMassActive && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
-  const branchOffIndex = chatData?.parentChatMessageId && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
+  // ─── Loading Screen ─────────────────────────────────────────────
 
-  const renderModelSubtext = (model: LanguageModel) => {
-    const ms = runningModels[model.id];
-    return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
-        {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
-        {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
-        {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
-        {selectedModelId === model.id && !ms?.isRunning && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
-        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
-        <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
-        <span>{model.description}</span>
-      </span>
-    );
-  };
+  if (isInitializing) return <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />;
 
-  const renderBudgetStrategySubtext = (strategy: BudgetStrategy) => (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
-    </span>
-  );
-
-  const renderProfileSubtext = (profile: Profile) => {
-    const flags: string[] = [];
-    if (profile.forceNameReveal) flags.push('Force Names');
-    if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
-    if (profile.stripThinkTokens) flags.push('Strip Think');
-    if (profile.useCurrentDateAndTime) flags.push('Clock');
-    return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
-        {flags.length > 0 ? flags.map((f, i) => (<span key={i} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>)) : <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>No special settings</span>}
-      </span>
-    );
-  };
-
-  const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
+  // ─── Streaming Indicators ───────────────────────────────────────
 
   const streamingIndicators = (
     <>
       {isLoading && streamingCharacter && !streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />) : (<div className="character-avatar placeholder" onClick={(e) => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />)}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
             {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
@@ -789,11 +675,10 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? (<img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar.placeholder" onClick={(e) => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
             {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
-            {/* ✅ FIX #2: Use pre-memoized formatted streaming text */}
             <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{formattedStreamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div>
           </div>
         </div>
@@ -801,162 +686,167 @@ function App() {
     </>
   );
 
+  // ─── Main Render ────────────────────────────────────────────────
+
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {!hasSession && (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}><div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div><div style={{ fontSize: '0.85rem' }}>Loading workspace...</div></div>)}
-        {hasSession && (
-          <>
-            {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && (<div className="cinematic-stage active" onClick={(e) => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>)}
+        {!hasSession && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}><div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div><div style={{ fontSize: '0.85rem' }}>Loading workspace...</div></div>}
 
-            <header className="app-header"><div className="header-content"><div className="header-top">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                {isEditingTitle ? (<input type="text" value={editTitleValue} onChange={(e) => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />) : (<><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || "Untitled Chat"}</div><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}>✎</span></>)}
-              </div>
-              <div className="header-controls-group">
-                <button type="button" className="view-mode-toggle" onClick={handleOpenExtensions} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
-                <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-                <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
-              </div>
-            </div></div></header>
+        {hasSession && <>
+          {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
 
-            <div className="chat-history" ref={chatHistoryRef}>
-              {viewMode === 'cinematic' && streamingIndicators}
-              {(viewMode === 'cinematic' ? [...chatData.chatMessageHistory].reverse() : chatData.chatMessageHistory).map((message, renderIndex) => {
-                const index = viewMode === 'cinematic' ? chatData.chatMessageHistory.length - 1 - renderIndex : renderIndex;
-                if (!message.character) return null;
-                const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
-                const isProtagonist = message.character.id === currentCharacter?.id;
-                const displayName = getDelayedDisplayName(chatData, index, message.character.id);
-                const isEditing = editingId === message.id;
-                const isMassStart = message.id === massDeleteId;
-                const isInDeletionRange = isMassActive && startIndex !== -1 && index >= startIndex;
-                const isStem = isStemMessage(message.id);
-                const isJustBeforeBranchOff = chatData.parentChatMessageId && index === branchOffIndex;
-                const showSideAvatar = viewMode === 'ladder' && !isProtagonist && !isAmbient;
-                return (
-                  <React.Fragment key={message.id}>
-                    <div className={`message-row ${viewMode === 'cinematic' ? '' : (isProtagonist ? 'message-right' : 'message-left')} ${isInDeletionRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
-                      {showSideAvatar && (<div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(message.character.image) ? (<img src={getCharacterImageUrl(message.character.image)!} alt={displayName} className="character-avatar" onClick={(e) => handleAvatarClick(e, message.id, message.character)} onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} style={{ cursor: 'pointer' }} />) : (<div className="character-avatar.placeholder" onClick={(e) => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />)}</div><span className="avatar-name">{displayName}</span></div>)}
-                      <div
-                        className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtagonist ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${isInDeletionRange ? 'bubble-marked-for-delete' : ''} ${isStem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`}
-                        onTouchStart={(e) => handleBubbleTouchStart(e, message.id)}
-                        onTouchEnd={handleBubbleTouchEnd}
-                        onTouchMove={handleBubbleTouchMove}
-                        onClick={(e) => {
-                          if (suppressNextClickRef.current) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            suppressNextClickRef.current = false;
-                          }
-                        }}
-                      >
-                        {viewMode === 'cinematic' && (<div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}><span>{isAmbient ? '✦' : displayName}</span></div>)}
-                        {isEditing ? (
-                          <div className="edit-mode">
-                            <textarea
-                              ref={editTextareaRef}
-                              value={editDraft}
-                              onChange={(e) => setEditDraft(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }}
-                              className="edit-textarea"
-                            />
-                            <div className="edit-actions">
-                              <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                              <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
-                            </div>
+          {/* Header */}
+          <header className="app-header"><div className="header-content"><div className="header-top">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              {isEditingTitle
+                ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
+                : <><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || 'Untitled Chat'}</div><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span></>}
+            </div>
+            <div className="header-controls-group">
+              <button type="button" className="view-mode-toggle" onClick={() => chatData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+              <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
+              <ChatStatisticsBar generationSpeed={generationSpeed} messageCount={messageCount} tokenCount={tokenCount} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+            </div>
+          </div></div></header>
+
+          {/* Chat History */}
+          <div className="chat-history" ref={chatHistoryRef}>
+            {viewMode === 'cinematic' && streamingIndicators}
+            {(viewMode === 'cinematic' ? [...chatData.chatMessageHistory].reverse() : chatData.chatMessageHistory).map((message, renderIndex) => {
+              const index = viewMode === 'cinematic' ? chatData.chatMessageHistory.length - 1 - renderIndex : renderIndex;
+              if (!message.character) return null;
+              const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
+              const isProtag = message.character.id === currentCharacter?.id;
+              const dn = getDelayedDisplayName(chatData, index, message.character.id);
+              const isEditing = editingId === message.id;
+              const isMassStart = message.id === massDeleteId;
+              const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
+              const stem = isStemMessage(message.id);
+              const beforeBranch = chatData.parentChatMessageId && index === branchOffIndex;
+              const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
+
+              return (
+                <React.Fragment key={message.id}>
+                  <div className={`message-row ${viewMode === 'cinematic' ? '' : isProtag ? 'message-right' : 'message-left'} ${inDelRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
+                    {showAvatar && <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(message.character.image) ? <img src={getCharacterImageUrl(message.character.image)!} alt={dn} className="character-avatar" onClick={e => handleAvatarClick(e, message.id, message.character)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{dn}</span></div>}
+                    <div
+                      className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtag ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${inDelRange ? 'bubble-marked-for-delete' : ''} ${stem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`}
+                      onTouchStart={e => handleBubbleTouchStart(e, message.id)}
+                      onTouchEnd={handleBubbleTouchEnd}
+                      onTouchMove={handleBubbleTouchMove}
+                      onClick={e => { if (suppressNextClickRef.current) { e.preventDefault(); e.stopPropagation(); suppressNextClickRef.current = false; } }}
+                    >
+                      {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}><span>{isAmbient ? '✦' : dn}</span></div>}
+                      {isEditing ? (
+                        <div className="edit-mode">
+                          <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" />
+                          <div className="edit-actions">
+                            <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                            <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
                           </div>
-                        ) : (<>
-                          {/* ✅ FIX #2: Use memoized component for historical messages — skips re-formatting when text hasn't changed */}
-                          <MemoizedMessageText text={message.textContent} />
-                          <div className="message-toolbar">
-                            {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
-                              <>
-                                {!isProtagonist && message.isPartial && <button type="button" onClick={() => resumeGeneration(message.id)} disabled={!isModelReady} className="toolbar-btn" title="Resume interrupted generation" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>▶</button>}
-                                <button type="button" onClick={() => handleCopyText(message.textContent)} className="toolbar-btn" title="Copy text to clipboard">📋</button>
-                                <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
-                                {!isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
-                                {isProtagonist && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
-                                <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">🌿</button>
-                                <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">⑂</button>
-                                <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
-                                <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
-                              </>
-                            ) : isMassStart ? (<div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div>) : isInDeletionRange ? (<span className="deleted-preview-label">Will be deleted</span>) : null}
-                          </div>
-                        </>)}
-                      </div>
+                        </div>
+                      ) : <>
+                        <MemoizedMessageText text={message.textContent} />
+                        <div className="message-toolbar">
+                          {stem ? <span className="toolbar-lock">🔒 Locked</span> : !isMassActive ? <>
+                            {!isProtag && message.isPartial && <button type="button" onClick={() => resumeGeneration(message.id)} disabled={!isModelReady} className="toolbar-btn" title="Resume interrupted generation" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>▶</button>}
+                            <button type="button" onClick={() => handleCopyText(message.textContent)} className="toolbar-btn" title="Copy text to clipboard">📋</button>
+                            <button type="button" onClick={() => { setEditingId(message.id); setEditDraft(message.textContent); }} className="toolbar-btn">✎</button>
+                            {!isProtag && <button type="button" onClick={() => regenerateFromMessage(message.id, 'ai')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate this Response" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                            {isProtag && <button type="button" onClick={() => regenerateFromMessage(message.id, 'user')} disabled={!isModelReady} className="toolbar-btn" title="Regenerate Your Input" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>↻</button>}
+                            <button type="button" onClick={() => handleBranch(message.id)} className="toolbar-btn" title="Branch from here">🌿</button>
+                            <button type="button" onClick={() => handleClone(message.id)} className="toolbar-btn" title="Clone chat up to here">⑂</button>
+                            <button type="button" onClick={() => handleDelete(message.id)} className="toolbar-btn delete-btn" style={{ color: '#ff4444' }}>🗑</button>
+                            <button type="button" onClick={() => setMassDeleteId(message.id)} className="toolbar-btn mass-delete-btn" style={{ color: '#ff9900' }}>🗑️↓</button>
+                          </> : isMassStart ? <div className="mass-delete-confirm-bar"><span>Delete from here?</span><button type="button" onClick={handleMassDeleteConfirm} className="toolbar-btn btn-confirm">Confirm</button><button type="button" onClick={() => setMassDeleteId(null)} className="toolbar-btn btn-cancel">Cancel</button></div> : inDelRange ? <span className="deleted-preview-label">Will be deleted</span> : null}
+                        </div>
+                      </>}
                     </div>
-                    {isJustBeforeBranchOff && (<div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}><div className="branch-separator-content"><span className="branch-separator-icon">🌿</span><span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span><span className="branch-separator-icon">🌿</span></div></div>)}
-                  </React.Fragment>
-                );
-              })}
-              {viewMode === 'ladder' && streamingIndicators}
-              {chatData && chatData.chatMessageHistory.length === 0 && (<div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>)}
-              <div ref={messageEndRef} style={{ height: '1px' }} />
-            </div>
+                  </div>
+                  {beforeBranch && <div className="branch-separator-line clickable" onClick={handleNavigateToSource} title={`Click to go back to "${branchSourceTitle || 'source chat'}"`} style={{ cursor: 'pointer' }}><div className="branch-separator-content"><span className="branch-separator-icon">🌿</span><span className="branch-separator-text">{branchSourceTitle ? `Branches From "${branchSourceTitle}"` : 'Conversation Branches Here'}</span><span className="branch-separator-icon">🌿</span></div></div>}
+                </React.Fragment>
+              );
+            })}
+            {viewMode === 'ladder' && streamingIndicators}
+            {chatData && !chatData.chatMessageHistory.length && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>}
+            <div ref={messageEndRef} style={{ height: '1px' }} />
+          </div>
 
-            <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
-              <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
-              <NavButton icon="🎭" label="Characters" onClick={handleOpenCharacterManager} />
-              <NavButton icon="🌍" label="Contexts" onClick={() => setIsContextListMode(true)} />
-              <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
-              <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSampListOpen(true)} />
-              <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
-              <NavButton icon="💰" label="Budgets" onClick={() => setIsBudgetStrategyListOpen(true)} />
-              <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
-            </div>
+          {/* Context Bar — all panels use consistent isOpen booleans */}
+          <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
+            <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
+            <NavButton icon="🎭" label="Characters" onClick={() => setIsCharListOpen(true)} />
+            <NavButton icon="🌍" label="Contexts" onClick={() => setIsContextListOpen(true)} />
+            <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
+            <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSamplerListOpen(true)} />
+            <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
+            <NavButton icon="💰" label="Budgets" onClick={() => setIsBudgetStrategyListOpen(true)} />
+            <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
+          </div>
 
-            <div className="input-wrapper">
-              {!isModelReady && (<div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>{!selectedModelId && <span className="model-status-icon">🤖</span>}{isModelLoading && <span className="model-status-spinner" />}<span className="model-status-text">{modelStatusMessage}</span>{!selectedModelId && <button type="button" className="model-status-action-btn" onClick={() => setIsModelListOpen(true)}>Open Models</button>}</div>)}
-              {pendingFiles.length > 0 && (<div className="attachment-strip">{pendingFiles.map((file, idx) => (<div key={`${file.name}-${idx}`} className="attachment-chip"><span className="attachment-name">{file.name}</span><span className="attachment-size">{(file.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, i) => i !== idx))} className="attachment-remove">×</button></div>))}</div>)}
-              <div className="input-area">
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
-                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-                <textarea
-                  ref={textareaRef}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? "Warming up... please wait" : "Load a model to start chatting..."}
-                  className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`}
-                  disabled={isLoading || !chatData || !isModelReady}
-                />
-                <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && pendingFiles.length === 0) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
-              </div>
+          {/* Input */}
+          <div className="input-wrapper">
+            {!isModelReady && <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>{!selectedModelId && <span className="model-status-icon">🤖</span>}{isModelLoading && <span className="model-status-spinner" />}<span className="model-status-text">{modelStatusMessage}</span>{!selectedModelId && <button type="button" className="model-status-action-btn" onClick={() => setIsModelListOpen(true)}>Open Models</button>}</div>}
+            {pendingFiles.length > 0 && <div className="attachment-strip">{pendingFiles.map((f, i) => <div key={`${f.name}-${i}`} className="attachment-chip"><span className="attachment-name">{f.name}</span><span className="attachment-size">{(f.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, j) => j !== i))} className="attachment-remove">×</button></div>)}</div>}
+            <div className="input-area">
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
+              <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
+              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !chatData || !isModelReady} />
+              <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
             </div>
-          </>
-        )}
+          </div>
+        </>}
 
-        {isChatListOpen && (<ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={(c) => handleSwitchChat(c.id)} onDelete={(id) => handleDeleteChat({ stopPropagation: () => { } } as any, id)} onCreateNew={handleNewChat} renderSubtext={(c) => { const parts: string[] = []; if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`); parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`); parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`); if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`); return parts.join(' • '); }} emptyMessage="No saved chat sessions found." />)}
-        {isCharListOpen && (<ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async (char) => { const fullChar = char.sampler ? char : await loadFullCharacter(char.id); charModal.open(fullChar || char); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={(c) => c.description || "No description"} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={(c) => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />)}
-        {charModal.isOpen && (<CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />)}
-        {(contextModal.isOpen || isContextListMode) && (<ManagerModal title={"Contexts"} items={allContexts} isOpen={isContextListMode} onClose={() => setIsContextListMode(false)} onSelect={(context) => contextModal.open(context)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={(i) => { const parts: string[] = []; if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡'); if (i.images && i.images.length > 0) parts.push(`🖼️${i.images.length}`); if (i.searchTerms && i.searchTerms.length > 0) parts.push(`🔎${i.searchTerms.length}`); if (i.urls && i.urls.length > 0) parts.push(`🔗${i.urls.length}`); parts.push((i.text?.substring(0, 50) || '') + '...'); return parts.join(' '); }} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={isContextListMode} currentOrderIds={isContextListMode ? (chatData?.contexts?.map(i => i.id) || []) : defaultContextIds} onToggleOrder={handleToggleContext} />)}
-        {contextModal.isOpen && (<ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />)}
-        {isModelListOpen && (<ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={(model) => modelModal.open(model)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={renderModelSubtext} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={(id) => toggleModelLoad(id)} specialActionTooltip={(m) => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return `⏹ Stop & Deselect`; if (ms?.isRunning && ms?.isIdle) return `⏹ Stop Model`; if (ms?.isRunning && !ms?.isIdle) return `⏳ Loading...`; if (selectedModelId === m.id) return `✓ Already Selected — Click to Load`; return `▶ Load & Select Model`; }} />)}
-        {modelModal.isOpen && (<ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />)}
-        {isSamplerListOpen && (<ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSampListOpen(false)} onSelect={(sampler) => handleOpenSamplerEditor(sampler)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={(s) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />)}
-        {isSamplerEditorOpen && (<SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />)}
-        {isStopListOpen && (<ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={(sp) => stopModal.open(sp)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={(s) => (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>)} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />)}
-        {stopModal.isOpen && (<StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />)}
-        {isBudgetStrategyListOpen && (<ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={(strategy) => budgetModal.open(strategy)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={(s) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />)}
-        {budgetModal.isOpen && (<BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />)}
-        {isProfileListOpen && (<ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={(profile) => profileModal.open(profile)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={chatData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={(p) => chatData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />)}
-        {profileModal.isOpen && (<ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />)}
-        {isExtListOpen && (<ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={handleCreateExtension} renderSubtext={(ext) => (<span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}><span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span><span>{ext.description}</span></span>)} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={getChatExtensions()} onToggleOrder={handleToggleExtension} />)}
+        {/* ─── Modals ─────────────────────────────────────────────── */}
+
+        {/* Chat Sessions */}
+        {isChatListOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={c => handleSwitchChat(c.id)} onDelete={id => handleDeleteChat({ stopPropagation: () => {} } as any, id)} onCreateNew={handleNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
+
+        {/* Characters — always ordered when session active, toggle via onToggleOrder */}
+        {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />}
+        {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />}
+
+        {/* Contexts — always shows active chat's contexts as ordered, toggle via onToggleOrder */}
+        {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={chatData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
+        {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
+
+        {/* Models */}
+        {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
+        {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
+
+        {/* Samplers — list opens editor directly, no separate toggle mode */}
+        {isSamplerListOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSamplerListOpen(false)} onSelect={s => handleOpenSamplerEditor(s)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
+        {isSamplerEditorOpen && <SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />}
+
+        {/* Stop Patterns */}
+        {isStopListOpen && <ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={s => stopModal.open(s)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={s => <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />}
+        {stopModal.isOpen && <StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} onDelete={stopModal.handleDelete} existingStopPattern={stopModal.itemToEdit} />}
+
+        {/* Budget Strategies — activation via specialAction, no toggle mode */}
+        {isBudgetStrategyListOpen && <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={s => budgetModal.open(s)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={s => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />}
+        {budgetModal.isOpen && <BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} onDelete={budgetModal.handleDelete} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />}
+
+        {/* Profiles — activation via specialAction, no toggle mode */}
+        {isProfileListOpen && <ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={p => profileModal.open(p)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={chatData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={p => chatData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />}
+        {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
+
+        {/* Extensions — always ordered by active chat's extensions, toggle via onToggleOrder */}
+        {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
       </div>
 
+      {/* Action Menu */}
       {actionMenuTarget && hasSession && (
-        <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
+        <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={e => e.stopPropagation()}>
           <div className="action-menu-header"><span>Interject Action</span></div>
-          <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
+          <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={e => setMenuSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={e => e.stopPropagation()} />
           <div className="action-menu-list">
-            {getFilteredActions().map((action) => (
+            {getFilteredActions().map(action => (
               <div key={action.label} className={`action-menu-item ${!isModelReady ? 'action-menu-item-disabled' : ''}`} role="button" tabIndex={isModelReady ? 0 : -1}
-                onClick={(e) => { e.stopPropagation(); if (!isModelReady) return; const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); }}
-                onKeyDown={(e) => { if (!isModelReady) return; if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); } }}>
+                onClick={e => { e.stopPropagation(); if (!isModelReady) return; const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); }}
+                onKeyDown={e => { if (!isModelReady) return; if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); } }}>
                 <span className="action-menu-item-label">{action.label}</span>
-                <div className="action-meta-container"><span className="action-count-badge" onClick={(e) => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Click to remove action"><span className="badge-count">{action.count || 0}</span><span className="badge-delete">×</span></span></div>
+                <div className="action-meta-container"><span className="action-count-badge" onClick={e => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Click to remove action"><span className="badge-count">{action.count || 0}</span><span className="badge-delete">×</span></span></div>
               </div>
             ))}
           </div>
