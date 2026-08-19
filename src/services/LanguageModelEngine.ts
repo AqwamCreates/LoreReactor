@@ -12,6 +12,11 @@ export interface StreamCallbacks {
   onToken: (stats: TokenStats) => void;
 }
 
+export interface StreamResult {
+  text: string;
+  isCompleted: boolean;
+}
+
 export interface LanguageModelContext {
   apiKey?: string;
   backend?: string;
@@ -41,15 +46,17 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// ✅ Check if text ends with any of the stop patterns.
+// This is the single source of truth for "did generation complete naturally."
+function endsWithStopPattern(text: string, stopPatterns: string[]): boolean {
+  for (const pattern of stopPatterns) {
+    if (pattern && text.endsWith(pattern)) return true;
+  }
+  return false;
+}
+
 export class LanguageModelEngine {
 
-  /**
-   * Resolves URL, headers, and body for all backends.
-   * 
-   * @param existingText - Partial assistant text to continue from.
-   *   Appended directly to the prompt string for ALL backends since
-   *   prepareRequestBody builds a flat completion prompt, not a messages array.
-   */
   private resolveRequest(
     prompt: string,
     stream: boolean,
@@ -66,10 +73,6 @@ export class LanguageModelEngine {
     const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
     const isCloud = !!apiKey && backend && CLOUD_BACKENDS.includes(backend);
 
-    // ✅ Append existing text to prompt for continuation (all backends)
-    // The prompt from prepareRequestBody ends with "{Character X: "
-    // so appending existing text produces "{Character X: <partial text>"
-    // which tells the model to continue from that exact point.
     const finalPrompt = existingText && existingText.trim().length > 0
       ? `${prompt}${existingText}`
       : prompt;
@@ -96,10 +99,6 @@ export class LanguageModelEngine {
 
       const payloadModelName = modelPath || 'default-model';
 
-      // ✅ Cloud APIs receive the full prompt (with existing text appended) as a single user message.
-      // This is correct because prepareRequestBody builds a completion-style prompt,
-      // not a conversational messages array. The model sees the entire context including
-      // the partial assistant response at the end and continues from there.
       body = JSON.stringify({
         model: payloadModelName,
         messages: [{ role: "user", content: finalPrompt }],
@@ -151,6 +150,7 @@ export class LanguageModelEngine {
     return null;
   }
 
+  // ✅ Now returns StreamResult. isCompleted = true only when output ends with a stop pattern.
   async generateCompletion(
     prompt: string,
     modelContext?: LanguageModelContext,
@@ -160,8 +160,8 @@ export class LanguageModelEngine {
       stop?: string[];
     } = {},
     imageData?: { data: string; id: number }[]
-  ): Promise<string | null> {
-    const { maxTokens = 512, temperature = 0.3, stop } = options;
+  ): Promise<StreamResult> {
+    const { maxTokens = 512, temperature = 0.3, stop = [] } = options;
 
     try {
       const { url, headers, body: bodyStr } = this.resolveRequest(prompt, false, modelContext, {
@@ -178,13 +178,15 @@ export class LanguageModelEngine {
       }
 
       const res = await fetch(url, { method: 'POST', headers, body: finalBody });
-      if (!res.ok) return null;
+      if (!res.ok) return { text: '', isCompleted: false };
 
       const data = await res.json();
-      return this.extractContent(data);
+      const text = this.extractContent(data) || '';
+
+      return { text, isCompleted: endsWithStopPattern(text, stop) };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
-      return null;
+      return { text: '', isCompleted: false };
     }
   }
 
@@ -209,6 +211,7 @@ export class LanguageModelEngine {
     }
   }
 
+  // ✅ Now returns StreamResult. isCompleted = true only when output ends with a stop pattern.
   async generateStream(
     requestBody: any,
     abortController: AbortController,
@@ -216,8 +219,9 @@ export class LanguageModelEngine {
     modelContext?: LanguageModelContext,
     maxParagraphs?: number,
     existingText?: string
-  ): Promise<string> {
+  ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
+    const stopPatterns: string[] = Array.isArray(requestBody.stop) ? requestBody.stop : [];
 
     let prompt = requestBody.prompt || '';
     if (!prompt && requestBody.messages) {
@@ -241,7 +245,7 @@ export class LanguageModelEngine {
     });
 
     if (!response.ok) {
-      if (abortController.signal.aborted) throw new Error('Aborted');
+      if (abortController.signal.aborted) return { text: '', isCompleted: false };
       let errorMsg = `API Error: ${response.status}`;
       try {
         const errData = await response.json();
@@ -267,7 +271,10 @@ export class LanguageModelEngine {
     try {
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Stream ended — check if it ended on a stop pattern
+          return { text: fullContent.trim(), isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns) };
+        }
 
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
@@ -275,7 +282,9 @@ export class LanguageModelEngine {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const jsonStr = line.slice(6);
-            if (jsonStr.trim() === '[DONE]') return fullContent.trim();
+            if (jsonStr.trim() === '[DONE]') {
+              return { text: fullContent.trim(), isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns) };
+            }
 
             try {
               const json = JSON.parse(jsonStr);
@@ -290,12 +299,12 @@ export class LanguageModelEngine {
               }
 
               if (token) {
-                if (!hasReceivedNonWhitespace) {
+                if (!hasReceivedNonWhitespace && !existingText) {
                   const trimmed = token.trimStart();
-                  if (trimmed.length === 0) {
-                    continue;
-                  }
+                  if (trimmed.length === 0) continue;
                   token = trimmed;
+                  hasReceivedNonWhitespace = true;
+                } else {
                   hasReceivedNonWhitespace = true;
                 }
 
@@ -316,7 +325,7 @@ export class LanguageModelEngine {
 
                   if (paragraphCount >= paragraphLimit) {
                     abortController.abort();
-                    return fullContent.trim();
+                    return { text: fullContent.trim(), isCompleted: false };
                   }
                 }
 
@@ -333,10 +342,10 @@ export class LanguageModelEngine {
         }
       }
     } catch (error) {
-      if ((error as Error).name === 'AbortError') return fullContent.trim();
+      if ((error as Error).name === 'AbortError') {
+        return { text: fullContent.trim(), isCompleted: false };
+      }
       throw error;
     }
-
-    return fullContent.trim();
   }
 }
