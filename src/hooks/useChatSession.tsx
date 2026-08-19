@@ -368,7 +368,7 @@ export function useChatSession() {
     const resumeId = resumingMessageIdRef.current;
 
     if (resumeId && t && t.trim().length > 0 && chatDataRef.current) {
-      // Synchronous update using editChatMessageInChatData
+      // Synchronous state update — partial visible in next render immediately
       const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
       const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
       if (idx !== -1) {
@@ -445,9 +445,9 @@ export function useChatSession() {
 
   // ─── Resume Generation ───────────────────────────────────────────
   // Keeps partial message in history during streaming.
-  // On success: uses editMessage + clearPartialFlag (branch-safe, saves).
-  // On stop: stopGeneration handles synchronous update via editChatMessageInChatData.
-  // On error: uses editMessage to persist whatever was streamed.
+  // On natural completion only: uses editMessage + clearPartialFlag.
+  // On stop/abort: stopGeneration handles synchronous update, isPartial stays true.
+  // On error: uses editMessage to persist whatever was streamed, isPartial stays true.
 
   const resumeGeneration = useCallback(async (messageId: string) => {
     if (!chatData) return;
@@ -455,6 +455,12 @@ export function useChatSession() {
     if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
     const msg = chatData.chatMessageHistory[msgIndex];
     if (!msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
+    // Guard against rapid clicks: if already generating, abort previous first
+    if (isLoadingRef.current) {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      await new Promise(r => setTimeout(r, 100));
+    }
     if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
     const model = selectedModelRef.current;
     if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
@@ -462,7 +468,6 @@ export function useChatSession() {
     const existingText = msg.textContent;
     const char = msg.character;
 
-    // Track resume context so stopGeneration can update the partial synchronously
     resumingMessageIdRef.current = messageId;
     resumingExistingTextRef.current = existingText;
 
@@ -489,6 +494,20 @@ export function useChatSession() {
         },
       }, lmCtx, getDynamicParagraphLimit(char, chatData));
 
+      // ✅ If signal was aborted at any point, do NOT treat as natural completion.
+      // Stop already handled the partial update synchronously.
+      // Persist whatever text we have WITHOUT clearing isPartial.
+      if (ctrl.signal.aborted) {
+        const currentStreamedText = streamingTextRef.current;
+        if (currentStreamedText && currentStreamedText.trim().length > 0 && currentStreamedText !== existingText) {
+          try {
+            const currentData = chatDataRef.current || chatData;
+            await editMessage(currentData, messageId, currentStreamedText);
+          } catch {}
+        }
+        return; // ← Exit early. Do NOT clear partial flag.
+      }
+
       if (!rawOutput?.trim()) { addToast('Resume produced no output.', 'info'); return; }
 
       const newText = rawOutput.startsWith(existingText) ? rawOutput.slice(existingText.length) : rawOutput;
@@ -496,23 +515,30 @@ export function useChatSession() {
 
       const combined = existingText + convertIdsToDisplayNames(newText, chatData);
 
-      // ✅ Use editMessage (branch-safe, saves) then clearPartialFlag (clears flag, saves)
-      const edited = await editMessage(chatData, messageId, combined);
+      // Read fresh chatData from ref in case stopGeneration updated it during streaming
+      const currentData = chatDataRef.current || chatData;
+      const edited = await editMessage(currentData, messageId, combined);
+
+      // ✅ Only reached on natural completion — safe to clear flag
       const finalData = await clearPartialFlag(edited, messageId);
 
       setChatData(finalData); chatDataRef.current = finalData;
       if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
     } catch (e) {
+      // Any error = NOT natural completion. Do NOT clear isPartial.
       if ((e as Error).name !== 'AbortError') {
         console.error('Resume failed:', e);
         addToast(`Resume error: ${(e as Error).message}`, 'error');
-        // On non-abort error: persist whatever was streamed as updated partial
         const currentStreamedText = streamingTextRef.current;
         if (currentStreamedText && currentStreamedText.trim().length > 0 && currentStreamedText !== existingText) {
-          try { await editMessage(chatDataRef.current || chatData, messageId, currentStreamedText); } catch {}
+          try {
+            const currentData = chatDataRef.current || chatData;
+            await editMessage(currentData, messageId, currentStreamedText);
+          } catch {}
         }
       }
-      // For abort: stopGeneration already handled updating the partial synchronously
+      // For abort: stopGeneration already updated the partial synchronously.
+      // isPartial stays true because clearPartialFlag was never called.
       pendingPartialRef.current = null;
     } finally {
       if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
