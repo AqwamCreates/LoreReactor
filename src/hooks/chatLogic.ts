@@ -29,7 +29,7 @@ const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Context', 'Chat History', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -538,11 +538,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${noRestrictionsInstructions} ${topicExpansionInstructions} ${noRepeatInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
-    if (useCurrentDateAndTime) {
-        const dateAndTimeString = getCurrentDateAndTimeString();
-        constructedMetaThinkLines = `${constructedMetaThinkLines} Today's date and time is ${dateAndTimeString}.`;
-    }
-
     if (contextLines.length > 0) {
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
     }
@@ -648,16 +643,24 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     metaThinkLines.push(constructedMetaThinkLines);
 
-    const textInjectionLine = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: `]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+    const dateAndTimeLines = []
+
+    if (useCurrentDateAndTime) {
+        const dateAndTimeString = getCurrentDateAndTimeString();
+        dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
+    }
+
+    const textInjectionLines = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: `]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
 
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
-        'Fatigue Information': fatigueLines,
         'Context': contextLines,
         'Chat History': chatHistoryLines,
-        'Text Injection': textInjectionLine,
+        'Fatigue Information': fatigueLines,
+        'Date And Time': dateAndTimeLines,
+        'Text Injection': textInjectionLines,
     };
 
     const promptLines: string[] = [];
