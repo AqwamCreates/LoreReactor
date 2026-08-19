@@ -636,12 +636,6 @@ export function useChatSession() {
         strategy?: BudgetStrategy | null,
         complexityScore?: number
     ): Promise<ChatData | null> => {
-        
-        let imageData: string | null = null;
-        if (character.image) {
-            const url = getCharacterImageUrl(character.image);
-            if (url) imageData = await getImageBase64(url);
-        }
 
         const pricing: ModelPricing = {
             cacheHitPerMillion: 0, 
@@ -707,7 +701,7 @@ export function useChatSession() {
                     return null;
                 }
 
-                const { body: requestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, effectivePort);
+                const { body: requestBody } = await prepareRequestBody(data, character, effectivePort);
                 
                 const LanguageModelContext: LanguageModelContext = {
                     apiKey: currentModel.apiKey,
@@ -753,7 +747,7 @@ export function useChatSession() {
                          const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
                          const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
                          
-                         const { body: retryRequestBody } = await prepareRequestBody(data, character, imageData, userImagesBase64, retryEffectivePort);
+                         const { body: retryRequestBody } = await prepareRequestBody(data, character, retryEffectivePort);
                          
                          const retryLanguageModelContext: LanguageModelContext = {
                              apiKey: currentModel.apiKey,
