@@ -49,11 +49,16 @@ function getCurrentDateAndTimeString(): string {
     });
 }
 
-function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string): string {
+function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
     if (!text) return text;
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag} (${protagonistName})`);
+    if (protagonistName){
+        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag} (${protagonistName})`);
+    } else{
+        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag}`); 
+    }
+
     return result;
 }
 
@@ -460,14 +465,15 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     for (const { context, formattedLine } of resolvedContexts) {
         let line = formattedLine;
 
+        const contextProtagonistName = revealedNamesMap.get(protagonist.id) ? protagonistName : null
+
+        const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
+        const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, contextProtagonistName);
+
         if (context.useBase64Encoding) {
-            const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
-            const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
             const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
             line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
         } else {
-            const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
-            const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
             line = `${contextStartString}${replacedText}${contextEndString}`;
         }
 
