@@ -701,7 +701,7 @@ export function useChatSession() {
                     return null;
                 }
 
-                const { body: requestBody } = await prepareRequestBody(data, character, effectivePort);
+                const { body: requestBody } = await prepareRequestBody(data, character, userImagesBase64, effectivePort);
                 
                 const LanguageModelContext: LanguageModelContext = {
                     apiKey: currentModel.apiKey,
@@ -747,7 +747,7 @@ export function useChatSession() {
                          const retryRuntimePort = currentModel.id ? currentRunningModels[currentModel.id]?.port : undefined;
                          const retryEffectivePort = retryRuntimePort || (currentModel.parameters as any)?._runtimePort;
                          
-                         const { body: retryRequestBody } = await prepareRequestBody(data, character, retryEffectivePort);
+                         const { body: retryRequestBody } = await prepareRequestBody(data, character, userImagesBase64, retryEffectivePort);
                          
                          const retryLanguageModelContext: LanguageModelContext = {
                              apiKey: currentModel.apiKey,
