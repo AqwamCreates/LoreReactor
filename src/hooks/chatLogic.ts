@@ -15,7 +15,7 @@ const noEmptyResponseInstructions = "I will also always create a response instea
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
 const contextAuthorityInstructions = "Information provided in the Context blocks is the absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const languageInstructions = "I will respond exclusively in the language established by the prompts and prior conversation turns."
+const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns."
 
 const contextStartString = "{";
 const contextEndString = "}";
