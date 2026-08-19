@@ -148,7 +148,6 @@ export function useChatSession() {
   const isAtBottomRef = useRef(true);
   const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
 
-  // Track resume context so stopGeneration can update the partial synchronously
   const resumingMessageIdRef = useRef<string | null>(null);
   const resumingExistingTextRef = useRef<string>('');
 
@@ -286,6 +285,7 @@ export function useChatSession() {
       if (strat) {
         const engine = new BudgetStrategyEngine(strat);
         const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
+        // BudgetStrategyEngine.generateStream still returns string — update it separately
         rawText = await engine.generateStream(data, character, { signal } as AbortController, cb, userImagesBase64, complexityScore);
         if (engine.currentCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + engine.currentCost }));
       } else {
@@ -297,13 +297,16 @@ export function useChatSession() {
         const { body } = await prepareRequestBody(data, character, existingCharacterText || '', userImagesBase64, ep);
         const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
-        const doStream = async (reqBody: any, ctx: LanguageModelContext) => languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
-          onToken: (s) => { setGenerationSpeed(s.msPerToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
-          onFinish: (rs) => {
-            const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
-            setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
-          },
-        }, ctx, maxPara);
+        const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
+          const result = await languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
+            onToken: (s) => { setGenerationSpeed(s.msPerToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
+            onFinish: (rs) => {
+              const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
+              setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
+            },
+          }, ctx, maxPara);
+          return result.text;
+        };
 
         rawText = await doStream(body, lmCtx);
 
@@ -361,14 +364,11 @@ export function useChatSession() {
     saveRawChatData(c).catch(e => console.error('Failed to save new chat:', e));
   }, []);
 
-  // ✅ Uses editChatMessageInChatData for synchronous state update during resume stop
-  // so the partial is visible in the very next render frame.
   const stopGeneration = useCallback(() => {
     const t = streamingTextRef.current, c = streamingCharacterRef.current;
     const resumeId = resumingMessageIdRef.current;
 
     if (resumeId && t && t.trim().length > 0 && chatDataRef.current) {
-      // Synchronous state update — partial visible in next render immediately
       const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
       const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
       if (idx !== -1) {
@@ -444,10 +444,6 @@ export function useChatSession() {
   }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
   // ─── Resume Generation ───────────────────────────────────────────
-  // Keeps partial message in history during streaming.
-  // On natural completion only: uses editMessage + clearPartialFlag.
-  // On stop/abort: stopGeneration handles synchronous update, isPartial stays true.
-  // On error: uses editMessage to persist whatever was streamed, isPartial stays true.
 
   const resumeGeneration = useCallback(async (messageId: string) => {
     if (!chatData) return;
@@ -455,7 +451,6 @@ export function useChatSession() {
     if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
     const msg = chatData.chatMessageHistory[msgIndex];
     if (!msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
-    // Guard against rapid clicks: if already generating, abort previous first
     if (isLoadingRef.current) {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
@@ -485,7 +480,7 @@ export function useChatSession() {
       const { body } = await prepareRequestBody(chatData, char, existingText, undefined, ep);
       const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
 
-      const rawOutput = await languageModelEngine.generateStream(body, ctrl, {
+      const result = await languageModelEngine.generateStream(body, ctrl, {
         onToken: (s) => {
           setGenerationSpeed(s.msPerToken);
           const displayText = existingText + s.fullText;
@@ -494,19 +489,7 @@ export function useChatSession() {
         },
       }, lmCtx, getDynamicParagraphLimit(char, chatData));
 
-      // ✅ If signal was aborted at any point, do NOT treat as natural completion.
-      // Stop already handled the partial update synchronously.
-      // Persist whatever text we have WITHOUT clearing isPartial.
-      if (ctrl.signal.aborted) {
-        const currentStreamedText = streamingTextRef.current;
-        if (currentStreamedText && currentStreamedText.trim().length > 0 && currentStreamedText !== existingText) {
-          try {
-            const currentData = chatDataRef.current || chatData;
-            await editMessage(currentData, messageId, currentStreamedText);
-          } catch {}
-        }
-        return; // ← Exit early. Do NOT clear partial flag.
-      }
+      const rawOutput = result.text;
 
       if (!rawOutput?.trim()) { addToast('Resume produced no output.', 'info'); return; }
 
@@ -515,17 +498,20 @@ export function useChatSession() {
 
       const combined = existingText + convertIdsToDisplayNames(newText, chatData);
 
-      // Read fresh chatData from ref in case stopGeneration updated it during streaming
       const currentData = chatDataRef.current || chatData;
       const edited = await editMessage(currentData, messageId, combined);
 
-      // ✅ Only reached on natural completion — safe to clear flag
-      const finalData = await clearPartialFlag(edited, messageId);
+      // ✅ Only clear partial flag if generation completed naturally (hit a stop pattern)
+      if (result.isCompleted) {
+        const finalData = await clearPartialFlag(edited, messageId);
+        setChatData(finalData); chatDataRef.current = finalData;
+      } else {
+        // Not completed — keep isPartial: true so resume button stays visible
+        setChatData(edited); chatDataRef.current = edited;
+      }
 
-      setChatData(finalData); chatDataRef.current = finalData;
       if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
     } catch (e) {
-      // Any error = NOT natural completion. Do NOT clear isPartial.
       if ((e as Error).name !== 'AbortError') {
         console.error('Resume failed:', e);
         addToast(`Resume error: ${(e as Error).message}`, 'error');
@@ -537,8 +523,6 @@ export function useChatSession() {
           } catch {}
         }
       }
-      // For abort: stopGeneration already updated the partial synchronously.
-      // isPartial stays true because clearPartialFlag was never called.
       pendingPartialRef.current = null;
     } finally {
       if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
