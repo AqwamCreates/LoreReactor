@@ -29,7 +29,7 @@ const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Context', 'Chat History', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -657,8 +657,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
-        'Context': contextLines,
         'Chat History': chatHistoryLines,
+        'Context': contextLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
         'Text Injection': textInjectionLines,
