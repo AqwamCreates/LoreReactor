@@ -37,10 +37,6 @@ const CLOUD_BACKENDS = [
   'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
 ];
 
-/**
- * Synchronous estimation fallback when async isn't available.
- * Uses ~4 chars per token as a rough average for most models.
- */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -48,8 +44,11 @@ export function estimateTokens(text: string): number {
 export class LanguageModelEngine {
 
   /**
-   * ✅ Single source of truth for resolving URL, headers, and body.
-   * Used by both generateStream and generateCompletion.
+   * Resolves URL, headers, and body for all backends.
+   * 
+   * @param existingText - Partial assistant text to continue from.
+   *   Appended directly to the prompt string for ALL backends since
+   *   prepareRequestBody builds a flat completion prompt, not a messages array.
    */
   private resolveRequest(
     prompt: string,
@@ -61,17 +60,25 @@ export class LanguageModelEngine {
       maxTokens?: number;
       stop?: string[];
       extraParams?: Record<string, unknown>;
-    }
+    },
+    existingText?: string
   ): { url: string; headers: HeadersInit; body: string } {
     const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
     const isCloud = !!apiKey && backend && CLOUD_BACKENDS.includes(backend);
+
+    // ✅ Append existing text to prompt for continuation (all backends)
+    // The prompt from prepareRequestBody ends with "{Character X: "
+    // so appending existing text produces "{Character X: <partial text>"
+    // which tells the model to continue from that exact point.
+    const finalPrompt = existingText && existingText.trim().length > 0
+      ? `${prompt}${existingText}`
+      : prompt;
 
     let url: string;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
     let body: string;
 
     if (isCloud && apiKey) {
-      // --- Cloud Backend ---
       if (backend === 'Other') {
         if (!modelPath) throw new Error("Custom URL (Model Path) is required for 'Other' backend.");
         url = modelPath;
@@ -89,9 +96,13 @@ export class LanguageModelEngine {
 
       const payloadModelName = modelPath || 'default-model';
 
+      // ✅ Cloud APIs receive the full prompt (with existing text appended) as a single user message.
+      // This is correct because prepareRequestBody builds a completion-style prompt,
+      // not a conversational messages array. The model sees the entire context including
+      // the partial assistant response at the end and continues from there.
       body = JSON.stringify({
         model: payloadModelName,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: finalPrompt }],
         stream,
         temperature: params?.temperature,
         top_p: params?.top_p,
@@ -101,11 +112,10 @@ export class LanguageModelEngine {
       });
 
     } else if (runtimePort) {
-      // --- Local llama-server ---
       url = `${localAddress}:${runtimePort}/completion`;
 
       body = JSON.stringify({
-        prompt,
+        prompt: finalPrompt,
         n_predict: params?.maxTokens,
         temperature: params?.temperature,
         top_p: params?.top_p,
@@ -114,11 +124,10 @@ export class LanguageModelEngine {
       });
 
     } else {
-      // --- Fallback: Vite proxy ---
       url = '/api/completion';
 
       body = JSON.stringify({
-        prompt,
+        prompt: finalPrompt,
         n_predict: params?.maxTokens,
         temperature: params?.temperature,
         top_p: params?.top_p,
@@ -130,16 +139,11 @@ export class LanguageModelEngine {
     return { url, headers, body };
   }
 
-  /**
-   * ✅ Extracts text content from either OpenAI-compatible or llama.cpp response format.
-   */
   private extractContent(data: any): string | null {
-    // OpenAI-compatible format (cloud + some local wrappers)
     if (data.choices?.[0]?.message?.content !== undefined) {
       const content = data.choices[0].message.content?.trim();
       return content && content.length > 0 ? content : null;
     }
-    // llama.cpp native completion format
     if (data.content !== undefined) {
       const content = data.content?.trim();
       return content && content.length > 0 ? content : null;
@@ -147,13 +151,6 @@ export class LanguageModelEngine {
     return null;
   }
 
-  /**
-   * ✅ Non-streaming completion for internal use (summarization, compression).
-   * Supports optional image_data in llama.cpp native format:
-   *   [{ data: "<base64>", id: <number> }]
-   * Images are injected into the request body after resolution so they
-   * work identically to how chatLogic.ts prepareRequestBody attaches images.
-   */
   async generateCompletion(
     prompt: string,
     modelContext?: LanguageModelContext,
@@ -173,7 +170,6 @@ export class LanguageModelEngine {
         stop,
       });
 
-      // Inject image_data into the resolved body if provided
       let finalBody = bodyStr;
       if (imageData && imageData.length > 0) {
         const bodyObj = JSON.parse(bodyStr);
@@ -192,15 +188,9 @@ export class LanguageModelEngine {
     }
   }
 
-  /**
-   * ✅ Counts tokens using llama-server's /tokenize endpoint.
-   * Falls back to character-based estimation if unavailable.
-   * Only works for local models — cloud APIs don't expose /tokenize.
-   */
   async countTokens(text: string, modelContext?: LanguageModelContext): Promise<number> {
     const { runtimePort } = modelContext || {};
 
-    // Cloud models or no port → fall back to estimation
     if (!runtimePort) return estimateTokens(text);
 
     try {
@@ -219,19 +209,16 @@ export class LanguageModelEngine {
     }
   }
 
-  /**
-   * ✅ Streaming generation for chat responses.
-   */
   async generateStream(
     requestBody: any,
     abortController: AbortController,
     callbacks?: StreamCallbacks,
     modelContext?: LanguageModelContext,
-    maxParagraphs?: number
+    maxParagraphs?: number,
+    existingText?: string
   ): Promise<string> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
 
-    // Extract prompt from requestBody — handle both native and messages format
     let prompt = requestBody.prompt || '';
     if (!prompt && requestBody.messages) {
       const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
@@ -244,7 +231,7 @@ export class LanguageModelEngine {
       maxTokens: requestBody.n_predict || requestBody.max_tokens,
       stop: requestBody.stop,
       extraParams: requestBody.extra_cloud_params,
-    });
+    }, existingText);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -267,11 +254,15 @@ export class LanguageModelEngine {
     if (!reader) throw new Error('No response body');
 
     const decoder = new TextDecoder("utf-8");
-    let fullContent = "";
+    let fullContent = existingText || "";
     let firstTokenTime = 0;
-    let tokenCount = 0;
+    let newTokenCount = 0;
     let paragraphCount = 0;
     let hasReceivedNonWhitespace = false;
+
+    if (existingText && existingText.trim().length > 0) {
+      paragraphCount = (existingText.match(/\n\n/g) || []).length;
+    }
 
     try {
       while (true) {
@@ -309,8 +300,8 @@ export class LanguageModelEngine {
                 }
 
                 const now = performance.now();
-                if (tokenCount === 0) firstTokenTime = now;
-                tokenCount++;
+                if (newTokenCount === 0) firstTokenTime = now;
+                newTokenCount++;
                 fullContent += token;
 
                 if (paragraphLimit > 0) {
@@ -330,8 +321,8 @@ export class LanguageModelEngine {
                 }
 
                 const totalTime = now - firstTokenTime;
-                const msPerToken = tokenCount > 0 ? totalTime / tokenCount : 0;
-                const tokensPerSecond = totalTime > 0 ? (tokenCount / totalTime) * 1000 : 0;
+                const msPerToken = newTokenCount > 0 ? totalTime / newTokenCount : 0;
+                const tokensPerSecond = totalTime > 0 ? (newTokenCount / totalTime) * 1000 : 0;
 
                 if (callbacks?.onToken) {
                   callbacks.onToken({ fullText: fullContent, msPerToken, tokensPerSecond });
