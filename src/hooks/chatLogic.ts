@@ -542,14 +542,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
     }
 
-    // FATIGUE BLOCK
-    const fatigueLines: string[] = [];
-
-    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
-        if (fatigue) fatigueLines.push(fatigue);
-    }
-
     let hasBeenSummarized = false
 
     // CHAT HISTORY
@@ -635,13 +627,22 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
-    const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
     const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
     const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${remainingChatStaminaInstructions} ${characterInstructions} ${formatInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${formatInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
+
+    // FATIGUE BLOCK
+    const fatigueLines: string[] = [];
+
+    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
+        const remainingChatStaminaInstructions = `${contextStartString}${thinkStartString}I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.${thinkEndString}${contextEndString}`;
+        if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
+        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
+        if (fatigue) fatigueLines.push(fatigue);
+    }
 
     const dateAndTimeLines = []
 
