@@ -13,7 +13,7 @@ const beingIgnoredInstructions = "Anytime a character ignores me talking, I woul
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
 const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
-const contextAuthorityInstructions = "Information provided in the Context blocks is the absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
+const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns."
 
@@ -757,8 +757,8 @@ export async function prepareRequestBody(
             if (characterImageBase64) {
 
                 const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
-                allImageData.push({ data: rawData, id: imageIdCounter });
-                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
+                allImageData.push({ data: rawData, id: imageIdCounter++ });
+                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}${prompt}`
             }
         }
 
