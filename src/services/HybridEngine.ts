@@ -37,6 +37,7 @@ export class HybridEngine {
   public async generateStream(
     chatData: ChatData,
     character: Character,
+    imageData: string[],
     controller: AbortController,
     options: StreamOptions
   ): Promise<string> {
@@ -53,7 +54,7 @@ export class HybridEngine {
     }
 
     // 2. Prepare Request for the specific target model
-    const requestBody = await prepareRequestBody(chatData, character, targetModel);
+    const requestBody = await prepareRequestBody(chatData, character, imageData);
 
     // 3. Execute via Base Engine
     const callbacks = {
