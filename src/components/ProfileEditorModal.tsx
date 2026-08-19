@@ -18,10 +18,11 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Fatigue Information',
     'Context',
     'Chat History',
+    'Text Injection'
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
