@@ -307,6 +307,7 @@ export type PromptBlockType =
   | 'Meta Think Instruction'
   | 'Fatigue Information'              // Active context entries (regex-matched)     // Think/meta-instruction prompts  
   | 'Chat History'         // Conversation history messages
+  | 'Text Injection'
 
 export interface Profile extends ObjectData {
 

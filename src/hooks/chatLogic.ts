@@ -29,7 +29,7 @@ const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Fatigue Information', 'Context', 'Chat History', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -559,6 +559,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     // CHAT HISTORY
     const chatHistoryLines: string[] = [];
+    chatHistoryLines.push(`${contextStartString}${thinkStartString}This is what I remember below.${thinkEndString}${contextEndString}`);
+
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
             .sort((a, b) => a.order - b.order);
@@ -634,6 +636,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
+    chatHistoryLines.push(`${contextStartString}${thinkStartString}This is what I remember above.${thinkEndString}${contextEndString}`);
+
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
     const remainingChatStaminaInstructions = `I understand that I can create a maximum of ${currentChatStamina} ${paragraphText}.`;
@@ -644,6 +648,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     metaThinkLines.push(constructedMetaThinkLines);
 
+    const textInjectionLine = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: `]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
@@ -651,6 +657,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Fatigue Information': fatigueLines,
         'Context': contextLines,
         'Chat History': chatHistoryLines,
+        'Text Injection': textInjectionLine,
     };
 
     const promptLines: string[] = [];
@@ -673,11 +680,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    const userInputLine = `${turnStartString}${characterParticipantTag}: `; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+    const prompt = promptLines.join('\n')
 
-    promptLines.push(userInputLine);
+    console.log(prompt)
 
-    return { prompt: promptLines.join('\n'), activeStopPatterns, activeContextsForImages, fetchErrors };
+    return { prompt, activeStopPatterns, activeContextsForImages, fetchErrors };
 }
 
 export async function prepareRequestBody(
