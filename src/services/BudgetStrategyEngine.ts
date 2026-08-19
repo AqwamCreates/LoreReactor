@@ -2,7 +2,6 @@
 import type { BudgetStrategy, ChatData, Character, LanguageModel } from '../types';
 import { LanguageModelEngine, type StreamCallbacks, type TokenStats } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
-import { getCharacterImageUrl } from '../hooks/storage';
 
 interface ModelSelectionResult {
   model: LanguageModel;

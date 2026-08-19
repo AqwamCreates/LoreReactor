@@ -550,22 +550,6 @@ export function useChatSession() {
         })();
     }, [ttsServerUrl]);
 
-    const getImageBase64 = async (url: string): Promise<string | null> => {
-        try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        } catch (error) {
-            console.error(`Failed to convert image: ${url}`, error);
-            return null;
-        }
-    };
-
     const getDynamicParagraphLimit = useCallback((character: Character, data: ChatData): number => {
         const maxStamina = character.maximumChatStamina ?? 4;
         const aiParticipants = data.participants.filter(p => p.id !== data.protagonist.id);
@@ -942,7 +926,7 @@ export function useChatSession() {
     }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, speakMessage, applyPendingPartial, setStreamingTextThrottled]);
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, character: Character) => {
-        if (!character.image) {
+        if (!chatData?.Profile?.forceNoCharacterImageInjection && !character.image) {
             setIsInitialImageProcessed(true);
             return;
         }
