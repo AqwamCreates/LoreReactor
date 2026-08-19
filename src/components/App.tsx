@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -55,6 +55,11 @@ interface LoadStep {
 }
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+
+// ✅ FIX #2: Memoized message text to prevent re-formatting unchanged messages during streaming
+const MemoizedMessageText = React.memo(({ text }: { text: string }) => (
+  <span className="message-text">{formatMessageText(text)}</span>
+));
 
 function App() {
   const {
@@ -376,6 +381,12 @@ function App() {
       if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
     };
   }, []);
+
+  // ✅ FIX #2: Memoize streaming text formatting — MUST be before the isInitializing early return
+  const formattedStreamingText = useMemo(
+    () => formatMessageText(streamingText),
+    [streamingText]
+  );
 
   const safeAutoSave = async (data: ChatData | null): Promise<void> => {
     if (!data) return;
@@ -782,7 +793,8 @@ function App() {
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
             {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
-            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{formatMessageText(streamingText)}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div>
+            {/* ✅ FIX #2: Use pre-memoized formatted streaming text */}
+            <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{formattedStreamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div>
           </div>
         </div>
       )}
@@ -855,7 +867,8 @@ function App() {
                             </div>
                           </div>
                         ) : (<>
-                          <span className="message-text">{formatMessageText(message.textContent)}</span>
+                          {/* ✅ FIX #2: Use memoized component for historical messages — skips re-formatting when text hasn't changed */}
+                          <MemoizedMessageText text={message.textContent} />
                           <div className="message-toolbar">
                             {isStem ? (<span className="toolbar-lock">🔒 Locked</span>) : !isMassActive ? (
                               <>
