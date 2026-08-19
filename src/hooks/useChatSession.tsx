@@ -1,3 +1,4 @@
+// src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl, getCharacterVoiceUrl } from './storage';
@@ -383,8 +384,10 @@ export function useChatSession() {
 
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
 
-    // ✅ FIX #1: rAF-throttled streaming text updates
-    const streamingRafRef = useRef<number>(0);
+    // ✅ FIX #1: 30fps throttled streaming text updates
+    const STREAMING_THROTTLE_MS = 60;
+    const lastFlushRef = useRef(0);
+    const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingStreamingTextRef = useRef("");
     
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -432,7 +435,7 @@ export function useChatSession() {
         return true;
     }, []);
 
-    // ✅ FIX #1: Cancel any pending rAF on lock release
+    // ✅ FIX #1: Cancel any pending flush timeout on lock release
     const releaseGenerationLock = useCallback(() => {
         isLoadingRef.current = false;
         setIsLoading(false);
@@ -441,21 +444,30 @@ export function useChatSession() {
         streamingTextRef.current = "";
         streamingCharacterRef.current = null;
         pendingStreamingTextRef.current = "";
-        if (streamingRafRef.current) {
-            cancelAnimationFrame(streamingRafRef.current);
-            streamingRafRef.current = 0;
+        lastFlushRef.current = 0;
+        if (pendingFlushRef.current) {
+            clearTimeout(pendingFlushRef.current);
+            pendingFlushRef.current = null;
         }
     }, []);
 
-    // ✅ FIX #1: Throttled streaming text setter — caps React re-renders to display refresh rate
+    // ✅ FIX #1: Throttled streaming text setter — caps React re-renders to ~30fps
     const setStreamingTextThrottled = useCallback((text: string) => {
         streamingTextRef.current = text;
         pendingStreamingTextRef.current = text;
-        if (!streamingRafRef.current) {
-            streamingRafRef.current = requestAnimationFrame(() => {
+
+        const now = performance.now();
+        const elapsed = now - lastFlushRef.current;
+
+        if (elapsed >= STREAMING_THROTTLE_MS) {
+            lastFlushRef.current = now;
+            setStreamingText(text);
+        } else if (!pendingFlushRef.current) {
+            pendingFlushRef.current = setTimeout(() => {
+                lastFlushRef.current = performance.now();
                 setStreamingText(pendingStreamingTextRef.current);
-                streamingRafRef.current = 0;
-            });
+                pendingFlushRef.current = null;
+            }, STREAMING_THROTTLE_MS - elapsed);
         }
     }, []);
 
@@ -649,7 +661,6 @@ export function useChatSession() {
             if (currentStrategy) {
                 const strategyEngine = new BudgetStrategyEngine(currentStrategy);
                 
-                // ✅ FIX #1: Use throttled setter for budget strategy streaming
                 const wrappedCallbacks: StreamCallbacks | undefined = onToken ? {
                     onToken: (stats) => {
                         setGenerationSpeed(stats.msPerToken);

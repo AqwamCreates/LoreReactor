@@ -727,7 +727,7 @@ export async function prepareRequestBody(
             ? characterImageBase64.split(',')[1]
             : characterImageBase64;
         allImageData.push({ data: rawData, id: imageIdCounter });
-        prompt = `${contextStartString}${thinkStartString}The first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
+        prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
     }
 
     if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
