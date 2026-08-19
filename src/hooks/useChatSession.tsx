@@ -2,11 +2,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/ChatMessageSummarizationEngine';
+import { editMessage, clearPartialFlag } from './messageLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
@@ -119,7 +120,6 @@ async function runBackgroundSummarization(
 // ─── Hook ────────────────────────────────────────────────────────────
 
 export function useChatSession() {
-  // State
   const [chatData, setChatData] = useState<ChatData | null>(null);
   const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -133,7 +133,6 @@ export function useChatSession() {
   const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
   const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
 
-  // Refs
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const chatHistoryRef = useRef<HTMLDivElement>(null);
@@ -149,13 +148,15 @@ export function useChatSession() {
   const isAtBottomRef = useRef(true);
   const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
 
-  // Streaming throttle
+  // Track resume context so stopGeneration can update the partial synchronously
+  const resumingMessageIdRef = useRef<string | null>(null);
+  const resumingExistingTextRef = useRef<string>('');
+
   const THROTTLE_MS = 60;
   const lastFlushRef = useRef(0);
   const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStreamingTextRef = useRef('');
 
-  // Sync refs
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
   useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
   useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
@@ -167,7 +168,6 @@ export function useChatSession() {
   const { addToast } = useToast();
   const [ttsServerUrl] = useState(`${localAddress}:7860`);
 
-  // Fetch running models on mount
   useEffect(() => {
     (async () => {
       try {
@@ -200,6 +200,7 @@ export function useChatSession() {
     setStreamingText(''); setStreamingCharacter(null);
     streamingTextRef.current = ''; streamingCharacterRef.current = null;
     pendingStreamingTextRef.current = ''; lastFlushRef.current = 0;
+    resumingMessageIdRef.current = null; resumingExistingTextRef.current = '';
     if (pendingFlushRef.current) { clearTimeout(pendingFlushRef.current); pendingFlushRef.current = null; }
   }, []);
 
@@ -360,9 +361,31 @@ export function useChatSession() {
     saveRawChatData(c).catch(e => console.error('Failed to save new chat:', e));
   }, []);
 
+  // ✅ Uses editChatMessageInChatData for synchronous state update during resume stop
+  // so the partial is visible in the very next render frame.
   const stopGeneration = useCallback(() => {
     const t = streamingTextRef.current, c = streamingCharacterRef.current;
-    pendingPartialRef.current = (t && t.trim() && c) ? { text: t, character: c } : null;
+    const resumeId = resumingMessageIdRef.current;
+
+    if (resumeId && t && t.trim().length > 0 && chatDataRef.current) {
+      // Synchronous update using editChatMessageInChatData
+      const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
+      const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
+      if (idx !== -1) {
+        const withPartial = [...updated.chatMessageHistory];
+        withPartial[idx] = { ...withPartial[idx], isPartial: true, lastUpdatedTimestamp: Date.now() };
+        const final: ChatData = { ...updated, chatMessageHistory: withPartial, lastUpdatedTimestamp: Date.now() };
+        setChatData(final);
+        chatDataRef.current = final;
+        saveRawChatData(final).catch(() => {});
+      }
+      resumingMessageIdRef.current = null;
+      resumingExistingTextRef.current = '';
+      pendingPartialRef.current = null;
+    } else {
+      pendingPartialRef.current = (t && t.trim() && c) ? { text: t, character: c } : null;
+    }
+
     abortControllerRef.current?.abort(); abortControllerRef.current = null;
     releaseLock(); setGenerationSpeed(0);
   }, [releaseLock]);
@@ -421,9 +444,10 @@ export function useChatSession() {
   }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
   // ─── Resume Generation ───────────────────────────────────────────
-  // Removes partial message from history BEFORE streaming so only the
-  // streaming indicator bubble renders during generation (no duplicate).
-  // After completion, inserts the completed message back at the same index.
+  // Keeps partial message in history during streaming.
+  // On success: uses editMessage + clearPartialFlag (branch-safe, saves).
+  // On stop: stopGeneration handles synchronous update via editChatMessageInChatData.
+  // On error: uses editMessage to persist whatever was streamed.
 
   const resumeGeneration = useCallback(async (messageId: string) => {
     if (!chatData) return;
@@ -438,14 +462,9 @@ export function useChatSession() {
     const existingText = msg.textContent;
     const char = msg.character;
 
-    // ✅ Remove partial message from history BEFORE streaming starts.
-    // This prevents the UI from rendering both the historical bubble
-    // and the streaming indicator bubble simultaneously.
-    const historyWithoutPartial = chatData.chatMessageHistory.filter((_, i) => i !== msgIndex);
-    const dataForPrompt: ChatData = { ...chatData, chatMessageHistory: historyWithoutPartial };
-
-    setChatData(dataForPrompt);
-    chatDataRef.current = dataForPrompt;
+    // Track resume context so stopGeneration can update the partial synchronously
+    resumingMessageIdRef.current = messageId;
+    resumingExistingTextRef.current = existingText;
 
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
@@ -458,15 +477,12 @@ export function useChatSession() {
       const ep = port || (model?.parameters as any)?._runtimePort;
       if (!ep && !model?.apiKey) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
-      // Use original chatData (with partial in history) for prompt building
-      // so the model sees the full conversation context including what was said before.
       const { body } = await prepareRequestBody(chatData, char, existingText, undefined, ep);
       const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
 
       const rawOutput = await languageModelEngine.generateStream(body, ctrl, {
         onToken: (s) => {
           setGenerationSpeed(s.msPerToken);
-          // Engine returns only NEW tokens. Prepend existing text for UI display.
           const displayText = existingText + s.fullText;
           streamingTextRef.current = displayText;
           throttledSetStreamingText(displayText);
@@ -475,42 +491,29 @@ export function useChatSession() {
 
       if (!rawOutput?.trim()) { addToast('Resume produced no output.', 'info'); return; }
 
-      // Strip echoed prefix — completion models repeat the prompt suffix
       const newText = rawOutput.startsWith(existingText) ? rawOutput.slice(existingText.length) : rawOutput;
       if (!newText.trim()) { addToast('No new content generated.', 'info'); return; }
 
-      // Convert only NEW text — existing text was already converted when saved
       const combined = existingText + convertIdsToDisplayNames(newText, chatData);
 
-      // ✅ Insert completed message back at the original index
-      const completedMsg: ChatMessage = {
-        ...msg,
-        textContent: combined,
-        isPartial: false,
-        lastUpdatedTimestamp: Date.now(),
-      };
+      // ✅ Use editMessage (branch-safe, saves) then clearPartialFlag (clears flag, saves)
+      const edited = await editMessage(chatData, messageId, combined);
+      const finalData = await clearPartialFlag(edited, messageId);
 
-      const finalHistory = [...historyWithoutPartial];
-      finalHistory.splice(msgIndex, 0, completedMsg);
-
-      const fd: ChatData = {
-        ...chatData,
-        chatMessageHistory: finalHistory,
-        lastUpdatedTimestamp: Date.now(),
-      };
-
-      await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd;
+      setChatData(finalData); chatDataRef.current = finalData;
       if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         console.error('Resume failed:', e);
         addToast(`Resume error: ${(e as Error).message}`, 'error');
+        // On non-abort error: persist whatever was streamed as updated partial
+        const currentStreamedText = streamingTextRef.current;
+        if (currentStreamedText && currentStreamedText.trim().length > 0 && currentStreamedText !== existingText) {
+          try { await editMessage(chatDataRef.current || chatData, messageId, currentStreamedText); } catch {}
+        }
       }
-      // On failure, restore the partial message so it's not lost
-      const restoredHistory = [...historyWithoutPartial];
-      restoredHistory.splice(msgIndex, 0, msg);
-      const restored: ChatData = { ...chatData, chatMessageHistory: restoredHistory, lastUpdatedTimestamp: Date.now() };
-      await saveRawChatData(restored); setChatData(restored); chatDataRef.current = restored;
+      // For abort: stopGeneration already handled updating the partial synchronously
+      pendingPartialRef.current = null;
     } finally {
       if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
       releaseLock();
