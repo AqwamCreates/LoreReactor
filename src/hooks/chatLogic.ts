@@ -9,12 +9,12 @@ const noRestrictionsInstructions = "I understand that the amount and intensity o
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else or stop creating new text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, I would feel awkward.";
-const noHallucinationInstructions = "I will also not create non-existent information. I will not assume other characters' external dialogues and actions unless I am predicting them.";
+const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
 const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
-const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
+const contextAuthorityInstructions = "Information provided in the Context blocks is the absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const languageInstructions = "I will also not use languages that are not described in the prompts. I will also be consistent with my languages."
+const languageInstructions = "I will respond exclusively in the language established by the prompts and prior conversation turns, maintaining consistent linguistic choice throughout."
 
 const contextStartString = "{";
 const contextEndString = "}";
@@ -632,7 +632,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
-    const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
+    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech.`
     const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
     constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
