@@ -14,7 +14,6 @@ const noEmptyResponseInstructions = "I will also not create an empty response.";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
 const contextAuthorityInstructions = "Information provided in the Context blocks is absolute truth. If the Context contradicts my general knowledge or previous assumptions, I must prioritize the Context without question.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const formatInstructions = "I will also make sure that my responses have clean formatting that satisfies the prompts.";
 const languageInstructions = "I will also not use languages that are not described in the prompts. I will also be consistent with my languages."
 
 const contextStartString = "{";
@@ -636,7 +635,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const characterInstructions = `I will respond as ${characterParticipantTag} and I will not respond as other characters.`;
     const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${formatInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
