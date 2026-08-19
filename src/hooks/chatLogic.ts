@@ -193,6 +193,22 @@ function isCharacterBound(context: Context, currentCharacterId: string): boolean
     return context.characterBindings.includes(currentCharacterId);
 }
 
+const getImageBase64 = async (url: string): Promise<string | null> => {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error(`Failed to convert image: ${url}`, error);
+        return null;
+    }
+};
+
 /**
  * resolveContextEntries accepts fetchedContentMap so token budgeting
  * accounts for fetched web content, not just static context.text.
@@ -722,10 +738,32 @@ export async function prepareRequestBody(
 
     const profile = chatData.Profile
 
+    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection
+
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const allImageData: { data: string; id: number }[] = [];
+
     let imageIdCounter = 1;
+
+    if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
+
+        const characterImagePath = getCharacterImageUrl(character.id)
+
+        if (characterImagePath) {
+
+            const characterImageBase64 = await getImageBase64(characterImagePath)
+
+            if (characterImageBase64) {
+
+            const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
+            allImageData.push({ data: rawData, id: imageIdCounter });
+            prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
+
+            }
+        }
+
+    }
 
     if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
