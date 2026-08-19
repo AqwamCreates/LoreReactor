@@ -756,10 +756,9 @@ export async function prepareRequestBody(
 
             if (characterImageBase64) {
 
-            const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
-            allImageData.push({ data: rawData, id: imageIdCounter });
-            prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
-
+                allImageData.push({ data: characterImageBase64, id: imageIdCounter });
+                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance.${thinkEndString}${contextEndString}${prompt}`
+                console.log(characterImageBase64)
             }
         }
 
@@ -779,8 +778,7 @@ export async function prepareRequestBody(
                         reader.onloadend = () => resolve(reader.result as string);
                         reader.readAsDataURL(blob);
                     });
-                    const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                    return { data: rawData, id: imageIdCounter++ };
+                    return { data: base64, id: imageIdCounter++ };
                 } catch (e) {
                     console.warn(`Failed to load context image ${filename}`, e);
                     return null;
@@ -793,8 +791,7 @@ export async function prepareRequestBody(
 
     if (protagonistImageBase64s && protagonistImageBase64s.length > 0) {
         for (const base64 of protagonistImageBase64s) {
-            const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-            allImageData.push({ data: rawData, id: imageIdCounter++ });
+            allImageData.push({ data: base64, id: imageIdCounter++ });
         }
     }
 
