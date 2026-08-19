@@ -16,6 +16,7 @@ const mistakeCorrectionInstructions = "If I accidentally create a text that devi
 const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns."
+const literaryDeviceInstructions = "I may or may not use these literary devices: Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus."
 
 const contextStartString = "{";
 const contextEndString = "}";
@@ -652,7 +653,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech.`
     const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
