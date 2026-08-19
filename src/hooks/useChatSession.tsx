@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
-import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterImageUrl, getCharacterVoiceUrl } from './storage';
+import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -376,15 +376,12 @@ export function useChatSession() {
     const streamingCharacterRef = useRef<Character | null>(null);
     const chatDataRef = useRef<ChatData | null>(null);
 
-    // ✅ Tracks text captured when generation is interrupted (stop, error, network failure).
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
 
-    // ✅ Track whether user is scrolled to bottom — only auto-scroll when at bottom
     const isAtBottomRef = useRef(true);
 
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
 
-    // ✅ FIX #1: 30fps throttled streaming text updates
     const STREAMING_THROTTLE_MS = 60;
     const lastFlushRef = useRef(0);
     const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -435,7 +432,6 @@ export function useChatSession() {
         return true;
     }, []);
 
-    // ✅ FIX #1: Cancel any pending flush timeout on lock release
     const releaseGenerationLock = useCallback(() => {
         isLoadingRef.current = false;
         setIsLoading(false);
@@ -451,7 +447,6 @@ export function useChatSession() {
         }
     }, []);
 
-    // ✅ FIX #1: Throttled streaming text setter — caps React re-renders to ~30fps
     const setStreamingTextThrottled = useCallback((text: string) => {
         streamingTextRef.current = text;
         pendingStreamingTextRef.current = text;
@@ -611,6 +606,7 @@ export function useChatSession() {
         return addMessageToChatData(data, ambientMessage);
     }, []);
 
+    // ✅ FIXED: Added existingText parameter, passed through to all engine call sites
     const handleServerResponse = useCallback(async (
         data: ChatData, 
         character: Character, 
@@ -618,7 +614,8 @@ export function useChatSession() {
         onToken?: (text: string) => void,
         userImagesBase64?: string[],
         strategy?: BudgetStrategy | null,
-        complexityScore?: number
+        complexityScore?: number,
+        existingText?: string
     ): Promise<ChatData | null> => {
 
         const pricing: ModelPricing = {
@@ -653,7 +650,8 @@ export function useChatSession() {
                     { signal } as AbortController, 
                     wrappedCallbacks, 
                     userImagesBase64,
-                    complexityScore
+                    complexityScore,
+                    existingText
                 );
 
                 if (strategyEngine.currentCost > 0) {
@@ -700,7 +698,6 @@ export function useChatSession() {
                     {
                         onToken: (stats) => {
                             setGenerationSpeed(stats.msPerToken);
-                            // ✅ FIX #1: Use throttled setter instead of direct state update
                             setStreamingTextThrottled(stats.fullText);
                             if (onToken) onToken(stats.fullText);
                         },
@@ -719,7 +716,8 @@ export function useChatSession() {
                         }
                     },
                     LanguageModelContext,
-                    maxParagraphs
+                    maxParagraphs,
+                    existingText
                 );
             }
             
@@ -745,7 +743,6 @@ export function useChatSession() {
                                 {
                                     onToken: (stats) => {
                                         setGenerationSpeed(stats.msPerToken);
-                                        // ✅ FIX #1: Use throttled setter for retry path too
                                         setStreamingTextThrottled(stats.fullText);
                                         if (onToken) onToken(stats.fullText);
                                     },
@@ -763,7 +760,8 @@ export function useChatSession() {
                                     }
                                 },
                                 retryLanguageModelContext,
-                                maxParagraphs
+                                maxParagraphs,
+                                existingText
                             );
                     }
 
@@ -781,7 +779,6 @@ export function useChatSession() {
         } catch (error) {
             const err = error as Error;
 
-            // ✅ On ANY error that interrupts generation, capture partial text for resume.
             const partialText = streamingTextRef.current;
             const partialChar = streamingCharacterRef.current;
             if (partialText && partialText.trim().length > 0 && partialChar) {
@@ -818,10 +815,6 @@ export function useChatSession() {
         setRunningModelsMap(models);
     }, []);
 
-    /**
-     * ✅ Patches the last AI message in history with partial text and isPartial flag.
-     * Falls back to creating a new message if no AI message exists yet.
-     */
     const applyPendingPartial = useCallback(async (
         baseData: ChatData,
         protagonistId: string
@@ -889,7 +882,7 @@ export function useChatSession() {
             setStreamingCharacter(targetChar);
             streamingCharacterRef.current = targetChar;
             setGenerationSpeed(0);
-            isAtBottomRef.current = true; // User initiated action — snap to bottom
+            isAtBottomRef.current = true;
             
             try {
                 const result = await handleServerResponse(updatedData, targetChar, controller.signal, setStreamingTextThrottled, undefined, undefined);
@@ -1005,7 +998,6 @@ export function useChatSession() {
         init();
     }, []);
 
-    // ✅ Track whether user is at bottom of chat history
     useEffect(() => {
         const chatEl = chatHistoryRef.current;
         if (!chatEl) return;
@@ -1018,7 +1010,6 @@ export function useChatSession() {
         return () => chatEl.removeEventListener('scroll', onScroll);
     }, []);
 
-    // ✅ Auto-scroll only when user is at bottom AND streaming/loading
     useEffect(() => {
         if (!isAtBottomRef.current) return;
         if (isLoading && streamingText && messageEndRef.current) {
@@ -1085,7 +1076,7 @@ export function useChatSession() {
         setStreamingCharacter(null);
         streamingCharacterRef.current = null;
         setGenerationSpeed(0);
-        isAtBottomRef.current = true; // User sent a message — snap to bottom
+        isAtBottomRef.current = true;
         
         try {
             let userImagesBase64: string[] | undefined = undefined;
@@ -1110,7 +1101,6 @@ export function useChatSession() {
             
             const updatedData = await runTurnSequence(tempData, executor, controller, setStreamingCharacter, setStreamingTextThrottled, setChatData);
 
-            // ✅ If interrupted (stop/error/network), patch last AI message as partial
             if (pendingPartialRef.current) {
                 const finalData = await applyPendingPartial(updatedData, currentCharacter.id);
                 await saveRawChatData(finalData);
@@ -1158,6 +1148,8 @@ export function useChatSession() {
         }
     }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, generateAmbientNarration, speakMessage, applyPendingPartial, setStreamingTextThrottled]);
 
+    // ✅ FIXED: Bypasses runTurnSequence (which excludes last speaker), calls handleServerResponse directly,
+    // replaces partial message in-place instead of appending duplicate, passes existingText to engine
     const resumeGeneration = useCallback(async (messageId: string) => {
         if (!chatData) return;
         
@@ -1183,58 +1175,80 @@ export function useChatSession() {
             return;
         }
 
+        const existingText = msg.textContent;
+        const targetCharacter = msg.character;
+        const workingData = { ...chatData };
+
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        setStreamingText(msg.textContent);
-        streamingTextRef.current = msg.textContent;
-        pendingStreamingTextRef.current = msg.textContent;
-        setStreamingCharacter(msg.character);
-        streamingCharacterRef.current = msg.character;
+        setStreamingText(existingText);
+        streamingTextRef.current = existingText;
+        pendingStreamingTextRef.current = existingText;
+        setStreamingCharacter(targetCharacter);
+        streamingCharacterRef.current = targetCharacter;
         setGenerationSpeed(0);
-        isAtBottomRef.current = true; // User initiated resume — snap to bottom
+        isAtBottomRef.current = true;
 
         try {
-            const executor = async (data: ChatData, char: Character, signal: AbortSignal, onToken: (t: string) => void) => {
-                const existingText = msg.textContent;
-                const wrappedOnToken = (t: string) => {
-                    const combined = existingText + t;
-                    streamingTextRef.current = combined;
-                    onToken(combined);
-                };
-                return handleServerResponse(data, char, signal, wrappedOnToken, undefined, undefined);
-            };
-
-            const updatedData = await runTurnSequence(chatData, executor, controller, setStreamingCharacter, setStreamingTextThrottled, setChatData);
+            // ✅ BYPASS runTurnSequence ENTIRELY.
+            // runTurnSequence sets lastSpeakerId to the partial message's character,
+            // then filters them out of eligible speakers. With one AI participant,
+            // eligible becomes empty and the loop breaks without calling the executor.
+            const result = await handleServerResponse(
+                workingData,
+                targetCharacter,
+                controller.signal,
+                (t) => {
+                    streamingTextRef.current = t;
+                    setStreamingTextThrottled(t);
+                },
+                undefined,
+                undefined,
+                undefined,
+                existingText
+            );
 
             if (pendingPartialRef.current) {
-                const finalData = await applyPendingPartial(updatedData, chatData.protagonist.id);
+                const baseData = result || workingData;
+                const finalData = await applyPendingPartial(baseData, chatData.protagonist.id);
                 await saveRawChatData(finalData);
                 setChatData(finalData);
                 chatDataRef.current = finalData;
                 return;
             }
 
-            const hasNewContent = updatedData.chatMessageHistory.length > chatData.chatMessageHistory.length ||
-                (updatedData.chatMessageHistory.length === chatData.chatMessageHistory.length &&
-                    updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1]?.textContent !== msg.textContent);
+            if (result) {
+                // handleServerResponse appends a NEW message via addMessageToChatData.
+                // We must REPLACE the old partial at msgIndex, not keep both.
+                const newMsg = result.chatMessageHistory[result.chatMessageHistory.length - 1];
+                const hasNewContent = newMsg && newMsg.textContent !== existingText;
 
-            if (hasNewContent) {
-                const finalData = await clearPartialFlag(updatedData, 
-                    updatedData.chatMessageHistory[updatedData.chatMessageHistory.length - 1]?.id || messageId
-                );
-                await saveRawChatData(finalData);
-                setChatData(finalData);
-                chatDataRef.current = finalData;
+                if (hasNewContent) {
+                    const finalHistory = [...workingData.chatMessageHistory];
+                    finalHistory[msgIndex] = { ...newMsg, isPartial: false };
 
-                const lastMsg = finalData.chatMessageHistory[finalData.chatMessageHistory.length - 1];
-                if (lastMsg && lastMsg.character.id !== chatData.protagonist.id) {
-                    speakMessage(lastMsg.textContent, lastMsg.character);
+                    const finalData: ChatData = {
+                        ...result,
+                        chatMessageHistory: finalHistory,
+                        messageCount: workingData.messageCount,
+                        lastUpdatedTimestamp: Date.now(),
+                    };
+
+                    await saveRawChatData(finalData);
+                    setChatData(finalData);
+                    chatDataRef.current = finalData;
+
+                    if (newMsg.character.id !== chatData.protagonist.id) {
+                        speakMessage(newMsg.textContent, newMsg.character);
+                    }
+                } else {
+                    await saveRawChatData(result);
+                    setChatData(result);
+                    chatDataRef.current = result;
                 }
             } else {
-                await saveRawChatData(updatedData);
-                setChatData(updatedData);
-                chatDataRef.current = updatedData;
+                addToast("Resume produced no output. Try again.", "info");
             }
         } catch (err) {
             const errorMsg = (err as Error).message;
@@ -1246,7 +1260,7 @@ export function useChatSession() {
             if (abortControllerRef.current === controller) abortControllerRef.current = null;
             releaseGenerationLock();
         }
-    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, applyPendingPartial, setStreamingTextThrottled]);
+    }, [chatData, handleServerResponse, addToast, isModelReadyForGeneration, acquireGenerationLock, releaseGenerationLock, applyPendingPartial, setStreamingTextThrottled, speakMessage]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!chatData) return;
@@ -1309,7 +1323,7 @@ export function useChatSession() {
         setStreamingCharacter(null);
         streamingCharacterRef.current = null;
         setGenerationSpeed(0);
-        isAtBottomRef.current = true; // User initiated regenerate — snap to bottom
+        isAtBottomRef.current = true;
         
         const controller = new AbortController();
         abortControllerRef.current = controller;
