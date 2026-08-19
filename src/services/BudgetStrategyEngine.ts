@@ -89,7 +89,6 @@ export class BudgetStrategyEngine {
     character: Character,
     abortController: AbortController,
     callbacks?: StreamCallbacks,
-    userImageBase64s?: string[],
     complexityScore?: number // Optional hint for complexity
   ): Promise<string> {
     
@@ -103,26 +102,11 @@ export class BudgetStrategyEngine {
     let lastError: Error | null = null;
 
     // Prepare Image for Character once
-    let charImageBase64: string | null = null;
-    if (character.image) {
-      const url = getCharacterImageUrl(character.image);
-      if (url) {
-        try {
-          const response = await fetch(url);
-          const blob = await response.blob();
-          charImageBase64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-          });
-        } catch (e) { console.warn("Failed to load char image", e); }
-      }
-    }
 
     while (attemptCount < maxAttempts && !abortController.signal.aborted) {
       try {
         // 1. Prepare Request Body (needed for token estimation and sending)
-        const requestBody = await prepareRequestBody(chatData, character, charImageBase64, userImageBase64s);
+        const requestBody = await prepareRequestBody(chatData, character);
         
         // 2. Estimate Prompt Tokens (using local engine if available, else char count)
         // We need a temporary context to count. If using online model, we might not have port.
