@@ -304,9 +304,10 @@ export type PromptBlockType =
   'System Prompt'        // Character system prompts
   | 'Think Prompt'
   | 'Context'
-  | 'Meta Think Instruction'
-  | 'Fatigue Information'              // Active context entries (regex-matched)     // Think/meta-instruction prompts  
+  | 'Meta Think Instruction'             // Active context entries (regex-matched)     // Think/meta-instruction prompts  
   | 'Chat History'         // Conversation history messages
+  | 'Fatigue Information' 
+  | 'Date And Time'
   | 'Text Injection'
 
 export interface Profile extends ObjectData {
