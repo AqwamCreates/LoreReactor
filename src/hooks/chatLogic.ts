@@ -354,7 +354,7 @@ interface BuildResult {
     fetchErrors: string[];
 }
 
-export async function buildPromptAndStopPatterns(chatData: ChatData, character: Character, runtimePort?: number): Promise<BuildResult> {
+export async function buildPromptAndStopPatterns(chatData: ChatData, character: Character, existingCharacterText: string, runtimePort?: number): Promise<BuildResult> {
     const chatMessageHistory = chatData.chatMessageHistory;
     const contexts = chatData.contexts || [];
     const sampler = character.sampler;
@@ -673,7 +673,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
-    const textInjectionLines = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: `]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+    const textInjectionLines = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
 
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
@@ -714,12 +714,13 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 export async function prepareRequestBody(
     chatData: ChatData,
     character: Character,
+    existingCharacterText: string,
     protagonistImageBase64s?: string[],
     runtimePort?: number
 ): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, existingCharacterText, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
