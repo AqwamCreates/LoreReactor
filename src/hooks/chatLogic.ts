@@ -302,7 +302,7 @@ async function resolveContextEntries(
 
     for (const context of orderedActivated) {
         const fetchedContent = fetchedContentMap?.get(context.id);
-        let combinedText = '';
+        let combinedText: string;
 
         if (context.text && fetchedContent) {
             combinedText = `${context.text}\n\n--- Web Content ---\n\n${fetchedContent}`;
@@ -479,7 +479,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     );
 
     for (const { context, formattedLine } of resolvedContexts) {
-        let line = formattedLine;
+        let line: string;
 
         const contextProtagonistName = revealedNamesMap.get(protagonist.id) ? protagonistName : null
 
