@@ -421,8 +421,9 @@ export function useChatSession() {
   }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
   // ─── Resume Generation ───────────────────────────────────────────
-  // Direct engine call. Edits existing message by ID. No new message created.
-  // Prompt includes existing text via Text Injection → model echoes it → we strip the echo.
+  // Removes partial message from history BEFORE streaming so only the
+  // streaming indicator bubble renders during generation (no duplicate).
+  // After completion, inserts the completed message back at the same index.
 
   const resumeGeneration = useCallback(async (messageId: string) => {
     if (!chatData) return;
@@ -436,6 +437,16 @@ export function useChatSession() {
 
     const existingText = msg.textContent;
     const char = msg.character;
+
+    // ✅ Remove partial message from history BEFORE streaming starts.
+    // This prevents the UI from rendering both the historical bubble
+    // and the streaming indicator bubble simultaneously.
+    const historyWithoutPartial = chatData.chatMessageHistory.filter((_, i) => i !== msgIndex);
+    const dataForPrompt: ChatData = { ...chatData, chatMessageHistory: historyWithoutPartial };
+
+    setChatData(dataForPrompt);
+    chatDataRef.current = dataForPrompt;
+
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
     setStreamingText(existingText); streamingTextRef.current = existingText; pendingStreamingTextRef.current = existingText;
@@ -447,11 +458,19 @@ export function useChatSession() {
       const ep = port || (model?.parameters as any)?._runtimePort;
       if (!ep && !model?.apiKey) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
+      // Use original chatData (with partial in history) for prompt building
+      // so the model sees the full conversation context including what was said before.
       const { body } = await prepareRequestBody(chatData, char, existingText, undefined, ep);
       const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
 
       const rawOutput = await languageModelEngine.generateStream(body, ctrl, {
-        onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; throttledSetStreamingText(s.fullText); },
+        onToken: (s) => {
+          setGenerationSpeed(s.msPerToken);
+          // Engine returns only NEW tokens. Prepend existing text for UI display.
+          const displayText = existingText + s.fullText;
+          streamingTextRef.current = displayText;
+          throttledSetStreamingText(displayText);
+        },
       }, lmCtx, getDynamicParagraphLimit(char, chatData));
 
       if (!rawOutput?.trim()) { addToast('Resume produced no output.', 'info'); return; }
@@ -463,14 +482,35 @@ export function useChatSession() {
       // Convert only NEW text — existing text was already converted when saved
       const combined = existingText + convertIdsToDisplayNames(newText, chatData);
 
-      const history = [...chatData.chatMessageHistory];
-      history[msgIndex] = { ...msg, textContent: combined, isPartial: false, lastUpdatedTimestamp: Date.now() };
-      const fd: ChatData = { ...chatData, chatMessageHistory: history, lastUpdatedTimestamp: Date.now() };
+      // ✅ Insert completed message back at the original index
+      const completedMsg: ChatMessage = {
+        ...msg,
+        textContent: combined,
+        isPartial: false,
+        lastUpdatedTimestamp: Date.now(),
+      };
+
+      const finalHistory = [...historyWithoutPartial];
+      finalHistory.splice(msgIndex, 0, completedMsg);
+
+      const fd: ChatData = {
+        ...chatData,
+        chatMessageHistory: finalHistory,
+        lastUpdatedTimestamp: Date.now(),
+      };
 
       await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd;
       if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') { console.error('Resume failed:', e); addToast(`Resume error: ${(e as Error).message}`, 'error'); }
+      if ((e as Error).name !== 'AbortError') {
+        console.error('Resume failed:', e);
+        addToast(`Resume error: ${(e as Error).message}`, 'error');
+      }
+      // On failure, restore the partial message so it's not lost
+      const restoredHistory = [...historyWithoutPartial];
+      restoredHistory.splice(msgIndex, 0, msg);
+      const restored: ChatData = { ...chatData, chatMessageHistory: restoredHistory, lastUpdatedTimestamp: Date.now() };
+      await saveRawChatData(restored); setChatData(restored); chatDataRef.current = restored;
     } finally {
       if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
       releaseLock();
