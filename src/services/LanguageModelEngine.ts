@@ -325,7 +325,7 @@ export class LanguageModelEngine {
 
                   if (paragraphCount >= paragraphLimit) {
                     abortController.abort();
-                    return { text: fullContent.trim(), isCompleted: false };
+                    return { text: fullContent.trim(), isCompleted: true };
                   }
                 }
 
