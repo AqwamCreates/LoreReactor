@@ -44,10 +44,19 @@ export async function summarizeWebpageContent(
         if (imageData.length === 0) imageData = undefined;
     }
 
-    return engine.generateCompletion(prompt, modelContext, {
+    // ✅ Build requestBody in the same format as prepareRequestBody produces
+    const requestBody: any = {
+        prompt,
         temperature: 1,
         stop: ['\n\n\n', '```', '\nSource:'],
-    }, imageData);
+    };
+
+    if (imageData) {
+        requestBody.image_data = imageData;
+    }
+
+    const result = await engine.generateCompletion(requestBody, modelContext);
+    return result.text || null;
 }
 
 /**
@@ -67,8 +76,13 @@ export async function mergeWebpageSummaries(
 
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
-    return engine.generateCompletion(prompt, modelContext, {
+    // ✅ Build requestBody in the same format as prepareRequestBody produces
+    const requestBody: any = {
+        prompt,
         temperature: 1,
         stop: ['\n\n\n\n', '```'],
-    });
+    };
+
+    const result = await engine.generateCompletion(requestBody, modelContext);
+    return result.text || null;
 }
