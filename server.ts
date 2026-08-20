@@ -42,7 +42,7 @@ const log = {
 };
 
 app.use(cors({
-  origin: '*', 
+  origin: '*',
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -167,7 +167,6 @@ app.post('/models/load', async (req, res) => {
       log.warn(`MMProj file not found at ${mmprojPath}, removing --mmproj flag`);
       args.splice(mmprojIndex, 2);
     } else {
-      // Replace with absolute path
       args[mmprojIndex + 1] = mmprojPath;
       log.info(`MMProj: ${mmprojPath}`);
     }
@@ -181,7 +180,6 @@ app.post('/models/load', async (req, res) => {
       log.warn(`LoRA file not found at ${loraPath}, removing --lora flag`);
       args.splice(loraIndex, 2);
     } else {
-      // Replace with absolute path
       args[loraIndex + 1] = loraPath;
       log.info(`LoRA: ${loraPath}`);
     }
@@ -276,6 +274,69 @@ app.all('/proxy/:modelId/{*path}', (req, res) => {
   .then(response => response.json())
   .then(data => res.json(data))
   .catch(err => res.status(502).json({ error: 'Proxy error', details: err.message }));
+});
+
+// --- Web Fetch Proxy (CORS bypass) ---
+
+app.post('/api/fetch', async (req, res) => {
+  const { url, headers: reqHeaders } = req.body;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'Missing url' });
+  }
+
+  // Block internal/private IPs
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
+      return res.status(403).json({ error: 'Internal URLs are not allowed' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+
+  log.req('FETCH', url);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: reqHeaders || {
+        'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
+        'Accept': 'text/html,text/plain,image/*,*/*',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    const contentType = response.headers.get('content-type') || '';
+    const isImage = contentType.startsWith('image/');
+
+    if (isImage) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      res.json({
+        ok: response.ok,
+        status: response.status,
+        contentType,
+        base64: buffer.toString('base64'),
+      });
+    } else {
+      const text = await response.text();
+      res.json({
+        ok: response.ok,
+        status: response.status,
+        contentType,
+        text,
+      });
+    }
+  } catch (e: any) {
+    const errorMsg = e.name === 'AbortError' ? 'Timeout' : e.message;
+    log.warn(`Fetch failed for ${url}: ${errorMsg}`);
+    res.json({ ok: false, status: 0, error: errorMsg });
+  }
 });
 
 const startServer = () => {

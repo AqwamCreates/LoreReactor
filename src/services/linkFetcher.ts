@@ -7,8 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
-const FETCH_TIMEOUT_MS = 10000;
-const IMAGE_FETCH_TIMEOUT_MS = 5000;
+const FETCH_PROXY_URL = '/api/fetch';
 
 interface FetchResult {
     url: string;
@@ -24,6 +23,33 @@ const fetchCache = new Map<string, FetchResult>();
 
 function getCacheKey(url: string, mode: string): string {
     return `${mode}::${url}`;
+}
+
+/**
+ * Proxied fetch through the backend server to bypass CORS.
+ * All external HTTP requests go through this single function.
+ */
+async function proxiedFetch(url: string, acceptHeader: string): Promise<{
+    ok: boolean;
+    status: number;
+    contentType: string;
+    text?: string;
+    base64?: string;
+    error?: string;
+}> {
+    const response = await fetch(FETCH_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            url,
+            headers: {
+                'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
+                'Accept': acceptHeader,
+            },
+        }),
+    });
+
+    return response.json();
 }
 
 /**
@@ -51,8 +77,6 @@ export function buildSearchUrl(terms: string[], engine: searchEngine): string {
  * Cleans an image URL by stripping everything after the file extension.
  * Handles Fandom/Wikipedia-style URLs where clicking an image redirects
  * to a wiki article page instead of serving the raw image.
- * e.g., "https://static.wikia.nocookie.net/lore/images/a/ab/Dragon.png/revision/latest?cb=20240101"
- *     → "https://static.wikia.nocookie.net/lore/images/a/ab/Dragon.png"
  */
 function cleanImageUrl(url: string): string {
     const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?))/i);
@@ -63,41 +87,21 @@ function cleanImageUrl(url: string): string {
 }
 
 /**
- * Downloads an image from a URL and returns it as base64 + mime type.
+ * Downloads an image from a URL via proxy and returns it as base64 + mime type.
  * Returns null if the fetch fails or the response isn't an image.
  */
 async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string } | null> {
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+        const result = await proxiedFetch(imageUrl, 'image/*');
 
-        const response = await fetch(imageUrl, {
-            signal: controller.signal,
-            headers: {
-                'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
-                'Accept': 'image/*',
-            },
-        });
+        if (!result.ok || !result.base64 || !result.contentType?.startsWith('image/')) {
+            return null;
+        }
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) return null;
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.startsWith('image/')) return null;
-
-        const blob = await response.blob();
-        const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                resolve(result.split(',')[1]);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-
-        return { base64, mimeType: contentType.split(';')[0].trim() };
+        return {
+            base64: result.base64,
+            mimeType: result.contentType.split(';')[0].trim(),
+        };
     } catch {
         return null;
     }
@@ -235,27 +239,16 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         }
     }
 
-    // Layer 3: Network fetch
+    // Layer 3: Network fetch via proxy (CORS bypass)
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        const result = await proxiedFetch(url, 'text/html,text/plain,*/*');
 
-        const response = await fetch(url, {
-            signal: controller.signal,
-            headers: {
-                'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
-                'Accept': 'text/html,text/plain,*/*',
-            },
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!result.ok) {
+            throw new Error(`HTTP ${result.status}: ${result.error || 'Unknown error'}`);
         }
 
-        const contentType = response.headers.get('content-type') || '';
-        const rawBody = await response.text();
+        const contentType = result.contentType || '';
+        const rawBody = result.text || '';
 
         let content: string;
         let links: string[] = [];
@@ -270,7 +263,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             content = rawBody;
         }
 
-        // Download actual image binaries as base64
+        // Download actual image binaries as base64 (also via proxy)
         let images: WebpageImageInfo[] = [];
         if (includeImages && imageUrls.length > 0) {
             const downloadPromises = imageUrls.map(async (imgUrl) => {
@@ -289,7 +282,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             images = downloadResults.filter((r): r is WebpageImageInfo => r !== null);
         }
 
-        const result: FetchResult = {
+        const fetchResult: FetchResult = {
             url,
             content,
             links,
@@ -298,7 +291,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             tokenEstimate: estimateTokens(content),
         };
 
-        fetchCache.set(cacheKey, result);
+        fetchCache.set(cacheKey, fetchResult);
 
         // Save to persistent disk cache (text content only — images are re-downloaded on cache miss)
         try {
@@ -314,12 +307,10 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             console.warn(`Failed to persist webpage cache for ${url}:`, e);
         }
 
-        return result;
+        return fetchResult;
 
     } catch (e) {
-        const errorMsg = (e as Error).name === 'AbortError'
-            ? `Timeout after ${FETCH_TIMEOUT_MS}ms`
-            : (e as Error).message;
+        const errorMsg = (e as Error).message;
 
         console.warn(`Failed to fetch ${url}: ${errorMsg}`);
 

@@ -634,7 +634,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
-    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar and formality for the spoken dialogue that ${characterParticipantTag} is likely to use.`
+    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`
     const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
     constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
