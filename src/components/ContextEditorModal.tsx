@@ -60,8 +60,8 @@ export function ContextEditorModal({
     const [newSearchTermInput, setNewSearchTermInput] = useState('');
     const [searchEngine, setSearchEngine] = useState<searchEngine>('Google');
 
-    // ✅ Include link images toggle
     const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(false);
+    const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -99,8 +99,8 @@ export function ContextEditorModal({
                 setNewSearchTermInput('');
                 setSearchEngine(existingContext.searchEngine || 'Google');
 
-                // ✅ Restore includeLinkImages
                 setIncludeLinkImages(existingContext.includeLinkImages ?? false);
+                setLimitLinksToSubdirectory(existingContext.limitLinksToSubdirectory ?? false);
             } else {
                 setName('');
                 setDescription('');
@@ -128,6 +128,7 @@ export function ContextEditorModal({
                 setSearchEngine('Google');
 
                 setIncludeLinkImages(false);
+                setLimitLinksToSubdirectory(false);
             }
             setErrors({});
             setTestText('');
@@ -284,6 +285,7 @@ export function ContextEditorModal({
             urls: hasUrls ? [...urls] : undefined,
             includeLinkImages: hasWebContent ? includeLinkImages : undefined,
             maximumLinkDepth: hasWebContent ? linkMaxDepth : undefined,
+            limitLinksToSubdirectory: hasWebContent ? limitLinksToSubdirectory : undefined,
             linkFetchMode: hasWebContent ? (linkFetchMode as any) : undefined,
             fetchCacheTimeToLiveMs: hasWebContent ? fetchCacheTimeToLiveMs : undefined,
 
@@ -381,11 +383,11 @@ export function ContextEditorModal({
                         {errors.images && <div className="editor-error-message">{errors.images}</div>}
                     </div>
 
-                    {/* Web Content Sources — Search Terms first, then Direct URLs */}
+                    {/* Web Content Sources */}
                     <div className="editor-section">
                         <span className="editor-section-title">Web Content Sources</span>
 
-                        {/* Search Terms — TOP */}
+                        {/* Search Terms */}
                         <div style={{ marginBottom: '16px' }}>
                             <label className="editor-label editor-label-small">Search Terms</label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', justifyContent: searchTerms.length === 0 ? 'center' : 'flex-start' }}>
@@ -430,7 +432,7 @@ export function ContextEditorModal({
                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Press Enter or click Add to add a term.</div>
                         </div>
 
-                        {/* ✅ Include Link Images — ABOVE Search Engine */}
+                        {/* Include Link Images */}
                         {hasWebContent && (
                             <div style={{ marginBottom: '12px' }}>
                                 <label className="editor-checkbox-label">
@@ -448,7 +450,7 @@ export function ContextEditorModal({
                             </div>
                         )}
 
-                        {/* Search Engine selector — shown when search terms exist */}
+                        {/* Search Engine selector */}
                         {hasSearchTerms && (
                             <div style={{ marginBottom: '16px' }}>
                                 <label className="editor-label editor-label-small">Search Engine</label>
@@ -464,7 +466,7 @@ export function ContextEditorModal({
                             </div>
                         )}
 
-                        {/* Direct URLs — BELOW search terms */}
+                        {/* Direct URLs */}
                         <div style={{ marginBottom: '12px' }}>
                             <label className="editor-label editor-label-small">Direct URLs</label>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
@@ -509,7 +511,7 @@ export function ContextEditorModal({
                             {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
                         </div>
 
-                        {/* Shared fetch options — shown when any web content exists */}
+                        {/* Shared fetch options */}
                         {hasWebContent && (
                             <>
                                 <div style={{ marginBottom: '12px' }}>
@@ -526,7 +528,7 @@ export function ContextEditorModal({
                                 </div>
 
                                 <div style={{ marginBottom: '12px' }}>
-                                    <label className="editor-label">Max Link Depth</label>
+                                    <label className="editor-label">Maximum Link Depth</label>
                                     <input
                                         type="number"
                                         min="0"
@@ -539,7 +541,22 @@ export function ContextEditorModal({
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>How many levels of links to follow. 0 = no recursion.</div>
                                 </div>
 
-                                <div style={{ marginTop: '8px' }}>
+                                <div style={{ marginTop: '12px' }}>
+                                    <label className="editor-checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={limitLinksToSubdirectory}
+                                            onChange={(e) => setLimitLinksToSubdirectory(e.target.checked)}
+                                            className="editor-checkbox-input"
+                                        />
+                                        <span>Limit Links to Subdirectory</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                        Only follow links within the same directory path as the root URL. Prevents crawling unrelated sections of a website.
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '12px' }}>
                                     <label className="editor-label">Cache Time-To-Live (seconds)</label>
                                     <input
                                         type="number"
@@ -628,7 +645,7 @@ export function ContextEditorModal({
                                     onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))}
                                     className="editor-input"
                                     style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }}
-                                    title="Max tokens this entry can consume. 0 = auto-estimate. Total budget: 2048. Bottom entries dropped first on overflow."
+                                    title="Maximum tokens this entry can consume. 0 = auto-estimate. Total budget: 2048. Bottom entries dropped first on overflow."
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = auto · bottom dropped first</div>
                             </div>
@@ -650,7 +667,7 @@ export function ContextEditorModal({
 
                         <div className="editor-row" style={{ marginTop: '10px' }}>
                             <div>
-                                <label className="editor-label editor-label-small">Max Recursion Depth</label>
+                                <label className="editor-label editor-label-small">Maximum Recursion Depth</label>
                                 <input
                                     type="number"
                                     step="1"
@@ -660,7 +677,7 @@ export function ContextEditorModal({
                                     onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))}
                                     className="editor-input"
                                     style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }}
-                                    title="Max recursion depth for lorebook scanning. 0 = direct scan only, never recursive. Default: 5."
+                                    title="Maximum recursion depth for lorebook scanning. 0 = direct scan only, never recursive. Default: 5."
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', textAlign: 'center' }}>0 = no recursion · default: 5</div>
                             </div>

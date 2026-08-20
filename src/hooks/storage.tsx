@@ -101,7 +101,6 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
-const WRITE_API_URL = localURL; 
 const PATHS = {
   characters: "/user_data/character_data", 
   characterImages: "/user_data/character_images",
@@ -125,7 +124,7 @@ const MANIFEST_FILE = 'manifest.json';
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
     const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-    const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
     
     const response = await fetch(targetUrl);
     
@@ -156,7 +155,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
 async function putJson<T>(url: string, data: T): Promise<void> {
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
+  const targetUrl = `${localURL}${cleanUrl}`;
   const response = await fetch(targetUrl, { 
     method: 'PUT', 
     headers: { 'Content-Type': 'application/json' }, 
@@ -167,7 +166,7 @@ async function putJson<T>(url: string, data: T): Promise<void> {
 
 async function deleteResource(url: string): Promise<void> {
   const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  const targetUrl = `${WRITE_API_URL}${cleanUrl}`;
+  const targetUrl = `${localURL}${cleanUrl}`;
   const response = await fetch(targetUrl, { method: 'DELETE' });
   if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
 }
@@ -432,6 +431,7 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         includeLinkImages: rawContext.includeLinkImages,
         maximumLinkDepth: rawContext.maximumLinkDepth,
         linkFetchMode: rawContext.linkFetchMode || 'full',
+        limitLinksToSubdirectory: rawContext.limitLinksToSubdirectory,
         fetchCacheTimeToLiveMs: rawContext.fetchCacheTimeToLiveMs,
         regularExpressionTrigger: rawContext.regularExpressionTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
@@ -932,7 +932,7 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 export function getCharacterImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
   const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
-  return `${WRITE_API_URL}${cleanPath}/${imageFilename}`;
+  return `${localURL}${cleanPath}/${imageFilename}`;
 }
 
 export async function uploadCharacterImage(file: File): Promise<string> {
@@ -946,7 +946,7 @@ export async function uploadCharacterImage(file: File): Promise<string> {
 export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
   const cleanPath = PATHS.characterVoices.startsWith('/') ? PATHS.characterVoices : `/${PATHS.characterVoices}`;
-  return `${WRITE_API_URL}${cleanPath}/${voiceFileName}`;
+  return `${localURL}${cleanPath}/${voiceFileName}`;
 }
 
 export async function uploadCharacterVoice(file: File): Promise<string> {
@@ -960,7 +960,7 @@ export async function uploadCharacterVoice(file: File): Promise<string> {
 export function getContextImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
   const cleanPath = PATHS.contexts.startsWith('/') ? PATHS.contexts : `/${PATHS.contexts}`;
-  return `${WRITE_API_URL}${cleanPath}/${imageFilename}`;
+  return `${localURL}${cleanPath}/${imageFilename}`;
 }
 
 export async function uploadContextImage(file: File): Promise<string> {

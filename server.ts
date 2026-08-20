@@ -278,7 +278,7 @@ app.all('/proxy/:modelId/{*path}', (req, res) => {
 
 // --- Web Fetch Proxy (CORS bypass) ---
 
-app.post('/api/fetch', async (req, res) => {
+app.post('/fetch', async (req, res) => {
   const { url, headers: reqHeaders } = req.body;
 
   if (!url || typeof url !== 'string') {
@@ -290,10 +290,10 @@ app.post('/api/fetch', async (req, res) => {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
-      return res.status(403).json({ error: 'Internal URLs are not allowed' });
+      return res.status(403).json({ ok: false, status: 403, error: 'Internal URLs are not allowed' });
     }
   } catch {
-    return res.status(400).json({ error: 'Invalid URL' });
+    return res.status(400).json({ ok: false, status: 400, error: 'Invalid URL' });
   }
 
   log.req('FETCH', url);
@@ -335,7 +335,8 @@ app.post('/api/fetch', async (req, res) => {
   } catch (e: any) {
     const errorMsg = e.name === 'AbortError' ? 'Timeout' : e.message;
     log.warn(`Fetch failed for ${url}: ${errorMsg}`);
-    res.json({ ok: false, status: 0, error: errorMsg });
+    // ✅ Always return valid JSON, even on failure
+    res.json({ ok: false, status: 0, contentType: '', error: errorMsg });
   }
 });
 

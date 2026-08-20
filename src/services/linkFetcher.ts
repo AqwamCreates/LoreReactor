@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
-const FETCH_PROXY_URL = '/api/fetch';
+const FETCH_PROXY_URL = '/api/web/fetch';
 
 interface FetchResult {
     url: string;
@@ -26,8 +26,8 @@ function getCacheKey(url: string, mode: string): string {
 }
 
 /**
- * Proxied fetch through the backend server to bypass CORS.
- * All external HTTP requests go through this single function.
+ * Proxied fetch through the Express server to bypass CORS restrictions.
+ * The server handles the actual HTTP request and returns the response.
  */
 async function proxiedFetch(url: string, acceptHeader: string): Promise<{
     ok: boolean;
@@ -37,19 +37,71 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
     base64?: string;
     error?: string;
 }> {
-    const response = await fetch(FETCH_PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            url,
-            headers: {
-                'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
-                'Accept': acceptHeader,
-            },
-        }),
-    });
+    try {
+        const response = await fetch(FETCH_PROXY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url,
+                headers: {
+                    'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
+                    'Accept': acceptHeader,
+                },
+            }),
+        });
 
-    return response.json();
+        // ✅ Handle non-JSON responses from proxy (e.g., 502 plain text)
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            return {
+                ok: false,
+                status: response.status,
+                contentType: '',
+                error: `Proxy returned non-JSON response: HTTP ${response.status}`,
+            };
+        }
+
+        return await response.json();
+    } catch (e) {
+        return {
+            ok: false,
+            status: 0,
+            contentType: '',
+            error: `Proxy request failed: ${(e as Error).message}`,
+        };
+    }
+}
+/**
+ * Extracts the subdirectory scope from a URL.
+ * e.g., "https://wiki.example.com/lore/dragons/fire.html"
+ *     → "https://wiki.example.com/lore/dragons/"
+ *
+ * All followed links must start with this prefix when scoping is enabled.
+ */
+function getSubdirectoryScope(url: string): string {
+    try {
+        const parsed = new URL(url);
+        const pathParts = parsed.pathname.split('/');
+        // Remove the last segment (filename or trailing segment)
+        pathParts.pop();
+        const directoryPath = pathParts.join('/') + '/';
+        return `${parsed.origin}${directoryPath}`;
+    } catch {
+        return url;
+    }
+}
+
+/**
+ * Checks whether a candidate link falls within the subdirectory scope.
+ */
+function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolean {
+    try {
+        const parsed = new URL(candidateUrl);
+        const fullUrl = `${parsed.origin}${parsed.pathname}`;
+        return fullUrl.startsWith(scopePrefix);
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -88,7 +140,6 @@ function cleanImageUrl(url: string): string {
 
 /**
  * Downloads an image from a URL via proxy and returns it as base64 + mime type.
- * Returns null if the fetch fails or the response isn't an image.
  */
 async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string } | null> {
     try {
@@ -108,14 +159,35 @@ async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string
 }
 
 function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; imageUrls: string[] } {
-    const linkRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
+    // ✅ Match both absolute AND relative hrefs
+    const linkRegex = /href=["']([^"']+)["']/gi;
     const links: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = linkRegex.exec(html)) !== null) {
-        links.push(match[1]);
+        let href = match[1];
+
+        // Skip anchors, javascript:, mailto:, data:
+        if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('data:')) {
+            continue;
+        }
+
+        // Resolve relative URLs against base
+        if (!href.startsWith('http')) {
+            try {
+                href = new URL(href, baseUrl).href;
+            } catch {
+                continue;
+            }
+        }
+
+        // Only keep http(s) links
+        if (!href.startsWith('http')) continue;
+
+        if (!links.includes(href)) {
+            links.push(href);
+        }
     }
 
-    // Extract image URLs from <img> tags
     const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
     const imageUrls: string[] = [];
     let imgMatch: RegExpExecArray | null;
@@ -123,7 +195,6 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
     while ((imgMatch = imgRegex.exec(html)) !== null) {
         let imgUrl = imgMatch[1];
 
-        // Resolve relative URLs against base
         if (!imgUrl.startsWith('http')) {
             try {
                 imgUrl = new URL(imgUrl, baseUrl).href;
@@ -132,12 +203,10 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
             }
         }
 
-        // Skip tracking pixels, icons, and data URIs
         if (imgUrl.startsWith('data:') || imgUrl.includes('pixel') || imgUrl.includes('spacer') || imgUrl.includes('1x1') || imgUrl.includes('blank.gif')) {
             continue;
         }
 
-        // Clean URL — strip query params after file extension
         const cleaned = cleanImageUrl(imgUrl);
         if (!imageUrls.includes(cleaned)) {
             imageUrls.push(cleaned);
@@ -293,7 +362,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         fetchCache.set(cacheKey, fetchResult);
 
-        // Save to persistent disk cache (text content only — images are re-downloaded on cache miss)
+        // Save to persistent disk cache
         try {
             await saveRawWebpage({
                 id: uuidv4(),
@@ -331,6 +400,8 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
 /**
  * Fetches a single URL with optional recursive link following.
+ * When limitLinksToSubdirectory is true, only links within the same
+ * origin + directory path as the root URL are followed.
  */
 export async function fetchLinkContent(
     url: string,
@@ -341,6 +412,8 @@ export async function fetchLinkContent(
         currentDepth?: number;
         fetchMode?: 'full' | 'summary' | 'extract';
         includeImages?: boolean;
+        limitLinksToSubdirectory?: boolean;
+        subdirectoryScope?: string;
     } = {}
 ): Promise<FetchResult[]> {
     const maxDepth = options.maxDepth ?? MAX_FETCH_DEPTH;
@@ -349,9 +422,20 @@ export async function fetchLinkContent(
     const depth = options.currentDepth ?? 0;
     const fetchMode = options.fetchMode ?? 'full';
     const includeImages = options.includeImages ?? false;
+    const limitLinksToSubdirectory = options.limitLinksToSubdirectory ?? false;
+
+    // Establish scope from the root URL on first call
+    const subdirectoryScope = options.subdirectoryScope ?? (limitLinksToSubdirectory ? getSubdirectoryScope(url) : '');
 
     if (depth > maxDepth) return [];
     if (visited.has(url)) return [];
+
+    // Enforce subdirectory scoping on child links (depth > 0)
+    if (limitLinksToSubdirectory && subdirectoryScope && depth > 0) {
+        if (!isWithinSubdirectory(url, subdirectoryScope)) {
+            return [];
+        }
+    }
 
     visited.add(url);
 
@@ -377,6 +461,8 @@ export async function fetchLinkContent(
                 currentDepth: depth + 1,
                 fetchMode,
                 includeImages,
+                limitLinksToSubdirectory,
+                subdirectoryScope,
             })
         );
 
@@ -394,12 +480,9 @@ export async function fetchLinkContent(
  * Shares a visited set across all URLs to prevent duplicate fetches.
  * Returns combined results and aggregated error list.
  *
- * For 'summary' fetchMode, each page is individually summarized via
- * WebpageSummarizationEngine (including real image data when available),
- * then multi-page results are merged.
- *
- * Also accepts searchTerms + searchEngine — converts them to search URLs
- * and merges them into the fetch pipeline alongside direct URLs.
+ * When limitLinksToSubdirectory is true, each root URL establishes its own
+ * subdirectory scope — child links are only followed if they stay within
+ * the same origin + directory path as their root URL.
  */
 export async function fetchMultipleContextUrls(
     urls: string[],
@@ -411,6 +494,7 @@ export async function fetchMultipleContextUrls(
         searchEngine?: searchEngine;
         modelContext?: LanguageModelContext;
         includeImages?: boolean;
+        limitLinksToSubdirectory?: boolean;
     } = {}
 ): Promise<{ results: FetchResult[]; errors: string[] }> {
     const allUrls = [...urls];
@@ -424,12 +508,14 @@ export async function fetchMultipleContextUrls(
     const allResults: FetchResult[] = [];
     const errors: string[] = [];
     const includeImages = options.includeImages ?? false;
+    const limitLinksToSubdirectory = options.limitLinksToSubdirectory ?? false;
 
     const promises = allUrls.map(url =>
         fetchLinkContent(url, {
             ...options,
             visitedUrls: visited,
             includeImages,
+            limitLinksToSubdirectory,
         })
     );
 
