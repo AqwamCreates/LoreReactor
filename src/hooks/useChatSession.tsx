@@ -25,7 +25,7 @@ const convertFileToBase64 = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
-  });
+});
 
 // ─── Ambient Narration ───────────────────────────────────────────────
 
