@@ -1,6 +1,6 @@
 // src/services/ChatOrchestrator.ts
 import type { Character, ChatData } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability } from '../hooks/chatLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability } from '../hooks/characterLogic';
 import { saveRawChatData } from '../hooks/storage';
 
 interface TurnExecutor {

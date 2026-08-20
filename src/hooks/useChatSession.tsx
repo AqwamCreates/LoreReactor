@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
+import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
@@ -8,6 +8,7 @@ import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
+import { consumeChatStamina, generateChatStamina } from './characterLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
@@ -212,6 +213,11 @@ export function useChatSession() {
     }
   }, []);
 
+  const countParagraphs = useCallback((text: string): number => {
+    if (!text || !text.trim()) return 0;
+    return (text.match(/\n\n/g) || []).length + 1;
+  }, []);
+
   const speakMessage = useCallback((text: string, character: Character) => {
     if (!character.voice) return;
     const profile = chatDataRef.current?.Profile;
@@ -285,7 +291,6 @@ export function useChatSession() {
       if (strat) {
         const engine = new BudgetStrategyEngine(strat);
         const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
-        // BudgetStrategyEngine.generateStream still returns string — update it separately
         rawText = await engine.generateStream(data, character, { signal } as AbortController, cb, userImagesBase64, complexityScore);
         if (engine.currentCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + engine.currentCost }));
       } else {
@@ -324,19 +329,26 @@ export function useChatSession() {
       }
 
       if (!rawText || !rawText.trim()) return null;
-      return addMessageToChatData(data, createChatMessage(data, character, convertIdsToDisplayNames(rawText, data)));
+      const displayText = convertIdsToDisplayNames(rawText, data);
+      const aiMessage = createChatMessage(data, character, displayText);
+      // ✅ Consume stamina based on paragraphs produced
+      const paragraphs = countParagraphs(displayText);
+      if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
+      // ✅ Regenerate stamina after successful completion
+      generateChatStamina(character, aiMessage);
+      return addMessageToChatData(data, aiMessage);
     } catch (err) {
       const e = err as Error;
       const pt = streamingTextRef.current, pc = streamingCharacterRef.current;
       if (pt && pt.trim() && pc) pendingPartialRef.current = { text: pt, character: pc };
       if (e.name === 'AbortError') return null;
       const isNet = ['Failed to fetch','NetworkError','ERR_ABORTED','502','503','504'].some(s => e.message.includes(s));
-      if (isNet) { if (!signal.aborted) addToast('⚠️ Backend Connection Failed.', 'error'); return null; }
+      if (isNet) { if (!signal.aborted) addToast('Backend Connection Failed.', 'error'); return null; }
       console.error('Inference failed:', e);
       if (!signal.aborted) addToast(`Inference Error: ${e.message}`, 'error');
       return null;
     }
-  }, [addToast, getDynamicParagraphLimit, throttledSetStreamingText]);
+  }, [addToast, getDynamicParagraphLimit, throttledSetStreamingText, countParagraphs]);
 
   // ─── Pending Partial Helper ──────────────────────────────────────
 
@@ -372,6 +384,9 @@ export function useChatSession() {
       const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
       const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
       if (idx !== -1) {
+        // ✅ Consume stamina for paragraphs in the stopped text
+        const paragraphs = countParagraphs(t);
+        if (paragraphs > 0) consumeChatStamina(updated.chatMessageHistory[idx], paragraphs);
         const withPartial = [...updated.chatMessageHistory];
         withPartial[idx] = { ...withPartial[idx], isPartial: true, lastUpdatedTimestamp: Date.now() };
         const final: ChatData = { ...updated, chatMessageHistory: withPartial, lastUpdatedTimestamp: Date.now() };
@@ -388,7 +403,7 @@ export function useChatSession() {
 
     abortControllerRef.current?.abort(); abortControllerRef.current = null;
     releaseLock(); setGenerationSpeed(0);
-  }, [releaseLock]);
+  }, [releaseLock, countParagraphs]);
 
   const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
     if (!chatData || !currentCharacter) return;
@@ -501,8 +516,20 @@ export function useChatSession() {
       const currentData = chatDataRef.current || chatData;
       const edited = await editMessage(currentData, messageId, combined);
 
-      // ✅ Only clear partial flag if generation completed naturally (hit a stop pattern)
+      // ✅ Consume stamina for NEW paragraphs added during this resume only
+      const existingParagraphs = countParagraphs(existingText);
+      const totalParagraphs = countParagraphs(combined);
+      const newParagraphs = Math.max(0, totalParagraphs - existingParagraphs);
+      if (newParagraphs > 0) {
+        const editedIdx = edited.chatMessageHistory.findIndex(m => m.id === messageId);
+        if (editedIdx !== -1) consumeChatStamina(edited.chatMessageHistory[editedIdx], newParagraphs);
+      }
+
+      // Only clear partial flag and regenerate stamina if generation completed naturally
       if (result.isCompleted) {
+        // ✅ Regenerate stamina after successful resume completion
+        const editedIdx = edited.chatMessageHistory.findIndex(m => m.id === messageId);
+        if (editedIdx !== -1) generateChatStamina(char, edited.chatMessageHistory[editedIdx]);
         const finalData = await clearPartialFlag(edited, messageId);
         setChatData(finalData); chatDataRef.current = finalData;
       } else {
@@ -528,7 +555,7 @@ export function useChatSession() {
       if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
       releaseLock();
     }
-  }, [chatData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, getDynamicParagraphLimit, throttledSetStreamingText, speakMessage]);
+  }, [chatData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, getDynamicParagraphLimit, throttledSetStreamingText, speakMessage, countParagraphs]);
 
   // ─── Regenerate ──────────────────────────────────────────────────
 

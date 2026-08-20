@@ -147,9 +147,9 @@ export interface RawCharacter extends RawData {
   voice?: string; // Path to the character's voice.
   systemPrompt?: string;
   thinkPrompt?: string;
-  initiativeWeight?: number | undefined;
-  chatProbability?: number | undefined;
-  maximumChatStamina?: number | undefined;
+  initiativeWeight: number;
+  chatProbability: number;
+  maximumChatStamina: number;
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
   doNotInjectCharacterImage?: boolean;
