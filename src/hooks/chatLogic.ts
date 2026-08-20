@@ -424,6 +424,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                     searchEngine: ctx.searchEngine,
                     modelContext,
                     includeImages: ctx.includeLinkImages ?? false,
+                    limitLinksToSubdirectory: ctx.limitLinksToSubdirectory ?? false,
                 }
             );
 

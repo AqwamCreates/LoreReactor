@@ -62,6 +62,7 @@ export interface Context extends ObjectData {
     includeLinkImages?: boolean// Can fetched content trigger further context entries?
     maximumLinkDepth?: number;           // Max depth for recursive link following (overrides global)
     linkFetchMode?: 'full' | 'summary' | 'extract'; // How to process fetched content
+    limitLinksToSubdirectory: boolean;
     fetchCacheTimeToLiveMs?: number;        // Cache TimeToLive in ms (0 = always refetch, default = 300000 / 5min)
     regularExpressionTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
@@ -83,6 +84,7 @@ export interface RawContext extends RawData {
     includeLinkImages?: boolean
     maximumLinkDepth?: number;
     linkFetchMode?: 'full' | 'summary' | 'extract';
+    limitLinksToSubdirectory: boolean;
     fetchCacheTimeToLiveMs?: number;
     regularExpressionTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
