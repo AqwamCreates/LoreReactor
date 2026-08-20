@@ -46,8 +46,6 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// ✅ Check if text ends with any of the stop patterns.
-// This is the single source of truth for "did generation complete naturally."
 function endsWithStopPattern(text: string, stopPatterns: string[]): boolean {
   for (const pattern of stopPatterns) {
     if (pattern && text.endsWith(pattern)) return true;
@@ -138,6 +136,30 @@ export class LanguageModelEngine {
     return { url, headers, body };
   }
 
+  private extractFromRequestBody(requestBody: any): {
+    prompt: string;
+    temperature?: number;
+    top_p?: number;
+    maxTokens?: number;
+    stop?: string[];
+    extraParams?: Record<string, unknown>;
+  } {
+    let prompt = requestBody.prompt || '';
+    if (!prompt && requestBody.messages) {
+      const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
+      prompt = lastUserMsg?.content || '';
+    }
+
+    return {
+      prompt,
+      temperature: requestBody.temperature,
+      top_p: requestBody.top_p,
+      maxTokens: requestBody.n_predict || requestBody.max_tokens,
+      stop: requestBody.stop,
+      extraParams: requestBody.extra_cloud_params,
+    };
+  }
+
   private extractContent(data: any): string | null {
     if (data.choices?.[0]?.message?.content !== undefined) {
       const content = data.choices[0].message.content?.trim();
@@ -150,40 +172,30 @@ export class LanguageModelEngine {
     return null;
   }
 
-  // ✅ Now returns StreamResult. isCompleted = true only when output ends with a stop pattern.
+  // ✅ Accepts same requestBody as generateStream.
+  // Image data is already in the body from prepareRequestBody.
   async generateCompletion(
-    prompt: string,
-    modelContext?: LanguageModelContext,
-    options: {
-      maxTokens?: number;
-      temperature?: number;
-      stop?: string[];
-    } = {},
-    imageData?: { data: string; id: number }[]
+    requestBody: any,
+    modelContext?: LanguageModelContext
   ): Promise<StreamResult> {
-    const { maxTokens = 512, temperature = 0.3, stop = [] } = options;
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
+    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     try {
-      const { url, headers, body: bodyStr } = this.resolveRequest(prompt, false, modelContext, {
-        maxTokens,
-        temperature,
+      const { url, headers } = this.resolveRequest(prompt, false, modelContext, {
+        maxTokens: maxTokens ?? 512,
+        temperature: temperature ?? 0.3,
         stop,
+        extraParams,
       });
 
-      let finalBody = bodyStr;
-      if (imageData && imageData.length > 0) {
-        const bodyObj = JSON.parse(bodyStr);
-        bodyObj.image_data = imageData;
-        finalBody = JSON.stringify(bodyObj);
-      }
-
-      const res = await fetch(url, { method: 'POST', headers, body: finalBody });
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(requestBody) });
       if (!res.ok) return { text: '', isCompleted: false };
 
       const data = await res.json();
       const text = this.extractContent(data) || '';
 
-      return { text, isCompleted: endsWithStopPattern(text, stop) };
+      return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return { text: '', isCompleted: false };
@@ -211,7 +223,7 @@ export class LanguageModelEngine {
     }
   }
 
-  // ✅ Now returns StreamResult. isCompleted = true only when output ends with a stop pattern.
+  // ✅ Uses same extractFromRequestBody as generateCompletion.
   async generateStream(
     requestBody: any,
     abortController: AbortController,
@@ -221,20 +233,15 @@ export class LanguageModelEngine {
     existingText?: string
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
-    const stopPatterns: string[] = Array.isArray(requestBody.stop) ? requestBody.stop : [];
-
-    let prompt = requestBody.prompt || '';
-    if (!prompt && requestBody.messages) {
-      const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
-      prompt = lastUserMsg?.content || '';
-    }
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
+    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     const { url, headers, body } = this.resolveRequest(prompt, true, modelContext, {
-      temperature: requestBody.temperature,
-      top_p: requestBody.top_p,
-      maxTokens: requestBody.n_predict || requestBody.max_tokens,
-      stop: requestBody.stop,
-      extraParams: requestBody.extra_cloud_params,
+      temperature,
+      top_p,
+      maxTokens,
+      stop,
+      extraParams,
     }, existingText);
 
     const response = await fetch(url, {
@@ -272,7 +279,6 @@ export class LanguageModelEngine {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
-          // Stream ended — check if it ended on a stop pattern
           return { text: fullContent.trim(), isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns) };
         }
 

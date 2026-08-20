@@ -16,16 +16,20 @@ const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat his
  */
 export async function generateMessageSummary(
     message: ChatMessage,
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens = 256
 ): Promise<string | null> {
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${message.textContent}\n\nSummary:`;
 
-    return engine.generateCompletion(prompt, LanguageModelContext, {
-        maxTokens,
+    const requestBody: any = {
+        prompt,
+        n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n', '\nMessage from', '```'],
-    });
+    };
+
+    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    return result.text || null;
 }
 
 /**
@@ -35,7 +39,7 @@ export async function generateMessageSummary(
 export async function generateMissingSummaries(
     chatData: ChatData,
     windowSize: number,
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens = 256
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
@@ -47,7 +51,7 @@ export async function generateMissingSummaries(
     if (toSummarize.length === 0) return results;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, LanguageModelContext, maxTokens);
+        const summary = await generateMessageSummary(msg, languageModelContext, maxTokens);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -61,7 +65,7 @@ export async function generateMissingSummaries(
  */
 async function compressChunk(
     messages: ChatMessage[],
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens = 512
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
@@ -70,11 +74,15 @@ async function compressChunk(
 
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
 
-    return engine.generateCompletion(prompt, LanguageModelContext, {
-        maxTokens,
+    const requestBody: any = {
+        prompt,
+        n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n\n', '```'],
-    });
+    };
+
+    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    return result.text || null;
 }
 
 /**
@@ -85,7 +93,7 @@ export async function generatePeriodicCompression(
     chatData: ChatData,
     compressionInterval: number,
     compressionChunkSize: number,
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens: number = 512
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -115,7 +123,7 @@ export async function generatePeriodicCompression(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, LanguageModelContext, maxTokens);
+        const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
         if (!compressed) continue;
 
         newContexts.push({
@@ -141,7 +149,7 @@ export async function generatePeriodicCompression(
  */
 async function mergeSummaries(
     summaries: string[],
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens = 512
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
@@ -150,11 +158,15 @@ async function mergeSummaries(
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
 
-    return engine.generateCompletion(prompt, LanguageModelContext, {
-        maxTokens,
+    const requestBody: any = {
+        prompt,
+        n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n\n', '```'],
-    });
+    };
+
+    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    return result.text || null;
 }
 
 /**
@@ -170,7 +182,7 @@ export async function generateRecursiveSummary(
     chatData: ChatData,
     chunkSize: number,
     maxDepth: number,
-    LanguageModelContext: LanguageModelContext,
+    languageModelContext: LanguageModelContext,
     maxTokens = 1024
 ): Promise<Context[]> {
     const history = chatData.chatMessageHistory;
@@ -193,7 +205,7 @@ export async function generateRecursiveSummary(
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
 
-        const compressed = await compressChunk(chunk, LanguageModelContext, maxTokens);
+        const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
         if (!compressed) continue;
 
         layer0Summaries.push(compressed);
@@ -207,7 +219,6 @@ export async function generateRecursiveSummary(
             useBase64Encoding: false,
             insertionDepth: 2,
             tokenBudget: maxTokens,
-            recursiveScan: false,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         });
@@ -225,7 +236,7 @@ export async function generateRecursiveSummary(
 
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, LanguageModelContext, maxTokens);
+            const merged = await mergeSummaries(batch, languageModelContext, maxTokens);
             if (merged) {
                 nextLayerSummaries.push(merged);
 
@@ -238,7 +249,6 @@ export async function generateRecursiveSummary(
                     useBase64Encoding: false,
                     insertionDepth: 2 + currentLayerIndex,
                     tokenBudget: maxTokens,
-                    recursiveScan: false,
                     firstCreatedTimestamp: now,
                     lastUpdatedTimestamp: now,
                 });
@@ -250,7 +260,7 @@ export async function generateRecursiveSummary(
 
     // --- Final global summary ---
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, LanguageModelContext, maxTokens);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,
@@ -261,7 +271,6 @@ export async function generateRecursiveSummary(
                 useBase64Encoding: false,
                 insertionDepth: 0,
                 tokenBudget: maxTokens,
-                recursiveScan: false,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             });
@@ -276,7 +285,6 @@ export async function generateRecursiveSummary(
             useBase64Encoding: false,
             insertionDepth: 0,
             tokenBudget: maxTokens,
-            recursiveScan: false,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         });
@@ -292,7 +300,7 @@ export async function generateRecursiveSummary(
 export function checkTriggerThreshold(
     chatData: ChatData,
     currentTokenCount: number,
-    LanguageModelContextLength: number
+    languageModelContextLength: number
 ): {
     strategyType: string;
     slidingWindowSize?: number;
@@ -311,7 +319,7 @@ export function checkTriggerThreshold(
         const threshold = step.triggerTokenThreshold ?? 0;
         const effectiveThreshold = threshold > 0
             ? threshold
-            : Math.floor(LanguageModelContextLength * 0.7);
+            : Math.floor(languageModelContextLength * 0.7);
 
         if (currentTokenCount >= effectiveThreshold) {
             if (step.strategyType === 'Sliding Window Replace') {
