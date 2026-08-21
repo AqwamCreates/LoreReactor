@@ -298,6 +298,64 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
+  // ✅ Sync chatData embedded copies when managers reload after save.
+  // Characters, contexts, and profiles are embedded by value in chatData.
+  // Editing them via their manager updates the manager list but NOT chatData.
+  // This effect patches stale embedded copies using lastUpdatedTimestamp.
+  useEffect(() => {
+    if (!chatData) return;
+    let changed = false;
+    const updated = { ...chatData };
+
+    // Sync protagonist
+    const freshProtag = allCharacters.find(c => c.id === chatData.protagonist.id);
+    if (freshProtag && freshProtag.lastUpdatedTimestamp !== chatData.protagonist.lastUpdatedTimestamp) {
+      updated.protagonist = freshProtag;
+      changed = true;
+    }
+
+    // Sync participants
+    const freshParticipants = chatData.participants.map(p => {
+      const fresh = allCharacters.find(c => c.id === p.id);
+      return (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) ? fresh : p;
+    });
+    if (freshParticipants.some((p, i) => p !== chatData.participants[i])) {
+      updated.participants = freshParticipants;
+      changed = true;
+    }
+
+    // Sync contexts
+    if (chatData.contexts?.length) {
+      const freshContexts = chatData.contexts.map(ctx => {
+        const fresh = allContexts.find(c => c.id === ctx.id);
+        return (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) ? fresh : ctx;
+      });
+      if (freshContexts.some((c, i) => c !== chatData.contexts![i])) {
+        updated.contexts = freshContexts;
+        changed = true;
+      }
+    }
+
+    // Sync profile
+    if (chatData.Profile) {
+      const freshProfile = allProfiles.find(p => p.id === chatData.Profile!.id);
+      if (freshProfile && freshProfile.lastUpdatedTimestamp !== chatData.Profile.lastUpdatedTimestamp) {
+        updated.Profile = freshProfile;
+        changed = true;
+      }
+    }
+
+    // Sync currentCharacter reference
+    if (currentCharacter) {
+      const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
+      if (freshCurrent && freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
+        setCurrentCharacter(freshCurrent);
+      }
+    }
+
+    if (changed) setChatData(updated);
+  }, [allCharacters, allContexts, allProfiles]);
+
   // Loading progress
   useEffect(() => {
     setLoadSteps(prev => prev.map(s => ({
@@ -726,10 +784,6 @@ function App() {
               const beforeBranch = chatData.parentChatMessageId && index === branchOffIndex;
               const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
-              // ✅ Hide historical partial bubble during resume streaming to prevent
-              // duplicate bubbles (historical + streaming indicator showing same content).
-              // When streaming ends, isLoading becomes false and the bubble reappears
-              // with its updated content from useChatSession.
               const isResumingThisMessage = isLoading && streamingCharacter && message.isPartial
                 && message.character.id === streamingCharacter.id
                 && !isProtag;
