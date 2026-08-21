@@ -36,11 +36,12 @@ function computeComplexityScore(chatData: ChatData): number {
     const tabs = (combinedText.match(/\t/g) || []).length;
     const carriageReturns = (combinedText.match(/\r/g) || []).length;
     const carets = (combinedText.match(/\^/g) || []).length;
-    const forwardSlashes = (combinedText.match(/\//g) || []).length;
+    const slashes = (combinedText.match(/[\\/]/g) || []).length;
+    const atSigns = (combinedText.match(/@/g) || []).length;
 
     const syntaxSymbolCount = curlyBrackets + squareBrackets + colons +
         asterisks + underscores + backticks + pipes + angleBrackets +
-        hashMarks + dashes + tabs + carriageReturns + carets + forwardSlashes;
+        hashMarks + dashes + tabs + carriageReturns + carets + slashes + atSigns;
 
     const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
 
