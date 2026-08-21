@@ -19,38 +19,38 @@ function computeComplexityScore(chatData: ChatData): number {
     const history = chatData.chatMessageHistory;
     if (history.length === 0) return 0;
 
-    // Concatenate recent messages (last 20 to avoid scanning entire history)
     const recentMessages = history.slice(-20);
     const combinedText = recentMessages.map(m => m.textContent).join('\n');
     const totalLen = combinedText.length || 1;
 
-    // Count syntax-heavy symbols that break small models
+    // Syntax-heavy symbols that break small models
     const curlyBrackets = (combinedText.match(/[{}]/g) || []).length;
     const squareBrackets = (combinedText.match(/[\[\]]/g) || []).length;
     const colons = (combinedText.match(/:/g) || []).length;
-    const asterisks = (combinedText.match(/\*/g) || []).length;       // italics/bold markers
-    const underscores = (combinedText.match(/_/g) || []).length;      // alt italics/code
-    const backticks = (combinedText.match(/`/g) || []).length;        // code blocks
-    const pipes = (combinedText.match(/\|/g) || []).length;           // tables
-    const angleBrackets = (combinedText.match(/[<>]/g) || []).length; // HTML/XML tags
-    const hashMarks = (combinedText.match(/#/g) || []).length;        // markdown headers
-    const dashes = (combinedText.match(/---+/g) || []).length;        // horizontal rules / YAML
+    const asterisks = (combinedText.match(/\*/g) || []).length;
+    const underscores = (combinedText.match(/_/g) || []).length;
+    const backticks = (combinedText.match(/`/g) || []).length;
+    const pipes = (combinedText.match(/\|/g) || []).length;
+    const angleBrackets = (combinedText.match(/[<>]/g) || []).length;
+    const hashMarks = (combinedText.match(/#/g) || []).length;
+    const dashes = (combinedText.match(/---+/g) || []).length;
+
+    // Non-space whitespace: tabs and carriage returns (not newlines)
+    const tabs = (combinedText.match(/\t/g) || []).length;
+    const carriageReturns = (combinedText.match(/\r/g) || []).length;
 
     const syntaxSymbolCount = curlyBrackets + squareBrackets + colons +
-        asterisks + underscores + backticks + pipes + angleBrackets + hashMarks + dashes;
+        asterisks + underscores + backticks + pipes + angleBrackets +
+        hashMarks + dashes + tabs + carriageReturns;
 
-    // Syntax density: ratio of syntax symbols to total text length
     const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
 
-    // Token density still matters but weighted lower
     const totalTokens = recentMessages.reduce((sum, m) => sum + estimateTokens(m.textContent), 0);
     const ctxLen = 8192;
     const tokenDensity = Math.min(1, totalTokens / ctxLen);
 
-    // Message count factor
     const msgFactor = Math.min(1, history.length / 50);
 
-    // Weighted: syntax density dominates, tokens and message count secondary
     const raw = (syntaxDensity * 0.50) + (tokenDensity * 0.30) + (msgFactor * 0.20);
     return Math.round(raw * 100);
 }
