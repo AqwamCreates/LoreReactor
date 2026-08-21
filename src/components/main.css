@@ -345,7 +345,7 @@
 
 .bubble-ai { background: var(--social-bg); border-top-left-radius: 10px; }
 .bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 10px; }
-.bubble-editing { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); }
+.bubble-editing { width: 90vw; border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); }
 .bubble-stem { opacity: 0.85; border-style: dashed; border-color: var(--border); background: rgba(0,0,0,0.02); }
 
 .message-text {
