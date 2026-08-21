@@ -15,32 +15,43 @@ function buildModelContext(model: any): LanguageModelContext {
     };
 }
 
-/**
- * Estimates prompt complexity as a 0-100 score.
- * Based on: token count relative to context length, number of active contexts,
- * message count, and average message length variance.
- */
 function computeComplexityScore(chatData: ChatData): number {
     const history = chatData.chatMessageHistory;
     if (history.length === 0) return 0;
 
-    // Token density: how full is the context window
-    const totalTokens = history.reduce((sum, m) => sum + estimateTokens(m.textContent), 0);
-    const ctxLen = 8192; // Default; budget strategy models may differ
+    // Concatenate recent messages (last 20 to avoid scanning entire history)
+    const recentMessages = history.slice(-20);
+    const combinedText = recentMessages.map(m => m.textContent).join('\n');
+    const totalLen = combinedText.length || 1;
+
+    // Count syntax-heavy symbols that break small models
+    const curlyBrackets = (combinedText.match(/[{}]/g) || []).length;
+    const squareBrackets = (combinedText.match(/[\[\]]/g) || []).length;
+    const colons = (combinedText.match(/:/g) || []).length;
+    const asterisks = (combinedText.match(/\*/g) || []).length;       // italics/bold markers
+    const underscores = (combinedText.match(/_/g) || []).length;      // alt italics/code
+    const backticks = (combinedText.match(/`/g) || []).length;        // code blocks
+    const pipes = (combinedText.match(/\|/g) || []).length;           // tables
+    const angleBrackets = (combinedText.match(/[<>]/g) || []).length; // HTML/XML tags
+    const hashMarks = (combinedText.match(/#/g) || []).length;        // markdown headers
+    const dashes = (combinedText.match(/---+/g) || []).length;        // horizontal rules / YAML
+
+    const syntaxSymbolCount = curlyBrackets + squareBrackets + colons +
+        asterisks + underscores + backticks + pipes + angleBrackets + hashMarks + dashes;
+
+    // Syntax density: ratio of syntax symbols to total text length
+    const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
+
+    // Token density still matters but weighted lower
+    const totalTokens = recentMessages.reduce((sum, m) => sum + estimateTokens(m.textContent), 0);
+    const ctxLen = 8192;
     const tokenDensity = Math.min(1, totalTokens / ctxLen);
 
-    // Message count factor (more messages = more complex conversation state)
+    // Message count factor
     const msgFactor = Math.min(1, history.length / 50);
 
-    // Context count factor
-    const contextFactor = Math.min(1, (chatData.contexts?.length ?? 0) / 10);
-
-    // Average message length variance (long messages = more complex content)
-    const avgLen = totalTokens / history.length;
-    const lenFactor = Math.min(1, avgLen / 500);
-
-    // Weighted combination scaled to 0-100
-    const raw = (tokenDensity * 0.35) + (msgFactor * 0.25) + (contextFactor * 0.20) + (lenFactor * 0.20);
+    // Weighted: syntax density dominates, tokens and message count secondary
+    const raw = (syntaxDensity * 0.50) + (tokenDensity * 0.30) + (msgFactor * 0.20);
     return Math.round(raw * 100);
 }
 
