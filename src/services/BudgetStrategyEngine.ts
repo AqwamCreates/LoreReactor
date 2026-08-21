@@ -23,7 +23,6 @@ function computeComplexityScore(chatData: ChatData): number {
     const combinedText = recentMessages.map(m => m.textContent).join('\n');
     const totalLen = combinedText.length || 1;
 
-    // Syntax-heavy symbols that break small models
     const curlyBrackets = (combinedText.match(/[{}]/g) || []).length;
     const squareBrackets = (combinedText.match(/[\[\]]/g) || []).length;
     const colons = (combinedText.match(/:/g) || []).length;
@@ -34,8 +33,6 @@ function computeComplexityScore(chatData: ChatData): number {
     const angleBrackets = (combinedText.match(/[<>]/g) || []).length;
     const hashMarks = (combinedText.match(/#/g) || []).length;
     const dashes = (combinedText.match(/---+/g) || []).length;
-
-    // Non-space whitespace: tabs and carriage returns (not newlines)
     const tabs = (combinedText.match(/\t/g) || []).length;
     const carriageReturns = (combinedText.match(/\r/g) || []).length;
 
@@ -45,14 +42,7 @@ function computeComplexityScore(chatData: ChatData): number {
 
     const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
 
-    const totalTokens = recentMessages.reduce((sum, m) => sum + estimateTokens(m.textContent), 0);
-    const ctxLen = 8192;
-    const tokenDensity = Math.min(1, totalTokens / ctxLen);
-
-    const msgFactor = Math.min(1, history.length / 50);
-
-    const raw = (syntaxDensity * 0.50) + (tokenDensity * 0.30) + (msgFactor * 0.20);
-    return Math.round(raw * 100);
+    return Math.round(syntaxDensity * 100);
 }
 
 export class BudgetStrategyEngine {
