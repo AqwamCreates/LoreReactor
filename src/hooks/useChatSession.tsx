@@ -1,10 +1,10 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, ChatMessage, BudgetStrategy, LanguageModel } from '../types';
+import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
-import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { BudgetStrategyEngine, computeComplexityScore } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
@@ -152,6 +152,10 @@ export function useChatSession() {
   const resumingMessageIdRef = useRef<string | null>(null);
   const resumingExistingTextRef = useRef<string>('');
 
+  // ✅ Budget strategy cumulative cost tracking
+  const budgetCumulativeCostRef = useRef<number>(0);
+  const activeStrategyIdRef = useRef<string | null>(null);
+
   const THROTTLE_MS = 60;
   const lastFlushRef = useRef(0);
   const pendingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,9 +222,6 @@ export function useChatSession() {
     return (text.match(/\n\n/g) || []).length + 1;
   }, []);
 
-  // ✅ Regenerate stamina for a character at the start of their turn.
-  // Mutates chatData in place so prepareRequestBody reads the fresh value.
-  // Returns the updated ChatData (may be same reference if no change).
   const regenerateStaminaForTurn = useCallback((data: ChatData, character: Character): ChatData => {
     const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
     if (maxStamina === Number.POSITIVE_INFINITY) return data;
@@ -229,7 +230,6 @@ export function useChatSession() {
     if (!prevMsg) return data;
     if (prevMsg.remainingChatStamina >= maxStamina) return data;
 
-    // Mutate the message's stamina in place within the history array
     const idx = data.chatMessageHistory.findIndex(m => m.id === prevMsg.id);
     if (idx === -1) return data;
 
@@ -303,7 +303,6 @@ export function useChatSession() {
     const running = runningModelsMapRef.current;
     const strat = strategy ?? activeStrategyRef.current;
 
-    // ✅ Regenerate stamina BEFORE generation (recovery from rest while others spoke)
     const dataWithRegen = regenerateStaminaForTurn(data, character);
     const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
 
@@ -311,10 +310,15 @@ export function useChatSession() {
       let rawText: string;
 
       if (strat) {
-        const engine = new BudgetStrategyEngine(strat);
+        const previousCost = budgetCumulativeCostRef.current;
+        const engine = new BudgetStrategyEngine(strat, previousCost);
         const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
-        rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64, complexityScore);
-        if (engine.currentCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + engine.currentCost }));
+        const complexity = complexityScore ?? computeComplexityScore(dataWithRegen);
+        rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64, complexity);
+        // Update cumulative cost
+        budgetCumulativeCostRef.current = engine.currentCost;
+        const requestCost = engine.currentCost - previousCost;
+        if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
       } else {
         if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
         const port = model.id ? running[model.id]?.port : undefined;
@@ -338,14 +342,11 @@ export function useChatSession() {
         rawText = await doStream(body, lmCtx);
 
         if ((!rawText || !rawText.trim()) && !signal.aborted) {
-          if (strat) { addToast('All models failed per budget strategy.', 'error'); }
-          else {
-            const rp = model.id ? running[model.id]?.port : undefined;
-            const rep = rp || (model.parameters as any)?._runtimePort;
-            const { body: rb } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', userImagesBase64, rep);
-            const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
-            rawText = await doStream(rb, rc);
-          }
+          const rp = model.id ? running[model.id]?.port : undefined;
+          const rep = rp || (model.parameters as any)?._runtimePort;
+          const { body: rb } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', userImagesBase64, rep);
+          const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
+          rawText = await doStream(rb, rc);
           if (!rawText || !rawText.trim()) return null;
         }
       }
@@ -353,7 +354,6 @@ export function useChatSession() {
       if (!rawText || !rawText.trim()) return null;
       const displayText = convertIdsToDisplayNames(rawText, dataWithRegen);
       const aiMessage = createChatMessage(dataWithRegen, character, displayText);
-      // ✅ Consume stamina based on paragraphs produced (exertion during output)
       const paragraphs = countParagraphs(displayText);
       if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
       return addMessageToChatData(dataWithRegen, aiMessage);
@@ -387,7 +387,17 @@ export function useChatSession() {
   // ─── Public Actions ──────────────────────────────────────────────
 
   const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), []);
-  const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => setActiveStrategy(s), []);
+
+  // ✅ Reset cumulative budget cost when switching strategies or deactivating
+  const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => {
+    const newId = s?.id ?? null;
+    if (newId !== activeStrategyIdRef.current) {
+      budgetCumulativeCostRef.current = 0;
+      activeStrategyIdRef.current = newId;
+    }
+    setActiveStrategy(s);
+  }, []);
+
   const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
 
   const startNewChat = useCallback((char: Character) => {
@@ -404,7 +414,6 @@ export function useChatSession() {
       const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
       const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
       if (idx !== -1) {
-        // ✅ Consume stamina for paragraphs in the stopped text
         const paragraphs = countParagraphs(t);
         if (paragraphs > 0) consumeChatStamina(updated.chatMessageHistory[idx], paragraphs);
         const withPartial = [...updated.chatMessageHistory];
@@ -501,7 +510,6 @@ export function useChatSession() {
     resumingMessageIdRef.current = messageId;
     resumingExistingTextRef.current = existingText;
 
-    // ✅ Regenerate stamina before resume (recovery from rest since last turn)
     const dataWithRegen = regenerateStaminaForTurn(chatData, char);
 
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
@@ -538,7 +546,6 @@ export function useChatSession() {
 
       const edited = await editMessage(dataWithRegen, messageId, combined);
 
-      // ✅ Consume stamina for NEW paragraphs added during this resume only
       const existingParagraphs = countParagraphs(existingText);
       const totalParagraphs = countParagraphs(combined);
       const newParagraphs = Math.max(0, totalParagraphs - existingParagraphs);
@@ -547,7 +554,6 @@ export function useChatSession() {
         if (editedIdx !== -1) consumeChatStamina(edited.chatMessageHistory[editedIdx], newParagraphs);
       }
 
-      // Only clear partial flag if generation completed naturally
       if (result.isCompleted) {
         const finalData = await clearPartialFlag(edited, messageId);
         setChatData(finalData); chatDataRef.current = finalData;
@@ -638,7 +644,8 @@ export function useChatSession() {
     (async () => {
       const arr = await loadAllRawChatData();
       const valid = arr.filter((c): c is ChatData => c !== null);
-      let char: Character | null = null, chat: ChatData | null = null;
+      let char: Character | null = null
+      let chat: ChatData | null = null;
       if (valid.length) { const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp); if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') { chat = sorted[0]; char = sorted[0].protagonist; } }
       if (!char) char = getDefaultCharacter();
       if (!currentCharacter && char) setCurrentCharacter(char);
