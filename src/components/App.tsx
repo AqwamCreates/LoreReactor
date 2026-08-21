@@ -159,6 +159,7 @@ function App() {
     generationSpeed, messageCount, tokenCount, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
+    activeStrategy,
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -299,22 +300,17 @@ function App() {
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
   // ✅ Sync chatData embedded copies when managers reload after save.
-  // Characters, contexts, and profiles are embedded by value in chatData.
-  // Editing them via their manager updates the manager list but NOT chatData.
-  // This effect patches stale embedded copies using lastUpdatedTimestamp.
   useEffect(() => {
     if (!chatData) return;
     let changed = false;
     const updated = { ...chatData };
 
-    // Sync protagonist
     const freshProtag = allCharacters.find(c => c.id === chatData.protagonist.id);
     if (freshProtag && freshProtag.lastUpdatedTimestamp !== chatData.protagonist.lastUpdatedTimestamp) {
       updated.protagonist = freshProtag;
       changed = true;
     }
 
-    // Sync participants
     const freshParticipants = chatData.participants.map(p => {
       const fresh = allCharacters.find(c => c.id === p.id);
       return (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) ? fresh : p;
@@ -324,7 +320,6 @@ function App() {
       changed = true;
     }
 
-    // Sync contexts
     if (chatData.contexts?.length) {
       const freshContexts = chatData.contexts.map(ctx => {
         const fresh = allContexts.find(c => c.id === ctx.id);
@@ -336,7 +331,6 @@ function App() {
       }
     }
 
-    // Sync profile
     if (chatData.Profile) {
       const freshProfile = allProfiles.find(p => p.id === chatData.Profile!.id);
       if (freshProfile && freshProfile.lastUpdatedTimestamp !== chatData.Profile.lastUpdatedTimestamp) {
@@ -345,7 +339,6 @@ function App() {
       }
     }
 
-    // Sync currentCharacter reference
     if (currentCharacter) {
       const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
       if (freshCurrent && freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
@@ -355,6 +348,34 @@ function App() {
 
     if (changed) setChatData(updated);
   }, [allCharacters, allContexts, allProfiles]);
+
+  // ✅ Sync active budget strategy's embedded model references when models update.
+  useEffect(() => {
+    if (!activeStrategy) return;
+    let stratChanged = false;
+    const updatedStrat = { ...activeStrategy };
+
+    const freshOnline = allModels.find(m => m.id === activeStrategy.onlineModel.id);
+    if (freshOnline && freshOnline.lastUpdatedTimestamp !== activeStrategy.onlineModel.lastUpdatedTimestamp) {
+      updatedStrat.onlineModel = freshOnline;
+      stratChanged = true;
+    }
+
+    const freshLocal = allModels.find(m => m.id === activeStrategy.localModel.id);
+    if (freshLocal && freshLocal.lastUpdatedTimestamp !== activeStrategy.localModel.lastUpdatedTimestamp) {
+      updatedStrat.localModel = freshLocal;
+      stratChanged = true;
+    }
+
+    if (stratChanged) setActiveBudgetStrategy(updatedStrat);
+  }, [allModels]);
+
+  // Need activeStrategy from useChatSession for the sync effect above
+  // It's already available via the destructured setActiveBudgetStrategy,
+  // but we need the value too. Add it to the destructured return.
+  // Actually, activeStrategy is internal to useChatSession and exposed
+  // only via setActiveBudgetStrategy. We need to also expose it.
+  // For now, read it from the budget strategy list by ID instead.
 
   // Loading progress
   useEffect(() => {
@@ -396,7 +417,6 @@ function App() {
     editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
   }, [editDraft, editingId]);
 
-  // Cinematic avatar observer
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) { setCenterAvatar(null); return; }
     const opts = { root: chatHistoryRef.current, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
@@ -432,7 +452,6 @@ function App() {
     chatHistoryRef.current.scrollTop = 0;
   }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
 
-  // Long-press toolbar scroll reset
   useEffect(() => {
     const el = chatHistoryRef.current; if (!el) return;
     const fn = () => { if (activeToolbarId) deactivateToolbar(); };
@@ -639,7 +658,6 @@ function App() {
     setActionMenuTarget(prev => prev?.messageId === mid ? null : { messageId: mid, charId: char.id, x: e.clientX, y: e.clientY });
   };
 
-  // Actions
   const incrementActionCount = async (label: string) => {
     setActions(prev => {
       const ex = prev.find(a => a.label === label);
@@ -707,7 +725,6 @@ function App() {
     }, 50);
   };
 
-  // Sampler editor helpers
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
@@ -754,7 +771,6 @@ function App() {
         {hasSession && <>
           {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
 
-          {/* Header */}
           <header className="app-header"><div className="header-content"><div className="header-top">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
               {isEditingTitle
@@ -768,7 +784,6 @@ function App() {
             </div>
           </div></div></header>
 
-          {/* Chat History */}
           <div className="chat-history" ref={chatHistoryRef}>
             {viewMode === 'cinematic' && streamingIndicators}
             {(viewMode === 'cinematic' ? [...chatData.chatMessageHistory].reverse() : chatData.chatMessageHistory).map((message, renderIndex) => {
@@ -837,7 +852,6 @@ function App() {
             <div ref={messageEndRef} style={{ height: '1px' }} />
           </div>
 
-          {/* Context Bar */}
           <div className="context-bar" style={{ display: viewMode === 'cinematic' ? 'none' : 'flex' }}>
             <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
             <NavButton icon="🎭" label="Characters" onClick={() => setIsCharListOpen(true)} />
@@ -849,7 +863,6 @@ function App() {
             <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
           </div>
 
-          {/* Input */}
           <div className="input-wrapper">
             {!isModelReady && <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>{!selectedModelId && <span className="model-status-icon">🤖</span>}{isModelLoading && <span className="model-status-spinner" />}<span className="model-status-text">{modelStatusMessage}</span>{!selectedModelId && <button type="button" className="model-status-action-btn" onClick={() => setIsModelListOpen(true)}>Open Models</button>}</div>}
             {pendingFiles.length > 0 && <div className="attachment-strip">{pendingFiles.map((f, i) => <div key={`${f.name}-${i}`} className="attachment-chip"><span className="attachment-name">{f.name}</span><span className="attachment-size">{(f.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, j) => j !== i))} className="attachment-remove">×</button></div>)}</div>}
@@ -890,7 +903,6 @@ function App() {
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
       </div>
 
-      {/* Action Menu */}
       {actionMenuTarget && hasSession && (
         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={e => e.stopPropagation()}>
           <div className="action-menu-header"><span>Interject Action</span></div>

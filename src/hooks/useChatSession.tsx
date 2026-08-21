@@ -4,7 +4,7 @@ import type { Character, ChatData, BudgetStrategy, LanguageModel } from '../type
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
-import { BudgetStrategyEngine, computeComplexityScore } from '../services/BudgetStrategyEngine';
+import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
@@ -152,7 +152,6 @@ export function useChatSession() {
   const resumingMessageIdRef = useRef<string | null>(null);
   const resumingExistingTextRef = useRef<string>('');
 
-  // ✅ Budget strategy cumulative cost tracking
   const budgetCumulativeCostRef = useRef<number>(0);
   const activeStrategyIdRef = useRef<string | null>(null);
 
@@ -295,7 +294,7 @@ export function useChatSession() {
   const handleServerResponse = useCallback(async (
     data: ChatData, character: Character, signal: AbortSignal,
     onToken?: (text: string) => void, userImagesBase64?: string[],
-    strategy?: BudgetStrategy | null, complexityScore?: number,
+    strategy?: BudgetStrategy | null,
     existingCharacterText?: string,
   ): Promise<ChatData | null> => {
     const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
@@ -313,9 +312,7 @@ export function useChatSession() {
         const previousCost = budgetCumulativeCostRef.current;
         const engine = new BudgetStrategyEngine(strat, previousCost);
         const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
-        const complexity = complexityScore ?? computeComplexityScore(dataWithRegen);
-        rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64, complexity);
-        // Update cumulative cost
+        rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64);
         budgetCumulativeCostRef.current = engine.currentCost;
         const requestCost = engine.currentCost - previousCost;
         if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
@@ -388,7 +385,6 @@ export function useChatSession() {
 
   const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), []);
 
-  // ✅ Reset cumulative budget cost when switching strategies or deactivating
   const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => {
     const newId = s?.id ?? null;
     if (newId !== activeStrategyIdRef.current) {
@@ -448,7 +444,7 @@ export function useChatSession() {
     setStreamingCharacter(targetChar); streamingCharacterRef.current = targetChar;
     setGenerationSpeed(0); isAtBottomRef.current = true;
     try {
-      const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, undefined, '');
+      const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, '');
       if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
       if (result) { await saveRawChatData(result); setChatData(result); chatDataRef.current = result; const lm = result.chatMessageHistory[result.chatMessageHistory.length - 1]; if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character); }
     } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
@@ -470,7 +466,7 @@ export function useChatSession() {
       const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
         setStreamingCharacter(c); streamingCharacterRef.current = c;
-        return handleServerResponse(d, c, s, ot, imgs, undefined, undefined, '');
+        return handleServerResponse(d, c, s, ot, imgs, undefined, '');
       };
       const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
       if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
@@ -608,7 +604,7 @@ export function useChatSession() {
       const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
         setStreamingCharacter(c); streamingCharacterRef.current = c;
-        return handleServerResponse(d, c, s, ot, undefined, undefined, undefined, '');
+        return handleServerResponse(d, c, s, ot, undefined, undefined, '');
       };
       const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
       if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, chatData.protagonist.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
@@ -633,7 +629,7 @@ export function useChatSession() {
     isProcessingSilentlyRef.current = true;
     const s = char.sampler;
     const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
-    try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, undefined, ''); }
+    try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, ''); }
     catch (e) { console.warn('Silent image processing failed:', e); }
     finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }
   }, [handleServerResponse, isModelReadyForGeneration]);
@@ -644,7 +640,7 @@ export function useChatSession() {
     (async () => {
       const arr = await loadAllRawChatData();
       const valid = arr.filter((c): c is ChatData => c !== null);
-      let char: Character | null = null
+      let char: Character | null = null;
       let chat: ChatData | null = null;
       if (valid.length) { const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp); if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') { chat = sorted[0]; char = sorted[0].protagonist; } }
       if (!char) char = getDefaultCharacter();
@@ -686,6 +682,7 @@ export function useChatSession() {
     generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0,
     tokenCount, maximumNumberOfTokens: maxCtx, startNewChat,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
+    activeStrategy,
     numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
     numberOfRequests: stats.numberOfRequests,
     totalCost: stats.totalCost,

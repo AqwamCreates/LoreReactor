@@ -20,7 +20,7 @@ function buildModelContext(model: any): LanguageModelContext {
  * Based on: token count relative to context length, number of active contexts,
  * message count, and average message length variance.
  */
-export function computeComplexityScore(chatData: ChatData): number {
+function computeComplexityScore(chatData: ChatData): number {
     const history = chatData.chatMessageHistory;
     if (history.length === 0) return 0;
 
@@ -46,9 +46,9 @@ export function computeComplexityScore(chatData: ChatData): number {
 
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
-    public currentCost: number = 0;
+    public currentCost = 0;
 
-    constructor(strategy: BudgetStrategy, initialCost: number = 0) {
+    constructor(strategy: BudgetStrategy, initialCost = 0) {
         this.strategy = strategy;
         this.currentCost = initialCost;
     }
@@ -59,10 +59,11 @@ export class BudgetStrategyEngine {
         abortController: AbortController,
         callbacks?: StreamCallbacks,
         userImagesBase64?: string[],
-        complexityScore?: number,
     ): Promise<string> {
         const onlineCtx = buildModelContext(this.strategy.onlineModel);
         const localCtx = buildModelContext(this.strategy.localModel);
+
+        const complexityScore = computeComplexityScore(chatData)
 
         const useOnline = this.shouldUseOnline(chatData, complexityScore);
         const primaryCtx = useOnline ? onlineCtx : localCtx;
