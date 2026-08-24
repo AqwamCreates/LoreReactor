@@ -35,6 +35,9 @@ import type {
 // ─── Constants & Types ──────────────────────────────────────────────
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
+const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
+const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
 
 interface NavButtonProps { icon: string; label: string; onClick: () => void }
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
@@ -198,7 +201,6 @@ function App() {
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
-  const [defaultContextIds, setDefaultContextIds] = useState<string[]>([]);
   const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
 
   // Panel visibility
@@ -251,19 +253,91 @@ function App() {
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
-  // ─── Effects: Data Loading ──────────────────────────────────────
+  // ─── Effects: Persistence & Restoration ───────────────────────────
 
   useEffect(() => { loadInterjectableActions().then(setActions); }, []);
   useEffect(() => { if (actions.length > 0) saveInterjectableActions(actions); }, [actions]);
 
+  // ✅ STEP 1: Restore persisted IDs on mount (before managers load)
   useEffect(() => {
-    (async () => {
-      const dc = localStorage.getItem('defaultCharacterId');
-      if (dc) setDefaultCharacterId(dc);
-      const dctx = localStorage.getItem('defaultContextIds');
-      if (dctx) try { setDefaultContextIds(JSON.parse(dctx)); } catch {}
-    })();
+    const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
+    const savedBudgetId = localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY);
+    const savedDefaultCharId = localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER);
+
+    if (savedDefaultCharId) setDefaultCharacterId(savedDefaultCharId);
+    if (savedBudgetId) setSelectedBudgetStrategyId(savedBudgetId);
+
+    // Restore active chat session
+    if (savedChatId) {
+      (async () => {
+        try {
+          const raw = await loadRawChatData(savedChatId);
+          if (raw) {
+            const full = raw.chatMessageHistory?.length ? raw : await loadChatMessages(raw as any);
+            if (full) {
+              setChatData(full as ChatData);
+              if ((full as ChatData).protagonist) setCurrentCharacter((full as ChatData).protagonist);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to restore active chat:', e);
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+        }
+      })();
+    }
   }, []);
+
+  // ✅ STEP 2: Persist active chat ID whenever it changes
+  useEffect(() => {
+    if (chatData?.id) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, chatData.id);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+    }
+  }, [chatData?.id]);
+
+  // ✅ STEP 3: Persist budget strategy ID whenever it changes
+  useEffect(() => {
+    if (selectedBudgetStrategyId) {
+      localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, selectedBudgetStrategyId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
+    }
+  }, [selectedBudgetStrategyId]);
+
+  // ✅ STEP 4: Re-apply budget strategy AFTER strategies finish loading
+  // This fixes the race condition where setSelectedBudgetStrategyId runs
+  // before allBudgetStrategies is populated.
+  useEffect(() => {
+    if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
+    const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
+    if (strategy) {
+      setActiveBudgetStrategy(strategy);
+    } else {
+      // Strategy was deleted externally; clean up stale reference
+      setSelectedBudgetStrategyId(null);
+    }
+  }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
+
+  // ✅ STEP 5: Persist default character ID whenever it changes
+  useEffect(() => {
+    if (defaultCharacterId) {
+      localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, defaultCharacterId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
+    }
+  }, [defaultCharacterId]);
+
+  // Note on Profile persistence:
+  // Profiles are stored INSIDE chatData.Profile and persisted via saveRawChatData.
+  // When the active chat is restored (Step 1), its embedded Profile is restored with it.
+  // There is no separate global default profile — profiles are per-session.
+
+  // Note on Character/Context list selections:
+  // These are stored INSIDE chatData.participants and chatData.contexts.
+  // When the active chat is restored (Step 1), these arrays are restored with it.
+  // Toggling participants/contexts updates chatData, which triggers safeAutoSave,
+  // persisting the selection as part of the chat session.
 
   useEffect(() => {
     (async () => {
@@ -279,13 +353,6 @@ function App() {
       if (c && currentCharacter?.id !== c.id) setCurrentCharacter(c);
     }
   }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
-
-  useEffect(() => {
-    if (selectedBudgetStrategyId) {
-      const s = allBudgetStrategies.find(x => x.id === selectedBudgetStrategyId);
-      setActiveBudgetStrategy(s || null);
-    } else setActiveBudgetStrategy(null);
-  }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
     if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
@@ -369,13 +436,6 @@ function App() {
 
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [allModels]);
-
-  // Need activeStrategy from useChatSession for the sync effect above
-  // It's already available via the destructured setActiveBudgetStrategy,
-  // but we need the value too. Add it to the destructured return.
-  // Actually, activeStrategy is internal to useChatSession and exposed
-  // only via setActiveBudgetStrategy. We need to also expose it.
-  // For now, read it from the budget strategy list by ID instead.
 
   // Loading progress
   useEffect(() => {
@@ -541,7 +601,7 @@ function App() {
     const uc = { ...chatData, participants: np };
     setChatData(uc);
     if (!np.find(p => p.id === currentCharacter?.id)) setCurrentCharacter(uc.protagonist);
-    addToast('Participants updated (Session Only).', 'info');
+    addToast('Participants updated.', 'info');
   };
 
   const handleToggleContext = async (contextId: string) => {
@@ -551,7 +611,7 @@ function App() {
       ? chatData.contexts.filter(c => c.id !== contextId)
       : [...chatData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
     setChatData({ ...chatData, contexts: nc });
-    addToast('Contexts updated (Session Only).', 'info');
+    addToast('Contexts updated.', 'info');
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
@@ -560,7 +620,7 @@ function App() {
     const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
     const uc = { ...chatData, protagonist: ch };
     if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
-    setChatData(uc); setCurrentCharacter(ch); addToast('Protagonist switched (Session Only).', 'info');
+    setChatData(uc); setCurrentCharacter(ch); addToast('Protagonist switched.', 'info');
   };
 
   const handleToggleExtension = async (extId: string) => {
@@ -569,7 +629,7 @@ function App() {
     const ni = cur.includes(extId) ? cur.filter((i: string) => i !== extId) : [...cur, extId];
     const uc = { ...chatData } as any;
     uc.extensions = allExtensions.filter(e => ni.includes(e.id));
-    setChatData(uc); addToast('Extensions updated (Session Only).', 'info');
+    setChatData(uc); addToast('Extensions updated.', 'info');
   };
 
   const handleActivateBudgetStrategy = (sid: string) => {
