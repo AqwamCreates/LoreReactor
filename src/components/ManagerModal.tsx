@@ -64,7 +64,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return index !== -1 ? index + 1 : null;
     };
 
-    // ✅ SORTING: Priority order → lastUpdatedTimestamp → firstCreatedTimestamp
     const sortedItems = useMemo(() => {
         const sorted = [...items].sort((a, b) => {
             if (orderedListMode && currentOrderIds.length > 0) {
@@ -94,7 +93,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return sorted;
     }, [items, orderedListMode, currentOrderIds]);
 
-    // ✅ FILTERING LOGIC (applied after sorting so search preserves sort order)
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return sortedItems;
 
@@ -107,8 +105,16 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 const subtextNode = renderSubtext(item);
                 if (typeof subtextNode === 'string') {
                     subtextMatch = subtextNode.toLowerCase().includes(query);
-                } else if (subtextNode && typeof subtextNode === 'object' && 'props' in subtextNode) {
-                    subtextMatch = JSON.stringify(subtextNode).toLowerCase().includes(query);
+                } else if (subtextNode && typeof subtextNode === 'object') {
+                    const extractText = (node: any): string => {
+                        if (node == null || typeof node === 'boolean') return '';
+                        if (typeof node === 'string' || typeof node === 'number') return String(node);
+                        if (Array.isArray(node)) return node.map(extractText).join(' ');
+                        if (node.props?.children) return extractText(node.props.children);
+                        return '';
+                    };
+                    const textContent = extractText(subtextNode);
+                    subtextMatch = textContent.toLowerCase().includes(query);
                 }
             }
 
@@ -134,26 +140,24 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal-content modal-content-manager" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>{title}</h2>
 
-                    <div className="modal-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="modal-header-actions">
                         <button
                             type="button"
                             className="create-new-btn"
                             onClick={(e) => { e.stopPropagation(); onCreateNew(); }}
                             title={`Create New ${singularTitle}`}
-                            style={{ whiteSpace: 'nowrap' }}
                         >
                             ➕ New {singularTitle}
                         </button>
 
                         <button
                             type="button"
-                            className="close-btn"
+                            className="close-btn close-btn-spaced"
                             onClick={onClose}
-                            style={{ marginLeft: '4px' }}
                         >
                             ×
                         </button>
@@ -188,9 +192,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''}`}>
                                         <div
-                                            className="manager-item-main"
+                                            className={`manager-item-main ${onSelect ? 'manager-item-main-clickable' : ''}`}
                                             onClick={() => onSelect?.(item)}
-                                            style={{ cursor: onSelect ? 'pointer' : 'default' }}
                                         >
                                             <div className="manager-item-info">
                                                 <div className="manager-item-title">{item.name || 'Untitled'}</div>
@@ -198,27 +201,14 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+                                        <div className="manager-item-actions">
 
                                             {orderedListMode && onToggleOrder && (
                                                 <button
                                                     type="button"
                                                     onClick={(e) => { e.stopPropagation(); onToggleOrder(item.id); }}
-                                                    className="toolbar-btn"
+                                                    className={`toolbar-btn order-toggle-btn ${isInCurrentOrder ? 'order-toggle-btn-active' : ''}`}
                                                     title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
-                                                    style={{
-                                                        background: isInCurrentOrder ? 'var(--accent-bg)' : 'transparent',
-                                                        color: isInCurrentOrder ? 'var(--accent)' : 'var(--text-h)',
-                                                        border: '1px solid var(--border)',
-                                                        width: '32px',
-                                                        height: '32px',
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 'bold',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        flexShrink: 0
-                                                    }}
                                                 >
                                                     {isInCurrentOrder ? orderNumber : '+'}
                                                 </button>
@@ -228,67 +218,29 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                 <button
                                                     type="button"
                                                     onClick={(e) => { e.stopPropagation(); onSpecialAction(item.id); }}
-                                                    className="toolbar-btn"
+                                                    className="toolbar-btn special-action-btn"
                                                     title={specialActionTooltip?.(item) || "Action"}
-                                                    style={{
-                                                        width: '32px',
-                                                        height: '32px',
-                                                        fontSize: '0.85rem',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        flexShrink: 0
-                                                    }}
                                                 >
                                                     {isActive ? '⭐' : '☆'}
                                                 </button>
                                             )}
 
-                                            {/* ✅ DELETE WITH INLINE CONFIRMATION */}
                                             {onDelete && (
                                                 isConfirmingDelete ? (
-                                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+                                                    <div className="delete-confirm-group">
                                                         <button
                                                             type="button"
                                                             onClick={(e) => handleConfirmDelete(e, item.id)}
-                                                            className="toolbar-btn"
+                                                            className="toolbar-btn delete-confirm-btn"
                                                             title="Confirm delete"
-                                                            style={{
-                                                                width: '28px',
-                                                                height: '28px',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 'bold',
-                                                                background: '#ef4444',
-                                                                color: '#fff',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                flexShrink: 0
-                                                            }}
                                                         >
                                                             ✓
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={handleCancelDelete}
-                                                            className="toolbar-btn"
+                                                            className="toolbar-btn delete-cancel-btn"
                                                             title="Cancel"
-                                                            style={{
-                                                                width: '28px',
-                                                                height: '28px',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 'bold',
-                                                                background: 'transparent',
-                                                                color: 'var(--text-h)',
-                                                                border: '1px solid var(--border)',
-                                                                borderRadius: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                flexShrink: 0
-                                                            }}
                                                         >
                                                             ✕
                                                         </button>
@@ -299,7 +251,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                         onClick={(e) => handleDeleteClick(e, item.id)}
                                                         className="delete-item-btn"
                                                         title={actionLabel}
-                                                        style={{ flexShrink: 0 }}
                                                     >
                                                         🗑️
                                                     </button>

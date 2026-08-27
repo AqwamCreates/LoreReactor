@@ -913,6 +913,101 @@
 /* =============================================================================
    5. MODALS & MANAGER LISTS
    ============================================================================= */
+.modal-content-manager {
+    max-width: 600px;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-new-btn {
+    white-space: nowrap;
+}
+
+.close-btn-spaced {
+    margin-left: 4px;
+}
+
+.manager-item-main-clickable {
+    cursor: pointer;
+}
+
+.manager-item-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.order-toggle-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--text-h);
+    border: 1px solid var(--border);
+}
+
+.order-toggle-btn-active {
+    background: var(--accent-bg);
+    color: var(--accent);
+}
+
+.special-action-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.delete-confirm-group {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.delete-confirm-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.delete-cancel-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    background: transparent;
+    color: var(--text-h);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.6); display: flex;
