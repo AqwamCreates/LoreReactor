@@ -658,7 +658,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
-    const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
+    const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
     const characterResponsePriming = `${contextStartString}${thinkStartString}${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`
 
