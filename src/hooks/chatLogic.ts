@@ -564,7 +564,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (cacheLevel >= 3) {
         for (const p of chatData.participants) {
             if (p.thinkPrompt) {
-                thinkPromptLines.push(`${contextStartString}${thinkStartString}As ${getParticipantTag(p, participants)}, I am keeping this in mind: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${thinkEndString}${contextEndString}`);
+                thinkPromptLines.push(`${contextStartString}${thinkStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${thinkEndString}${contextEndString}`);
             }
         }
     } else if (thinkPrompt) {
