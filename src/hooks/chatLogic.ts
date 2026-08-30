@@ -30,6 +30,9 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
+const startingAppearanceLine = `${contextStartString}The list below is what I know about other characters' appearances.${contextEndString}`;
+const endingAppearanceLine = `${contextStartString}The list above is what I know about other characters' appearances.${contextEndString}`;
+
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
@@ -377,37 +380,34 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const isCacheMoreThanLevelZero = cacheLevel > 0;
 
-    const appearanceLines: string[] = []
 
-    const startingAppearanceLine = `${contextStartString}${thinkStartString}The list below is what I know about other characters' appearances.${thinkEndString}${contextEndString}`
+    const appearanceLines: string[] = [];
+    const hasAnyAppearance = participants.some(p => p.appearancePrompt?.trim());
 
-    const endingAppearanceLine = `${contextStartString}${thinkStartString}The list above is what I know about other characters' appearances.${thinkEndString}${contextEndString}`
+    if (hasAnyAppearance) {
 
-    appearanceLines.push(startingAppearanceLine)
+        appearanceLines.push(startingAppearanceLine);
 
-    for (const participant of participants) {
+        for (const participant of participants) {
+            const appearancePrompt = participant.appearancePrompt;
+            if (!appearancePrompt || !appearancePrompt.trim()) continue;
 
-        const appearancePrompt = participant.appearancePrompt
+            const otherParticipantId = getParticipantId(participant, participants);
+            const isCurrent = otherParticipantId === characterParticipantId;
+            const otherCharacterName = participant.name;
+            const isRevealed = revealedNamesMap.has(participant.id);
+            let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
 
-        if ((!appearancePrompt) || (appearancePrompt === "")) {continue}
+            if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
+                appearanceText = `${appearanceText} (${otherCharacterName})`;
+            }
 
-        const otherParticipantId = getParticipantId(participant, participants);
-        const isCurrent = otherParticipantId === characterParticipantId;
-        const otherCharacterName = participant.name;
-        const isRevealed = revealedNamesMap.has(participant.id);
-        let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
-
-        if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
-            appearanceText = `${appearanceText} (${otherCharacterName})`;
+            appearanceText = `${appearanceText}: ${appearancePrompt}${contextEndString}`;
+            appearanceLines.push(appearanceText);
         }
 
-        appearanceText = `${appearanceText}: ${appearancePrompt}${contextEndString}`;
-        appearanceLines.push(appearanceText);
-
+        appearanceLines.push(endingAppearanceLine);
     }
-
-    appearanceLines.push(endingAppearanceLine)
-
 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
     const activeStopPatterns: StopPattern[] = [];
