@@ -659,7 +659,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
-    const characterResponsePriming = `${contextStartString}${thinkStartString}${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
+    const characterResponsePriming = `${contextStartString}${thinkStartString}${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`
 
     const textInjectionLines = [characterResponsePriming, characterTextInjection]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
