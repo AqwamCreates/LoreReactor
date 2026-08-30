@@ -399,13 +399,16 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = participant.name;
             const isRevealed = revealedNamesMap.has(participant.id);
+            const participantTag = getParticipantTag(character, participants)
+            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName)
+            
             let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
 
             if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
                 appearanceText = `${appearanceText} (${otherCharacterName})`;
             }
 
-            appearanceText = `${appearanceText}: ${appearancePrompt}${contextEndString}`;
+            appearanceText = `${appearanceText}: ${finalAppearancePrompt}${contextEndString}`;
             appearancePromptLines.push(appearanceText);
         }
 
