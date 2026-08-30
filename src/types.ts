@@ -311,11 +311,11 @@ export type PromptBlockType =
   | 'Think Prompt'
   | 'Meta Think Instruction'             // Active context entries (regex-matched)     // Think/meta-instruction prompts  
   | 'Appearance Prompt'
+  | 'Dialogue Prompt'
   | 'Chat History'         // Conversation history messages
   | 'Context'
   | 'Fatigue Information' 
   | 'Date And Time'
-  | 'Dialogue Prompt'
   | 'Text Injection'
 
 export interface Profile extends ObjectData {
