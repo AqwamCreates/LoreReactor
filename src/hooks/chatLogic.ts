@@ -30,14 +30,14 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
-const startingAppearancePromptLine = `${contextStartString}This is what I know about other characters' appearances from the list below.${contextEndString}`;
-const endingAppearancePromptLine = `${contextStartString}This is what I know about other characters' appearances from the list above.${contextEndString}`;
+const startingAppearancePromptLine = `${contextStartString}Start Of The Characters' Appearances List.${contextEndString}`;
+const endingAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
 
-const startingDialoguePromptLine = `${contextStartString}The examples below shows on how to respond as this character.${contextEndString}`;
-const endingDialoguePromptLine = `${contextStartString}The examples above shows on how to respond as this character.${contextEndString}`;
+const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
+const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Dialogue Prompt', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -589,9 +589,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     let hasBeenSummarized = false
 
-    // CHAT HISTORY
     const chatHistoryLines: string[] = [];
-    chatHistoryLines.push(`${contextStartString}${thinkStartString}This is what I remember below.${thinkEndString}${contextEndString}`);
+    chatHistoryLines.push(`${contextStartString}Start Of The Memory.${contextEndString}`);
 
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
@@ -666,7 +665,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    chatHistoryLines.push(`${contextStartString}${thinkStartString}This is what I remember above.${thinkEndString}${contextEndString}`);
+    chatHistoryLines.push(`${contextStartString}End Of The Memory.${contextEndString}`);
 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
@@ -697,14 +696,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const dialoguePrompt = character.dialoguePrompt
 
-    if (dialoguePrompt || dialoguePrompt?.trim()) {
-
-        dialoguePromptLines.push(startingDialoguePromptLine)
-
-        dialoguePromptLines.push(`${contextStartString}${dialoguePrompt}${commonThinkEndString}`)
-
-        dialoguePromptLines.push(endingDialoguePromptLine)
-
+    if (dialoguePrompt?.trim()) {
+        dialoguePromptLines.push(startingDialoguePromptLine);
+        const replacedDialogue = replacePlaceholders(dialoguePrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+        dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
+        dialoguePromptLines.push(endingDialoguePromptLine);
     }
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
@@ -718,11 +714,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
         'Appearance Prompt': appearancePromptLines,
+        'Dialogue Prompt': dialoguePromptLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
-        'Dialogue Prompt': dialoguePromptLines,
         'Text Injection': textInjectionLines,
     };
 
