@@ -30,8 +30,8 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
-const startingAppearanceLine = `${contextStartString}The list below is what I know about other characters' appearances.${contextEndString}`;
-const endingAppearanceLine = `${contextStartString}The list above is what I know about other characters' appearances.${contextEndString}`;
+const startingAppearanceLine = `${contextStartString}This is what I know about other characters' appearances from the list below.${contextEndString}`;
+const endingAppearanceLine = `${contextStartString}This is what I know about other characters' appearances from the list above.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
