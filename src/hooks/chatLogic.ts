@@ -636,9 +636,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
 
     const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`
-    const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${callingOtherCharacterInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${thinkEndString}${contextEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
@@ -659,7 +658,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
-    const textInjectionLines = [`${contextStartString}${thinkStartString}I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`, `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+    const callingOtherCharacterInstructions = `If the other character's name is provided, I will use their name instead of 'Character #' or 'Character # (Name)'. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use.`;
+    const characterResponsePriming = `${contextStartString}${thinkStartString}${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the given format and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
+    const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`
+
+    const textInjectionLines = [characterResponsePriming, characterTextInjection]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
 
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
