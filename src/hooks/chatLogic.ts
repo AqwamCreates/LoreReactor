@@ -399,7 +399,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = participant.name;
             const isRevealed = revealedNamesMap.has(participant.id);
-            const participantTag = getParticipantTag(character, participants)
+            const participantTag = getParticipantTag(participant, participants)
             const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName)
             
             let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
