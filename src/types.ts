@@ -134,6 +134,7 @@ export interface Character extends ObjectData  {
   voice?: string; // Path to the character's voice.
   systemPrompt?: string;
   thinkPrompt?: string;
+  appearancePrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -149,6 +150,7 @@ export interface RawCharacter extends RawData {
   voice?: string; // Path to the character's voice.
   systemPrompt?: string;
   thinkPrompt?: string;
+  appearancePrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -306,6 +308,7 @@ export type PromptBlockType =
   'System Prompt'        // Character system prompts
   | 'Think Prompt'
   | 'Meta Think Instruction'             // Active context entries (regex-matched)     // Think/meta-instruction prompts  
+  | 'Appearance Prompt'
   | 'Chat History'         // Conversation history messages
   | 'Context'
   | 'Fatigue Information' 

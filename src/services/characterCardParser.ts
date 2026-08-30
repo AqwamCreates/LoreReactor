@@ -48,11 +48,9 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
 
                     if (keyword === 'chara' || keyword === 'Chara') {
                         try {
-                            // ✅ Decode base64 to raw bytes, then interpret as UTF-8
-                            // atob() only handles Latin-1, which corrupts multi-byte UTF-8 chars
                             const json = decodeBase64AsUtf8(value);
 
-                            // ✅ V2/V3: has spec field and nested data object
+                            // V2/V3: has spec field and nested data object
                             if (json.spec && json.data) {
                                 return normalizeV2V3(json.data);
                             }
@@ -84,7 +82,7 @@ function decodeText(buffer: ArrayBuffer, start: number, end: number): string {
 }
 
 /**
- * ✅ Decodes a base64 string as UTF-8, preserving multi-byte characters.
+ * Decodes a base64 string as UTF-8, preserving multi-byte characters.
  * atob() treats each byte as Latin-1, which corrupts curly quotes, em-dashes, etc.
  */
 function decodeBase64AsUtf8(base64: string): any {
@@ -113,7 +111,7 @@ function normalizeV1(json: any): ParsedCharacterCard {
     };
 }
 
-// ✅ Handles both V2 and V3 — they share the same data structure
+// Handles both V2 and V3 — they share the same data structure
 function normalizeV2V3(data: any): ParsedCharacterCard {
     return {
         name: data.name || '',
@@ -141,6 +139,7 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
     description: string;
     systemPrompt: string;
     thinkPrompt: string;
+    appearancePrompt: string;
     firstMessage: string;
 } {
     // Build system prompt from available fields
@@ -166,6 +165,7 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
         description,
         systemPrompt,
         thinkPrompt,
+        appearancePrompt: '',
         firstMessage: card.firstMes || '',
     };
 }

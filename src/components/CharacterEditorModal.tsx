@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Character, Sampler, StopPattern } from '../types';
+import type { Character, Sampler } from '../types';
 import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
@@ -30,6 +30,7 @@ export function CharacterEditorModal({
     const [description, setDescription] = useState('');
     const [systemPrompt, setSystemPrompt] = useState('');
     const [thinkPrompt, setThinkPrompt] = useState('');
+    const [appearancePrompt, setAppearancePrompt] = useState('');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -49,7 +50,6 @@ export function CharacterEditorModal({
     const [voiceName, setVoiceName] = useState<string>('');
     const [existingVoiceName, setExistingVoiceName] = useState<string>('');
 
-    // ✅ Do not inject character image into generation context
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
@@ -70,6 +70,7 @@ export function CharacterEditorModal({
                 setDescription(existingCharacter.description || '');
                 setSystemPrompt(existingCharacter.systemPrompt || '');
                 setThinkPrompt(existingCharacter.thinkPrompt || '');
+                setAppearancePrompt(existingCharacter.appearancePrompt || '');
                 setFirstMessage(''); 
                 
                 if (existingCharacter.image) {
@@ -92,13 +93,13 @@ export function CharacterEditorModal({
                 setVoiceName(existingCharacter.voice || '');
                 setVoiceFile(null);
 
-                // ✅ Load doNotInjectCharacterImage
                 setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
             } else {
                 setName('');
                 setDescription('');
                 setSystemPrompt('');
                 setThinkPrompt('');
+                setAppearancePrompt('');
                 setFirstMessage('');
                 setImageFile(null);
                 setImagePreview(null);
@@ -213,6 +214,7 @@ export function CharacterEditorModal({
         setDescription(fields.description);
         setSystemPrompt(fields.systemPrompt);
         setThinkPrompt(fields.thinkPrompt);
+        setAppearancePrompt('');
         setFirstMessage(fields.firstMessage);
 
         setImageFile(file);
@@ -321,6 +323,7 @@ export function CharacterEditorModal({
             description,
             systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,
+            appearancePrompt: appearancePrompt.trim() || undefined,
             image: finalImageFilename ?? undefined,
             voice: finalVoiceFilename,
             sampler: finalSampler,
@@ -531,6 +534,14 @@ export function CharacterEditorModal({
                                 placeholder="Think Prompt" disabled={isUploading}
                             />
 
+                            {/* Appearance Prompt */}
+                            <textarea 
+                                value={appearancePrompt} onChange={(e) => setAppearancePrompt(e.target.value)} 
+                                className="editor-textarea"
+                                style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                placeholder="Appearance Prompt" disabled={isUploading}
+                            />
+
                             {/* Sampler + Stats + Stop Patterns + Image Injection Toggle */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
                                 <select 
@@ -656,7 +667,7 @@ export function CharacterEditorModal({
                                     </select>
                                 </div>
 
-                                {/* ✅ Do Not Inject Character Image Toggle */}
+                                {/* Do Not Inject Character Image Toggle */}
                                 <div className="editor-section">
                                     <label className="editor-checkbox-label">
                                         <input
