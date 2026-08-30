@@ -135,6 +135,7 @@ export interface Character extends ObjectData  {
   systemPrompt?: string;
   thinkPrompt?: string;
   appearancePrompt?: string;
+  dialoguePrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -151,6 +152,7 @@ export interface RawCharacter extends RawData {
   systemPrompt?: string;
   thinkPrompt?: string;
   appearancePrompt?: string;
+  dialoguePrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -313,6 +315,7 @@ export type PromptBlockType =
   | 'Context'
   | 'Fatigue Information' 
   | 'Date And Time'
+  | 'Dialogue Prompt'
   | 'Text Injection'
 
 export interface Profile extends ObjectData {

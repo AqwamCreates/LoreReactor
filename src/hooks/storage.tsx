@@ -329,6 +329,8 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       if (loadedSampler) sampler = loadedSampler;
     }
 
+    const now = Date.now()
+
     return { 
       id, 
       name: rawCharacter.name || 'Unknown Character', 
@@ -338,13 +340,14 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       systemPrompt: rawCharacter.systemPrompt,
       thinkPrompt: rawCharacter.thinkPrompt,
       appearancePrompt: rawCharacter.appearancePrompt,
+      dialoguePrompt: rawCharacter.dialoguePrompt,
       initiativeWeight: rawCharacter.initiativeWeight, 
       chatProbability: rawCharacter.chatProbability, 
       maximumChatStamina: rawCharacter.maximumChatStamina, 
       sampler,
       doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
-      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || Date.now(),
-      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || Date.now(),
+      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
+      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
     };
   } catch (e) {
     console.warn(`Failed to load character ${id}`, e);

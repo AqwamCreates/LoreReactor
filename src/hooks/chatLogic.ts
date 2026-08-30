@@ -30,11 +30,14 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
-const startingAppearanceLine = `${contextStartString}This is what I know about other characters' appearances from the list below.${contextEndString}`;
-const endingAppearanceLine = `${contextStartString}This is what I know about other characters' appearances from the list above.${contextEndString}`;
+const startingAppearancePromptLine = `${contextStartString}This is what I know about other characters' appearances from the list below.${contextEndString}`;
+const endingAppearancePromptLine = `${contextStartString}This is what I know about other characters' appearances from the list above.${contextEndString}`;
+
+const startingDialoguePromptLine = `${contextStartString}The examples below shows on how to respond as this character.${contextEndString}`;
+const endingDialoguePromptLine = `${contextStartString}The examples above shows on how to respond as this character.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Dialogue Prompt', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -381,12 +384,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const isCacheMoreThanLevelZero = cacheLevel > 0;
 
 
-    const appearanceLines: string[] = [];
+    const appearancePromptLines: string[] = [];
     const hasAnyAppearance = participants.some(p => p.appearancePrompt?.trim());
 
     if (hasAnyAppearance) {
 
-        appearanceLines.push(startingAppearanceLine);
+        appearancePromptLines.push(startingAppearancePromptLine);
 
         for (const participant of participants) {
             const appearancePrompt = participant.appearancePrompt;
@@ -403,10 +406,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             }
 
             appearanceText = `${appearanceText}: ${appearancePrompt}${contextEndString}`;
-            appearanceLines.push(appearanceText);
+            appearancePromptLines.push(appearanceText);
         }
 
-        appearanceLines.push(endingAppearanceLine);
+        appearancePromptLines.push(endingAppearancePromptLine);
     }
 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
@@ -690,6 +693,20 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
+    const dialoguePromptLines: string[] = []
+
+    const dialoguePrompt = character.dialoguePrompt
+
+    if (dialoguePrompt || dialoguePrompt?.trim()) {
+
+        dialoguePromptLines.push(startingDialoguePromptLine)
+
+        dialoguePromptLines.push(`${contextStartString}${dialoguePrompt}${commonThinkEndString}`)
+
+        dialoguePromptLines.push(endingDialoguePromptLine)
+
+    }
+
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`
@@ -700,11 +717,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
-        'Appearance Prompt': appearanceLines,
+        'Appearance Prompt': appearancePromptLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
+        'Dialogue Prompt': dialoguePromptLines,
         'Text Injection': textInjectionLines,
     };
 

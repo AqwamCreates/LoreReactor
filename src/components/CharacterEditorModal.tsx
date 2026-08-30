@@ -31,6 +31,7 @@ export function CharacterEditorModal({
     const [systemPrompt, setSystemPrompt] = useState('');
     const [thinkPrompt, setThinkPrompt] = useState('');
     const [appearancePrompt, setAppearancePrompt] = useState('');
+    const [dialoguePrompt, setDialoguePrompt] = useState('');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -71,6 +72,7 @@ export function CharacterEditorModal({
                 setSystemPrompt(existingCharacter.systemPrompt || '');
                 setThinkPrompt(existingCharacter.thinkPrompt || '');
                 setAppearancePrompt(existingCharacter.appearancePrompt || '');
+                setDialoguePrompt(existingCharacter.dialoguePrompt || '');
                 setFirstMessage(''); 
                 
                 if (existingCharacter.image) {
@@ -100,6 +102,7 @@ export function CharacterEditorModal({
                 setSystemPrompt('');
                 setThinkPrompt('');
                 setAppearancePrompt('');
+                setDialoguePrompt('');
                 setFirstMessage('');
                 setImageFile(null);
                 setImagePreview(null);
@@ -215,6 +218,7 @@ export function CharacterEditorModal({
         setSystemPrompt(fields.systemPrompt);
         setThinkPrompt(fields.thinkPrompt);
         setAppearancePrompt('');
+        setDialoguePrompt(fields.dialoguePrompt);
         setFirstMessage(fields.firstMessage);
 
         setImageFile(file);
@@ -324,6 +328,7 @@ export function CharacterEditorModal({
             systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,
             appearancePrompt: appearancePrompt.trim() || undefined,
+            dialoguePrompt: dialoguePrompt.trim() || undefined,
             image: finalImageFilename ?? undefined,
             voice: finalVoiceFilename,
             sampler: finalSampler,
@@ -540,6 +545,14 @@ export function CharacterEditorModal({
                                 className="editor-textarea"
                                 style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
                                 placeholder="Appearance Prompt" disabled={isUploading}
+                            />
+
+                            {/* Dialogue Prompt */}
+                            <textarea 
+                                value={dialoguePrompt} onChange={(e) => setDialoguePrompt(e.target.value)} 
+                                className="editor-textarea"
+                                style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                placeholder="Dialogue Examples" disabled={isUploading}
                             />
 
                             {/* Sampler + Stats + Stop Patterns + Image Injection Toggle */}
