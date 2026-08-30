@@ -140,6 +140,7 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
     systemPrompt: string;
     thinkPrompt: string;
     appearancePrompt: string;
+    dialoguePrompt: string;
     firstMessage: string;
 } {
     // Build system prompt from available fields
@@ -166,6 +167,7 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
         systemPrompt,
         thinkPrompt,
         appearancePrompt: '',
+        dialoguePrompt: card.mesExample || '',
         firstMessage: card.firstMes || '',
     };
 }
