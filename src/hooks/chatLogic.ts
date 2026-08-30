@@ -31,7 +31,7 @@ const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -375,6 +375,40 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (msg.isNameRevealed) revealedNamesMap.set(msg.character.id, true);
     }
 
+    const isCacheMoreThanLevelZero = cacheLevel > 0;
+
+    const appearanceLines: string[] = []
+
+    const startingAppearanceLine = `${contextStartString}${thinkStartString}The list below is what I know about other characters' appearances.${thinkEndString}${contextEndString}`
+
+    const endingAppearanceLine = `${contextStartString}${thinkStartString}The list above is what I know about other characters' appearances.${thinkEndString}${contextEndString}`
+
+    appearanceLines.push(startingAppearanceLine)
+
+    for (const participant of participants) {
+
+        const appearancePrompt = participant.appearancePrompt
+
+        if ((!appearancePrompt) || (appearancePrompt === "")) {continue}
+
+        const otherParticipantId = getParticipantId(participant, participants);
+        const isCurrent = otherParticipantId === characterParticipantId;
+        const otherCharacterName = participant.name;
+        const isRevealed = revealedNamesMap.has(participant.id);
+        let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
+
+        if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
+            appearanceText = `${appearanceText} (${otherCharacterName})`;
+        }
+
+        appearanceText = `${appearanceText}: ${appearancePrompt}${contextEndString}`;
+        appearanceLines.push(appearanceText);
+
+    }
+
+    appearanceLines.push(endingAppearanceLine)
+
+
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
     const activeStopPatterns: StopPattern[] = [];
     const activeContextsForImages: Context[] = [];
@@ -512,9 +546,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     // SYSTEM PROMPT BLOCK
     const systemPromptLines: string[] = [];
     if (cacheLevel >= 2) {
-        for (const p of chatData.participants) {
+        for (const p of participants) {
             if (p.systemPrompt) {
-                const pId = getParticipantTag(p, chatData.participants);
+                const pId = getParticipantTag(p, participants);
                 const pName = p.name;
                 systemPromptLines.push(`${contextStartString}Character ${pId} (${pName}) Prompt: ${replacePlaceholders(p.systemPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${contextEndString}`);
             }
@@ -612,8 +646,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             }
         }
 
-        const isCacheMoreThanLevelZero = cacheLevel > 0;
-
         for (const p of processedMessages) {
             const otherCharacter = p.msg.character;
             const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
@@ -668,6 +700,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
+        'Appearance Prompt': appearanceLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Fatigue Information': fatigueLines,
