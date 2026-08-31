@@ -388,7 +388,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    const isCacheMoreThanLevelZero = cacheLevel > 0;
+    const isCacheMoreThanLevelZero = (cacheLevel > 0);
 
     const appearancePromptLines: string[] = [];
     const hasAnyAppearance = participants.some(p => p.appearancePrompt?.trim());
