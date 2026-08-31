@@ -45,6 +45,9 @@ interface ResolvedRequest {
   body: string;
 }
 
+// ✅ Backends that don't support the `stop` parameter in OpenAI-compatible format
+const STOP_UNSUPPORTED_BACKENDS = new Set(['Google']);
+
 export class LanguageModelEngine {
 
   // ─── Request Building (split by transport type) ──────────────────
@@ -77,16 +80,22 @@ export class LanguageModelEngine {
 
     const payloadModelName = modelPath || 'default-model';
 
-    const body = JSON.stringify({
+    // ✅ Build body — omit `stop` for backends that don't support it
+    const bodyObj: Record<string, unknown> = {
       model: payloadModelName,
       messages: [{ role: "user", content: prompt }],
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
       max_tokens: params.maxTokens,
-      stop: params.stop,
       ...params.extraParams,
-    });
+    };
+
+    if (!STOP_UNSUPPORTED_BACKENDS.has(backend) && params.stop && params.stop.length > 0) {
+      bodyObj.stop = params.stop;
+    }
+
+    const body = JSON.stringify(bodyObj);
 
     return { url, headers, body };
   }

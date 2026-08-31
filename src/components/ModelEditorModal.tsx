@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
+import { cloudBackends } from '../cloudLanguageModelInformation';
 import './main.css';
 
 interface ModelEditorModalProps {
@@ -70,7 +71,7 @@ const DEFAULT_SETTINGS: ModelSettings = {
 
 const BACKEND_OPTIONS = [
     'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2',
-    'TensorRT-LLM', 'Ollama', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo',
+    'TensorRT-LLM', 'Ollama', 'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo',
     'OpenAI', 'Mistral', 'Groq', 'YandexGPT', 'Other',
 ];
 
@@ -85,8 +86,6 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'draft-mtp', label: 'Draft MTP' },
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
-
-const CLOUD_BACKENDS = ['DeepSeek', 'Qwen', 'Kimi', 'GLM', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld'];
 
 const getCacheTypes = (backend: string) => {
     switch (backend) {
@@ -180,7 +179,7 @@ export function ModelEditorModal({
         backend: backend,
     });
 
-    const isCloudBackend = CLOUD_BACKENDS.includes(backend);
+    const isCloudBackend = cloudBackends.includes(backend);
     const isLlamaCpp = backend === 'Llama.cpp';
 
     useEffect(() => {
