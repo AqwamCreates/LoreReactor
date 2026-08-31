@@ -12,7 +12,7 @@ import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
-import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
+import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 
 const languageModelEngine = new LanguageModelEngine();
@@ -80,7 +80,13 @@ async function runBackgroundSummarization(
 ): Promise<void> {
   try {
     const ctxLen = modelRef.current?.contextLength || 8192;
-    const tokens = data.chatMessageHistory.reduce((a, m) => a + estimateTokens(m.textContent), 0);
+
+    // ✅ Fixed: use for loop instead of await inside reduce
+    let tokens = 0;
+    for (const m of data.chatMessageHistory) {
+      tokens += await languageModelEngine.countTokens(m.textContent);
+    }
+
     const triggered = checkTriggerThreshold(data, tokens, ctxLen);
     if (!triggered) return;
 
@@ -118,7 +124,7 @@ async function runBackgroundSummarization(
   } catch (err) { console.warn('Background summarization failed:', err); addToast(`Summarization failed: ${(err as Error).message}`, 'error'); }
 }
 
-// ─── Hook ────────────────────────────────────────────────────────────
+// ─── Hook ───────────────────────────────────────────────────────────
 
 export function useChatSession() {
   const [chatData, setChatData] = useState<ChatData | null>(null);
@@ -133,6 +139,9 @@ export function useChatSession() {
   const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
   const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
   const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
+
+  // ✅ Token count tracked via state + async effect
+  const [tokenCount, setTokenCount] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
@@ -183,6 +192,25 @@ export function useChatSession() {
       } catch {}
     })();
   }, []);
+
+  // ✅ Async token count — recalculates when chat history changes
+  useEffect(() => {
+    if (!chatData) { setTokenCount(0); return; }
+    let cancelled = false;
+    (async () => {
+      const model = selectedModelRef.current;
+      const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
+      const ep = port || (model?.parameters as any)?._runtimePort;
+      const lmCtx = ep ? { runtimePort: ep } : undefined;
+
+      let total = 0;
+      for (const m of chatData.chatMessageHistory) {
+        total += await languageModelEngine.countTokens(m.textContent, lmCtx);
+      }
+      if (!cancelled) setTokenCount(total);
+    })();
+    return () => { cancelled = true; };
+  }, [chatData?.chatMessageHistory]);
 
   // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -356,8 +384,9 @@ export function useChatSession() {
       return addMessageToChatData(dataWithRegen, aiMessage);
     } catch (err) {
       const e = err as Error;
-      const pt = streamingTextRef.current, pc = streamingCharacterRef.current;
-      if (pt && pt.trim() && pc) pendingPartialRef.current = { text: pt, character: pc };
+      const pt = streamingTextRef.current;
+      const pc = streamingCharacterRef.current;
+      if (pt?.trim() && pc) pendingPartialRef.current = { text: pt, character: pc };
       if (e.name === 'AbortError') return null;
       const isNet = ['Failed to fetch','NetworkError','ERR_ABORTED','502','503','504'].some(s => e.message.includes(s));
       if (isNet) { if (!signal.aborted) addToast('⚠️ Backend Connection Failed.', 'error'); return null; }
@@ -671,7 +700,6 @@ export function useChatSession() {
 
   // ─── Return ──────────────────────────────────────────────────────
 
-  const tokenCount = chatData ? chatData.chatMessageHistory.reduce((a, m) => a + estimateTokens(m.textContent), 0) : 0;
   const maxCtx = selectedModel?.contextLength || 8192;
 
   return {

@@ -1,5 +1,5 @@
 // src/services/linkFetcher.ts
-import { estimateTokens, type LanguageModelContext } from './LanguageModelEngine';
+import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
 import type { searchEngine } from '../types';
@@ -8,6 +8,8 @@ import { v4 as uuidv4 } from 'uuid';
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_PROXY_URL = '/api/web/fetch';
+
+const tokenEngine = new LanguageModelEngine()
 
 interface FetchResult {
     url: string;
@@ -84,7 +86,7 @@ function getSubdirectoryScope(url: string): string {
         const pathParts = parsed.pathname.split('/');
         // Remove the last segment (filename or trailing segment)
         pathParts.pop();
-        const directoryPath = pathParts.join('/') + '/';
+        const directoryPath = `${pathParts.join('/')}/`;
         return `${parsed.origin}${directoryPath}`;
     } catch {
         return url;
@@ -298,7 +300,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
                     links: [],
                     images: [],
                     fetchedAt: diskCached.lastUpdatedTimestamp,
-                    tokenEstimate: estimateTokens(diskCached.content),
+                    tokenEstimate: await tokenEngine.countTokens(diskCached.content),
                 };
                 fetchCache.set(cacheKey, result);
                 return result;
@@ -357,7 +359,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             links,
             images,
             fetchedAt: now,
-            tokenEstimate: estimateTokens(content),
+            tokenEstimate: await tokenEngine.countTokens(content),
         };
 
         fetchCache.set(cacheKey, fetchResult);
@@ -447,7 +449,7 @@ export async function fetchLinkContent(
 
     if (fetchMode === 'extract') {
         result.content = extractStructuredContent(result.content);
-        result.tokenEstimate = estimateTokens(result.content);
+        result.tokenEstimate = await tokenEngine.countTokens(result.content);
     }
 
     const allResults: FetchResult[] = [result];
@@ -580,7 +582,7 @@ export async function fetchMultipleContextUrls(
                     links: [],
                     images: [],
                     fetchedAt: Date.now(),
-                    tokenEstimate: estimateTokens(finalContent),
+                    tokenEstimate: await tokenEngine.countTokens(finalContent),
                 });
             }
         }

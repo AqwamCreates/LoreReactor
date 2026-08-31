@@ -2,7 +2,7 @@
 import type { Character, ChatData, ChatMessage, Context, StopPattern, PromptBlockType } from '../types';
 import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
-import { LanguageModelEngine, estimateTokens } from '../services/LanguageModelEngine';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrl } from './storage';
 import { getEffectiveMaximumChatStamina } from './characterLogic';
@@ -309,10 +309,8 @@ async function resolveContextEntries(
         let tokenCount: number;
         if (context.tokenBudget && context.tokenBudget > 0) {
             tokenCount = context.tokenBudget;
-        } else if (runtimePort) {
-            tokenCount = await tokenEngine.countTokens(formattedLine, { runtimePort });
         } else {
-            tokenCount = estimateTokens(formattedLine);
+            tokenCount = await tokenEngine.countTokens(formattedLine, { runtimePort });
         }
 
         formattedEntries.push({ context, formattedLine, tokenCount });
