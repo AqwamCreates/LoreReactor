@@ -13,7 +13,6 @@ interface ContextEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (context: Context) => void;
-    onDelete?: (id: string) => void;
     existingContext?: Context | null;
     allCharacters?: Character[];
     runtimePort?: number;
@@ -25,7 +24,6 @@ export function ContextEditorModal({
     isOpen,
     onClose,
     onSave,
-    onDelete,
     existingContext,
     allCharacters = [],
     runtimePort,
