@@ -74,20 +74,20 @@ export function ContextEditorModal({
 
     // ✅ Debounced accurate token count using countTokens (hits llama.cpp /tokenize when available)
     useEffect(() => {
-        // Show instant rough estimate immediately
-        setTextTokenCount(Math.ceil(text.length / 4));
+        let cancelled = false;
 
         if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             try {
                 const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
-                setTextTokenCount(count);
+                if (!cancelled) setTextTokenCount(count);
             } catch {
-                setTextTokenCount(Math.ceil(text.length / 4));
+                if (!cancelled) setTextTokenCount(Math.ceil(text.length / 4));
             }
         }, 400);
 
         return () => {
+            cancelled = true;
             if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         };
     }, [text, runtimePort]);
