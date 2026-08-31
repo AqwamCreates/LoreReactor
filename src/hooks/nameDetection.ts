@@ -15,23 +15,19 @@ const SELF_NAME_REVEAL_PATTERNS = [
 ];
 
 const NAME_REVEAL_QUESTION_PATTERNS = [
-  // 1. ... name(s)?
+  // Questions (end with ?)
   /\bnames?\?/i,
-
-  // 2. ... call/address/refer you/thy?
   /\b(?:call|address|refer\s+to)\s+(?:you|thy|thee).*?\?/i,
-
-  // 3. ... about you?
   /\babout\s+(?:you|thy|thee).*?\?/i,
-
-  // 4. ... are you?
   /\bare\s+(?:you|thy|thee).*?\?/i,
-
-  // 5. ... you are?
   /\b(?:you|thy|thee)\s+are.*?\?/i,
-
-  // 6. ... go by?
   /\b(?:you|thy|thee)\s+go\s+by\b.*?\?/i,
+
+  // ✅ Demands/imperatives (end with ! or .)
+  /\b(?:want|need|tell\s+me|give\s+me|say)\s+(?:your|ur|the|a)\s+name\b/i,
+  /\b(?:what(?:'s| is))?\s*(?:your|ur)\s+name\b/i,
+  /\b(?:introduce|identify)\s+(?:yourself|thyself)\b/i,
+  /\bwho\s+(?:are|r)\s+(?:you|u|thy|thee)\b/i,
 ];
 
 const NAME_PERMISSION_QUESTION_PATTERNS = [
