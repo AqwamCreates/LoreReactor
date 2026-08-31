@@ -254,7 +254,6 @@ async function resolveContextEntries(
         newActivations = false;
         recursionDepth++;
 
-        // Include fetched content in recursive scan search space
         const activatedTextParts: string[] = [];
         for (const c of activatedMap.values()) {
             if (c.text) activatedTextParts.push(c.text);
@@ -373,22 +372,28 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
-    const revealedNamesMap = new Map<string, boolean>();
 
     for (const msg of chatMessageHistory) {
         characterIdArray.push(msg.character.id);
         textContentArray.push(msg.textContent);
-        if (msg.isNameRevealed) revealedNamesMap.set(msg.character.id, true);
+    }
+
+    // ✅ Build per-character reveal index: names only shown from the reveal message onward.
+    // This prevents retroactive name changes in earlier messages, preserving KV cache stability.
+    const revealIndexByCharId = new Map<string, number>();
+    for (let i = 0; i < chatMessageHistory.length; i++) {
+        const msg = chatMessageHistory[i];
+        if (msg.isNameRevealed && !revealIndexByCharId.has(msg.character.id)) {
+            revealIndexByCharId.set(msg.character.id, i);
+        }
     }
 
     const isCacheMoreThanLevelZero = cacheLevel > 0;
-
 
     const appearancePromptLines: string[] = [];
     const hasAnyAppearance = participants.some(p => p.appearancePrompt?.trim());
 
     if (hasAnyAppearance) {
-
         appearancePromptLines.push(startingAppearancePromptLine);
 
         for (const participant of participants) {
@@ -398,9 +403,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const otherParticipantId = getParticipantId(participant, participants);
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = participant.name;
-            const isRevealed = revealedNamesMap.has(participant.id);
-            const participantTag = getParticipantTag(participant, participants)
-            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName)
+            // For appearance block (prefix), show name if ever revealed OR cache level > 0
+            const isRevealed = revealIndexByCharId.has(participant.id);
+            const participantTag = getParticipantTag(participant, participants);
+            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName);
             
             let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
 
@@ -430,14 +436,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         return combinationCache[ctxType][tgtType];
     };
 
-    // ✅ LINK-BASED CONTEXT FETCHING — delegates summarization to linkFetcher/WebpageSummarizationEngine
     const fetchedContentMap = new Map<string, string>();
     const webContexts = contexts.filter(c =>
         (c.urls && c.urls.length > 0) ||
         (c.searchTerms && c.searchTerms.length > 0)
     );
 
-    // Build model context for summary mode
     const selectedModelParams = (sampler?.parameters as any)?._selectedModel;
     const modelContext = selectedModelParams ? {
         apiKey: selectedModelParams.apiKey,
@@ -449,11 +453,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (ctx) => {
             const cacheTimeToLive = ctx.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
-            const maxDepth = ctx.maximumLinkDepth ?? 0
+            const maxDepth = ctx.maximumLinkDepth ?? 0;
             const fetchMode = ctx.linkFetchMode ?? 'full';
 
-            // Delegate everything to linkFetcher — it handles fetching, summarization,
-            // image extraction, merging, and persistent caching internally
             const { results, errors } = await fetchMultipleContextUrls(
                 ctx.urls ?? [],
                 {
@@ -468,7 +470,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                 }
             );
 
-            // Collect errors
             for (const err of errors) {
                 fetchErrors.push(`${ctx.name}: ${err}`);
             }
@@ -477,8 +478,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
             if (validResults.length === 0) return;
 
-            // Results are already summarized/merged by linkFetcher when fetchMode === 'summary'
-            // For full/extract modes, concatenate multiple results
             const combinedContent = validResults
                 .map(r => `[Source: ${r.url}]\n${r.content}`)
                 .join('\n\n---\n\n');
@@ -491,7 +490,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         await Promise.all(fetchPromises);
     }
 
-    // CONTEXT BLOCK — pass fetchedContentMap for accurate token budgeting
     const contextLines: string[] = [];
     const globalChatSearch = textContentArray.join('\n');
 
@@ -504,10 +502,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         fetchedContentMap
     );
 
+    // For context placeholder replacement, use global reveal state (contexts are prefix-stable)
+    const protagonistEverRevealed = revealIndexByCharId.has(protagonist.id);
+    const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
+
     for (const { context, formattedLine } of resolvedContexts) {
         let line: string;
-
-        const contextProtagonistName = revealedNamesMap.get(protagonist.id) ? protagonistName : null
 
         const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
         const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, contextProtagonistName);
@@ -588,7 +588,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
     }
 
-    let hasBeenSummarized = false
+    let hasBeenSummarized = false;
 
     const chatHistoryLines: string[] = [];
     chatHistoryLines.push(`${contextStartString}Start Of The Memory.${contextEndString}`);
@@ -608,13 +608,13 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
                 const windowSize = step.slidingWindowSize ?? 10;
                 const cutoff = Math.max(0, processedMessages.length - windowSize);
                 for (let i = 0; i < processedMessages.length; i++) {
-                    const processedMessage = processedMessages[i]
-                    const textContentSummary = processedMessage.msg.textContentSummary
+                    const processedMessage = processedMessages[i];
+                    const textContentSummary = processedMessage.msg.textContentSummary;
                     if (i < cutoff && textContentSummary) {
-                        if (!processedMessage) {continue}
-                        if (!textContentSummary) {continue}
+                        if (!processedMessage) continue;
+                        if (!textContentSummary) continue;
                         processedMessage.text = textContentSummary;
-                        hasBeenSummarized = true
+                        hasBeenSummarized = true;
                     }
                 }
             }
@@ -651,13 +651,18 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
         for (const p of processedMessages) {
             const otherCharacter = p.msg.character;
-            const otherParticipantId = getParticipantId(otherCharacter, chatData.participants);
+            const otherParticipantId = getParticipantId(otherCharacter, participants);
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = otherCharacter.name;
-            const isRevealed = revealedNamesMap.has(otherCharacter.id);
+
+            // ✅ Per-message reveal: only show name from the reveal index onward.
+            // Earlier messages keep "Character N" without name, preserving KV cache.
+            const charRevealIndex = revealIndexByCharId.get(otherCharacter.id);
+            const isRevealedAtThisMessage = charRevealIndex !== undefined && p.idx >= charRevealIndex;
+
             let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`;
 
-            if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
+            if (isCacheMoreThanLevelZero || isCurrent || isRevealedAtThisMessage) {
                 chatHistoryText = `${chatHistoryText} (${otherCharacterName})`;
             }
 
@@ -668,9 +673,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     chatHistoryLines.push(`${contextStartString}End Of The Memory.${contextEndString}`);
 
-    if (hasBeenSummarized) {constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`}
+    if (hasBeenSummarized) { constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`; }
 
-    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`
+    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`;
 
     constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${thinkEndString}${contextEndString}`;
 
@@ -686,16 +691,16 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (fatigue) fatigueLines.push(fatigue);
     }
 
-    const dateAndTimeLines = []
+    const dateAndTimeLines: string[] = [];
 
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
-    const dialoguePromptLines: string[] = []
+    const dialoguePromptLines: string[] = [];
 
-    const dialoguePrompt = character.dialoguePrompt
+    const dialoguePrompt = character.dialoguePrompt;
 
     if (dialoguePrompt?.trim()) {
         dialoguePromptLines.push(startingDialoguePromptLine);
@@ -705,10 +710,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     }
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
-    const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`
-    const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`
+    const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me. I will always end a format before starting a new one.${thinkEndString}${contextEndString}`;
+    const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
 
-    const textInjectionLines = [characterResponsePriming, characterTextInjection]; // Be careful with the space here! If you do not add it, the models will not generate text properly!
+    const textInjectionLines = [characterResponsePriming, characterTextInjection];
 
     const blockMap: Record<string, string[]> = {
         'System Prompt': systemPromptLines,
@@ -743,7 +748,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    const prompt = promptLines.join('\n')
+    const prompt = promptLines.join('\n');
 
     return { prompt, activeStopPatterns, activeContextsForImages, fetchErrors };
 }
@@ -774,9 +779,9 @@ export async function prepareRequestBody(
         ...activeStopPatterns.map(sp => sp.pattern),
     ];
 
-    const profile = chatData.Profile
+    const profile = chatData.Profile;
 
-    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection
+    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
@@ -785,21 +790,17 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
 
     if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-
-        const characterImagePath = getCharacterImageUrl(character.id)
+        const characterImagePath = getCharacterImageUrl(character.id);
 
         if (characterImagePath) {
-
-            const characterImageBase64 = await getImageBase64(characterImagePath)
+            const characterImageBase64 = await getImageBase64(characterImagePath);
 
             if (characterImageBase64) {
-
                 const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                 allImageData.push({ data: rawData, id: imageIdCounter++ });
-                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}${prompt}`
+                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}${prompt}`;
             }
         }
-
     }
 
     if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
