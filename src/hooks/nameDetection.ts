@@ -16,27 +16,21 @@ const SELF_NAME_REVEAL_PATTERNS = [
 
 const NAME_REVEAL_QUESTION_PATTERNS = [
   // 1. ... name(s)?
-  // Must end with "name?" or "names?"
   /\bnames?\?/i,
 
   // 2. ... call/address/refer you/thy?
-  // Must contain the verb phrase AND end with a question mark
   /\b(?:call|address|refer\s+to)\s+(?:you|thy|thee).*?\?/i,
 
   // 3. ... about you?
-  // Must contain "about you" AND end with a question mark
   /\babout\s+(?:you|thy|thee).*?\?/i,
 
   // 4. ... are you?
-  // Must contain "are you" AND end with a question mark
   /\bare\s+(?:you|thy|thee).*?\?/i,
 
   // 5. ... you are?
-  // Must contain "you are" AND end with a question mark
   /\b(?:you|thy|thee)\s+are.*?\?/i,
 
-  // 6. ... you are?
-  // Must contain "you are" AND end with a question mark
+  // 6. ... go by?
   /\b(?:you|thy|thee)\s+go\s+by\b.*?\?/i,
 ];
 
@@ -82,14 +76,32 @@ function detectDirectNameReveal(text: string, characterName: string): boolean {
   return capturedLower.includes(targetLower) || targetLower.includes(capturedLower);
 }
 
-function detectNameReveal(text: string, characterName: string): boolean {
+function detectBareNameDeclaration(text: string, characterName: string): boolean {
+  const bareNameMatch = text.match(new RegExp(`^(${NAME_CAPTURE})\\.`, 'm'));
+  if (!bareNameMatch?.[1]) return false;
 
+  const capturedLower = bareNameMatch[1].trim().toLowerCase();
+  const targetLower = characterName.toLowerCase();
+
+  return capturedLower.includes(targetLower) || targetLower.includes(capturedLower);
+}
+
+function detectNameReveal(text: string, characterName: string, nameQuestionRecentlyAsked: boolean = false): boolean {
   if (detectDirectNameReveal(text, characterName)) {
     return true;
   }
 
- return matchesAnyPattern(text, NAME_REVEAL_INTENT_PATTERNS);
+  if (matchesAnyPattern(text, NAME_REVEAL_INTENT_PATTERNS)) {
+    return true;
+  }
 
+  if (nameQuestionRecentlyAsked) {
+    if (detectBareNameDeclaration(text, characterName)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function detectNameQuestion(text: string): boolean {
@@ -136,17 +148,15 @@ function detectNamePermissionSequence(
   return isLikelyJustAName || isDirectReveal;
 }
 
-export function detectName(chatMessageHistory: ChatMessage[],  characterId: string,  characterName: string, text: string){
+export function detectName(chatMessageHistory: ChatMessage[], characterId: string, characterName: string, text: string) {
+  const nameQuestionRecentlyAsked = chatMessageHistory.some(msg => detectNameQuestion(msg.textContent));
 
-  if (detectNameReveal(text, characterName)) {return true}
+  if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
 
-  const questionAskedPreviously = chatMessageHistory.some(msg => {return detectNameQuestion(msg.textContent)});
-
-  if (questionAskedPreviously) {
+  if (nameQuestionRecentlyAsked) {
     const isLikelyJustAName = text.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(text);
-    if (isLikelyJustAName) { return true }
+    if (isLikelyJustAName) return true;
   }
 
   return detectNamePermissionSequence(chatMessageHistory, characterId, characterName, text);
-
 }
