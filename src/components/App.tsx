@@ -27,6 +27,7 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
+import { cloudBackends } from '../cloudLanguageModelInformation';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
   ChatData, RawChatData, Extension, InterjectableAction, Profile
@@ -60,12 +61,14 @@ const MemoizedMessageText = React.memo(({ text }: { text: string }) => (
 
 function renderModelSubtext(model: LanguageModel, runningModels: Record<string, any>, selectedModelId: string | null) {
   const ms = runningModels[model.id];
+  const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
       {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
+      {isCloud && <span style={{ fontSize: '0.7rem', background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cloud</span>}
       {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
       {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
-      {selectedModelId === model.id && !ms?.isRunning && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
+      {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
       <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
       <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
       <span>{model.description}</span>
@@ -242,9 +245,25 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
-  // Derived
-  const isModelReady = selectedModelId ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true : false;
-  const isModelLoading = selectedModelId ? runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true : false;
+  // ✅ Derived model readiness — cloud models are always ready when selected
+  const isModelReady = useMemo(() => {
+    if (!selectedModelId) return false;
+    const selectedModel = allModels.find(m => m.id === selectedModelId);
+    if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend)) {
+      return true;
+    }
+    return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true;
+  }, [selectedModelId, allModels, runningModels]);
+
+  const isModelLoading = useMemo(() => {
+    if (!selectedModelId) return false;
+    const selectedModel = allModels.find(m => m.id === selectedModelId);
+    if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend)) {
+      return false;
+    }
+    return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
+  }, [selectedModelId, allModels, runningModels]);
+
   const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
   const hasSession = !!currentCharacter && !!chatData;
   const isMassActive = massDeleteId !== null;
@@ -258,7 +277,6 @@ function App() {
   useEffect(() => { loadInterjectableActions().then(setActions); }, []);
   useEffect(() => { if (actions.length > 0) saveInterjectableActions(actions); }, [actions]);
 
-  // ✅ STEP 1: Restore persisted IDs on mount (before managers load)
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedBudgetId = localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY);
@@ -267,7 +285,6 @@ function App() {
     if (savedDefaultCharId) setDefaultCharacterId(savedDefaultCharId);
     if (savedBudgetId) setSelectedBudgetStrategyId(savedBudgetId);
 
-    // Restore active chat session
     if (savedChatId) {
       (async () => {
         try {
@@ -287,7 +304,6 @@ function App() {
     }
   }, []);
 
-  // ✅ STEP 2: Persist active chat ID whenever it changes
   useEffect(() => {
     if (chatData?.id) {
       localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, chatData.id);
@@ -296,7 +312,6 @@ function App() {
     }
   }, [chatData?.id]);
 
-  // ✅ STEP 3: Persist budget strategy ID whenever it changes
   useEffect(() => {
     if (selectedBudgetStrategyId) {
       localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, selectedBudgetStrategyId);
@@ -305,21 +320,16 @@ function App() {
     }
   }, [selectedBudgetStrategyId]);
 
-  // ✅ STEP 4: Re-apply budget strategy AFTER strategies finish loading
-  // This fixes the race condition where setSelectedBudgetStrategyId runs
-  // before allBudgetStrategies is populated.
   useEffect(() => {
     if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
     const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
     if (strategy) {
       setActiveBudgetStrategy(strategy);
     } else {
-      // Strategy was deleted externally; clean up stale reference
       setSelectedBudgetStrategyId(null);
     }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
-  // ✅ STEP 5: Persist default character ID whenever it changes
   useEffect(() => {
     if (defaultCharacterId) {
       localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, defaultCharacterId);
@@ -327,17 +337,6 @@ function App() {
       localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
     }
   }, [defaultCharacterId]);
-
-  // Note on Profile persistence:
-  // Profiles are stored INSIDE chatData.Profile and persisted via saveRawChatData.
-  // When the active chat is restored (Step 1), its embedded Profile is restored with it.
-  // There is no separate global default profile — profiles are per-session.
-
-  // Note on Character/Context list selections:
-  // These are stored INSIDE chatData.participants and chatData.contexts.
-  // When the active chat is restored (Step 1), these arrays are restored with it.
-  // Toggling participants/contexts updates chatData, which triggers safeAutoSave,
-  // persisting the selection as part of the chat session.
 
   useEffect(() => {
     (async () => {
@@ -366,7 +365,6 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // ✅ Sync chatData embedded copies when managers reload after save.
   useEffect(() => {
     if (!chatData) return;
     let changed = false;
@@ -416,7 +414,6 @@ function App() {
     if (changed) setChatData(updated);
   }, [allCharacters, allContexts, allProfiles]);
 
-  // ✅ Sync active budget strategy's embedded model references when models update.
   useEffect(() => {
     if (!activeStrategy) return;
     let stratChanged = false;
@@ -437,7 +434,6 @@ function App() {
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [allModels]);
 
-  // Loading progress
   useEffect(() => {
     setLoadSteps(prev => prev.map(s => ({
       ...s,
@@ -929,7 +925,7 @@ function App() {
             <div className="input-area">
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
               <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter.name}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !chatData || !isModelReady} />
+              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !chatData || !isModelReady} />
               <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
             </div>
           </div>
@@ -945,7 +941,7 @@ function App() {
         {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={chatData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} onDelete={contextModal.handleDelete} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
 
-        {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
+        {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
         {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} onDelete={modelModal.handleDelete} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
 
         {isSamplerListOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSamplerListOpen(false)} onSelect={s => handleOpenSamplerEditor(s)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
