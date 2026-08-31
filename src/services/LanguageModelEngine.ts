@@ -1,6 +1,6 @@
 // src/services/LanguageModelEngine.ts
-
 import { localAddress } from "../configurations";
+import { cloudBackends, cloudEndpoints } from "../cloudLanguageModelInformation"
 
 export interface TokenStats {
   fullText: string;
@@ -23,24 +23,6 @@ export interface LanguageModelContext {
   modelPath?: string;
   runtimePort?: number;
 }
-
-const CLOUD_ENDPOINTS: Record<string, string> = {
-  'DeepSeek': 'https://api.deepseek.com/chat/completions',
-  'Qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-  'Kimi': 'https://api.moonshot.ai/v1/chat/completions',
-  'GLM': 'https://api.z.ai/api/paas/v4/chat/completions',
-  'MiMo': 'https://api.xiaomimimo.com/v1/chat/completions',
-  'OpenAI': 'https://api.openai.com/v1/chat/completions',
-  'Mistral': 'https://api.mistral.ai/v1/chat/completions',
-  'Groq': 'https://api.groq.com/openai/v1/chat/completions',
-  'YandexGPT': 'https://ai.api.cloud.yandex.net/v1/chat/completions',
-  'OpenRouter': 'https://openrouter.ai/api/v1/chat/completions',
-  'Inworld': 'https://api.inworld.ai/v1/chat/completions',
-};
-
-const CLOUD_BACKENDS = [
-  'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
-];
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -69,7 +51,7 @@ export class LanguageModelEngine {
     existingText?: string
   ): { url: string; headers: HeadersInit; body: string } {
     const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
-    const isCloud = !!apiKey && backend && CLOUD_BACKENDS.includes(backend);
+    const isCloud = !!apiKey && backend && cloudBackends.includes(backend);
 
     const finalPrompt = existingText && existingText.trim().length > 0
       ? `${prompt}${existingText}`
@@ -84,7 +66,7 @@ export class LanguageModelEngine {
         if (!modelPath) throw new Error("Custom URL (Model Path) is required for 'Other' backend.");
         url = modelPath;
       } else {
-        const defaultUrl = CLOUD_ENDPOINTS[backend];
+        const defaultUrl = cloudEndpoints[backend];
         if (!defaultUrl) throw new Error(`Unsupported cloud backend: ${backend}`);
         url = defaultUrl;
       }

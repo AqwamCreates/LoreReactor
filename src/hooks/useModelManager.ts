@@ -4,12 +4,13 @@ import type { LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from './storage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
+import { cloudBackends } from '../cloudLanguageModelInformation';
 
 interface ModelState {
-  isRunning: boolean;
-  port?: number;
-  status?: 'starting' | 'ready' | 'error';
-  isIdle?: boolean;
+    isRunning: boolean;
+    port?: number;
+    status?: 'starting' | 'ready' | 'error';
+    isIdle?: boolean;
 }
 
 export function useModelManager() {
@@ -156,6 +157,24 @@ export function useModelManager() {
     };
 
     const toggleModelLoad = async (id: string, forceUnload: boolean = false) => {
+        const model = models.find(m => m.id === id);
+        if (!model) return;
+
+        // ✅ Cloud models with API keys don't need local loading.
+        // Just select/deselect them.
+        const isCloudModel = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
+
+        if (isCloudModel) {
+            if (selectedModelId === id) {
+                setSelectedModelId(null);
+                addToast(`Cloud model ${model.name} deselected`, "info");
+            } else {
+                setSelectedModelId(id);
+                addToast(`Cloud model ${model.name} selected`, "success");
+            }
+            return;
+        }
+
         const isCurrentlyRunning = runningModels[id]?.isRunning;
         
         if (isCurrentlyRunning && !forceUnload) {
@@ -178,9 +197,6 @@ export function useModelManager() {
             }
         } 
         else if (!isCurrentlyRunning) {
-            const model = models.find(m => m.id === id);
-            if (!model) return;
-
             // Enforce single model: unload any other running model first
             const otherRunningIds = Object.entries(runningModels)
                 .filter(([rid, state]) => rid !== id && state.isRunning)
@@ -194,7 +210,7 @@ export function useModelManager() {
 
             const modelPath = model.model || '';
             
-            // ✅ Build args array with context length, GPU layers, mmproj, and lora
+            // Build args array with context length, GPU layers, mmproj, and lora
             const args: string[] = [];
             args.push('-c', model.contextLength.toString());
             args.push('-ngl', '99');
@@ -212,9 +228,7 @@ export function useModelManager() {
             // Append any extra args from model parameters
             const params = model.parameters || {};
             if (params.gpu_layers !== undefined) {
-                // Override default -ngl if user specified custom value
                 const nglIndex = args.indexOf('-ngl');
-
                 if (nglIndex !== -1) {
                     args[nglIndex + 1] = String(params.gpu_layers);
                 }
@@ -227,7 +241,6 @@ export function useModelManager() {
             }
             
             if (params.extra_flags && String(params.extra_flags).trim()) {
-                // Split extra flags by space and append each as separate arg
                 const extraArgs = String(params.extra_flags).trim().split(/\s+/);
                 args.push(...extraArgs);
             }
