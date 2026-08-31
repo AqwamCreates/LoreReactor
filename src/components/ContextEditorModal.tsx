@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
+
+const tokenEngine = new LanguageModelEngine();
 
 interface ContextEditorModalProps {
     isOpen: boolean;
@@ -13,6 +16,7 @@ interface ContextEditorModalProps {
     onDelete?: (id: string) => void;
     existingContext?: Context | null;
     allCharacters?: Character[];
+    runtimePort?: number;
 }
 
 const SEARCH_ENGINE_OPTIONS: searchEngine[] = ['Google', 'Bing', 'DuckDuckGo', 'Yandex', 'Baidu'];
@@ -24,6 +28,7 @@ export function ContextEditorModal({
     onDelete,
     existingContext,
     allCharacters = [],
+    runtimePort,
 }: ContextEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -41,6 +46,10 @@ export function ContextEditorModal({
     const [testResult, setTestResult] = useState<boolean | null>(null);
     const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; urls?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ✅ Token count for the text field — uses countTokens with runtime port, falls back to estimate
+    const [textTokenCount, setTextTokenCount] = useState(0);
+    const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Lorebook fields
     const [tokenBudget, setTokenBudget] = useState<number>(0);
@@ -62,6 +71,25 @@ export function ContextEditorModal({
 
     const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(false);
     const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(false);
+
+    useEffect(() => {
+        // Show instant rough estimate immediately
+        setTextTokenCount(await tokenEngine.countTokens(text));
+
+        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+        tokenDebounceRef.current = setTimeout(async () => {
+            try {
+                const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
+                setTextTokenCount(count);
+            } catch {
+                setTextTokenCount(await tokenEngine.countTokens(text));
+            }
+        }, 400);
+
+        return () => {
+            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+        };
+    }, [text, runtimePort]);
 
     useEffect(() => {
         if (isOpen) {
@@ -359,6 +387,7 @@ export function ContextEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Text {textRequiresAsterisk && <span style={{ color: '#ff4444' }}>*</span>}</label>
                         <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using URLs or search terms)" rows={6} />
+                        <div style={{ fontSize: '0.65rem', opacity: 0.5, textAlign: 'right', marginTop: '2px', fontFamily: 'monospace' }}>~{textTokenCount} tokens</div>
                         {errors.text && <div className="editor-error-message">{errors.text}</div>}
                     </div>
 
