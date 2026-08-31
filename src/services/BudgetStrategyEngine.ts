@@ -1,6 +1,6 @@
 // src/services/BudgetStrategyEngine.ts
 import type { BudgetStrategy, Character, ChatData } from '../types';
-import { LanguageModelEngine, estimateTokens, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
+import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 
@@ -67,9 +67,9 @@ export class BudgetStrategyEngine {
         const onlineCtx = buildModelContext(this.strategy.onlineModel);
         const localCtx = buildModelContext(this.strategy.localModel);
 
-        const complexityScore = computeComplexityScore(chatData)
+        const complexityScore = computeComplexityScore(chatData);
 
-        const useOnline = this.shouldUseOnline(chatData, complexityScore);
+        const useOnline = await this.shouldUseOnline(chatData, complexityScore);
         const primaryCtx = useOnline ? onlineCtx : localCtx;
         const fallbackCtx = useOnline ? localCtx : onlineCtx;
         const primaryModel = useOnline ? this.strategy.onlineModel : this.strategy.localModel;
@@ -98,8 +98,8 @@ export class BudgetStrategyEngine {
             );
 
             // Estimate cost from token counts in the result
-            const promptTokens = estimateTokens(body.prompt || '');
-            const completionTokens = estimateTokens(result.text);
+            const promptTokens = await engine.countTokens(body.prompt || '');
+            const completionTokens = await engine.countTokens(result.text);
             const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
             this.currentCost += cost.totalCost;
 
@@ -122,8 +122,8 @@ export class BudgetStrategyEngine {
                     fallbackCtx,
                 );
 
-                const promptTokens = estimateTokens(fallbackBody.prompt || '');
-                const completionTokens = estimateTokens(result.text);
+                const promptTokens = await engine.countTokens(fallbackBody.prompt || '');
+                const completionTokens = await engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                 this.currentCost += cost.totalCost;
 
@@ -133,12 +133,17 @@ export class BudgetStrategyEngine {
         }
     }
 
-    private shouldUseOnline(chatData: ChatData, complexityScore?: number): boolean {
+    private async shouldUseOnline(chatData: ChatData, complexityScore?: number): Promise<boolean> {
         // Budget exceeded → force local
         if (this.currentCost >= this.strategy.maximumBudget) return false;
 
+        // ✅ Fixed: use for loop instead of await inside reduce
+        let tokenCount = 0;
+        for (const m of chatData.chatMessageHistory) {
+            tokenCount += await engine.countTokens(m.textContent);
+        }
+
         // Context size threshold
-        const tokenCount = chatData.chatMessageHistory.reduce((sum, m) => sum + estimateTokens(m.textContent), 0);
         if (tokenCount >= this.strategy.switchOnContextSize) return true;
 
         // Complexity score threshold
