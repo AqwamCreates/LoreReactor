@@ -1,8 +1,9 @@
 export const cloudBackends = [
-    'OpenAI', 'DeepSeek', 'Qwen', 'Kimi', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
+    'Google', 'DeepSeek', 'Qwen', 'Kimi', 'OpenAI', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
+  'Google': 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
   'DeepSeek': 'https://api.deepseek.com/chat/completions',
   'Qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
   'Kimi': 'https://api.moonshot.ai/v1/chat/completions',
