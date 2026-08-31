@@ -662,7 +662,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
             let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`;
 
-            if (isCacheMoreThanLevelZero || isCurrent || isRevealedAtThisMessage) {
+            if (isCurrent || isRevealedAtThisMessage) {
                 chatHistoryText = `${chatHistoryText} (${otherCharacterName})`;
             }
 
