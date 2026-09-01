@@ -134,6 +134,7 @@ export function useChatSession() {
   const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
   const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
   const [generationSpeed, setGenerationSpeed] = useState(0);
+  const [timeToFirstToken, setTimeToFirstToken] = useState(0);
   const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
   const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
   const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
@@ -232,6 +233,7 @@ export function useChatSession() {
     streamingTextRef.current = ''; streamingCharacterRef.current = null;
     pendingStreamingTextRef.current = ''; lastFlushRef.current = 0;
     resumingMessageIdRef.current = null; resumingExistingTextRef.current = '';
+    setTimeToFirstToken(0);
     if (pendingFlushRef.current) { clearTimeout(pendingFlushRef.current); pendingFlushRef.current = null; }
   }, []);
 
@@ -339,7 +341,7 @@ export function useChatSession() {
       if (strat) {
         const previousCost = budgetCumulativeCostRef.current;
         const engine = new BudgetStrategyEngine(strat, previousCost);
-        const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
+        const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
         rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64);
         budgetCumulativeCostRef.current = engine.currentCost;
         const requestCost = engine.currentCost - previousCost;
@@ -355,7 +357,7 @@ export function useChatSession() {
 
         const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
           const result = await languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
-            onToken: (s) => { setGenerationSpeed(s.msPerToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
+            onToken: (s) => { setGenerationSpeed(s.msPerToken); if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
             onFinish: (rs) => {
               const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
               setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
@@ -471,7 +473,7 @@ export function useChatSession() {
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
     setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
     setStreamingCharacter(targetChar); streamingCharacterRef.current = targetChar;
-    setGenerationSpeed(0); isAtBottomRef.current = true;
+    setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
     try {
       const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, '');
       if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
@@ -487,7 +489,7 @@ export function useChatSession() {
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
     setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
     setStreamingCharacter(null); streamingCharacterRef.current = null;
-    setGenerationSpeed(0); isAtBottomRef.current = true;
+    setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
     try {
       const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
       const td = addMessageToChatData(chatData, createChatMessage(chatData, currentCharacter, text));
@@ -541,7 +543,7 @@ export function useChatSession() {
 
     setStreamingText(existingText); streamingTextRef.current = existingText; pendingStreamingTextRef.current = existingText;
     setStreamingCharacter(char); streamingCharacterRef.current = char;
-    setGenerationSpeed(0); isAtBottomRef.current = true;
+    setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
 
     try {
       const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
@@ -554,6 +556,7 @@ export function useChatSession() {
       const result = await languageModelEngine.generateStream(body, ctrl, {
         onToken: (s) => {
           setGenerationSpeed(s.msPerToken);
+          if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
           const displayText = existingText + s.fullText;
           streamingTextRef.current = displayText;
           throttledSetStreamingText(displayText);
@@ -626,7 +629,7 @@ export function useChatSession() {
     setChatData(td); chatDataRef.current = td;
     setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
     setStreamingCharacter(null); streamingCharacterRef.current = null;
-    setGenerationSpeed(0); isAtBottomRef.current = true;
+    setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
     const ctrl = new AbortController(); abortControllerRef.current = ctrl;
     const preCount = td.chatMessageHistory.length;
     try {
@@ -707,7 +710,7 @@ export function useChatSession() {
     isLoading, streamingText, streamingCharacter,
     sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
     messageEndRef, chatHistoryRef, parentChatMessageIds,
-    generationSpeed, messageCount: chatData?.chatMessageHistory.length || 0,
+    generationSpeed, timeToFirstToken, messageCount: chatData?.chatMessageHistory.length || 0,
     tokenCount, maximumNumberOfTokens: maxCtx, startNewChat,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
     activeStrategy,

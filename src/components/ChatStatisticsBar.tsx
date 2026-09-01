@@ -7,13 +7,14 @@ interface ChatStatisticsBarProps {
     messageCount: number;
     tokenCount: number;
     maximumNumberOfTokens: number;
+    timeToFirstToken: number; // ms
     className?: string;
     numberOfCacheInvalidations?: number;
     numberOfRequests?: number;
     totalCost?: number;
     costWithoutCacheMisses?: number;
-    cacheHitCostPerMillion?: number;
-    cacheMissCostPerMillion?: number;
+    inputCacheHitCostPerMillion?: number;
+    inputCacheMissCostPerMillion?: number;
     outputGenerationCostPerMillion?: number;
 }
 
@@ -22,6 +23,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     messageCount = 0,             
     tokenCount = 0,               
     maximumNumberOfTokens = 65536,
+    timeToFirstToken = 0,
     className = '',
     numberOfCacheInvalidations = 0,
     numberOfRequests = 0,
@@ -48,6 +50,18 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     
     // Dynamic Icon: Lightning for fast, Turtle for slow
     const speedIcon = isFastEnough ? '⚡' : '🐢';
+
+    // TTFT display formatting
+    const ttftDisplay = timeToFirstToken < 1000 
+        ? `${Math.round(timeToFirstToken)}ms` 
+        : `${(timeToFirstToken / 1000).toFixed(1)}s`;
+    
+    // TTFT color: green < 2s, yellow 2-4s, red > 4s
+    const ttftColor = timeToFirstToken < 2000 
+        ? '' 
+        : timeToFirstToken < 4000 
+            ? '#ffaa00' 
+            : '#ff4444';
 
     // Calculate Cache Metrics
     const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
@@ -82,6 +96,16 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         {speedDisplay}ms
                     </span>
                 </div>
+
+                {/* Time To First Token */}
+                {timeToFirstToken > 0 && (
+                    <div className="chat-stat-item" title={`Time to First Token: ${timeToFirstToken.toFixed(0)}ms`}>
+                        <span className="chat-stat-label">⏱️</span>
+                        <span className="chat-stat-value" style={{ color: ttftColor }}>
+                            {ttftDisplay}
+                        </span>
+                    </div>
+                )}
 
                 {/* Cache Invalidation Count (Only show if > 0) */}
                 {numberOfCacheInvalidations > 0 && (
@@ -126,6 +150,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             <span className="chat-stat-detail-label">Generation Speed:</span>
                             <span className="chat-stat-detail-value" style={{ color: speedColor }}>
                                 {generationSpeed > 0 ? (1000/generationSpeed).toFixed(1) : '∞'} tokens/s
+                            </span>
+                        </div>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Time to First Token:</span>
+                            <span className="chat-stat-detail-value" style={{ color: ttftColor }}>
+                                {timeToFirstToken > 0 ? ttftDisplay : '—'}
                             </span>
                         </div>
                         <div className="chat-stat-detail-row">
