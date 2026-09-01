@@ -27,7 +27,7 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
-import { cloudBackends } from '../cloudLanguageModelInformation';
+import { cloudBackends } from '../languageModelInformation';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
   ChatData, RawChatData, Extension, InterjectableAction, Profile
