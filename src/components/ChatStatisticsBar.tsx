@@ -101,7 +101,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 {timeToFirstToken > 0 && (
                     <div className="chat-stat-item" title={`Time to First Token: ${timeToFirstToken.toFixed(0)}ms`}>
                         <span className="chat-stat-label">⏱️</span>
-                        <span className="chat-stat-value" style={{ color: ttftColor }}>
+                        <span className="chat-stat-speed-value" style={{ color: ttftColor }}>
                             {ttftDisplay}
                         </span>
                     </div>
