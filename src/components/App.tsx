@@ -162,7 +162,7 @@ function App() {
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
     resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-    generationSpeed, timeToFirstToken, messageCount, numberOfTokens, maximumNumberOfTokens, startNewChat,
+    generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
     activeStrategy,
@@ -271,6 +271,16 @@ function App() {
   const branchOffIndex = chatData?.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
+
+  // ✅ Maximum context tokens (worst-case text context only, no images)
+  const maximumNumberOfContextTokens = useMemo(() => {
+    if (!chatData?.contexts?.length) return 0;
+    let total = 0;
+    for (const ctx of chatData.contexts) {
+      if (ctx.text) total += Math.ceil(ctx.text.length / 4);
+    }
+    return total;
+  }, [chatData?.contexts]);
 
   // ─── Effects: Persistence & Restoration ───────────────────────────
 
@@ -806,7 +816,7 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
             {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
@@ -836,7 +846,18 @@ function App() {
             <div className="header-controls-group">
               <button type="button" className="view-mode-toggle" onClick={() => chatData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
               <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-              <ChatStatisticsBar generationSpeed={generationSpeed} timeToFirstToken={timeToFirstToken} messageCount={messageCount} numberOfTokens={numberOfTokens} maximumNumberOfTokens={maximumNumberOfTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+              <ChatStatisticsBar
+                generationSpeed={generationSpeed}
+                timeToFirstToken={timeToFirstToken}
+                numberOfMessages={numberOfMessages}
+                numberOfTokens={numberOfTokens}
+                maximumNumberOfTokens={maximumNumberOfTokens}
+                maximumNumberOfContextTokens={maximumNumberOfContextTokens}
+                numberOfCacheInvalidations={numberOfCacheInvalidations}
+                numberOfRequests={numberOfRequests}
+                totalCost={totalCost}
+                costWithoutCacheMisses={costWithoutCacheMisses}
+              />
             </div>
           </div></div></header>
 
