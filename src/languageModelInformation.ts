@@ -3,7 +3,7 @@ export const localBackends = [
 ];
 
 export const cloudBackends = [
-    'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
+    'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
