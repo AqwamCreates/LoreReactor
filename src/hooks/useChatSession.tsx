@@ -142,7 +142,7 @@ export function useChatSession() {
   const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
 
   // ✅ Token count tracked via state + async effect
-  const [tokenCount, setTokenCount] = useState(0);
+  const [numberOfTokens, setnumberOfTokens] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
@@ -196,7 +196,7 @@ export function useChatSession() {
 
   // ✅ Async token count — recalculates when chat history changes
   useEffect(() => {
-    if (!chatData) { setTokenCount(0); return; }
+    if (!chatData) { setnumberOfTokens(0); return; }
     let cancelled = false;
     (async () => {
       const model = selectedModelRef.current;
@@ -208,7 +208,7 @@ export function useChatSession() {
       for (const m of chatData.chatMessageHistory) {
         total += await languageModelEngine.countTokens(m.textContent, lmCtx);
       }
-      if (!cancelled) setTokenCount(total);
+      if (!cancelled) setnumberOfTokens(total);
     })();
     return () => { cancelled = true; };
   }, [chatData?.chatMessageHistory]);
@@ -710,7 +710,7 @@ export function useChatSession() {
     sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
     messageEndRef, chatHistoryRef, parentChatMessageIds,
     generationSpeed, timeToFirstToken, messageCount: chatData?.chatMessageHistory.length || 0,
-    tokenCount, maximumNumberOfTokens: maxCtx, startNewChat,
+    numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
     activeStrategy,
     numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
