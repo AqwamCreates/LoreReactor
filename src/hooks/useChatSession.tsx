@@ -233,7 +233,6 @@ export function useChatSession() {
     streamingTextRef.current = ''; streamingCharacterRef.current = null;
     pendingStreamingTextRef.current = ''; lastFlushRef.current = 0;
     resumingMessageIdRef.current = null; resumingExistingTextRef.current = '';
-    setTimeToFirstToken(0);
     if (pendingFlushRef.current) { clearTimeout(pendingFlushRef.current); pendingFlushRef.current = null; }
   }, []);
 
