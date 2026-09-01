@@ -1,5 +1,9 @@
+export const localBackends = [
+    'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2', 'TensorRT-LLM', 'Ollama'
+];
+
 export const cloudBackends = [
-    'Google', 'DeepSeek', 'Qwen', 'Kimi', 'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
+    'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
@@ -21,3 +25,5 @@ export const cloudEndpoints: Record<string, string> = {
   'Perplexity': 'https://api.perplexity.ai/chat/completions',
   'NovelAI': 'https://text.novelai.net/oa/v1/chat/completions',
 };
+
+export const allBackends = [...localBackends, ...cloudBackends];

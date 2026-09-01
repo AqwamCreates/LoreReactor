@@ -4,7 +4,7 @@ import type { LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from './storage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
-import { cloudBackends } from '../cloudLanguageModelInformation';
+import { cloudBackends } from '../languageModelInformation';
 
 interface ModelState {
     isRunning: boolean;

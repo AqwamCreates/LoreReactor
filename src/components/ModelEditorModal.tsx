@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
-import { cloudBackends } from '../cloudLanguageModelInformation';
+import { allBackends, cloudBackends } from '../languageModelInformation';
 import './main.css';
 
 interface ModelEditorModalProps {
@@ -68,12 +68,6 @@ const DEFAULT_SETTINGS: ModelSettings = {
     mlock: false,
     numa: false,
 };
-
-const BACKEND_OPTIONS = [
-    'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2',
-    'TensorRT-LLM', 'Ollama', 'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo',
-    'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other',
-];
 
 const SPLIT_MODE_OPTIONS = [
     { value: 'layer', label: 'Layer Split' },
@@ -444,7 +438,7 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Backend</label>
                         <select value={backend} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
-                            {BACKEND_OPTIONS.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+                            {allBackends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                         </select>
                     </div>
 
