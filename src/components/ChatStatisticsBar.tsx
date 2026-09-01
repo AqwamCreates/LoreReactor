@@ -144,7 +144,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Context Used:</span>
-                            <span className="chat-stat-detail-value">{formatNumber(tokenCount)} / {formatNumber(maximumNumberOfTokens)} ({percentage}%)</span>
+                            <span className="chat-stat-detail-value">{formatNumber(tokenCount)} / {formatNumber(maximumNumberOfTokens)}</span>
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Generation Speed:</span>
