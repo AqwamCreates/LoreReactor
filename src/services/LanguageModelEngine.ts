@@ -412,7 +412,7 @@ export class LanguageModelEngine {
     const decoder = new TextDecoder("utf-8");
     let fullContent = existingText || "";
     let firstTokenTime = 0;
-    let newTokenCount = 0;
+    let newnumberOfTokens = 0;
     let paragraphCount = 0;
     let hasReceivedNonWhitespace = false;
     let ttftReported = false;
@@ -463,8 +463,8 @@ export class LanguageModelEngine {
             hasReceivedNonWhitespace = true;
 
             const now = performance.now();
-            if (newTokenCount === 0) firstTokenTime = now;
-            newTokenCount++;
+            if (newnumberOfTokens === 0) firstTokenTime = now;
+            newnumberOfTokens++;
             fullContent += token;
 
             // Paragraph limit enforcement
@@ -486,8 +486,8 @@ export class LanguageModelEngine {
 
             // Speed stats
             const totalTime = now - firstTokenTime;
-            const msPerToken = newTokenCount > 0 ? totalTime / newTokenCount : 0;
-            const tokensPerSecond = totalTime > 0 ? (newTokenCount / totalTime) * 1000 : 0;
+            const msPerToken = newnumberOfTokens > 0 ? totalTime / newnumberOfTokens : 0;
+            const tokensPerSecond = totalTime > 0 ? (newnumberOfTokens / totalTime) * 1000 : 0;
 
             // ✅ Calculate TTFT (only once, on first visible token)
             const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;

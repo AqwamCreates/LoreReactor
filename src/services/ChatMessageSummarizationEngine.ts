@@ -299,7 +299,7 @@ export async function generateRecursiveSummary(
  */
 export function checkTriggerThreshold(
     chatData: ChatData,
-    currentTokenCount: number,
+    currentnumberOfTokens: number,
     languageModelContextLength: number
 ): {
     strategyType: string;
@@ -321,7 +321,7 @@ export function checkTriggerThreshold(
             ? threshold
             : Math.floor(languageModelContextLength * 0.7);
 
-        if (currentTokenCount >= effectiveThreshold) {
+        if (currentnumberOfTokens >= effectiveThreshold) {
             if (step.strategyType === 'Sliding Window Replace') {
                 return {
                     strategyType: step.strategyType,

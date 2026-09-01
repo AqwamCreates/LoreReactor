@@ -46,7 +46,7 @@ export function ContextEditorModal({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // ✅ Token count for the text field — uses countTokens with runtime port, falls back to estimate
-    const [textTokenCount, setTextTokenCount] = useState(0);
+    const [textnumberOfTokens, setTextnumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Lorebook fields
@@ -78,9 +78,9 @@ export function ContextEditorModal({
         tokenDebounceRef.current = setTimeout(async () => {
             try {
                 const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
-                if (!cancelled) setTextTokenCount(count);
+                if (!cancelled) setTextnumberOfTokens(count);
             } catch {
-                if (!cancelled) setTextTokenCount(Math.ceil(text.length / 4));
+                if (!cancelled) setTextnumberOfTokens(Math.ceil(text.length / 4));
             }
         }, 400);
 
@@ -386,7 +386,7 @@ export function ContextEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Text {textRequiresAsterisk && <span style={{ color: '#ff4444' }}>*</span>}</label>
                         <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using URLs or search terms)" rows={6} />
-                        <div style={{ fontSize: '0.65rem', opacity: 0.5, textAlign: 'right', marginTop: '2px', fontFamily: 'monospace' }}>~{textTokenCount} tokens</div>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.5, textAlign: 'right', marginTop: '2px', fontFamily: 'monospace' }}>~{textnumberOfTokens} tokens</div>
                         {errors.text && <div className="editor-error-message">{errors.text}</div>}
                     </div>
 

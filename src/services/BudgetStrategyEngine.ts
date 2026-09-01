@@ -138,13 +138,13 @@ export class BudgetStrategyEngine {
         if (this.currentCost >= this.strategy.maximumBudget) return false;
 
         // ✅ Fixed: use for loop instead of await inside reduce
-        let tokenCount = 0;
+        let numberOfTokens = 0;
         for (const m of chatData.chatMessageHistory) {
-            tokenCount += await engine.countTokens(m.textContent);
+            numberOfTokens += await engine.countTokens(m.textContent);
         }
 
         // Context size threshold
-        if (tokenCount >= this.strategy.switchOnContextSize) return true;
+        if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
 
         // Complexity score threshold
         if (complexityScore !== undefined && complexityScore >= this.strategy.switchOnComplexityScore) return true;

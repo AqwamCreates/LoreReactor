@@ -288,7 +288,7 @@ async function resolveContextEntries(
         }
     }
 
-    const formattedEntries: { context: Context; formattedLine: string; tokenCount: number }[] = [];
+    const formattedEntries: { context: Context; formattedLine: string; numberOfTokens: number }[] = [];
 
     for (const context of orderedActivated) {
         const fetchedContent = fetchedContentMap?.get(context.id);
@@ -306,22 +306,22 @@ async function resolveContextEntries(
 
         const formattedLine = `${contextStartString}${combinedText}${contextEndString}`;
 
-        let tokenCount: number;
+        let numberOfTokens: number;
         if (context.tokenBudget && context.tokenBudget > 0) {
-            tokenCount = context.tokenBudget;
+            numberOfTokens = context.tokenBudget;
         } else {
-            tokenCount = await tokenEngine.countTokens(formattedLine, { runtimePort });
+            numberOfTokens = await tokenEngine.countTokens(formattedLine, { runtimePort });
         }
 
-        formattedEntries.push({ context, formattedLine, tokenCount });
+        formattedEntries.push({ context, formattedLine, numberOfTokens });
     }
 
     let totalTokens = 0;
     const budgetEntries: typeof formattedEntries = [];
 
     for (const entry of formattedEntries) {
-        if (totalTokens + entry.tokenCount <= DEFAULT_CONTEXT_TOKEN_BUDGET) {
-            totalTokens += entry.tokenCount;
+        if (totalTokens + entry.numberOfTokens <= DEFAULT_CONTEXT_TOKEN_BUDGET) {
+            totalTokens += entry.numberOfTokens;
             budgetEntries.push(entry);
         }
     }

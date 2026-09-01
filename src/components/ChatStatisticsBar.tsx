@@ -3,11 +3,12 @@ import type React from 'react';
 import { useState } from 'react';
 
 interface ChatStatisticsBarProps {
-    generationSpeed: number; // ms per token
-    messageCount: number;
-    tokenCount: number;
+    generationSpeed: number;
+    timeToFirstToken: number; // ms // ms per token
+    numberOfTokens: number;
     maximumNumberOfTokens: number;
-    timeToFirstToken: number; // ms
+    numberOfContextTokens?: number;
+    numberOfMessages: number;
     className?: string;
     numberOfCacheInvalidations?: number;
     numberOfRequests?: number;
@@ -19,11 +20,12 @@ interface ChatStatisticsBarProps {
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
-    generationSpeed = 0,          
-    messageCount = 0,             
-    tokenCount = 0,               
-    maximumNumberOfTokens = 65536,
-    timeToFirstToken = 0,
+    generationSpeed = 0,  
+    timeToFirstToken = 0,                   
+    numberOfTokens = 0,
+    maximumNumberOfTokens = 65536,              
+    numberOfContextTokens = 0,
+    numberOfMessages = 0,  
     className = '',
     numberOfCacheInvalidations = 0,
     numberOfRequests = 0,
@@ -34,7 +36,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 
     // Calculate Percentage
     const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
-    const percentage = Math.min(100, Math.round((tokenCount / safeMax) * 100));
+    const percentage = Math.min(100, Math.round((numberOfTokens / safeMax) * 100));
     const isNearLimit = percentage > 80;
     const isCritical = percentage > 95;
     
@@ -98,14 +100,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 </div>
 
                 {/* Time To First Token */}
-                {
                 <div className="chat-stat-item" title={`Time to First Token: ${timeToFirstToken.toFixed(0)}ms`}>
                     <span className="chat-stat-label">⏱️</span>
                     <span className="chat-stat-speed-value" style={{ color: ttftColor }}>
                         {ttftDisplay}
                     </span>
                 </div>
-                }
 
                 {/* Cache Invalidation Count (Only show if > 0) */}
                 {numberOfCacheInvalidations > 0 && (
@@ -116,7 +116,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 )}
                 
                 {/* Token Usage Bar */}
-                <div className="chat-stat-item chat-stat-token-usage" title={`${tokenCount} / ${maximumNumberOfTokens} tokens`}>
+                <div className="chat-stat-item chat-stat-token-usage" title={`${numberOfTokens} / ${maximumNumberOfTokens} tokens`}>
                     <span className="chat-stat-label">📊</span>
                     <span className="chat-stat-context-bar">
                         <span 
@@ -144,8 +144,14 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Context Used:</span>
-                            <span className="chat-stat-detail-value">{formatNumber(tokenCount)} / {formatNumber(maximumNumberOfTokens)}</span>
+                            <span className="chat-stat-detail-value">{formatNumber(numberOfTokens)} / {formatNumber(maximumNumberOfTokens)}</span>
                         </div>
+                        {numberOfContextTokens > 0 && (
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Context Tokens (API):</span>
+                                <span className="chat-stat-detail-value">{formatNumber(numberOfContextTokens)}</span>
+                            </div>
+                        )}
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Generation Speed:</span>
                             <span className="chat-stat-detail-value" style={{ color: speedColor }}>
@@ -160,11 +166,11 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Number Of Messages:</span>
-                            <span className="chat-stat-detail-value">{formatNumber(messageCount)}</span>
+                            <span className="chat-stat-detail-value">{formatNumber(numberOfMessages)}</span>
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
-                            <span className="chat-stat-detail-value">{messageCount > 0 ? (tokenCount / messageCount).toFixed(1) : '0'} tokens</span>
+                            <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(1) : '0'} tokens</span>
                         </div>
                     </div>
 
