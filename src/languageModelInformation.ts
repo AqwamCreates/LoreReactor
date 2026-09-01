@@ -3,7 +3,7 @@ export const localBackends = [
 ];
 
 export const cloudBackends = [
-    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
+    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
@@ -16,6 +16,7 @@ export const cloudEndpoints: Record<string, string> = {
     'OpenAI': 'https://api.openai.com/v1/chat/completions',
     'Anthropic': 'https://api.anthropic.com/v1/messages',
     'Mistral': 'https://api.mistral.ai/v1/chat/completions',
+    'Grok': 'https://api.x.ai/v1',
     'Groq': 'https://api.groq.com/openai/v1/chat/completions',
     'YandexGPT': 'https://ai.api.cloud.yandex.net/v1/chat/completions',
     'OpenRouter': 'https://openrouter.ai/api/v1/chat/completions',
