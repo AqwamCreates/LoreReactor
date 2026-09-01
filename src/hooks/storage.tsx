@@ -763,7 +763,7 @@ async function buildChatDataShell(
     participants, 
     contexts, 
     chatMessageHistory: [],
-    messageCount: rawChatData.chatMessageIdHistory?.length ?? 0,
+    numberOfMessages: rawChatData.chatMessageIdHistory?.length ?? 0,
     firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
     parentChatDataId: rawChatData.parentChatDataId || null, 
@@ -805,7 +805,7 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
 
     const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
 
-    return { ...chatData, chatMessageHistory, messageCount: chatMessageHistory.length };
+    return { ...chatData, chatMessageHistory, numberOfMessages: chatMessageHistory.length };
 }
 
 export async function loadRawChatData(id: string): Promise<ChatData | null> {
@@ -878,7 +878,7 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, chatMessageHistory, messageCount, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
+  const { id, protagonist, participants, contexts, chatMessageHistory, numberOfMessages, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, 
     protagonistId: protagonist.id, 
