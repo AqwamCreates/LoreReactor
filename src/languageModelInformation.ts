@@ -30,7 +30,6 @@ export const cloudEndpoints: Record<string, string> = {
 
 // ✅ Token counting endpoints for cloud backends that expose a dedicated tokenizer API.
 // Providers not listed here fall back to char/4 estimation in LanguageModelEngine.countTokens().
-// Actual billing token counts always come from response `usage` metadata regardless of this map.
 export const cloudTokenizeEndpoints: Record<string, string> = {
     'Kimi': 'https://api.moonshot.cn/v1/tokenizers/estimate-token-count',
     'Minimax': 'https://api.minimax.io/v1/responses/input_tokens',

@@ -148,7 +148,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                         {maximumNumberOfContextTokens > 0 && (
                             <div className="chat-stat-detail-row">
-                                <span className="chat-stat-detail-label">Maximum Number Of Context Tokens (API):</span>
+                                <span className="chat-stat-detail-label">Maximum Number Of Context Tokens:</span>
                                 <span className="chat-stat-detail-value">{formatNumber(maximumNumberOfContextTokens)}</span>
                             </div>
                         )}
