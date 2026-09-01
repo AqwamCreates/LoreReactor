@@ -7,7 +7,7 @@ interface ChatStatisticsBarProps {
     timeToFirstToken: number; // ms // ms per token
     numberOfTokens: number;
     maximumNumberOfTokens: number;
-    numberOfContextTokens?: number;
+    maximumNumberOfContextTokens?: number;
     numberOfMessages: number;
     className?: string;
     numberOfCacheInvalidations?: number;
@@ -24,7 +24,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     timeToFirstToken = 0,                   
     numberOfTokens = 0,
     maximumNumberOfTokens = 65536,              
-    numberOfContextTokens = 0,
+    maximumNumberOfContextTokens = 0,
     numberOfMessages = 0,  
     className = '',
     numberOfCacheInvalidations = 0,
@@ -146,10 +146,10 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             <span className="chat-stat-detail-label">Context Used:</span>
                             <span className="chat-stat-detail-value">{formatNumber(numberOfTokens)} / {formatNumber(maximumNumberOfTokens)}</span>
                         </div>
-                        {numberOfContextTokens > 0 && (
+                        {maximumNumberOfContextTokens > 0 && (
                             <div className="chat-stat-detail-row">
                                 <span className="chat-stat-detail-label">Context Tokens (API):</span>
-                                <span className="chat-stat-detail-value">{formatNumber(numberOfContextTokens)}</span>
+                                <span className="chat-stat-detail-value">{formatNumber(maximumNumberOfContextTokens)}</span>
                             </div>
                         )}
                         <div className="chat-stat-detail-row">
