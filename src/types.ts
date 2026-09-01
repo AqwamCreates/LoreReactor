@@ -199,7 +199,7 @@ export interface ChatData extends ObjectData {
   participants: Character[];
   contexts?: Context[]; // Changed from instructions
   chatMessageHistory: ChatMessage[];
-  messageCount?: number; // ✅ Total message count from metadata, available without loading messages
+  numberOfMessages?: number; // ✅ Total message count from metadata, available without loading messages
   parentChatDataId?: string | null;
   parentChatMessageId?: string | null;
   Profile?: Profile;

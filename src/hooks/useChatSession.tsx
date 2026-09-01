@@ -709,7 +709,7 @@ export function useChatSession() {
     isLoading, streamingText, streamingCharacter,
     sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
     messageEndRef, chatHistoryRef, parentChatMessageIds,
-    generationSpeed, timeToFirstToken, messageCount: chatData?.chatMessageHistory.length || 0,
+    generationSpeed, timeToFirstToken, numberOfMessages: chatData?.chatMessageHistory.length || 0,
     numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
     activeStrategy,

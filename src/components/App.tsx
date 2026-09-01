@@ -102,7 +102,7 @@ function renderProfileSubtext(profile: Profile) {
 function renderChatSubtext(c: any) {
   const parts: string[] = [];
   if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`);
-  parts.push(`${c.messageCount ?? c.chatMessageHistory.length} message${(c.messageCount ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`);
+  parts.push(`${c.numberOfMessages ?? c.chatMessageHistory.length} message${(c.numberOfMessages ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`);
   parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`);
   if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`);
   return parts.join(' • ');
@@ -565,7 +565,7 @@ function App() {
 
   const safeAutoSave = async (data: ChatData | null) => {
     if (!data) return;
-    if (data.chatMessageHistory.length === 0 && (data.messageCount ?? 0) > 0) return;
+    if (data.chatMessageHistory.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
     try { await saveRawChatData(data); } catch (e) { console.error('Auto-save failed:', e); }
   };
 

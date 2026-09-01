@@ -878,7 +878,7 @@ export function createNewChatData(character: Character): ChatData {
         participants: [character],
         contexts: [],
         chatMessageHistory: [],
-        messageCount: 0,
+        numberOfMessages: 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentChatDataId: null,
@@ -912,7 +912,7 @@ export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMes
     return {
         ...chatData,
         chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-        messageCount: (chatData.messageCount ?? chatData.chatMessageHistory.length) + 1,
+        numberOfMessages: (chatData.numberOfMessages ?? chatData.chatMessageHistory.length) + 1,
         lastUpdatedTimestamp: Date.now()
     };
 }
@@ -954,7 +954,7 @@ export function branchChatMessage(chatData: ChatData, branchPointMessageId: stri
         protagonist: chatData.protagonist,
         participants: chatData.participants,
         chatMessageHistory: branchedHistory,
-        messageCount: branchedHistory.length,
+        numberOfMessages: branchedHistory.length,
         firstCreatedTimestamp: currentTimestamp,
         lastUpdatedTimestamp: currentTimestamp,
         Profile: chatData.Profile,
