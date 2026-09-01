@@ -3,7 +3,7 @@ export const localBackends = [
 ];
 
 export const cloudBackends = [
-    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Minimax','Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
+    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Minimax', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
@@ -28,6 +28,22 @@ export const cloudEndpoints: Record<string, string> = {
     'NovelAI': 'https://text.novelai.net/oa/v1/chat/completions',
 };
 
+// ✅ Token counting endpoints for cloud backends that expose a dedicated tokenizer API.
+// Providers not listed here fall back to char/4 estimation in LanguageModelEngine.countTokens().
+// Actual billing token counts always come from response `usage` metadata regardless of this map.
+export const cloudTokenizeEndpoints: Record<string, string> = {
+    'Kimi': 'https://api.moonshot.cn/v1/tokenizers/estimate-token-count',
+    'Minimax': 'https://api.minimax.io/v1/responses/input_tokens',
+    'GLM': 'https://api.z.ai/api/paas/v4/tokenizer',
+    'Google': 'https://generativelanguage.googleapis.com/v1beta/models/{model}:countTokens',
+    'Anthropic': 'https://api.anthropic.com/v1/messages/count_tokens',
+    'OpenRouter': 'https://openrouter.ai/api/v1/tokenize',
+    'Cohere': 'https://api.cohere.com/v1/tokenize',
+    'AI21': 'https://api.ai21.com/studio/v1/tokenize',
+    'NovelAI': 'https://text.novelai.net/api/tokenizer',
+};
+
 export const allBackends = [...localBackends, ...cloudBackends];
 
-// IMPORTANT! Anthropic uses /v1/messages format, NOT OpenAI chat completions.
+// ⚠️ IMPORTANT! Anthropic uses /v1/messages format, NOT OpenAI chat completions.
+// Requires separate request builder — do NOT use with buildCloudRequest().

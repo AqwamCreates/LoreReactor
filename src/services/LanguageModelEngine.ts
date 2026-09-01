@@ -1,6 +1,6 @@
 // src/services/LanguageModelEngine.ts
 import { localAddress } from "../configurations";
-import { cloudBackends, cloudEndpoints } from "../languageModelInformation";
+import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
 
 export interface TokenStats {
   fullText: string;
@@ -191,23 +191,147 @@ export class LanguageModelEngine {
 
     if (!modelContext) return estimatedTokens;
 
-    const { runtimePort } = modelContext;
-    if (!runtimePort) return estimatedTokens;
+    const { runtimePort, backend, apiKey, modelPath } = modelContext;
 
-    try {
-      const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text }),
-      });
-
-      if (!res.ok) return estimatedTokens;
-
-      const data = await res.json();
-      return data.tokens?.length ?? estimatedTokens;
-    } catch {
-      return estimatedTokens;
+    // ✅ Local models: use llama.cpp /tokenize endpoint
+    if (runtimePort) {
+      try {
+        const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text }),
+        });
+        if (!res.ok) return estimatedTokens;
+        const data = await res.json();
+        return data.tokens?.length ?? estimatedTokens;
+      } catch {
+        return estimatedTokens;
+      }
     }
+
+    // ✅ Cloud models: try provider-specific tokenize endpoint
+    if (backend && apiKey && cloudTokenizeEndpoints[backend]) {
+      try {
+        const templateUrl = cloudTokenizeEndpoints[backend];
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        let url = templateUrl;
+        let body: string;
+
+        switch (backend) {
+          case 'Google': {
+            // Google uses query param auth and model-specific URL
+            const modelName = modelPath || 'gemini-2.5-flash';
+            url = templateUrl.replace('{model}', modelName) + `?key=${apiKey}`;
+            body = JSON.stringify({ contents: [{ parts: [{ text }] }] });
+            break;
+          }
+          case 'Anthropic': {
+            // Anthropic uses x-api-key header and messages format
+            headers['x-api-key'] = apiKey;
+            headers['anthropic-version'] = '2023-06-01';
+            body = JSON.stringify({
+              model: modelPath || 'claude-sonnet-4-20250514',
+              messages: [{ role: 'user', content: text }],
+            });
+            break;
+          }
+          case 'Minimax': {
+            // MiniMax uses Responses API format with Bearer auth
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              model: modelPath || 'MiniMax-M3',
+              input: text,
+            });
+            break;
+          }
+          case 'Kimi': {
+            // Kimi/Moonshot estimate-token-count endpoint
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              model: modelPath || 'moonshot-v1-8k',
+              messages: [{ role: 'user', content: text }],
+            });
+            break;
+          }
+          case 'GLM': {
+            // Zhipu/GLM tokenizer endpoint
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              model: modelPath || 'glm-4-flash',
+              prompt: text,
+            });
+            break;
+          }
+          case 'Cohere': {
+            // Cohere tokenize endpoint (non-OpenAI format)
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              text,
+              model: modelPath || 'command-r-plus',
+            });
+            break;
+          }
+          case 'AI21': {
+            // AI21 tokenize endpoint for Jamba models
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({ text });
+            break;
+          }
+          case 'NovelAI': {
+            // NovelAI tokenizer utilities API
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              text,
+              model: modelPath || 'clio-v1',
+            });
+            break;
+          }
+          case 'OpenRouter': {
+            // OpenRouter passthrough tokenize
+            headers.Authorization = `Bearer ${apiKey}`;
+            body = JSON.stringify({
+              text,
+              model: modelPath,
+            });
+            break;
+          }
+          default:
+            return estimatedTokens;
+        }
+
+        const res = await fetch(url, { method: 'POST', headers, body });
+        if (!res.ok) return estimatedTokens;
+        const data = await res.json();
+
+        // ✅ Extract token count from provider-specific response formats
+        switch (backend) {
+          case 'Google':
+            return data.totalTokens ?? estimatedTokens;
+          case 'Anthropic':
+            return data.input_tokens ?? estimatedTokens;
+          case 'Minimax':
+            return data.input_tokens ?? estimatedTokens;
+          case 'Kimi':
+            return data.data?.total_tokens ?? data.total_tokens ?? estimatedTokens;
+          case 'GLM':
+            return data.usage?.tokens ?? data.tokens ?? estimatedTokens;
+          case 'Cohere':
+            return data.tokens?.length ?? data.token_count ?? estimatedTokens;
+          case 'AI21':
+            return data.tokens?.length ?? data.count ?? estimatedTokens;
+          case 'NovelAI':
+            return data.tokens?.length ?? data.count ?? estimatedTokens;
+          case 'OpenRouter':
+            return data.tokens?.length ?? data.count ?? estimatedTokens;
+          default:
+            return estimatedTokens;
+        }
+      } catch {
+        return estimatedTokens;
+      }
+    }
+
+    return estimatedTokens;
   }
 
   // ─── Non-Streaming Completion ────────────────────────────────────
