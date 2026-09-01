@@ -98,14 +98,14 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 </div>
 
                 {/* Time To First Token */}
-                {timeToFirstToken > 0 && (
-                    <div className="chat-stat-item" title={`Time to First Token: ${timeToFirstToken.toFixed(0)}ms`}>
-                        <span className="chat-stat-label">⏱️</span>
-                        <span className="chat-stat-speed-value" style={{ color: ttftColor }}>
-                            {ttftDisplay}
-                        </span>
-                    </div>
-                )}
+                {
+                <div className="chat-stat-item" title={`Time to First Token: ${timeToFirstToken.toFixed(0)}ms`}>
+                    <span className="chat-stat-label">⏱️</span>
+                    <span className="chat-stat-speed-value" style={{ color: ttftColor }}>
+                        {ttftDisplay}
+                    </span>
+                </div>
+                }
 
                 {/* Cache Invalidation Count (Only show if > 0) */}
                 {numberOfCacheInvalidations > 0 && (
