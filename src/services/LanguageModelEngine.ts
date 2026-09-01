@@ -6,6 +6,7 @@ export interface TokenStats {
   fullText: string;
   msPerToken: number;
   tokensPerSecond: number;
+  timeToFirstToken: number;
 }
 
 export interface StreamCallbacks {
@@ -261,6 +262,9 @@ export class LanguageModelEngine {
       extraParams,
     }, existingText);
 
+    // ✅ Capture request start time for TTFT measurement
+    const requestStartTime = performance.now();
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
@@ -287,6 +291,7 @@ export class LanguageModelEngine {
     let newTokenCount = 0;
     let paragraphCount = 0;
     let hasReceivedNonWhitespace = false;
+    let ttftReported = false;
 
     if (existingText && existingText.trim().length > 0) {
       paragraphCount = (existingText.match(/\n\n/g) || []).length;
@@ -360,8 +365,12 @@ export class LanguageModelEngine {
             const msPerToken = newTokenCount > 0 ? totalTime / newTokenCount : 0;
             const tokensPerSecond = totalTime > 0 ? (newTokenCount / totalTime) * 1000 : 0;
 
+            // ✅ Calculate TTFT (only once, on first visible token)
+            const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
+            if (!ttftReported) ttftReported = true;
+
             if (callbacks?.onToken) {
-              callbacks.onToken({ fullText: fullContent, msPerToken, tokensPerSecond });
+              callbacks.onToken({ fullText: fullContent, msPerToken, tokensPerSecond, timeToFirstToken });
             }
           } catch { /* Ignore individual SSE parse errors */ }
         }

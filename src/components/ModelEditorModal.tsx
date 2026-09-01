@@ -162,8 +162,8 @@ export function ModelEditorModal({
     const [settings, setSettings] = useState<ModelSettings>({ ...DEFAULT_SETTINGS });
     const [errors, setErrors] = useState<{ name?: string; model?: string; apiKey?: string }>({});
 
-    const [cacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
-    const [cacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
+    const [inputCacheHitCostPerMillion, setCacheHitCostPerMillion] = useState<number>(0);
+    const [inputCacheMissCostPerMillion, setCacheMissCostPerMillion] = useState<number>(0);
     const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -373,8 +373,8 @@ export function ModelEditorModal({
             lora: loraPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
-            cacheHitCostPerOneMillionOfTokens: cacheHitCostPerMillion,
-            cacheMissCostPerOneMillionOfTokens: cacheMissCostPerMillion,
+            cacheHitCostPerOneMillionOfTokens: inputCacheHitCostPerMillion,
+            cacheMissCostPerOneMillionOfTokens: inputCacheMissCostPerMillion,
             outputGenerationCostPerOneMillionOfTokens: outputGenerationCostPerMillion,
             firstCreatedTimestamp: isNewClone ? now : (existingModel?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -722,8 +722,8 @@ export function ModelEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Cost</span>
                         <div className="editor-row">
-                            <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
-                            <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={cacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
                         </div>
                         <div className="editor-row-full" style={{ marginTop: '8px' }}>
                             <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
