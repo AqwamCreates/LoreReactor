@@ -72,7 +72,7 @@ const DEFAULT_SETTINGS: ModelSettings = {
 const BACKEND_OPTIONS = [
     'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2',
     'TensorRT-LLM', 'Ollama', 'Google', 'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo',
-    'OpenAI', 'Mistral', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Other',
+    'OpenAI', 'Anthropic', 'Mistral', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other',
 ];
 
 const SPLIT_MODE_OPTIONS = [
