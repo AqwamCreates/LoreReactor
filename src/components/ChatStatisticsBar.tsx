@@ -150,7 +150,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                         {maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens > 0 && (
                             <div className="chat-stat-detail-row">
-                                <span className="chat-stat-detail-label">Tokens Used by Highest Participant:</span>
+                                <span className="chat-stat-detail-label">Highest Participant Context Used:</span>
                                 <span className="chat-stat-detail-value">{formatNumber(maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens)}</span>
                             </div>
                         )}
