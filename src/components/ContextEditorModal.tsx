@@ -376,7 +376,7 @@ export function ContextEditorModal({
 
                     <div className="context-field-group">
                         <label className="editor-label">Text {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                        <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using URLs or search terms)" rows={6} />
+                        <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using images, URLs or search terms)" rows={6} />
                         <div className="context-token-count">~{textnumberOfTokens} token(s)</div>
                         {errors.text && <div className="editor-error-message">{errors.text}</div>}
                     </div>
