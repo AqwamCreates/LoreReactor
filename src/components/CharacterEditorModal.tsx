@@ -10,7 +10,6 @@ import { parseCharacterCard, mapCardToEditorFields } from '../services/character
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
-
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
@@ -162,6 +161,8 @@ export function CharacterEditorModal({
 
                 setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
 
+                // We call the function here, but intentionally exclude it from dependencies below
+                // to prevent the form from resetting when the function reference changes.
                 countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
                 countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
                 countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
@@ -191,7 +192,8 @@ export function CharacterEditorModal({
                 setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
             }
         }
-    }, [isOpen, existingCharacter, allSamplers, countFieldTokens]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, existingCharacter, allSamplers]);
 
     const clamp = (value: number, min: number, max: number): number => {
         return Math.min(Math.max(value, min), max);
@@ -438,7 +440,7 @@ export function CharacterEditorModal({
         const val = autoDetected[field];
         if (val === null) return null;
         return (
-            <span style={{ fontSize: '0.6rem', color: 'var(--accent)', opacity: 0.9, marginTop: '2px', display: 'block', textAlign: 'right' }}>
+            <span className="editor-auto-hint">
                 ← auto-detected
             </span>
         );
@@ -449,15 +451,7 @@ export function CharacterEditorModal({
         if (count === null) return null;
         const isCounting = countingField === field;
         return (
-            <div style={{ 
-                fontSize: '0.6rem', 
-                opacity: 0.5, 
-                textAlign: 'right', 
-                marginTop: '2px', 
-                fontFamily: 'monospace',
-                color: isCounting ? 'var(--accent)' : 'var(--text-h)',
-                transition: 'color 0.2s ease'
-            }}>
+            <div className={`editor-token-count ${isCounting ? 'counting' : ''}`}>
                 {`${count.toLocaleString()} token(s)`}
             </div>
         );
@@ -506,43 +500,33 @@ export function CharacterEditorModal({
 
                 <div className="modal-body editor-modal-body">
                     {submitError && (
-                        <div className="editor-error-message" style={{ marginBottom: '16px', textAlign: 'center' }}>
+                        <div className="editor-error-message editor-error-centered">
                             {submitError}
                         </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '20px', height: '100%' }}>
+                    <div className="editor-modal-columns">
                         
                         {/* LEFT COLUMN */}
-                        <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div className="editor-left-column">
                             {/* Image Upload */}
-                            <div style={{ flexShrink: 0 }}>
+                            <div className="editor-image-upload-container">
                                 <div 
-                                    className={`editor-image-square ${imagePreview ? 'active' : ''}`}
-                                    style={{ 
-                                        aspectRatio: '9/16', 
-                                        borderStyle: imagePreview ? 'solid' : 'dashed',
-                                        cursor: isUploading ? 'wait' : 'pointer',
-                                        opacity: isUploading ? 0.7 : 1
-                                    }}
+                                    className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
+                                    style={{ cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
                                     onClick={() => !isUploading && fileInputRef.current?.click()}
-                                    onMouseEnter={() => setIsHoveringImage(true)}
-                                    onMouseLeave={() => setIsHoveringImage(false)}
                                 >
                                     {imagePreview ? (
                                         <>
-                                            <img src={imagePreview} alt="Character" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                                            <img src={imagePreview} alt="Character" />
                                             {!isUploading && (
-                                                <div style={{ 
-                                                    position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', 
-                                                    display: isHoveringImage ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', zIndex: 10 
-                                                }}>
-                                                    <button type="button" onClick={handleRemoveImage} style={{ background: 'transparent', border: 'none', color: '#ff4444', fontSize: '2rem', cursor: 'pointer' }} title="Remove Picture">🗑️</button>
+                                                <div className="editor-image-hover-overlay">
+                                                    <button type="button" onClick={handleRemoveImage} className="editor-image-remove-btn-large" title="Remove Picture">🗑️</button>
                                                 </div>
                                             )}
                                         </>
                                     ) : (
-                                        <div style={{ fontSize: '3rem', opacity: 0.3 }}>{isUploading ? '⏳' : '📷'}</div>
+                                        <div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>
                                     )}
                                 </div>
                                 <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
@@ -551,8 +535,7 @@ export function CharacterEditorModal({
                             {/* Name */}
                             <textarea 
                                 value={name} onChange={(e) => setName(e.target.value)} 
-                                className="editor-textarea"
-                                style={{ fontWeight: 'bold', minHeight: '38px', maxHeight: '160px', resize: 'none' }} 
+                                className="editor-textarea editor-textarea-name"
                                 placeholder="Name *" 
                                 disabled={isUploading} 
                             />
@@ -560,40 +543,34 @@ export function CharacterEditorModal({
                             {/* Description */}
                             <textarea 
                                 value={description} onChange={(e) => setDescription(e.target.value)} 
-                                className="editor-textarea"
-                                style={{ minHeight: '60px' }} 
+                                className="editor-textarea editor-textarea-description"
                                 placeholder="Description" disabled={isUploading}
                             />
 
                             {/* First Message */}
                             <textarea 
                                 value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} 
-                                className="editor-textarea"
-                                style={{ minHeight: '60px' }} 
+                                className="editor-textarea editor-textarea-first-message"
                                 placeholder="First message" disabled={isUploading}
                             />
 
                             {/* Voice Upload */}
-                            <div className="editor-section" style={{ padding: '10px', marginBottom: 0 }}>
-                                <span className="editor-section-title" style={{ fontSize: '0.7rem' }}>Voice</span>
-                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '6px' }}>
+                            <div className="editor-section editor-voice-section">
+                                <span className="editor-section-title">Voice</span>
+                                <div className="editor-voice-hint">
                                     Used for reading character's text. Maximum 5MB.
                                 </div>
 
                                 {hasVoice && (
-                                    <div style={{ 
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                                        padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', 
-                                        border: '1px solid var(--border)', marginBottom: '6px' 
-                                    }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <div className="editor-voice-chip">
+                                        <span className="editor-voice-chip-name">
                                             🎙️ {voiceFile ? voiceFile.name : existingVoiceName}
                                         </span>
                                         <button
                                             type="button"
                                             onClick={handleRemoveVoice}
                                             disabled={isUploading}
-                                            style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 4px' }}
+                                            className="editor-voice-remove-btn"
                                             title="Remove voice"
                                         >
                                             ×
@@ -606,8 +583,7 @@ export function CharacterEditorModal({
                                         type="button"
                                         onClick={() => !isUploading && voiceInputRef.current?.click()}
                                         disabled={isUploading}
-                                        className="toolbar-btn"
-                                        style={{ width: '100%', padding: '8px', fontSize: '0.75rem', opacity: isUploading ? 0.5 : 1 }}
+                                        className={`toolbar-btn editor-voice-upload-btn ${isUploading ? 'uploading' : ''}`}
                                     >
                                         {isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}
                                     </button>
@@ -617,9 +593,9 @@ export function CharacterEditorModal({
                         </div>
 
                         {/* RIGHT COLUMN */}
-                        <div style={{ flex: 1, minWidth: '280px', display: 'grid', gridTemplateRows: '1fr auto', gap: '10px', minHeight: 0 }}>
+                        <div className="editor-right-column">
                             {/* System Prompt */}
-                            <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+                            <div className="editor-field-wrapper-full">
                                 <textarea 
                                     value={systemPrompt} 
                                     onChange={(e) => {
@@ -627,68 +603,63 @@ export function CharacterEditorModal({
                                         countFieldTokens('systemPrompt', e.target.value);
                                     }} 
                                     onBlur={handleSystemPromptBlur}
-                                    className="editor-textarea"
-                                    style={{ fontFamily: 'monospace', minHeight: 0, height: '100%' }} 
+                                    className="editor-textarea editor-textarea-system"
                                     placeholder="System prompt" disabled={isUploading}
                                 />
                                 {renderTokenCount('systemPrompt')}
                             </div>
 
                             {/* Think Prompt */}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div className="editor-field-wrapper">
                                 <textarea 
                                     value={thinkPrompt} 
                                     onChange={(e) => {
                                         setThinkPrompt(e.target.value);
                                         countFieldTokens('thinkPrompt', e.target.value);
                                     }} 
-                                    className="editor-textarea"
-                                    style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                    className="editor-textarea editor-textarea-think"
                                     placeholder="Think Prompt" disabled={isUploading}
                                 />
                                 {renderTokenCount('thinkPrompt')}
                             </div>
 
                             {/* Appearance Prompt */}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div className="editor-field-wrapper">
                                 <textarea 
                                     value={appearancePrompt} 
                                     onChange={(e) => {
                                         setAppearancePrompt(e.target.value);
                                         countFieldTokens('appearancePrompt', e.target.value);
                                     }} 
-                                    className="editor-textarea"
-                                    style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                    className="editor-textarea editor-textarea-appearance"
                                     placeholder="Appearance Prompt" disabled={isUploading}
                                 />
                                 {renderTokenCount('appearancePrompt')}
                             </div>
 
                             {/* Dialogue Prompt */}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div className="editor-field-wrapper">
                                 <textarea 
                                     value={dialoguePrompt} 
                                     onChange={(e) => {
                                         setDialoguePrompt(e.target.value);
                                         countFieldTokens('dialoguePrompt', e.target.value);
                                     }} 
-                                    className="editor-textarea"
-                                    style={{ fontFamily: 'monospace', minHeight: '38px', maxHeight: '120px', resize: 'vertical' }} 
+                                    className="editor-textarea editor-textarea-dialogue"
                                     placeholder="Dialogue Examples" disabled={isUploading}
                                 />
                                 {renderTokenCount('dialoguePrompt')}
                             </div>
 
                             {/* Sampler + Stats + Stop Patterns + Image Injection Toggle */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
+                            <div className="editor-bottom-section">
                                 <select 
                                     value={selectedSamplerId} 
                                     onChange={(e) => {
                                         const newId = e.target.value;
                                         setSelectedSamplerId(newId);
                                     }}
-                                    className="editor-select"
-                                    style={{ opacity: isLoadingSamplers || isUploading ? 0.6 : 1, cursor: isLoadingSamplers || isUploading ? 'wait' : 'pointer' }}
+                                    className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`}
                                     disabled={isLoadingSamplers || isUploading}
                                 >
                                     {isLoadingSamplers && <option>Loading samplers...</option>}
@@ -696,8 +667,8 @@ export function CharacterEditorModal({
                                     {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                 </select>
 
-                                <div className="editor-section" style={{ padding: '10px', marginBottom: 0 }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                                <div className="editor-section editor-section-compact">
+                                    <div className="editor-stats-grid">
                                         <div>
                                             <label className="editor-label editor-label-small">Initiative Weight</label>
                                             <input 
@@ -705,8 +676,7 @@ export function CharacterEditorModal({
                                                 value={initiativeWeightStr} 
                                                 onChange={(e) => { setInitiativeWeightStr(e.target.value); setAutoDetected(prev => ({ ...prev, iw: null })); }}
                                                 onBlur={() => setInitiativeWeightStr(normalizeStatValue(initiativeWeightStr, Number.POSITIVE_INFINITY))}
-                                                className="editor-input"
-                                                style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                                className="editor-input editor-stat-input"
                                                 disabled={isUploading} 
                                             />
                                             {renderAutoHint('iw')}
@@ -718,8 +688,7 @@ export function CharacterEditorModal({
                                                 value={chatProbabilityStr} 
                                                 onChange={(e) => { setChatProbabilityStr(e.target.value); setAutoDetected(prev => ({ ...prev, cp: null })); }}
                                                 onBlur={() => setChatProbabilityStr(normalizeStatValue(chatProbabilityStr, 1))}
-                                                className="editor-input"
-                                                style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                                className="editor-input editor-stat-input"
                                                 disabled={isUploading} 
                                             />
                                             {renderAutoHint('cp')}
@@ -738,8 +707,7 @@ export function CharacterEditorModal({
                                                         setMaximumChatStaminaStr(String(Math.round(val)));
                                                     }
                                                 }}
-                                                className="editor-input"
-                                                style={{ textAlign: 'right', padding: '5px 8px', fontSize: '0.8rem' }} 
+                                                className="editor-input editor-stat-input"
                                                 disabled={isUploading} 
                                                 title="Controls response length: higher stamina = longer responses"
                                             />
@@ -751,7 +719,7 @@ export function CharacterEditorModal({
                                 {/* Stop Patterns Section */}
                                 <div className="editor-section">
                                     <div className="editor-section-title">Character Stop Patterns</div>
-                                    <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                                    <div className="editor-stop-patterns-hint">
                                         Specific stop sequences for this character (overrides/augments sampler defaults).
                                     </div>
 
