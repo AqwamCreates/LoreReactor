@@ -25,6 +25,7 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
+import { LanguageModelEngine } from '../services/LanguageModelEngine'; // ✅ Import Token Engine
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
@@ -39,6 +40,8 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
+
+const tokenEngine = new LanguageModelEngine(); // ✅ Instantiate Token Engine
 
 interface NavButtonProps { icon: string; label: string; onClick: () => void }
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
@@ -205,6 +208,9 @@ function App() {
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
   const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
+  
+  // ✅ New State for Max Participant Tokens
+  const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
 
   // Panel visibility
   const [isChatListOpen, setIsChatListOpen] = useState(false);
@@ -525,6 +531,64 @@ function App() {
   }, [activeToolbarId]);
 
   useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
+
+  // ✅ NEW EFFECT: Calculate Max Tokens Per Participant using TokenEngine
+  useEffect(() => {
+    if (!chatData?.chatMessageHistory || !chatData.participants) return;
+
+    let isCancelled = false;
+
+    const calculateMaxTokens = async () => {
+      const participantCounts: Record<string, number> = {};
+      
+      // Initialize counts for all known participants
+      chatData.participants.forEach(p => {
+        participantCounts[p.id] = 0;
+      });
+      if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
+        participantCounts[chatData.protagonist.id] = 0;
+      }
+
+      // Get model context for accurate tokenization
+      const selectedModel = allModels.find(m => m.id === selectedModelId);
+      const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
+      const modelContext = selectedModel ? {
+        apiKey: selectedModel.apiKey,
+        backend: selectedModel.backend,
+        modelPath: (selectedModel as any).modelPath || (selectedModel as any).parameters?.modelPath,
+        runtimePort,
+      } : undefined;
+
+      // Aggregate tokens per character
+      // Note: We process messages in batches or sequentially to avoid blocking UI if history is huge
+      // For now, we iterate. If history is massive, this might need optimization (e.g. only calc new messages)
+      for (const msg of chatData.chatMessageHistory) {
+        if (msg.character && msg.textContent) {
+          const charId = msg.character.id;
+          if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
+             // Use tokenEngine for accurate count based on selected model
+             // Fallback to estimation inside tokenEngine if no model context
+             const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
+             
+             if (participantCounts[charId] !== undefined) {
+               participantCounts[charId] += tokens;
+             }
+          }
+        }
+      }
+
+      if (isCancelled) return;
+
+      const maxTokens = Math.max(...Object.values(participantCounts), 0);
+      setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(maxTokens);
+    };
+
+    calculateMaxTokens();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
 
   // ─── Toolbar Handlers ───────────────────────────────────────────
 
@@ -852,6 +916,7 @@ function App() {
                 numberOfMessages={numberOfMessages}
                 numberOfTokens={numberOfTokens}
                 maximumNumberOfTokens={maximumNumberOfTokens}
+                maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
                 maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                 numberOfCacheInvalidations={numberOfCacheInvalidations}
                 numberOfRequests={numberOfRequests}
@@ -957,7 +1022,7 @@ function App() {
         {isChatListOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={c => handleSwitchChat(c.id)} onDelete={id => handleDeleteChat({ stopPropagation: () => {} } as any, id)} onCreateNew={handleNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
 
         {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />}
-        {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} />}
+        {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
 
         {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={chatData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
