@@ -7,6 +7,7 @@ interface ChatStatisticsBarProps {
     timeToFirstToken: number; // ms // ms per token
     numberOfTokens: number;
     maximumNumberOfTokens: number;
+    maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens: number;
     maximumNumberOfContextTokens?: number;
     numberOfMessages: number;
     className?: string;
@@ -25,6 +26,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     numberOfTokens = 0,
     maximumNumberOfTokens = 65536,              
     maximumNumberOfContextTokens = 0,
+    maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens = 0,
     numberOfMessages = 0,  
     className = '',
     numberOfCacheInvalidations = 0,
@@ -146,6 +148,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             <span className="chat-stat-detail-label">Context Used:</span>
                             <span className="chat-stat-detail-value">{formatNumber(numberOfTokens)} / {formatNumber(maximumNumberOfTokens)}</span>
                         </div>
+                        {maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens > 0 && (
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Tokens Used by Highest Participant:</span>
+                                <span className="chat-stat-detail-value">{formatNumber(maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens)}</span>
+                            </div>
+                        )}
                         {maximumNumberOfContextTokens > 0 && (
                             <div className="chat-stat-detail-row">
                                 <span className="chat-stat-detail-label">Maximum Number Of Context Tokens:</span>
