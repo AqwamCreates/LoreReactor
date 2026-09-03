@@ -66,9 +66,9 @@ export function CharacterEditorModal({
 
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
 
+    // ✅ NEW STATES
     const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>('0');
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>('0');
-
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>('0');
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
@@ -165,8 +165,11 @@ export function CharacterEditorModal({
 
                 setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
 
-                // We call the function here, but intentionally exclude it from dependencies below
-                // to prevent the form from resetting when the function reference changes.
+                // ✅ LOAD NEW FIELDS
+                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? 0));
+                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? 0));
+                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? 0));
+
                 countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
                 countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
                 countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
@@ -192,6 +195,11 @@ export function CharacterEditorModal({
                 setVoiceFile(null);
 
                 setDoNotInjectCharacterImage(false);
+
+                // ✅ RESET NEW FIELDS
+                setNumberOfMessagesToDisableThinkPromptStr('0');
+                setNumberOfMessagesToDisableMetaThinkInstructionsStr('0');
+                setNumberOfMessagesToDisableDialoguePromptStr('0');
 
                 setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
             }
@@ -309,6 +317,11 @@ export function CharacterEditorModal({
         setSelectedStopPatternIds([]);
         setDoNotInjectCharacterImage(false);
 
+        // ✅ RESET NEW FIELDS ON IMPORT
+        setNumberOfMessagesToDisableThinkPromptStr('0');
+        setNumberOfMessagesToDisableMetaThinkInstructionsStr('0');
+        setNumberOfMessagesToDisableDialoguePromptStr('0');
+
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', '');
@@ -359,6 +372,11 @@ export function CharacterEditorModal({
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
+
+        // ✅ PARSE NEW FIELDS
+        const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
+        const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
+        const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
 
         let finalIW: number;
         let finalCP: number;
@@ -419,6 +437,10 @@ export function CharacterEditorModal({
             chatProbability: finalCP,
             maximumChatStamina: finalMS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
+            // ✅ INCLUDE NEW FIELDS IN SAVE OBJECT
+            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
+            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
+            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -790,37 +812,46 @@ export function CharacterEditorModal({
                                     </label>
                                 </div>
 
-                                <div className="editor-section editor-section-compact">
-                                    <div className="editor-stats-grid">
+                                <div className="editor-section">
+                                    <div className="editor-section-title">Disable Prompts</div>
+                                    
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         <div>
                                             <label className="editor-label editor-label-small">Number Of Messages to Disable Think Prompt</label>
                                             <input 
-                                                type="number" step="0.1" 
+                                                type="number" step="1" min="0"
                                                 value={numberOfMessagesToDisableThinkPromptStr} 
-                                                onChange={(e) => { setNumberOfMessagesToDisableThinkPromptStr(e.target.value); setAutoDetected(prev => ({ ...prev, tp: null })); }}
-                                                className="editor-input editor-stat-input"
+                                                onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)}
+                                                className="editor-input"
+                                                style={{ width: '100px', textAlign: 'right' }}
+                                                disabled={isUploading}
                                             />
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Number Of Messages to Disable Meta-Thinking</label>
                                             <input 
-                                                type="number" step="0.1" 
+                                                type="number" step="1" min="0"
                                                 value={numberOfMessagesToDisableMetaThinkInstructionsStr} 
-                                                onChange={(e) => { setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value); setAutoDetected(prev => ({ ...prev, iw: null })); }}
-                                                className="editor-input editor-stat-input"
+                                                onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)}
+                                                className="editor-input"
+                                                style={{ width: '100px', textAlign: 'right' }}
+                                                disabled={isUploading}
                                             />
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Number Of Messages to Disable Dialogue Prompt</label>
                                             <input 
-                                                type="number" step="0.05" 
+                                                type="number" step="1" min="0"
                                                 value={numberOfMessagesToDisableDialoguePromptStr} 
-                                                onChange={(e) => { setNumberOfMessagesToDisableDialoguePromptStr(e.target.value); setAutoDetected(prev => ({ ...prev, dp: null })); }}
-                                                className="editor-input editor-stat-input"
+                                                onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)}
+                                                className="editor-input"
+                                                style={{ width: '100px', textAlign: 'right' }}
+                                                disabled={isUploading}
                                             />
                                         </div>
                                     </div>
                                 </div>
+
                             </div>
                         </div>
                     </div>
