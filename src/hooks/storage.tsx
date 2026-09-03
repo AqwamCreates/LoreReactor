@@ -346,6 +346,8 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       maximumChatStamina: rawCharacter.maximumChatStamina, 
       sampler,
       doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
+      numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 0,
+      numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 0,
       firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
       lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
     };
@@ -385,6 +387,8 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
     if (!rawCharacter) return null;
 
+    const now = Date.now()
+
     return {
         id,
         name: rawCharacter.name || 'Unknown Character',
@@ -396,9 +400,11 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         initiativeWeight: rawCharacter.initiativeWeight,
         chatProbability: rawCharacter.chatProbability,
         maximumChatStamina: rawCharacter.maximumChatStamina,
+        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 0,
+        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 0,
         sampler: undefined, // ← Not hydrated — loaded on demand
-        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || Date.now(),
-        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || Date.now(),
+        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
     };
 }
 
