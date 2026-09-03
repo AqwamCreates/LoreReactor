@@ -324,7 +324,8 @@ export interface Profile extends ObjectData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
-    numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   forceEqualInitiative: boolean;
   chatProbability: number; // 0 means it is disabled and uses character default.
   maximumChatStamina: number; // 0 means it is disabled and uses character default..
@@ -346,6 +347,7 @@ export interface RawProfile extends RawData{
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
   numberOfMessagesToDisableMetaThinkInstructions: number;
+  numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   forceEqualInitiative: boolean;
   chatProbability: number; // -1 means it is disabled and uses character default.
   maximumChatStamina: number; // -1 means it is disabled and uses character default..
