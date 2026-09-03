@@ -91,7 +91,7 @@ app.use('/user_data', (req, res) => {
   
   const originalStatus = res.status.bind(res);
   
-  res.status = function(code: number) {
+  res.status = (code: number) => {
     // Log only if status is error (4xx or 5xx)
     if (req.method === 'GET' && code >= 400) {
       log.reqError(req.method || 'GET', req.url || '/', code);
