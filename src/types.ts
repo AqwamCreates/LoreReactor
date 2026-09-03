@@ -142,6 +142,7 @@ export interface Character extends ObjectData  {
   sampler?: Sampler | undefined;
   stopPatterns?: [StopPattern]
   doNotInjectCharacterImage?: boolean;
+  numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // 
 
@@ -161,6 +162,7 @@ export interface RawCharacter extends RawData {
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
   doNotInjectCharacterImage?: boolean;
+  numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
 
@@ -328,6 +330,7 @@ export interface Profile extends ObjectData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
+  numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   forceEqualInitiative: boolean;
@@ -350,6 +353,7 @@ export interface RawProfile extends RawData{
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
+  numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   forceEqualInitiative: boolean;

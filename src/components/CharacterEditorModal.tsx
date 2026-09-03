@@ -53,7 +53,6 @@ export function CharacterEditorModal({
     
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
-    const [isHoveringImage, setIsHoveringImage] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -66,6 +65,11 @@ export function CharacterEditorModal({
     const [existingVoiceName, setExistingVoiceName] = useState<string>('');
 
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
+
+    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>('0');
+    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>('0');
+
+    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>('0');
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
         iw: null, cp: null, ms: null,
@@ -784,6 +788,38 @@ export function CharacterEditorModal({
                                         />
                                         <span>Do Not Inject Character Image</span>
                                     </label>
+                                </div>
+
+                                <div className="editor-section editor-section-compact">
+                                    <div className="editor-stats-grid">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Number Of Messages to Disable Think Prompt</label>
+                                            <input 
+                                                type="number" step="0.1" 
+                                                value={numberOfMessagesToDisableThinkPromptStr} 
+                                                onChange={(e) => { setNumberOfMessagesToDisableThinkPromptStr(e.target.value); setAutoDetected(prev => ({ ...prev, tp: null })); }}
+                                                className="editor-input editor-stat-input"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Number Of Messages to Disable Meta-Thinking</label>
+                                            <input 
+                                                type="number" step="0.1" 
+                                                value={numberOfMessagesToDisableMetaThinkInstructionsStr} 
+                                                onChange={(e) => { setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value); setAutoDetected(prev => ({ ...prev, iw: null })); }}
+                                                className="editor-input editor-stat-input"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Number Of Messages to Disable Dialogue Prompt</label>
+                                            <input 
+                                                type="number" step="0.05" 
+                                                value={numberOfMessagesToDisableDialoguePromptStr} 
+                                                onChange={(e) => { setNumberOfMessagesToDisableDialoguePromptStr(e.target.value); setAutoDetected(prev => ({ ...prev, dp: null })); }}
+                                                className="editor-input editor-stat-input"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
