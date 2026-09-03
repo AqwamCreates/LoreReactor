@@ -115,9 +115,9 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
-    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(0);
-    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(0);
-    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(0);
+    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(1);
+    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(1);
+    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
@@ -144,9 +144,9 @@ export function ProfileEditorModal({
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
-                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? 0);
-                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 0);
-                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? 0);
+                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? 1);
+                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1);
+                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? 1);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
@@ -172,9 +172,9 @@ export function ProfileEditorModal({
                 setDescription('');
                 setForceNameReveal(false);
                 setForceNoCharacterImageInjection(false);
-                setNumberOfMessagesToDisableThinkPrompt(0);
-                setNumberOfMessagesToDisableMetaThinkInstructions(0);
-                setNumberOfMessagesToDisableDialoguePrompt(0);
+                setNumberOfMessagesToDisableThinkPrompt(1);
+                setNumberOfMessagesToDisableMetaThinkInstructions(1);
+                setNumberOfMessagesToDisableDialoguePrompt(1);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
                 setForceEqualInitiative(false);
