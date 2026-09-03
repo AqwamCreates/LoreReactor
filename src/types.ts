@@ -128,6 +128,16 @@ export interface RawLanguageModel extends RawData {
   outputGenerationCostPerOneMillionOfTokens?: number,
 
 }
+
+export interface Memory extends ObjectData {
+  content: string; // For importance-based pruning
+  chatData: ChatData;    // Traceability
+}
+
+export interface RawMemory extends RawData {
+  content: string; // For importance-based pruning
+  chatDataId: string;    // Traceability
+}
 export interface Character extends ObjectData  {
   
   image?: string; // Path to the character's image.
@@ -144,7 +154,8 @@ export interface Character extends ObjectData  {
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
-  numberOfMessagesToDisableDialoguePrompt: number; // 
+  numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  memories: Record<string, Memory[]>; // Key-value pairs for character memories
 
 }
 
@@ -165,6 +176,7 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  memories: Record<string, RawMemory[]>; // Key-value pairs for character memories
 
 }
 
@@ -318,6 +330,7 @@ export type PromptBlockType =
   | 'Meta Think Instruction'             // Active context entries (regex-matched)     // Think/meta-instruction prompts  
   | 'Appearance Prompt'
   | 'Dialogue Prompt'
+  | 'Memory'
   | 'Chat History'         // Conversation history messages
   | 'Context'
   | 'Fatigue Information' 
@@ -342,6 +355,8 @@ export interface Profile extends ObjectData {
   narrateBoldedText: boolean;
   narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
+  enableMemoryWriting: boolean;       // LLM can save memories via trigger
+  enableMemoryReading: boolean;       // Inject memories into prompt
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: SummarizationStep[];
 
@@ -365,6 +380,8 @@ export interface RawProfile extends RawData{
   narrateBoldedText: boolean;
   narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
+  enableMemoryWriting: boolean;
+  enableMemoryReading: boolean;
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: RawSummarizationStep[];
 
