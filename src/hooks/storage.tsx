@@ -3,7 +3,8 @@ import type {
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
-  SummarizationStep, RawSummarizationStep, Webpage, RawWebpage
+  SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
+  Memory, RawMemory
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -216,6 +217,62 @@ async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T
   return results;
 }
 
+// --- Memory Hydration Helpers ---
+
+function hydrateMemories(rawMemories: Record<string, RawMemory[]> | undefined, timestamp: number): Record<string, Memory[]> {
+  const memories: Record<string, Memory[]> = {};
+  if (!rawMemories) return memories;
+  for (const [key, rawMems] of Object.entries(rawMemories)) {
+    memories[key] = rawMems.map(rm => ({
+      id: rm.id,
+      name: rm.name,
+      description: rm.description,
+      content: rm.content,
+      chatData: undefined as unknown as ChatData, // Deferred — resolved on demand via chatDataId
+      firstCreatedTimestamp: rm.firstCreatedTimestamp || timestamp,
+      lastUpdatedTimestamp: rm.lastUpdatedTimestamp || timestamp,
+    }));
+  }
+  return memories;
+}
+
+function serializeMemories(memories: Record<string, Memory[]> | undefined): Record<string, RawMemory[]> {
+  const rawMemories: Record<string, RawMemory[]> = {};
+  if (!memories) return rawMemories;
+  for (const [key, mems] of Object.entries(memories)) {
+    rawMemories[key] = mems.map(m => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      content: m.content,
+      chatDataId: m.chatData?.id ?? '',
+      firstCreatedTimestamp: m.firstCreatedTimestamp,
+      lastUpdatedTimestamp: m.lastUpdatedTimestamp,
+    }));
+  }
+  return rawMemories;
+}
+
+/**
+ * Resolves deferred chatData references in a character's memories.
+ * Call only when entering editor/UI inspection — never during prompt building.
+ */
+export function resolveMemoryChatData(
+  character: Character,
+  allChats: ChatData[]
+): Character {
+  if (!character.memories || Object.keys(character.memories).length === 0) return character;
+  const chatMap = new Map(allChats.map(c => [c.id, c]));
+  const resolved: Record<string, Memory[]> = {};
+  for (const [key, mems] of Object.entries(character.memories)) {
+    resolved[key] = mems.map(m => ({
+      ...m,
+      chatData: m.chatData ?? chatMap.get((m as any)._chatDataId) ?? undefined,
+    }));
+  }
+  return { ...character, memories: resolved };
+}
+
 // --- Stop Pattern Repository ---
 export async function loadRawStopPatternManifest(): Promise<string[]> { 
   return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; 
@@ -329,7 +386,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       if (loadedSampler) sampler = loadedSampler;
     }
 
-    const now = Date.now()
+    const ts = Date.now();
 
     return { 
       id, 
@@ -349,8 +406,9 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt || 1,
       numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 1,
       numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 1,
-      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
+      memories: hydrateMemories(rawCharacter.memories, ts),
+      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || ts,
+      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || ts,
     };
   } catch (e) {
     console.warn(`Failed to load character ${id}`, e);
@@ -365,10 +423,11 @@ export async function loadAllRawCharacters(): Promise<Character[]> {
 }
 
 export async function saveRawCharacter(character: Character): Promise<void> {
-  const { id, sampler, ...rawCharacter } = character; 
+  const { id, sampler, memories, ...rest } = character; 
   const payload: RawCharacter = { 
-    ...rawCharacter, 
+    ...rest, 
     samplerId: sampler?.id,
+    memories: serializeMemories(memories),
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.characters}/${id}.json`, payload);
@@ -388,7 +447,7 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
     if (!rawCharacter) return null;
 
-    const now = Date.now()
+    const ts = Date.now();
 
     return {
         id,
@@ -405,8 +464,9 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 1,
         numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 1,
         sampler: undefined, // ← Not hydrated — loaded on demand
-        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
+        memories: hydrateMemories(rawCharacter.memories, ts),
+        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || ts,
+        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || ts,
     };
 }
 
@@ -647,6 +707,8 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         narrateBoldedText: rawProfile.narrateBoldedText,
         narrateItalicizedText: rawProfile.narrateItalicizedText,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
+        enableMemoryWriting: rawProfile.enableMemoryWriting ?? false,
+        enableMemoryReading: rawProfile.enableMemoryReading ?? false,
         inputStrategy: rawProfile.inputStrategy?.length
             ? rawProfile.inputStrategy
             : ['Context', 'System Prompt', 'Think Prompt', 'Chat History'],

@@ -30,6 +30,8 @@ const gemmaThinkEndString = "<channel|>";
 const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
 
+export const memoryWriteTrigger = "<memory>";
+
 const startingAppearancePromptLine = `${contextStartString}Start Of The Characters' Appearances List.${contextEndString}`;
 const endingAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
 
@@ -43,7 +45,7 @@ const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${conte
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -373,6 +375,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
+    const enableMemoryWriting = profile?.enableMemoryWriting ?? false;
+    const enableMemoryReading = profile?.enableMemoryReading ?? false;
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -720,8 +724,33 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dialoguePromptLines.push(endingDialoguePromptLine);
     }
 
+    // MEMORY BLOCK
+    const memoryLines: string[] = [];
+    if (enableMemoryReading && character.memories) {
+        const relevantMemories: string[] = [];
+        const participantIds = new Set(participants.map(p => p.id));
+        for (const [key, mems] of Object.entries(character.memories)) {
+            if (key === 'global' || participantIds.has(key)) {
+                for (const mem of mems) {
+                    if (mem.content?.trim()) {
+                        relevantMemories.push(mem.content.trim());
+                    }
+                }
+            }
+        }
+        if (relevantMemories.length > 0) {
+            memoryLines.push(`${contextStartString}Start Of Long-Term Memory.${contextEndString}`);
+            for (const mem of relevantMemories) {
+                memoryLines.push(`${contextStartString}${mem}${contextEndString}`);
+            }
+            memoryLines.push(`${contextStartString}End Of Long-Term Memory.${contextEndString}`);
+        }
+    }
+
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
-    const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on. I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`;
+    const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
+    const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will write ${memoryWriteTrigger}${contextEndString} at the end of the response when I believe it is important to remember something for future conversations that will be used by ${characterParticipantTag}. ` : '';
+    const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`;
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
 
     const textInjectionLines = [characterResponsePriming, characterTextInjection];
@@ -732,6 +761,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Meta Think Instruction': metaThinkLines,
         'Appearance Prompt': appearancePromptLines,
         'Dialogue Prompt': dialoguePromptLines,
+        'Memory': memoryLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Fatigue Information': fatigueLines,

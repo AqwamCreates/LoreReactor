@@ -38,6 +38,7 @@ const log = {
   warn: (msg: string) => console.log(`${Colors.FgYellow}[WARN]${Colors.Reset} ${msg}`),
   error: (msg: string) => console.log(`${Colors.FgRed}[ERROR]${Colors.Reset} ${msg}`),
   req: (method: string, url: string) => console.log(`${Colors.Dim}${Colors.FgCyan}↙ ${method}${Colors.Reset} ${url}`),
+  reqError: (method: string, url: string, status: number) => console.log(`${Colors.FgRed}✗ ${method}${Colors.Reset} ${url} ${Colors.FgRed}→ ${status}${Colors.Reset}`),
   llama: (msg: string) => console.log(`${Colors.FgMagenta}[LLAMA]${Colors.Reset} ${msg}`)
 };
 
@@ -64,7 +65,7 @@ function getFreePort(): Promise<number> {
   });
 }
 
-async function waitForModelReady(port: number, timeoutMs: number = 60000): Promise<boolean> {
+async function waitForModelReady(port: number, timeoutMs = 60000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     try {
@@ -87,23 +88,53 @@ app.use('/user_data', (req, res) => {
 
   const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
   const dir = path.dirname(filePath);
-  log.req(req.method || 'UNKNOWN', req.url || '/');
+  
+  const originalStatus = res.status.bind(res);
+  
+  res.status = function(code: number) {
+    // Log only if status is error (4xx or 5xx)
+    if (req.method === 'GET' && code >= 400) {
+      log.reqError(req.method || 'GET', req.url || '/', code);
+    }
+    return originalStatus(code);
+  };
 
   if (req.method === 'GET') {
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Resource not found' });
+    if (!fs.existsSync(filePath)) {
+      log.reqError('GET', req.url || '/', 404);
+      return res.status(404).json({ error: 'Resource not found' });
+    }
     fs.stat(filePath, (err, stats) => {
-      if (err) return res.status(500).json({ error: 'FS Error' });
+      if (err) {
+        log.reqError('GET', req.url || '/', 500);
+        return res.status(500).json({ error: 'FS Error' });
+      }
       if (stats.isDirectory()) {
-        fs.readdir(filePath, (err, files) => err ? res.status(500).json({ error: 'Dir Read Error' }) : res.json(files));
+        fs.readdir(filePath, (err, files) => {
+          if (err) {
+            log.reqError('GET', req.url || '/', 500);
+            return res.status(500).json({ error: 'Dir Read Error' });
+          }
+          res.json(files);
+        });
       } else {
         fs.readFile(filePath, 'utf8', (err, data) => {
-          if (err) return res.status(500).json({ error: 'Read Error' });
+          if (err) {
+            log.reqError('GET', req.url || '/', 500);
+            return res.status(500).json({ error: 'Read Error' });
+          }
           const ext = path.extname(filePath).toLowerCase();
           if (ext === '.json') { res.setHeader('Content-Type', 'application/json'); res.send(data); }
           else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
             const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
             res.setHeader('Content-Type', mimeMap[ext]);
-            fs.readFile(filePath, (ie, buf) => ie ? res.status(500).send('Img Error') : res.send(buf));
+            fs.readFile(filePath, (ie, buf) => {
+              if (ie) {
+                log.reqError('GET', req.url || '/', 500);
+                return res.status(500).send('Img Error');
+              }
+              res.send(buf);
+            });
           } else { res.send(data); }
         });
       }
@@ -296,8 +327,6 @@ app.post('/fetch', async (req, res) => {
     return res.status(400).json({ ok: false, status: 400, error: 'Invalid URL' });
   }
 
-  log.req('FETCH', url);
-
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -334,6 +363,8 @@ app.post('/fetch', async (req, res) => {
     }
   } catch (e: any) {
     const errorMsg = e.name === 'AbortError' ? 'Timeout' : e.message;
+    // ✅ Log fetch errors
+    log.reqError('FETCH', url, 0);
     log.warn(`Fetch failed for ${url}: ${errorMsg}`);
     // ✅ Always return valid JSON, even on failure
     res.json({ ok: false, status: 0, contentType: '', error: errorMsg });

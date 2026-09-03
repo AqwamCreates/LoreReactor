@@ -17,6 +17,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Meta Think Instruction',
     'Appearance Prompt',
     'Dialogue Prompt',
+    'Memory',
     'Chat History',
     'Context',
     'Fatigue Information',
@@ -25,7 +26,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
@@ -125,6 +126,8 @@ export function ProfileEditorModal({
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
+    const [enableMemoryWriting, setEnableMemoryWriting] = useState(false);
+    const [enableMemoryReading, setEnableMemoryReading] = useState(false);
     const [narrateNormalText, setNarrateNormalText] = useState(true);
     const [narrateQuotedText, setNarrateQuotedText] = useState(false);
     const [narrateBoldedText, setNarrateBoldedText] = useState(false);
@@ -154,6 +157,8 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
+                setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? false);
+                setEnableMemoryReading(existingProfile.enableMemoryReading ?? false);
                 setNarrateNormalText(existingProfile.narrateNormalText ?? true);
                 setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
                 setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
@@ -182,6 +187,8 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(0);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
+                setEnableMemoryWriting(false);
+                setEnableMemoryReading(false);
                 setNarrateNormalText(true);
                 setNarrateQuotedText(false);
                 setNarrateBoldedText(false);
@@ -223,6 +230,8 @@ export function ProfileEditorModal({
             maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
+            enableMemoryWriting,
+            enableMemoryReading,
             narrateNormalText,
             narrateQuotedText,
             narrateBoldedText,
@@ -257,6 +266,8 @@ export function ProfileEditorModal({
             maximumChatStamina,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
+            enableMemoryWriting,
+            enableMemoryReading,
             narrateNormalText,
             narrateQuotedText,
             narrateBoldedText,
@@ -495,7 +506,6 @@ export function ProfileEditorModal({
                             Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
                         </div>
 
-                        {/* ✅ NEW: Disable Dialogue Prompt using SliderInput */}
                         <div style={{ marginTop: '12px' }}>
                             <SliderInput
                                 label="Number of Messages to Disable Think Prompt"
@@ -509,7 +519,6 @@ export function ProfileEditorModal({
                             />
                         </div>
 
-                        {/* ✅ NEW: Disable Meta Think Instructions using SliderInput */}
                         <div style={{ marginTop: '12px' }}>
                             <SliderInput
                                 label="Number of Messages to Disable Meta-Thinking"
@@ -523,7 +532,6 @@ export function ProfileEditorModal({
                             />
                         </div>
 
-                        {/* ✅ NEW: Disable Dialogue Prompt using SliderInput */}
                         <div style={{ marginTop: '12px' }}>
                             <SliderInput
                                 label="Number of Messages to Disable Dialogue Prompt"
@@ -555,7 +563,6 @@ export function ProfileEditorModal({
                             All participants get equal initiative weight regardless of character settings.
                         </div>
 
-                        {/* Chat Probability Override */}
                         <div style={{ marginBottom: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
@@ -575,7 +582,6 @@ export function ProfileEditorModal({
                             />
                         </div>
 
-                        {/* Maximum Chat Stamina Override */}
                         <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
@@ -670,6 +676,37 @@ export function ProfileEditorModal({
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Remove &lt;think&gt;...&lt;/think&gt; blocks from displayed output. The model still uses them internally.
+                        </div>
+                    </div>
+
+                    {/* Memory */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Memory</span>
+
+                        <label className="editor-checkbox-label">
+                            <input
+                                type="checkbox"
+                                checked={enableMemoryReading}
+                                onChange={(e) => setEnableMemoryReading(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Enable Memory Reading</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Inject stored character memories into the prompt. Characters will recall past interactions across chat sessions.
+                        </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={enableMemoryWriting}
+                                onChange={(e) => setEnableMemoryWriting(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Enable Memory Writing</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Allow the model to save new memories based on the language model's decisions. Memories persist on the character across all chat sessions.
                         </div>
                     </div>
 
@@ -947,7 +984,6 @@ export function ProfileEditorModal({
                             })}
                         </div>
 
-                        {/* Always show all strategy types — duplicates allowed */}
                         <div style={{ marginTop: '8px' }}>
                             <select
                                 onChange={(e) => {
