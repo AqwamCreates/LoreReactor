@@ -392,6 +392,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
+    const numberOfMessagesByParticipant = chatMessageHistory.filter(
+        msg => msg.character.id === characterId
+    ).length
+
     const isCacheMoreThanLevelZero = (cacheLevel > 0);
 
     const appearancePromptLines: string[] = [];
@@ -736,13 +740,16 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     };
 
     const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
-    const numberOfMessagesByParticipant = chatMessageHistory.filter(
-        msg => msg.character.id === characterId
-    ).length
+    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? 0;
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
         blockMap['Meta Think Instruction'] = undefined;
     }
+
+    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableDialoguePrompt) {
+        blockMap['Dialogue Prompt'] = undefined;
+    }
+
     const promptLines: string[] = [];
     const usedTypes = new Set<string>();
 

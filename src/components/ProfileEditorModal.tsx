@@ -116,6 +116,7 @@ export function ProfileEditorModal({
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(0);
+    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(0);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
@@ -143,6 +144,7 @@ export function ProfileEditorModal({
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
                 setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 0);
+                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? 0);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
@@ -169,6 +171,7 @@ export function ProfileEditorModal({
                 setForceNameReveal(false);
                 setForceNoCharacterImageInjection(false);
                 setNumberOfMessagesToDisableMetaThinkInstructions(0);
+                setNumberOfMessagesToDisableDialoguePrompt(0);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
                 setForceEqualInitiative(false);
@@ -208,6 +211,7 @@ export function ProfileEditorModal({
             forceNameReveal,
             forceNoCharacterImageInjection,
             numberOfMessagesToDisableMetaThinkInstructions,
+            numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
@@ -240,6 +244,7 @@ export function ProfileEditorModal({
             forceNameReveal,
             forceNoCharacterImageInjection,
             numberOfMessagesToDisableMetaThinkInstructions,
+            numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
@@ -287,7 +292,7 @@ export function ProfileEditorModal({
 
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newOrder = [...inputStrategy];
         const [removed] = newOrder.splice(dragIndex, 1);
@@ -331,7 +336,7 @@ export function ProfileEditorModal({
 
     const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newSteps = [...summarizationSteps];
         const [removed] = newSteps.splice(dragIndex, 1);
@@ -498,6 +503,20 @@ export function ProfileEditorModal({
                                 description="Disables heavy meta-think instructions after X messages made by responding character. 0 = Never."
                             />
                         </div>
+
+                        {/* ✅ NEW: Disable Dialogue Prompt using SliderInput */}
+                        <div style={{ marginTop: '12px' }}>
+                            <SliderInput
+                                label="Number of Messages to Disable Dialogue Prompt"
+                                value={numberOfMessagesToDisableDialoguePrompt}
+                                minimumValue={0}
+                                maximumValue={10}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
+                                description="Disables the dialogue prompt after X messages made by responding character. 0 = Never."
+                            />
+                        </div>
                     </div>
 
                     {/* Turn Sequencing Overrides */}
@@ -522,7 +541,7 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === 0 ? '(Character default)' : ``}
+                                    {chatProbability === 0 ? '(Character default)' : ""}
                                 </span>
                             </div>
                             <SliderInput
