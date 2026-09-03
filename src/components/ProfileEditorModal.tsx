@@ -491,7 +491,7 @@ export function ProfileEditorModal({
                                 label="Number of Messages to Disable Meta-Thinking"
                                 value={numberOfMessagesToDisableMetaThinkInstructions}
                                 minimumValue={0}
-                                maximumValue={50}
+                                maximumValue={30}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
