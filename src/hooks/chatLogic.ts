@@ -15,8 +15,8 @@ const noEmptyResponseInstructions = "I will also always create a response instea
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
 const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns."
-const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus."
+const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns.";
+const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.";
 const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating new text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
 
 const contextStartString = "{";
@@ -39,7 +39,7 @@ const startingDialoguePromptLine = `${contextStartString}Start Of This Character
 const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
 const startOfContextLine = `${contextStartString}Start Of Context.${contextEndString}`;
-const endOfContextLine = `${contextStartString}End Of Context.${contextEndString}`
+const endOfContextLine = `${contextStartString}End Of Context.${contextEndString}`;
 
 const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
@@ -69,12 +69,11 @@ function replacePlaceholders(text: string, characterParticipantTag: string, char
     if (!text) return text;
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    if (protagonistName){
+    if (protagonistName) {
         result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag} (${protagonistName})`);
-    } else{
-        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag}`); 
+    } else {
+        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag}`);
     }
-
     return result;
 }
 
@@ -208,11 +207,6 @@ const getImageBase64 = async (url: string): Promise<string | null> => {
     }
 };
 
-/**
- * resolveContextEntries accepts fetchedContentMap so token budgeting
- * accounts for fetched web content, not just static context.text.
- * Fetched content is included in recursive scan search space.
- */
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
@@ -386,8 +380,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         textContentArray.push(msg.textContent);
     }
 
-    // ✅ Build per-character reveal index: names only shown from the reveal message onward.
-    // This prevents retroactive name changes in earlier messages, preserving KV cache stability.
     const revealIndexByCharId = new Map<string, number>();
     for (let i = 0; i < chatMessageHistory.length; i++) {
         const msg = chatMessageHistory[i];
@@ -398,7 +390,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const numberOfMessagesByParticipant = chatMessageHistory.filter(
         msg => msg.character.id === characterId
-    ).length
+    ).length;
 
     const isCacheMoreThanLevelZero = (cacheLevel > 0);
 
@@ -415,11 +407,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const otherParticipantId = getParticipantId(participant, participants);
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = participant.name;
-            // For appearance block (prefix), show name if ever revealed OR cache level > 0
             const isRevealed = revealIndexByCharId.has(participant.id);
             const participantTag = getParticipantTag(participant, participants);
             const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName);
-            
+
             let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
 
             if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
@@ -514,7 +505,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         fetchedContentMap
     );
 
-    // For context placeholder replacement, use global reveal state (contexts are prefix-stable)
     const protagonistEverRevealed = revealIndexByCharId.has(protagonist.id);
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
@@ -598,9 +588,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     if (contextLines.length > 0) {
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
-
-        contextLines = [ startOfContextLine, ...contextLines, endOfContextLine ];
-        
+        contextLines = [startOfContextLine, ...contextLines, endOfContextLine];
     }
 
     let hasBeenSummarized = false;
@@ -670,8 +658,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             const isCurrent = otherParticipantId === characterParticipantId;
             const otherCharacterName = otherCharacter.name;
 
-            // ✅ Per-message reveal: only show name from the reveal index onward.
-            // Earlier messages keep "Character N" without name, preserving KV cache.
             const charRevealIndex = revealIndexByCharId.get(otherCharacter.id);
             const isRevealedAtThisMessage = charRevealIndex !== undefined && p.idx >= charRevealIndex;
 
@@ -847,7 +833,7 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
 
     if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-        const characterImagePath = getCharacterImageUrl(character.id);
+        const characterImagePath = getCharacterImageUrl(character.image);
 
         if (characterImagePath) {
             const characterImageBase64 = await getImageBase64(characterImagePath);
@@ -860,7 +846,7 @@ export async function prepareRequestBody(
         }
     }
 
-    if (profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
+    if (!profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
         const imagePromises = activeContextsForImages.flatMap(context => {
             if (!context.images) return [];
             return context.images.map(async (filename) => {
@@ -919,6 +905,10 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
         result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
         result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
     }
+
+    // Strip memory trigger from displayed output
+    result = result.replace(/<memory>\}/g, '');
+    result = result.replace(/<memory>[\s\S]*?\}/g, '');
 
     chatData.participants.forEach((p, i) => {
         const id = `Character ${i + 1}`;

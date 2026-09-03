@@ -176,7 +176,7 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
-  memories: Record<string, RawMemory[]>; // Key-value pairs for character memories
+  memories: Record<string, string[]>; // Key-value pairs for character memories
 
 }
 

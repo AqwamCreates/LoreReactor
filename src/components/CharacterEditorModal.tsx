@@ -441,6 +441,7 @@ export function CharacterEditorModal({
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
+            memories: existingCharacter?.memories ?? {},
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
