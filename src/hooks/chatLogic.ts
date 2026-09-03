@@ -36,6 +36,12 @@ const endingAppearancePromptLine = `${contextStartString}End Of The Characters' 
 const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
 const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
+const startOfContextLine = `${contextStartString}Start Of Context.${contextEndString}`;
+const endOfContextLine = `${contextStartString}End Of Context.${contextEndString}`
+
+const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
+const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
+
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
@@ -585,10 +591,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     if (contextLines.length > 0) {
         constructedMetaThinkLines = `${constructedMetaThinkLines} ${contextAuthorityInstructions}`;
 
-        const startOfContextLine = `${contextStartString}${thinkStartString}Start Of Context.${thinkEndString}${contextEndString}`
-
-        const endOfContextLine = `${contextStartString}${thinkStartString}End Of Context.${thinkEndString}${contextEndString}`
-
         contextLines = [ startOfContextLine, ...contextLines, endOfContextLine ];
         
     }
@@ -596,7 +598,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     let hasBeenSummarized = false;
 
     const chatHistoryLines: string[] = [];
-    chatHistoryLines.push(`${contextStartString}Start Of The Memory.${contextEndString}`);
+    chatHistoryLines.push(startOfChatHistoryLine);
 
     if (chatMessageHistory.length > 0) {
         const activeSteps = [...(profile?.summarizationSteps || [])]
@@ -676,7 +678,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         }
     }
 
-    chatHistoryLines.push(`${contextStartString}End Of The Memory.${contextEndString}`);
+    chatHistoryLines.push(endOfChatHistoryLine);
 
     if (hasBeenSummarized) { constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`; }
 
