@@ -842,6 +842,8 @@ async function buildChatDataShell(
   contextMap: Map<string, Context>,
   profileMap: Map<string, Profile>
 ): Promise<ChatData | null> {
+
+  const now = Date.now();
   
   let protagonist = charMap.get(rawChatData.protagonistId);
   if (!protagonist) {
@@ -857,8 +859,8 @@ async function buildChatDataShell(
       numberOfMessagesToDisableMetaThinkInstructions: 0,
       numberOfMessagesToDisableDialoguePrompt: 0,
       memories: {},
-      firstCreatedTimestamp: Date.now(),
-      lastUpdatedTimestamp: Date.now(),
+      firstCreatedTimestamp: now,
+      lastUpdatedTimestamp: now,
     };
   }
 
@@ -878,8 +880,8 @@ async function buildChatDataShell(
         numberOfMessagesToDisableMetaThinkInstructions: 0,
         numberOfMessagesToDisableDialoguePrompt: 0,
         memories: {},
-        firstCreatedTimestamp: Date.now(),
-        lastUpdatedTimestamp: Date.now(),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
       } as Character;
     });
     
