@@ -739,9 +739,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Text Injection': textInjectionLines,
     };
 
-    const numberOfMessagesToDisableThinkPrompt = profile?.numberOfMessagesToDisableThinkPrompt ?? character.numberOfMessagesToDisableThinkPrompt ?? 0;
-    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? character.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
-    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? character.numberOfMessagesToDisableDialoguePrompt ?? 0;
+    const numberOfMessagesToDisableThinkPrompt = profile?.numberOfMessagesToDisableThinkPrompt ?? character.numberOfMessagesToDisableThinkPrompt ?? 1;
+    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? character.numberOfMessagesToDisableMetaThinkInstructions ?? 1;
+    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? character.numberOfMessagesToDisableDialoguePrompt ?? 1;
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
         blockMap['Think Prompt'] = undefined;
