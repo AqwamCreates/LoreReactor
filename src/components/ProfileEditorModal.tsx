@@ -495,7 +495,7 @@ export function ProfileEditorModal({
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="Drops heavy meta-think instructions after X messages. 0 = Never."
+                                description="Disables heavy meta-think instructions after X messages made by responding character. 0 = Never."
                             />
                         </div>
                     </div>
