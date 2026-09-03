@@ -142,6 +142,8 @@ export interface Character extends ObjectData  {
   sampler?: Sampler | undefined;
   stopPatterns?: [StopPattern]
   doNotInjectCharacterImage?: boolean;
+  numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  numberOfMessagesToDisableDialoguePrompt: number; // 
 
 }
 
@@ -159,6 +161,8 @@ export interface RawCharacter extends RawData {
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
   doNotInjectCharacterImage?: boolean;
+  numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
 
 }
 

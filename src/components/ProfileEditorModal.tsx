@@ -500,7 +500,7 @@ export function ProfileEditorModal({
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="Disables heavy meta-think instructions after X messages made by responding character. 0 = Never."
+                                description="All participants disable the meta-think instructions after X messages made by the responding participant. 0 = Never."
                             />
                         </div>
 
@@ -514,7 +514,7 @@ export function ProfileEditorModal({
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
-                                description="Disables the dialogue prompt after X messages made by responding character. 0 = Never."
+                                description="All participants disable the dialogue prompt after X messages made by the responding participant. 0 = Never."
                             />
                         </div>
                     </div>

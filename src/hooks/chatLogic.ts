@@ -739,8 +739,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Text Injection': textInjectionLines,
     };
 
-    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
-    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? 0;
+    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? character.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
+    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? character.numberOfMessagesToDisableDialoguePrompt ?? 0;
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
         blockMap['Meta Think Instruction'] = undefined;
