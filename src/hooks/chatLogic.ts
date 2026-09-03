@@ -722,7 +722,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const textInjectionLines = [characterResponsePriming, characterTextInjection];
 
-    const blockMap: Record<string, string[]> = {
+    const blockMap: Record<string, (string[] | undefined)> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
         'Meta Think Instruction': metaThinkLines,
@@ -735,6 +735,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Text Injection': textInjectionLines,
     };
 
+    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
+    if (chatMessageHistory.length >= numberOfMessagesToDisableMetaThinkInstructions) {
+        blockMap['Meta Think Instruction'] = undefined;
+    }
     const promptLines: string[] = [];
     const usedTypes = new Set<string>();
 

@@ -627,6 +627,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
         forceNoContextImageInjection:rawProfile.forceNoContextImageInjection,
         useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,
+        numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
         forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
         chatProbability: rawProfile.chatProbability ?? 0,
         maximumChatStamina: rawProfile.maximumChatStamina ?? 0,
