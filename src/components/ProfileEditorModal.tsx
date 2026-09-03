@@ -16,6 +16,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Think Prompt',
     'Meta Think Instruction',
     'Appearance Prompt',
+    'Dialogue Prompt',
     'Chat History',
     'Context',
     'Fatigue Information',
@@ -24,7 +25,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
@@ -114,6 +115,7 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
+    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(0);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
@@ -140,6 +142,7 @@ export function ProfileEditorModal({
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
+                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 0);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
@@ -165,6 +168,7 @@ export function ProfileEditorModal({
                 setDescription('');
                 setForceNameReveal(false);
                 setForceNoCharacterImageInjection(false);
+                setNumberOfMessagesToDisableMetaThinkInstructions(0);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
                 setForceEqualInitiative(false);
@@ -203,6 +207,7 @@ export function ProfileEditorModal({
             description: description.trim() || undefined,
             forceNameReveal,
             forceNoCharacterImageInjection,
+            numberOfMessagesToDisableMetaThinkInstructions,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
@@ -234,6 +239,7 @@ export function ProfileEditorModal({
             description: description.trim() || undefined,
             forceNameReveal,
             forceNoCharacterImageInjection,
+            numberOfMessagesToDisableMetaThinkInstructions,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
             forceEqualInitiative,
@@ -418,9 +424,9 @@ export function ProfileEditorModal({
                         />
                     </div>
 
-                    {/* Identity & Display */}
+                    {/* Display Section */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Identity & Display</span>
+                        <span className="editor-section-title">Display</span>
                         
                         <label className="editor-checkbox-label">
                             <input
@@ -434,9 +440,13 @@ export function ProfileEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Always show character names instead of "Character X".
                         </div>
+                    </div>
 
-                        {/* ✅ NEW: Force No Character Image Injection */}
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                    {/* Injection Section */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Injection</span>
+
+                        <label className="editor-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={forceNoCharacterImageInjection}
@@ -449,7 +459,6 @@ export function ProfileEditorModal({
                             Prevent character images from being sent to the model, even if the character has one assigned.
                         </div>
 
-                        {/* ✅ NEW: Force No Context Image Injection */}
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
                             <input
                                 type="checkbox"
@@ -474,6 +483,20 @@ export function ProfileEditorModal({
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
+                        </div>
+
+                        {/* ✅ NEW: Disable Meta Think Instructions using SliderInput */}
+                        <div style={{ marginTop: '12px' }}>
+                            <SliderInput
+                                label="Number of Messages to Disable Meta-Thinking"
+                                value={numberOfMessagesToDisableMetaThinkInstructions}
+                                minimumValue={0}
+                                maximumValue={50}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
+                                description="Drops heavy meta-think instructions after X messages. 0 = Never."
+                            />
                         </div>
                     </div>
 
@@ -748,7 +771,7 @@ export function ProfileEditorModal({
                                                             value={step.slidingWindowSize ?? 10}
                                                             onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))}
                                                             className="editor-input"
-                                                            style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                            style={{ textAlign: 'right' }}
                                                         />
                                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keep last N messages verbatim</div>
                                                     </div>
@@ -765,7 +788,7 @@ export function ProfileEditorModal({
                                                                 value={step.compressionInterval ?? 20}
                                                                 onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Compress every M messages</div>
                                                         </div>
@@ -778,7 +801,7 @@ export function ProfileEditorModal({
                                                                 value={step.compressionChunkSize ?? 10}
                                                                 onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per compression chunk</div>
                                                         </div>
@@ -796,7 +819,7 @@ export function ProfileEditorModal({
                                                                 value={step.recursiveChunkSize ?? 10}
                                                                 onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per chunk at layer 0</div>
                                                         </div>
@@ -809,7 +832,7 @@ export function ProfileEditorModal({
                                                                 value={step.recursiveMaxDepth ?? 3}
                                                                 onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max recursion layers</div>
                                                         </div>
@@ -828,7 +851,7 @@ export function ProfileEditorModal({
                                                                 value={step.maskingRelevanceThreshold ?? 0.3}
                                                                 onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Min score to include (0.0–1.0)</div>
                                                         </div>
@@ -842,7 +865,7 @@ export function ProfileEditorModal({
                                                                 value={step.maskingKeywordWeight ?? 0.7}
                                                                 onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))}
                                                                 className="editor-input"
-                                                                style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                                style={{ textAlign: 'right' }}
                                                             />
                                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keyword vs recency balance</div>
                                                         </div>
@@ -860,7 +883,7 @@ export function ProfileEditorModal({
                                                             value={step.summaryTokenBudget ?? 512}
                                                             onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))}
                                                             className="editor-input"
-                                                            style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                            style={{ textAlign: 'right' }}
                                                         />
                                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max tokens for generated summaries</div>
                                                     </div>
@@ -874,7 +897,7 @@ export function ProfileEditorModal({
                                                             value={step.triggerTokenThreshold ?? 0}
                                                             onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))}
                                                             className="editor-input"
-                                                            style={{ textAlign: 'right', fontSize: '0.8rem' }}
+                                                            style={{ textAlign: 'right' }}
                                                         />
                                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>0 = auto based on context length</div>
                                                     </div>
