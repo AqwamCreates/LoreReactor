@@ -156,6 +156,19 @@ export function useModelManager() {
         }
     };
 
+    // ✅ NEW HELPER: Unload any running local model that isn't the targetId
+    const unloadOtherRunningModels = async (targetId: string) => {
+        const otherRunningIds = Object.entries(runningModels)
+            .filter(([rid, state]) => rid !== targetId && state.isRunning)
+            .map(([rid]) => rid);
+        
+        for (const otherId of otherRunningIds) {
+            const otherName = models.find(m => m.id === otherId)?.name || otherId;
+            addToast(`Switching models: Stopping ${otherName} to free resources...`, "info");
+            await unloadModelInternal(otherId);
+        }
+    };
+
     const toggleModelLoad = async (id: string, forceUnload: boolean = false) => {
         const model = models.find(m => m.id === id);
         if (!model) return;
@@ -169,6 +182,9 @@ export function useModelManager() {
                 setSelectedModelId(null);
                 addToast(`Cloud model ${model.name} deselected`, "info");
             } else {
+                // ✅ If selecting a cloud model, unload any running local models
+                await unloadOtherRunningModels(id);
+                
                 setSelectedModelId(id);
                 addToast(`Cloud model ${model.name} selected`, "success");
             }
@@ -197,16 +213,8 @@ export function useModelManager() {
             }
         } 
         else if (!isCurrentlyRunning) {
-            // Enforce single model: unload any other running model first
-            const otherRunningIds = Object.entries(runningModels)
-                .filter(([rid, state]) => rid !== id && state.isRunning)
-                .map(([rid]) => rid);
-            
-            for (const otherId of otherRunningIds) {
-                const otherName = models.find(m => m.id === otherId)?.name || otherId;
-                addToast(`Stopping ${otherName} to free resources...`, "info");
-                await unloadModelInternal(otherId);
-            }
+            // ✅ Unload any other running model first (using the new helper)
+            await unloadOtherRunningModels(id);
 
             const modelPath = model.model || '';
             
@@ -274,6 +282,17 @@ export function useModelManager() {
                 addToast(`Failed to start: ${err.message}`, "error");
                 console.error(err);
             }
+        }
+        else if (isCurrentlyRunning && forceUnload) {
+             // Handle force unload if needed elsewhere
+             await unloadModelInternal(id);
+        }
+        else if (isCurrentlyRunning && !forceUnload && selectedModelId !== id) {
+            // ✅ If clicking a running local model that isn't selected, just select it
+            // (and ensure others are unloaded, though there shouldn't be any)
+            await unloadOtherRunningModels(id);
+            setSelectedModelId(id);
+            addToast(`Model ${model.name} selected`, "success");
         }
     };
 
