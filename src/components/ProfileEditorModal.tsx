@@ -115,6 +115,7 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
+    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(0);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(0);
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(0);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
@@ -143,6 +144,7 @@ export function ProfileEditorModal({
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
+                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? 0);
                 setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 0);
                 setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? 0);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
@@ -170,6 +172,7 @@ export function ProfileEditorModal({
                 setDescription('');
                 setForceNameReveal(false);
                 setForceNoCharacterImageInjection(false);
+                setNumberOfMessagesToDisableThinkPrompt(0);
                 setNumberOfMessagesToDisableMetaThinkInstructions(0);
                 setNumberOfMessagesToDisableDialoguePrompt(0);
                 setForceNoContextImageInjection(false);
@@ -210,6 +213,7 @@ export function ProfileEditorModal({
             description: description.trim() || undefined,
             forceNameReveal,
             forceNoCharacterImageInjection,
+            numberOfMessagesToDisableThinkPrompt,
             numberOfMessagesToDisableMetaThinkInstructions,
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
@@ -243,6 +247,7 @@ export function ProfileEditorModal({
             description: description.trim() || undefined,
             forceNameReveal,
             forceNoCharacterImageInjection,
+            numberOfMessagesToDisableThinkPrompt,
             numberOfMessagesToDisableMetaThinkInstructions,
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
@@ -490,6 +495,20 @@ export function ProfileEditorModal({
                             Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
                         </div>
 
+                        {/* ✅ NEW: Disable Dialogue Prompt using SliderInput */}
+                        <div style={{ marginTop: '12px' }}>
+                            <SliderInput
+                                label="Number of Messages to Disable Think Prompt"
+                                value={numberOfMessagesToDisableThinkPrompt}
+                                minimumValue={0}
+                                maximumValue={10}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))}
+                                description="All participants disable the think prompt after X messages made by the responding participant."
+                            />
+                        </div>
+
                         {/* ✅ NEW: Disable Meta Think Instructions using SliderInput */}
                         <div style={{ marginTop: '12px' }}>
                             <SliderInput
@@ -500,7 +519,7 @@ export function ProfileEditorModal({
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="All participants disable the meta-think instructions after X messages made by the responding participant. 0 = Never."
+                                description="All participants disable the meta-think instructions after X messages made by the responding participant."
                             />
                         </div>
 
@@ -514,7 +533,7 @@ export function ProfileEditorModal({
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
-                                description="All participants disable the dialogue prompt after X messages made by the responding participant. 0 = Never."
+                                description="All participants disable the dialogue prompt after X messages made by the responding participant."
                             />
                         </div>
                     </div>
