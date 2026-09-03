@@ -736,7 +736,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     };
 
     const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? 0;
-    if (chatMessageHistory.length >= numberOfMessagesToDisableMetaThinkInstructions) {
+    const numberOfMessagesByParticipant = chatMessageHistory.filter(
+        msg => msg.character.id === characterId
+    ).length
+
+    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
         blockMap['Meta Think Instruction'] = undefined;
     }
     const promptLines: string[] = [];
