@@ -246,6 +246,6 @@ export function getMemoryRetentionWeightValueFromText(text: string) {
     return detectValue(text, MEMORY_RETENTION_WEIGHT_RULES, DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE, false);
 }
 
-export function getContextRelevanceSensitivityValueFromText(text: string) {
+export function getContextSensitivityValueFromText(text: string) {
     return detectValue(text, CONTEXT_RELEVANCE_SENSITIVITY_RULES, DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE, false);
 }

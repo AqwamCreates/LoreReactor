@@ -11,7 +11,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     nameSensitivityStr: string;
     responseDelayWeightStr: string;
     memoryRetentionWeightStr: string;
-    contextRelevanceSensitivityStr: string;
+    contextSensitivityStr: string;
     numberOfMessagesToDisableThinkPromptStr: string;
     numberOfMessagesToDisableMetaThinkInstructionsStr: string;
     numberOfMessagesToDisableDialoguePromptStr: string;
@@ -26,7 +26,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onNameSensitivityChange: (val: string) => void;
     onResponseDelayWeightChange: (val: string) => void;
     onMemoryRetentionWeightChange: (val: string) => void;
-    onContextRelevanceSensitivityChange: (val: string) => void;
+    onContextSensitivityChange: (val: string) => void;
     onDisableThinkChange: (val: string) => void;
     onDisableMetaChange: (val: string) => void;
     onDisableDialogueChange: (val: string) => void;
@@ -44,7 +44,7 @@ export function CharacterAdvancedSettingsEditorModal({
     nameSensitivityStr,
     responseDelayWeightStr,
     memoryRetentionWeightStr,
-    contextRelevanceSensitivityStr,
+    contextSensitivityStr,
     numberOfMessagesToDisableThinkPromptStr,
     numberOfMessagesToDisableMetaThinkInstructionsStr,
     numberOfMessagesToDisableDialoguePromptStr,
@@ -59,7 +59,7 @@ export function CharacterAdvancedSettingsEditorModal({
     onNameSensitivityChange,
     onResponseDelayWeightChange,
     onMemoryRetentionWeightChange,
-    onContextRelevanceSensitivityChange,
+    onContextSensitivityChange,
     onDisableThinkChange,
     onDisableMetaChange,
     onDisableDialogueChange,
@@ -129,7 +129,7 @@ export function CharacterAdvancedSettingsEditorModal({
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context Sensitivity</label>
-                                <input type="number" step="0.1" min="0" value={contextRelevanceSensitivityStr} onChange={(e) => onContextRelevanceSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => onContextSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
                             </div>
                         </div>

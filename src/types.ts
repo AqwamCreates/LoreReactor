@@ -152,7 +152,7 @@ export interface Character extends ObjectData  {
   nameSensitivity: number;
   responseDelayWeight: number;
   memoryRetentionWeight: number;
-  contextRelevanceSensitivity: number;
+  contextSensitivity: number;
   sampler?: Sampler | undefined;
   stopPatterns?: [StopPattern]
   doNotInjectCharacterImage?: boolean;
@@ -179,7 +179,7 @@ export interface RawCharacter extends RawData {
   nameSensitivity: number;
   responseDelayWeight: number;
   memoryRetentionWeight: number;
-  contextRelevanceSensitivity: number;
+  contextSensitivity: number;
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
   doNotInjectCharacterImage?: boolean;
@@ -364,7 +364,7 @@ export interface Profile extends ObjectData {
   nameSensitivity: number;
   responseDelayWeight: number;
   memoryRetentionWeight: number;
-  contextRelevanceSensitivity: number;
+  contextSensitivity: number;
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   narrateNormalText: boolean;
   narrateQuotedText: boolean;
@@ -393,7 +393,7 @@ export interface RawProfile extends RawData{
   nameSensitivity: number;
   responseDelayWeight: number;
   memoryRetentionWeight: number;
-  contextRelevanceSensitivity: number;
+  contextSensitivity: number;
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   narrateNormalText: boolean;
   narrateQuotedText: boolean;

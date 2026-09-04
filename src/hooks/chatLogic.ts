@@ -219,9 +219,9 @@ async function resolveContextEntries(
     getFilteredData: (ctxType: string, tgtType: string) => { characterIdArray: string[]; textContentArray: string[] },
     runtimePort?: number,
     fetchedContentMap?: Map<string, string>,
-    contextRelevanceSensitivity?: number
+    contextSensitivity?: number
 ): Promise<{ context: Context; formattedLine: string }[]> {
-    const sensitivityForCharacter = contextRelevanceSensitivity ?? 1;
+    const sensitivityForCharacter = contextSensitivity ?? 1;
     const activated = new Set<string>();
     const activatedMap = new Map<string, Context>();
 
@@ -386,8 +386,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     })();
 
     const effectiveContextSensitivity = (() => {
-        const profileValue = profile?.contextRelevanceSensitivity;
-        if (profileValue === undefined || profileValue === -1) return character.contextRelevanceSensitivity ?? 1;
+        const profileValue = profile?.contextSensitivity;
+        if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
         return profileValue;
     })();
 
