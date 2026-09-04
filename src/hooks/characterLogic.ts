@@ -26,6 +26,7 @@ export function generateChatStamina(character: Character, chatMessage: ChatMessa
     const remainingChatStamina = chatMessage.remainingChatStamina
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
+    if (remainingChatStamina === undefined) return; // Treat undefined as infinite stamina, so no generation needed.
     if (remainingChatStamina >= maximumChatStamina) return;
     // Build cumulative distribution using logarithmic weights.
     // Weight for recovering k points = ln(1 + k) where k goes from 1 to deficit.

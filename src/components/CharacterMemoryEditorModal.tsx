@@ -1,6 +1,6 @@
-// src/components/CharacterMemoryModal.tsx
+// src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
-import type { Character, Memory, ChatData } from '../types';
+import type { Character, Memory } from '../types';
 import { loadAllRawChatData } from '../hooks/storage';
 import './main.css';
 

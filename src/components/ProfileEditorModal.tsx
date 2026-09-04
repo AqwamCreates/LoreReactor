@@ -124,6 +124,10 @@ export function ProfileEditorModal({
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
     const [chatProbability, setChatProbability] = useState<number>(0);
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
+    const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
+    const [responseDelayWeight, setResponseDelayWeight] = useState<number>(-1);
+    const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
+    const [contextRelevanceSensitivity, setContextRelevanceSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
@@ -155,6 +159,10 @@ export function ProfileEditorModal({
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
                 setChatProbability(existingProfile.chatProbability ?? 0);
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
+                setNameSensitivity(existingProfile.nameSensitivity ?? -1);
+                setResponseDelayWeight(existingProfile.responseDelayWeight ?? -1);
+                setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
+                setContextRelevanceSensitivity(existingProfile.contextRelevanceSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
                 setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
@@ -185,6 +193,10 @@ export function ProfileEditorModal({
                 setForceEqualInitiative(false);
                 setChatProbability(0);
                 setMaximumChatStamina(0);
+                setNameSensitivity(-1);
+                setResponseDelayWeight(-1);
+                setMemoryRetentionWeight(-1);
+                setContextRelevanceSensitivity(-1);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
                 setEnableMemoryWriting(0);
@@ -228,6 +240,10 @@ export function ProfileEditorModal({
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
+            nameSensitivity,
+            responseDelayWeight,
+            memoryRetentionWeight,
+            contextRelevanceSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             enableMemoryWriting,
@@ -264,6 +280,10 @@ export function ProfileEditorModal({
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
+            nameSensitivity,
+            responseDelayWeight,
+            memoryRetentionWeight,
+            contextRelevanceSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             enableMemoryWriting,
@@ -582,11 +602,11 @@ export function ProfileEditorModal({
                             />
                         </div>
 
-                        <div>
+                        <div style={{ marginBottom: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === 0 ? '(Character default)' : ``}
+                                    {maximumChatStamina === 0 ? '(Character default)' : ''}
                                 </span>
                             </div>
                             <SliderInput
@@ -598,6 +618,82 @@ export function ProfileEditorModal({
                                 decimals={0}
                                 onChange={(val) => setMaximumChatStamina(Math.round(val))}
                                 description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Name Sensitivity Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : ''}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={nameSensitivity}
+                                minimumValue={-1}
+                                maximumValue={10}
+                                stepValue={0.5}
+                                decimals={1}
+                                onChange={setNameSensitivity}
+                                description="-1 = defer to character default. 0 = disabled. N = multiplier per name mention in latest message."
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Response Delay Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {responseDelayWeight === -1 ? '(Character default)' : responseDelayWeight === 0 ? '(Disabled)' : ''}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={responseDelayWeight}
+                                minimumValue={-1}
+                                maximumValue={1}
+                                stepValue={0.05}
+                                decimals={2}
+                                onChange={setResponseDelayWeight}
+                                description="-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected."
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Retention Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : ''}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={memoryRetentionWeight}
+                                minimumValue={-1}
+                                maximumValue={2}
+                                stepValue={0.1}
+                                decimals={1}
+                                onChange={setMemoryRetentionWeight}
+                                description="-1 = defer to character. 0 = minimal history. 1 = full history. Controls how far back memories reach."
+                            />
+                        </div>
+
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Context Sensitivity Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {contextRelevanceSensitivity === -1 ? '(Character default)' : contextRelevanceSensitivity === 0 ? '(Blind)' : ''}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={contextRelevanceSensitivity}
+                                minimumValue={-1}
+                                maximumValue={2}
+                                stepValue={0.1}
+                                decimals={1}
+                                onChange={setContextRelevanceSensitivity}
+                                description="-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger."
                             />
                         </div>
                     </div>
