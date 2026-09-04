@@ -31,7 +31,7 @@ export function getEffectiveResponseDelayWeight(character: Character, profile?: 
 
 export function getNameSensitivityMultiplier(character: Character, chatData: ChatData): number {
     const sensitivity = getEffectiveNameSensitivity(character, chatData.Profile);
-    if (sensitivity === 0 || sensitivity === 1) return 1;
+    if (sensitivity === 0) return 1;
 
     const history = chatData.chatMessageHistory;
     if (history.length === 0) return 1;
