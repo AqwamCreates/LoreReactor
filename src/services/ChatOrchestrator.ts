@@ -1,95 +1,9 @@
 // src/services/ChatOrchestrator.ts
 import type { Character, ChatData } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveResponseDelayWeight } from '../hooks/characterLogic';
 import { saveRawChatData } from '../hooks/storage';
 
 type TurnExecutor = (data: ChatData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<ChatData | null>
-
-function getEffectiveNameSensitivity(character: Character, profile: ChatData['Profile']): number {
-    const profileValue = profile?.nameSensitivity;
-    if (profileValue === undefined || profileValue === -1) return character.nameSensitivity ?? 1;
-    return profileValue;
-}
-
-function getEffectiveResponseDelayWeight(character: Character, profile: ChatData['Profile']): number {
-    const profileValue = profile?.responseDelayWeight;
-    if (profileValue === undefined || profileValue === -1) return character.responseDelayWeight ?? 0;
-    return profileValue;
-}
-
-function getNameSensitivityMultiplier(character: Character, chatData: ChatData): number {
-    const sensitivity = getEffectiveNameSensitivity(character, chatData.Profile);
-    if (sensitivity === 0 || sensitivity === 1) return 1;
-
-    const history = chatData.chatMessageHistory;
-    if (history.length === 0) return 1;
-
-    const latestMessage = history[history.length - 1];
-    if (latestMessage.character.id === character.id) return 1;
-
-    const textLower = latestMessage.textContent.toLowerCase();
-    const fullNameLower = character.name.toLowerCase().trim();
-
-    // Build ignore list: other participants' full names
-    const ignoreRanges: { start: number; end: number }[] = [];
-    for (const participant of chatData.participants) {
-        if (participant.id === character.id) continue;
-        const otherNameLower = participant.name.toLowerCase().trim();
-        if (otherNameLower === fullNameLower) continue;
-        let searchIndex = 0;
-        while (true) {
-            const foundIndex = textLower.indexOf(otherNameLower, searchIndex);
-            if (foundIndex === -1) break;
-            ignoreRanges.push({ start: foundIndex, end: foundIndex + otherNameLower.length });
-            searchIndex = foundIndex + otherNameLower.length;
-        }
-    }
-
-    const isIgnored = (matchStart: number, matchLength: number): boolean => {
-        const matchEnd = matchStart + matchLength;
-        for (const range of ignoreRanges) {
-            // Overlap check: match overlaps with ignore range if they share any characters
-            if (matchStart < range.end && matchEnd > range.start) return true;
-        }
-        return false;
-    };
-
-    let mentionCount = 0;
-
-    // Step 1: Scan for full name first
-    let searchIndex = 0;
-    while (true) {
-        const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
-        const fullNameLength = fullNameLower.length;
-        if (foundIndex === -1) break;
-        if (!isIgnored(foundIndex, fullNameLength)) {
-            mentionCount++;
-        }
-        searchIndex = foundIndex + fullNameLength;
-    }
-
-    // Step 2: Split into parts and scan for partial names (min 2 chars)
-    const nameParts = new Set<string>();
-    for (const part of fullNameLower.split(/\s+/)) {
-        if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
-    }
-
-    for (const namePart of nameParts) {
-        let partSearchIndex = 0;
-        while (true) {
-            const foundIndex = textLower.indexOf(namePart, partSearchIndex);
-            if (foundIndex === -1) break;
-            if (!isIgnored(foundIndex, namePart.length)) {
-                mentionCount++;
-            }
-            partSearchIndex = foundIndex + namePart.length;
-        }
-    }
-
-    const multiplier = (mentionCount * sensitivity) + 1;
-
-    return multiplier;
-}
 
 export async function runTurnSequence(
     currentChatData: ChatData,
@@ -117,7 +31,7 @@ export async function runTurnSequence(
 
         if (eligible.length === 0) break;
 
-        // ✅ Pick one speaker by initiative weight × name sensitivity
+        // ✅ Pick one speaker by initiative weight × name sensitivity.
         let selectedSpeaker: Character | null;
 
         if (eligible.length === 1) {

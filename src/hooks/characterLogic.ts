@@ -1,4 +1,4 @@
-import type { Character, ChatMessage, Profile } from "../types";
+import type { Character, ChatData, ChatMessage, Profile } from "../types";
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
     const profileOverride = profile?.chatProbability ?? 0;
@@ -15,6 +15,92 @@ export function getEffectiveMaximumChatStamina(character: Character, profile?: P
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
     if (profile?.forceEqualInitiative) return 1;
     return character.initiativeWeight ?? 1;
+}
+
+export function getEffectiveNameSensitivity(character: Character, profile?: Profile): number {
+    const profileValue = profile?.nameSensitivity;
+    if (profileValue === undefined || profileValue === -1) return character.nameSensitivity ?? 1;
+    return profileValue;
+}
+
+export function getEffectiveResponseDelayWeight(character: Character, profile?: Profile): number {
+    const profileValue = profile?.responseDelayWeight;
+    if (profileValue === undefined || profileValue === -1) return character.responseDelayWeight ?? 0;
+    return profileValue;
+}
+
+export function getNameSensitivityMultiplier(character: Character, chatData: ChatData): number {
+    const sensitivity = getEffectiveNameSensitivity(character, chatData.Profile);
+    if (sensitivity === 0 || sensitivity === 1) return 1;
+
+    const history = chatData.chatMessageHistory;
+    if (history.length === 0) return 1;
+
+    const latestMessage = history[history.length - 1];
+    if (latestMessage.character.id === character.id) return 1;
+
+    const textLower = latestMessage.textContent.toLowerCase();
+    const fullNameLower = character.name.toLowerCase().trim();
+
+    // Build ignore list: other participants' full names
+    const ignoreRanges: { start: number; end: number }[] = [];
+    for (const participant of chatData.participants) {
+        if (participant.id === character.id) continue;
+        const otherNameLower = participant.name.toLowerCase().trim();
+        if (otherNameLower === fullNameLower) continue;
+        let searchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(otherNameLower, searchIndex);
+            if (foundIndex === -1) break;
+            ignoreRanges.push({ start: foundIndex, end: foundIndex + otherNameLower.length });
+            searchIndex = foundIndex + otherNameLower.length;
+        }
+    }
+
+    const isIgnored = (matchStart: number, matchLength: number): boolean => {
+        const matchEnd = matchStart + matchLength;
+        for (const range of ignoreRanges) {
+            // Overlap check: match overlaps with ignore range if they share any characters
+            if (matchStart < range.end && matchEnd > range.start) return true;
+        }
+        return false;
+    };
+
+    let mentionCount = 0;
+
+    // Step 1: Scan for full name first
+    let searchIndex = 0;
+    while (true) {
+        const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
+        const fullNameLength = fullNameLower.length;
+        if (foundIndex === -1) break;
+        if (!isIgnored(foundIndex, fullNameLength)) {
+            mentionCount++;
+        }
+        searchIndex = foundIndex + fullNameLength;
+    }
+
+    // Step 2: Split into parts and scan for partial names (min 2 chars)
+    const nameParts = new Set<string>();
+    for (const part of fullNameLower.split(/\s+/)) {
+        if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
+    }
+
+    for (const namePart of nameParts) {
+        let partSearchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(namePart, partSearchIndex);
+            if (foundIndex === -1) break;
+            if (!isIgnored(foundIndex, namePart.length)) {
+                mentionCount++;
+            }
+            partSearchIndex = foundIndex + namePart.length;
+        }
+    }
+
+    const multiplier = (mentionCount * sensitivity) + 1;
+
+    return multiplier;
 }
 
 export function consumeChatStamina(chatMessage: ChatMessage, amountOfChatStaminaConsumed: number) {
