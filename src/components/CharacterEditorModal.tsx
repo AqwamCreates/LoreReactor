@@ -286,9 +286,9 @@ export function CharacterEditorModal({
 
     if (!isOpen) return null;
 
-    const renderAutoHint = (field: 'iw' | 'cp' | 'ms') => { const val = autoDetected[field]; if (val === null) return null; return <span className="editor-auto-hint">← auto-detected</span>; };
     const renderTokenCount = (field: keyof TokenCounts) => {
-        const count = tokenCounts[field]; if (count === null) return null;
+        let count = tokenCounts[field];
+        count = count === null ? 0 : count;
         return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`${count.toLocaleString()} token(s)`}</div>;
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
