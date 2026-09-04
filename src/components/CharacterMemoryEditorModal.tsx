@@ -22,6 +22,7 @@ export function CharacterMemoryEditorModal({
     const [chatNameMap, setChatNameMap] = useState<Map<string, string>>(new Map());
     const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>({});
     const [hasChanges, setHasChanges] = useState(false);
+    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
     useEffect(() => {
         if (isOpen && character) {
@@ -29,6 +30,7 @@ export function CharacterMemoryEditorModal({
             setHasChanges(false);
             setEditingId(null);
             setEditContent('');
+            setShowBulkDeleteConfirm(false);
 
             (async () => {
                 try {
@@ -86,6 +88,14 @@ export function CharacterMemoryEditorModal({
         }
     };
 
+    const handleBulkDelete = () => {
+        setLocalMemories({});
+        setHasChanges(true);
+        setEditingId(null);
+        setEditContent('');
+        setShowBulkDeleteConfirm(false);
+    };
+
     const handleSaveAndClose = () => {
         onSaveMemories(localMemories);
         onClose();
@@ -107,12 +117,46 @@ export function CharacterMemoryEditorModal({
                 <div className="modal-header">
                     <h2>Memories ({totalMemories})</h2>
                     <div className="editor-modal-actions">
-                        {hasChanges && (
+                        {totalMemories > 0 && !showBulkDeleteConfirm && (
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-cancel"
+                                onClick={() => setShowBulkDeleteConfirm(true)}
+                                style={{ color: '#ff4444' }}
+                            >
+                                Delete All
+                            </button>
+                        )}
+                        {showBulkDeleteConfirm && (
+                            <>
+                                <span style={{ fontSize: '0.75rem', opacity: 0.8, alignSelf: 'center' }}>
+                                    Delete all {totalMemories} memories?
+                                </span>
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-cancel"
+                                    onClick={handleBulkDelete}
+                                    style={{ color: '#ff4444', fontWeight: 'bold' }}
+                                >
+                                    Confirm
+                                </button>
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-cancel"
+                                    onClick={() => setShowBulkDeleteConfirm(false)}
+                                >
+                                    Cancel
+                                </button>
+                            </>
+                        )}
+                        {hasChanges && !showBulkDeleteConfirm && (
                             <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveAndClose}>Save</button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose}>
-                            {hasChanges ? 'Discard' : 'Close'}
-                        </button>
+                        {!showBulkDeleteConfirm && (
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose}>
+                                {hasChanges ? 'Discard' : 'Close'}
+                            </button>
+                        )}
                     </div>
                 </div>
 
