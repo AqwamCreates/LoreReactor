@@ -96,17 +96,17 @@ export function CharacterAdvancedSettingsEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Initiative Weight</label>
                                 <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => onInitiativeWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Chat Probability</label>
                                 <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => onChatProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Max Chat Stamina</label>
                                 <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => onMaximumChatStaminaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
                             </div>
                         </div>
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
@@ -118,37 +118,37 @@ export function CharacterAdvancedSettingsEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Response Delay Weight</label>
                                 <input type="number" step="0.05" min="0" max="1" value={responseDelayWeightStr} onChange={(e) => onResponseDelayWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls when the character responds to a message based on the duration from the character's last message. Range: 0 - 1</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls when the character responds to a message based on the duration from the character's last message. Range: 0 - 1.</div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Memory Retention</label>
                                 <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => onMemoryRetentionWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
                             </div>
                         </div>
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context Sensitivity</label>
                                 <input type="number" step="0.1" min="0" value={contextRelevanceSensitivityStr} onChange={(e) => onContextRelevanceSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
                             </div>
                         </div>
                     </div>
 
                     {/* Disable Prompts */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Disable Prompts</span>
+                        <span className="editor-section-title">Disable Prompts After X Messages</span>
                         <div className="editor-stats-grid">
                             <div>
-                                <label className="editor-label editor-label-small">Disable Think Prompt</label>
+                                <label className="editor-label editor-label-small">Think Prompt</label>
                                 <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => onDisableThinkChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Disable Meta-Thinking</label>
+                                <label className="editor-label editor-label-small">Meta-Think Instructions</label>
                                 <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => onDisableMetaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Disable Dialogue Prompt</label>
+                                <label className="editor-label editor-label-small">Dialogue Prompt</label>
                                 <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => onDisableDialogueChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                             </div>
                         </div>
