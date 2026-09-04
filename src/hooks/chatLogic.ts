@@ -826,10 +826,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     // MEMORY BLOCK
     const memoryLines: string[] = [];
-    if (enableMemoryReading && character.memories) {
+    const characterMemories = character.memories;
+    if (enableMemoryReading && characterMemories) {
         const relevantMemories: string[] = [];
         const participantIds = new Set(participants.map(p => p.id));
-        for (const [key, memories] of Object.entries(character.memories)) {
+        for (const [key, memories] of Object.entries(characterMemories)) {
             if (key === 'global' || participantIds.has(key)) {
                 for (const memory of memories) {
 
