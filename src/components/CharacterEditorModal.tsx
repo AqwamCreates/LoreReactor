@@ -147,9 +147,9 @@ export function CharacterEditorModal({
                 setVoiceName(existingCharacter.voice || '');
                 setVoiceFile(null);
                 setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
-                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? 0));
-                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? 0));
-                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? 0));
+                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? 1));
+                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? 1));
+                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? 1));
                 setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
                 setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
                 setMemories(existingCharacter.memories ?? {});
@@ -165,7 +165,7 @@ export function CharacterEditorModal({
                 setResponseDelayWeightStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
                 setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
                 setDoNotInjectCharacterImage(false);
-                setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
+                setNumberOfMessagesToDisableThinkPromptStr('1'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('1'); setNumberOfMessagesToDisableDialoguePromptStr('1');
                 setEnableMemoryWriting(false); setEnableMemoryReading(false);
                 setMemories({});
                 setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
