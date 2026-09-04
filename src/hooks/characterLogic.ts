@@ -1,15 +1,15 @@
 import type { Character, ChatData, ChatMessage, Profile } from "../types";
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
-    const profileOverride = profile?.chatProbability ?? 0;
-    if (profileOverride > 0) return profileOverride;
-    return character.chatProbability ?? 0.5;
+    const profileValue = profile?.chatProbability;
+    if (profileValue === undefined || profileValue === -1) return character.chatProbability ?? 0.5;
+    return profileValue;
 }
 
 export function getEffectiveMaximumChatStamina(character: Character, profile?: Profile): number {
-    const profileOverride = profile?.maximumChatStamina ?? 0;
-    if (profileOverride > 0) return profileOverride;
-    return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    const profileValue = profile?.maximumChatStamina;
+    if (profileValue === undefined || profileValue === -1) return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
+    return profileValue;
 }
 
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
