@@ -34,7 +34,7 @@ export function StopPatternEditorModal({
                 setName(existingStopPattern.name || '');
                 setDescription(existingStopPattern.description || '');
                 setPattern(existingStopPattern.pattern || '');
-                setRegexTrigger(existingStopPattern.regularExpressionTrigger || '');
+                setRegexTrigger(existingStopPattern.regularExpressionActivationTrigger || '');
                 setRegexContext(existingStopPattern.regularExpressionContext || 'global');
                 setRegexTarget(existingStopPattern.regularExpressionTarget || 'everyone');
             } else {
@@ -92,7 +92,7 @@ export function StopPatternEditorModal({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             pattern: pattern.trim(),
-            regularExpressionTrigger: regexTrigger.trim() || undefined,
+            regularExpressionActivationTrigger: regexTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
             firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),

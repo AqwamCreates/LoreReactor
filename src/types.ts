@@ -20,7 +20,8 @@ interface RawData {
 export interface StopPattern extends ObjectData {
 
   pattern: string;
-  regularExpressionTrigger?: string;
+  regularExpressionActivationTrigger?: string;
+  regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'listener' | 'self';
 
@@ -29,7 +30,8 @@ export interface StopPattern extends ObjectData {
 export interface RawStopPattern extends RawData {
 
   pattern: string;
-  regularExpressionTrigger?: string;
+  regularExpressionActivationTrigger?: string;
+  regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: 'global' | 'local' | 'previous';
   regularExpressionTarget?: 'everyone' | 'listener' | 'self';
 
@@ -64,7 +66,8 @@ export interface Context extends ObjectData {
     linkFetchMode?: 'full' | 'summary' | 'extract'; // How to process fetched content
     limitLinksToSubdirectory: boolean;
     fetchCacheTimeToLiveMs?: number;        // Cache TimeToLive in ms (0 = always refetch, default = 300000 / 5min)
-    regularExpressionTrigger?: string;
+    regularExpressionActivationTrigger?: string;
+    regularExpressionDeactivationTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
     regularExpressionTarget?: 'everyone' | 'listener' | 'self';
     tokenBudget?: number;
@@ -86,7 +89,8 @@ export interface RawContext extends RawData {
     linkFetchMode?: 'full' | 'summary' | 'extract';
     limitLinksToSubdirectory: boolean;
     fetchCacheTimeToLiveMs?: number;
-    regularExpressionTrigger?: string;
+    regularExpressionActivationTrigger?: string;
+    regularExpressionDeactivationTrigger?: string;
     regularExpressionContext?: 'global' | 'local' | 'previous';
     regularExpressionTarget?: 'everyone' | 'listener' | 'self';
     tokenBudget?: number;
