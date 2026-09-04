@@ -26,7 +26,14 @@ export function CharacterMemoryEditorModal({
 
     useEffect(() => {
         if (isOpen && character) {
-            setLocalMemories(structuredClone(character.memories ?? {}));
+            // Safely clone memories, defaulting to empty object if undefined
+            try {
+                setLocalMemories(structuredClone(character.memories ?? {}));
+            } catch (e) {
+                console.warn("Failed to clone memories, using reference:", e);
+                setLocalMemories(character.memories ?? {});
+            }
+            
             setHasChanges(false);
             setEditingId(null);
             setEditContent('');
@@ -45,7 +52,9 @@ export function CharacterMemoryEditorModal({
         }
     }, [isOpen, character]);
 
-    if (!isOpen || !character) return null;
+    // If not open, return null. 
+    // If character is null but modal is open, show empty state instead of disappearing completely
+    if (!isOpen) return null;
 
     const handleStartEdit = (mem: Memory) => {
         setEditingId(mem.id);
@@ -161,7 +170,9 @@ export function CharacterMemoryEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {entries.length === 0 ? (
+                    {!character ? (
+                        <div className="empty-state">No character selected.</div>
+                    ) : entries.length === 0 ? (
                         <div className="empty-state">No memories stored for this character.</div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -206,7 +217,7 @@ export function CharacterMemoryEditorModal({
                                                                 whiteSpace: 'pre-wrap',
                                                                 wordBreak: 'break-word',
                                                             }}>
-                                                                {mem.content || ""}
+                                                                {mem.content || "(Empty memory)"}
                                                             </div>
                                                             <div style={{
                                                                 display: 'flex',
