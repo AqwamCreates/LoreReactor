@@ -127,7 +127,7 @@ export function ProfileEditorModal({
     const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
     const [responseDelayWeight, setResponseDelayWeight] = useState<number>(-1);
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
-    const [contextRelevanceSensitivity, setContextRelevanceSensitivity] = useState<number>(-1);
+    const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
@@ -162,7 +162,7 @@ export function ProfileEditorModal({
                 setNameSensitivity(existingProfile.nameSensitivity ?? -1);
                 setResponseDelayWeight(existingProfile.responseDelayWeight ?? -1);
                 setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
-                setContextRelevanceSensitivity(existingProfile.contextRelevanceSensitivity ?? -1);
+                setContextSensitivity(existingProfile.contextSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
                 setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
@@ -196,7 +196,7 @@ export function ProfileEditorModal({
                 setNameSensitivity(-1);
                 setResponseDelayWeight(-1);
                 setMemoryRetentionWeight(-1);
-                setContextRelevanceSensitivity(-1);
+                setContextSensitivity(-1);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
                 setEnableMemoryWriting(0);
@@ -243,7 +243,7 @@ export function ProfileEditorModal({
             nameSensitivity,
             responseDelayWeight,
             memoryRetentionWeight,
-            contextRelevanceSensitivity,
+            contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             enableMemoryWriting,
@@ -283,7 +283,7 @@ export function ProfileEditorModal({
             nameSensitivity,
             responseDelayWeight,
             memoryRetentionWeight,
-            contextRelevanceSensitivity,
+            contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
             enableMemoryWriting,
@@ -682,17 +682,17 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Context Sensitivity Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {contextRelevanceSensitivity === -1 ? '(Character default)' : contextRelevanceSensitivity === 0 ? '(Blind)' : ''}
+                                    {contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : ''}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
-                                value={contextRelevanceSensitivity}
+                                value={contextSensitivity}
                                 minimumValue={-1}
                                 maximumValue={2}
                                 stepValue={0.1}
                                 decimals={1}
-                                onChange={setContextRelevanceSensitivity}
+                                onChange={setContextSensitivity}
                                 description="-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger."
                             />
                         </div>
