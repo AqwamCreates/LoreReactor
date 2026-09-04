@@ -67,13 +67,10 @@ function getCurrentDateAndTimeString(): string {
 
 function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
     if (!text) return text;
+    const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    if (protagonistName) {
-        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag} (${protagonistName})`);
-    } else {
-        result = result.replace(/\{\{user\}\}/g, `${protagonistParticipantTag}`);
-    }
+    result = result.replace(/\{\{protagonist\}\}/g, protagonistString);
     return result;
 }
 
