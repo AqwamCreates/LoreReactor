@@ -990,7 +990,7 @@ function App() {
               );
             })}
             {viewMode === 'ladder' && streamingIndicators}
-            {chatData && !chatData.chatMessageHistory.length && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting as {currentCharacter.name}.</p></div>}
+            {chatData && !chatData.chatMessageHistory.length && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
             <div ref={messageEndRef} style={{ height: '1px' }} />
           </div>
 
