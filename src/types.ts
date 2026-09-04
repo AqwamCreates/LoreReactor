@@ -155,6 +155,8 @@ export interface Character extends ObjectData  {
   numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  enableMemoryWriting: boolean;       // LLM can save memories via trigger
+  enableMemoryReading: boolean;       // Inject memories into prompt
   memories: Record<string, Memory[]>; // Key-value pairs for character memories
 
 }
@@ -176,6 +178,8 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableMetaThinkInstructions: number; // e.g., 0 = never, 5 = disable after 5 messages.
   numberOfMessagesToDisableDialoguePrompt: number; // e.g., 0 = never, 5 = disable after 5 messages.
+  enableMemoryWriting: boolean;       // LLM can save memories via trigger
+  enableMemoryReading: boolean;       // Inject memories into prompt
   memories: Record<string, string[]>; // Key-value pairs for character memories
 
 }
@@ -355,8 +359,8 @@ export interface Profile extends ObjectData {
   narrateBoldedText: boolean;
   narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
-  enableMemoryWriting: boolean;       // LLM can save memories via trigger
-  enableMemoryReading: boolean;       // Inject memories into prompt
+  enableMemoryWriting: number; // -1 means all is disabled. 0 use character default, 1 means all enabled.
+  enableMemoryReading: number; // -1 means all is disabled. 0 use character default, 1 means all enabled.
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: SummarizationStep[];
 
@@ -380,8 +384,8 @@ export interface RawProfile extends RawData{
   narrateBoldedText: boolean;
   narrateItalicizedText:boolean;
   stripThinkTokens: boolean;
-  enableMemoryWriting: boolean;
-  enableMemoryReading: boolean;
+  enableMemoryWriting: number; // -1 means all is disabled. 0 use character default, 1 means all enabled.
+  enableMemoryReading: number; // -1 means all is disabled. 0 use character default, 1 means all enabled.
   inputStrategy: PromptBlockType[] // Controls the order for which prompt is added first.
   summarizationSteps: RawSummarizationStep[];
 

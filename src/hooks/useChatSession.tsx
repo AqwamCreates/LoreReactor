@@ -380,7 +380,7 @@ export function useChatSession() {
                 lastUpdatedTimestamp: ts,
             };
             if (!character.memories) character.memories = {};
-            character.memories['global'] = [globalMemory];
+            character.memories.global = [globalMemory];
         }
 
         try { await saveRawCharacter(character); } catch (e) { console.warn('Failed to save character memories:', e); }
