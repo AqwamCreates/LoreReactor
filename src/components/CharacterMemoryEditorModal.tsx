@@ -174,7 +174,8 @@ export function CharacterMemoryEditorModal({
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {mems.map(mem => {
                                             const isEditing = editingId === mem.id;
-                                            const chatName = chatNameMap.get(mem.chatData?.id ?? '') || 'Unknown Chat';
+                                            const chatId = mem.chatData?.id ?? 'Unknown ID';
+                                            const chatName = chatNameMap.get(chatId) || 'Unknown Chat';
 
                                             return (
                                                 <div key={mem.id} style={{
@@ -205,7 +206,7 @@ export function CharacterMemoryEditorModal({
                                                                 whiteSpace: 'pre-wrap',
                                                                 wordBreak: 'break-word',
                                                             }}>
-                                                                {mem.content}
+                                                                {mem.content || ""}
                                                             </div>
                                                             <div style={{
                                                                 display: 'flex',
@@ -214,8 +215,12 @@ export function CharacterMemoryEditorModal({
                                                                 marginTop: '8px',
                                                                 fontSize: '0.6rem',
                                                                 opacity: 0.5,
+                                                                gap: '12px'
                                                             }}>
-                                                                <span>Source: {chatName}</span>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    <span style={{ fontWeight: 'bold' }}>Source: {chatName}</span>
+                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.55rem' }}>ID: {chatId}</span>
+                                                                </div>
                                                                 <div style={{ display: 'flex', gap: '6px' }}>
                                                                     <button
                                                                         type="button"

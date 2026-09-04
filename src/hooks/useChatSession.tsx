@@ -6,7 +6,7 @@ import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, crea
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, compressChunk } from '../services/ChatMessageSummarizationEngine';
+import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
 import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from './characterLogic';
 import { v4 as uuidv4 } from 'uuid';
@@ -377,7 +377,8 @@ export function useChatSession() {
 
             if (relevantMessages.length === 0) continue;
 
-            const summary = await compressChunk(relevantMessages, lmCtx, 512);
+            // Use character-aware compression
+            const summary = await makeCharacterMemory(data, character, lmCtx);
             if (!summary) continue;
 
             const newMemory: Memory = {
@@ -394,7 +395,8 @@ export function useChatSession() {
         }
 
         // Global memory uses full history regardless of retention weight
-        const globalSummary = await compressChunk(data.chatMessageHistory, lmCtx, 512);
+        // Also use character-aware compression for global memory
+        const globalSummary = await makeCharacterMemory(data, character, lmCtx);
         if (globalSummary) {
             const globalMemory: Memory = {
                 id: uuidv4(),
