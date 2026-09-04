@@ -147,13 +147,15 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
         throw new Error("Message not found");
     }
 
+    const now = Date.now();
+
     // Deep clone messages so they get new IDs and don't share references
     const clonedMessages = currentChat.chatMessageHistory.slice(0, cloneIndex + 1).map(msg => ({
         ...msg,
         id: uuidv4(),
         character: { ...msg.character },
-        firstCreatedTimestamp: Date.now(),
-        lastUpdatedTimestamp: Date.now(),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
         parentChatMessageId: null, // No parent linkage
     }));
 
@@ -165,8 +167,8 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
         chatMessageHistory: clonedMessages,
         Profile: currentChat.Profile, // ✅ Preserve active profile
-        firstCreatedTimestamp: Date.now(),
-        lastUpdatedTimestamp: Date.now(),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
         parentChatDataId: null,   // ✅ No parent — fully independent
         parentChatMessageId: null, // ✅ No branch point — fully independent
     };
