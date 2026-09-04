@@ -835,7 +835,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
                     const memoryChatDataId = memory.chatData.id;
 
-                    if (memoryChatDataId && memoryChatDataId === chatDataId) continue;
+                    if (memoryChatDataId === chatDataId) continue;
 
                     const memoryContent = memory.content;
                     // Safely check if content exists and is a string before trimming
