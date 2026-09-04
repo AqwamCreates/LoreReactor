@@ -176,7 +176,7 @@ function filterArrayBasedOnTarget(
 
 function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier: number = 1): boolean {
     const regexTrigger = context.regularExpressionActivationTrigger;
-    if (!regexTrigger) return true;
+    if (!regexTrigger) return true; // No activation trigger = always active
     try {
         const regex = new RegExp(regexTrigger);
         const matched = regex.test(searchSpace);
@@ -186,7 +186,52 @@ function doesContextMatch(context: Context, searchSpace: string, sensitivityMult
         if (sensitivityMultiplier >= 1) return true;
         return Math.random() < sensitivityMultiplier;
     } catch (e) {
-        console.warn(`Invalid regex in context ${context.name}`, e);
+        console.warn(`Invalid activation regex in context ${context.name}`, e);
+        return false;
+    }
+}
+
+function doesContextDeactivate(context: Context, searchSpace: string): boolean {
+    // Only deactivate if there IS an activation trigger
+    // Without activation trigger, entry is always active — deactivation is meaningless
+    if (!context.regularExpressionActivationTrigger) return false;
+
+    const deactivationTrigger = context.regularExpressionDeactivationTrigger;
+    if (!deactivationTrigger) return false;
+
+    try {
+        const regex = new RegExp(deactivationTrigger);
+        return regex.test(searchSpace);
+    } catch (e) {
+        console.warn(`Invalid deactivation regex in context ${context.name}`, e);
+        return false;
+    }
+}
+
+function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): boolean {
+    const regexTrigger = stopPattern.regularExpressionActivationTrigger;
+    if (!regexTrigger) return true; // No activation trigger = always active
+    try {
+        const regex = new RegExp(regexTrigger);
+        return regex.test(searchSpace);
+    } catch (e) {
+        console.warn(`Invalid activation regex in stop pattern ${stopPattern.name}`, e);
+        return false;
+    }
+}
+
+function doesStopPatternDeactivate(stopPattern: StopPattern, searchSpace: string): boolean {
+    // Only deactivate if there IS an activation trigger
+    if (!stopPattern.regularExpressionActivationTrigger) return false;
+
+    const deactivationTrigger = stopPattern.regularExpressionDeactivationTrigger;
+    if (!deactivationTrigger) return false;
+
+    try {
+        const regex = new RegExp(deactivationTrigger);
+        return regex.test(searchSpace);
+    } catch (e) {
+        console.warn(`Invalid deactivation regex in stop pattern ${stopPattern.name}`, e);
         return false;
     }
 }
@@ -236,8 +281,10 @@ async function resolveContextEntries(
         if (filteredTexts.length === 0) {
             if (!context.regularExpressionActivationTrigger) continue;
             if (doesContextMatch(context, chatSearchSpace, sensitivityForCharacter)) {
-                activated.add(context.id);
-                activatedMap.set(context.id, context);
+                if (!doesContextDeactivate(context, chatSearchSpace)) {
+                    activated.add(context.id);
+                    activatedMap.set(context.id, context);
+                }
             }
             continue;
         }
@@ -246,8 +293,10 @@ async function resolveContextEntries(
         const combinedSearch = `${searchSpace}\n${chatSearchSpace}`;
 
         if (doesContextMatch(context, combinedSearch, sensitivityForCharacter)) {
-            activated.add(context.id);
-            activatedMap.set(context.id, context);
+            if (!doesContextDeactivate(context, combinedSearch)) {
+                activated.add(context.id);
+                activatedMap.set(context.id, context);
+            }
         }
     }
 
@@ -282,10 +331,12 @@ async function resolveContextEntries(
             if (recursionDepth > contextMaxDepth) continue;
 
             if (doesContextMatch(context, activatedText, sensitivityForCharacter)) {
-                activated.add(context.id);
-                activatedMap.set(context.id, context);
-                activationDepth.set(context.id, recursionDepth);
-                newActivations = true;
+                if (!doesContextDeactivate(context, activatedText)) {
+                    activated.add(context.id);
+                    activatedMap.set(context.id, context);
+                    activationDepth.set(context.id, recursionDepth);
+                    newActivations = true;
+                }
             }
         }
     }
@@ -552,10 +603,10 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
-        const regexTrigger = stopPattern.regularExpressionActivationTrigger;
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
-        if (!regexTrigger) {
+        if (!stopPattern.regularExpressionActivationTrigger) {
+            // No activation trigger = always active, deactivation is meaningless
             activeStopPatterns.push(stopPattern);
             continue;
         }
@@ -563,11 +614,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         if (filteredTexts.length === 0) continue;
 
         const searchSpace = filteredTexts.join('\n');
-        try {
-            const regex = new RegExp(regexTrigger);
-            if (regex.test(searchSpace)) activeStopPatterns.push(stopPattern);
-        } catch (e) {
-            console.warn(`Invalid regex in stop pattern ${stopPattern.name}`, e);
+
+        if (doesStopPatternMatch(stopPattern, searchSpace)) {
+            if (!doesStopPatternDeactivate(stopPattern, searchSpace)) {
+                activeStopPatterns.push(stopPattern);
+            }
         }
     }
 
