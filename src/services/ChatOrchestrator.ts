@@ -50,7 +50,7 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
 
     if (mentionCount === 0) return 1;
 
-    return mentionCount * sensitivity;
+    return (mentionCount * sensitivity);
 }
 
 export async function runTurnSequence(
