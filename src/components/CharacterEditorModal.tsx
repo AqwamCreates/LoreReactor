@@ -446,10 +446,10 @@ export function CharacterEditorModal({
                                     {/* Advanced Settings + Memory Buttons */}
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>
-                                            ⚙️ Advanced Settings
+                                            Advanced Settings
                                         </button>
                                         <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>
-                                            🧠 Memory ({Object.values(memories).reduce((sum, arr) => sum + arr.length, 0)})
+                                            Memory ({Object.values(memories).reduce((sum, arr) => sum + arr.length, 0)})
                                         </button>
                                     </div>
                                 </div>
