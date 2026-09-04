@@ -30,6 +30,28 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
     const textLower = latestMessage.textContent.toLowerCase();
     const fullNameLower = character.name.toLowerCase().trim();
 
+    // Build ignore list: other participants' full names
+    const ignoreRanges: { start: number; end: number }[] = [];
+    for (const participant of chatData.participants) {
+        if (participant.id === character.id) continue;
+        const otherNameLower = participant.name.toLowerCase().trim();
+        if (otherNameLower === fullNameLower) continue;
+        let searchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(otherNameLower, searchIndex);
+            if (foundIndex === -1) break;
+            ignoreRanges.push({ start: foundIndex, end: foundIndex + otherNameLower.length });
+            searchIndex = foundIndex + otherNameLower.length;
+        }
+    }
+
+    const isIgnored = (index: number, length: number): boolean => {
+        for (const range of ignoreRanges) {
+            if (index >= range.start && index < range.end) return true;
+        }
+        return false;
+    };
+
     let mentionCount = 0;
 
     // Step 1: Scan for full name first
@@ -37,7 +59,9 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
     while (true) {
         const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
         if (foundIndex === -1) break;
-        mentionCount++;
+        if (!isIgnored(foundIndex, fullNameLower.length)) {
+            mentionCount++;
+        }
         searchIndex = foundIndex + fullNameLower.length;
     }
 
@@ -52,12 +76,12 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
         while (true) {
             const foundIndex = textLower.indexOf(namePart, partSearchIndex);
             if (foundIndex === -1) break;
-            mentionCount++;
+            if (!isIgnored(foundIndex, namePart.length)) {
+                mentionCount++;
+            }
             partSearchIndex = foundIndex + namePart.length;
         }
     }
-
-    if (mentionCount === 0) return 1;
 
     const multiplier = (mentionCount * sensitivity) + 1;
 
