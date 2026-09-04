@@ -76,12 +76,8 @@ export function ContextEditorModal({
 
         if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
-            try {
-                const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
-                if (!cancelled) setTextnumberOfTokens(count);
-            } catch {
-                if (!cancelled) setTextnumberOfTokens(Math.ceil(text.length / 4));
-            }
+            const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
+            if (!cancelled) setTextnumberOfTokens(count);
         }, 400);
 
         return () => {
