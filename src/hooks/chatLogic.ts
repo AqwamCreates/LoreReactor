@@ -803,7 +803,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
-    const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} at the end of the response when I believe it is important to remember something for future conversations that will be used by ${characterParticipantTag}. ` : '';
+    const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} at the end of the response when I want to remember something for future conversations that will be used by ${characterParticipantTag}. ` : '';
     const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`;
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
 
