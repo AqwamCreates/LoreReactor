@@ -367,7 +367,7 @@ export function CharacterEditorModal({
    const renderTokenCount = (field: keyof TokenCounts) => {
         const count = tokenCounts[field];
         const displayCount = count ?? 0;
-        return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`${displayCount.toLocaleString()} token(s)`}</div>;
+        return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`~${displayCount.toLocaleString()} token(s)`}</div>;
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
 
