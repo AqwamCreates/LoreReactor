@@ -49,7 +49,7 @@ export function CharacterMemoryEditorModal({
 
     const handleStartEdit = (mem: Memory) => {
         setEditingId(mem.id);
-        setEditContent(mem.content);
+        setEditContent(mem.content || '');
     };
 
     const handleCancelEdit = () => {
