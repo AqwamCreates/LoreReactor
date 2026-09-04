@@ -27,16 +27,25 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
     const latestMessage = history[history.length - 1];
     if (latestMessage.character.id === character.id) return 1;
 
-    const nameLower = character.name.toLowerCase();
     const textLower = latestMessage.textContent.toLowerCase();
 
+    // Split name into parts: full name + individual words (min 2 chars to avoid false positives)
+    const fullNameLower = character.name.toLowerCase().trim();
+    const nameParts = new Set<string>();
+    nameParts.add(fullNameLower);
+    for (const part of fullNameLower.split(/\s+/)) {
+        if (part.length >= 2) nameParts.add(part);
+    }
+
     let mentionCount = 0;
-    let searchIndex = 0;
-    while (true) {
-        const foundIndex = textLower.indexOf(nameLower, searchIndex);
-        if (foundIndex === -1) break;
-        mentionCount++;
-        searchIndex = foundIndex + nameLower.length;
+    for (const namePart of nameParts) {
+        let searchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(namePart, searchIndex);
+            if (foundIndex === -1) break;
+            mentionCount++;
+            searchIndex = foundIndex + namePart.length;
+        }
     }
 
     if (mentionCount === 0) return 1;
