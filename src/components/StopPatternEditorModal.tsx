@@ -21,12 +21,13 @@ export function StopPatternEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [pattern, setPattern] = useState('');
-    const [regexTrigger, setRegexTrigger] = useState('');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
-    const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string; deactivationRegex?: string }>({});
 
     useEffect(() => {
         if (isOpen) {
@@ -34,14 +35,16 @@ export function StopPatternEditorModal({
                 setName(existingStopPattern.name || '');
                 setDescription(existingStopPattern.description || '');
                 setPattern(existingStopPattern.pattern || '');
-                setRegexTrigger(existingStopPattern.regularExpressionActivationTrigger || '');
+                setRegexActivationTrigger(existingStopPattern.regularExpressionActivationTrigger || '');
+                setRegexDeactivationTrigger(existingStopPattern.regularExpressionDeactivationTrigger || '');
                 setRegexContext(existingStopPattern.regularExpressionContext || 'global');
                 setRegexTarget(existingStopPattern.regularExpressionTarget || 'everyone');
             } else {
                 setName('');
                 setDescription('');
                 setPattern('');
-                setRegexTrigger('');
+                setRegexActivationTrigger('');
+                setRegexDeactivationTrigger('');
                 setRegexContext('global');
                 setRegexTarget('everyone');
             }
@@ -52,16 +55,24 @@ export function StopPatternEditorModal({
     }, [isOpen, existingStopPattern]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; pattern?: string; regex?: string } = {};
+        const newErrors: { name?: string; pattern?: string; regex?: string; deactivationRegex?: string } = {};
 
         if (!name.trim()) newErrors.name = 'Name is required.';
         if (!pattern.trim()) newErrors.pattern = 'Stop pattern is required.';
 
-        if (regexTrigger.trim()) {
+        if (regexActivationTrigger.trim()) {
             try {
-                new RegExp(regexTrigger);
+                new RegExp(regexActivationTrigger);
             } catch (e) {
-                newErrors.regex = 'Invalid regular expression pattern.';
+                newErrors.regex = 'Invalid activation regular expression.';
+            }
+        }
+
+        if (regexDeactivationTrigger.trim()) {
+            try {
+                new RegExp(regexDeactivationTrigger);
+            } catch (e) {
+                newErrors.deactivationRegex = 'Invalid deactivation regular expression.';
             }
         }
 
@@ -70,16 +81,16 @@ export function StopPatternEditorModal({
     };
 
     const handleTestRegex = () => {
-        if (!regexTrigger.trim() || !testText.trim()) {
+        if (!regexActivationTrigger.trim() || !testText.trim()) {
             setTestResult(null);
             return;
         }
         try {
-            const regex = new RegExp(regexTrigger);
+            const regex = new RegExp(regexActivationTrigger);
             setTestResult(regex.test(testText));
         } catch (e) {
             setTestResult(null);
-            setErrors(prev => ({ ...prev, regex: 'Invalid regular expression pattern.' }));
+            setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
         }
     };
 
@@ -92,7 +103,8 @@ export function StopPatternEditorModal({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             pattern: pattern.trim(),
-            regularExpressionActivationTrigger: regexTrigger.trim() || undefined,
+            regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
+            regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
             firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),
@@ -178,14 +190,14 @@ export function StopPatternEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Regular Expression</span>
 
-                        {/* Regex Trigger */}
+                        {/* Activation Trigger */}
                         <div className="editor-row-full">
                             <div>
-                                <label className="editor-label editor-label-small">Trigger Pattern</label>
+                                <label className="editor-label editor-label-small">Activation Trigger</label>
                                 <input
                                     type="text"
-                                    value={regexTrigger}
-                                    onChange={(e) => { setRegexTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }}
+                                    value={regexActivationTrigger}
+                                    onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }}
                                     className={`editor-input ${errors.regex ? 'error' : ''}`}
                                     style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
                                     placeholder="/battle|combat|fight/i"
@@ -194,15 +206,34 @@ export function StopPatternEditorModal({
                             </div>
                         </div>
 
+                        {/* Deactivation Trigger */}
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Deactivation Trigger</label>
+                                <input
+                                    type="text"
+                                    value={regexDeactivationTrigger}
+                                    onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }}
+                                    className={`editor-input ${errors.deactivationRegex ? 'error' : ''}`}
+                                    style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                    placeholder="/peace|calm|aftermath/i"
+                                />
+                                {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Optional. Deactivates this stop pattern when matched.
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Regex Context & Target */}
-                        <div className="editor-row">
+                        <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context</label>
                                 <select
                                     value={regexContext}
                                     onChange={(e) => setRegexContext(e.target.value as any)}
                                     className="editor-select"
-                                    disabled={!regexTrigger.trim()}
+                                    disabled={!regexActivationTrigger.trim()}
                                 >
                                     <option value="global">Global</option>
                                     <option value="local">Local</option>
@@ -215,7 +246,7 @@ export function StopPatternEditorModal({
                                     value={regexTarget}
                                     onChange={(e) => setRegexTarget(e.target.value as any)}
                                     className="editor-select"
-                                    disabled={!regexTrigger.trim()}
+                                    disabled={!regexActivationTrigger.trim()}
                                 >
                                     <option value="everyone">Everyone</option>
                                     <option value="listener">Listener</option>
@@ -224,10 +255,10 @@ export function StopPatternEditorModal({
                             </div>
                         </div>
 
-                        {/* Regex Tester — same style as Add buttons */}
-                        {regexTrigger.trim() && (
+                        {/* Regex Tester */}
+                        {regexActivationTrigger.trim() && (
                             <div style={{ marginTop: '8px' }}>
-                                <label className="editor-label editor-label-small">Test Pattern</label>
+                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
                                 <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
                                     <input
                                         type="text"
@@ -236,7 +267,7 @@ export function StopPatternEditorModal({
                                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }}
                                         className="editor-input"
                                         style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                        placeholder="Enter text to test against the regex"
+                                        placeholder="Enter text to test against the activation regex"
                                     />
                                     <button
                                         type="button"

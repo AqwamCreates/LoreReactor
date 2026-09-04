@@ -512,9 +512,6 @@ export function ContextEditorModal({
                                 <label className="editor-label editor-label-small">Deactivation Trigger</label>
                                 <input type="text" value={regexDeactivationTrigger} onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }} className={`editor-input context-mono-input ${errors.deactivationRegex ? 'error' : ''}`} placeholder="/peace|calm|aftermath/i" />
                                 {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Optional. Deactivates this context entry when matched.
-                                </div>
                             </div>
                         </div>
 
