@@ -833,7 +833,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
             if (key === 'global' || participantIds.has(key)) {
                 for (const memory of memories) {
 
-                    const memoryChatDataId = memory.chatData.id;
+                    const memoryChatDataId = memory.chatData?.id;
 
                     if (memoryChatDataId === chatDataId) continue;
 
