@@ -28,25 +28,36 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
     if (latestMessage.character.id === character.id) return 1;
 
     const textLower = latestMessage.textContent.toLowerCase();
-
-    // Split name into parts: full name + individual words (min 2 chars to avoid false positives)
     const fullNameLower = character.name.toLowerCase().trim();
-    const nameParts = new Set<string>();
-    nameParts.add(fullNameLower);
-    for (const part of fullNameLower.split(/\s+/)) {
-        if (part.length >= 2) nameParts.add(part);
-    }
 
     let mentionCount = 0;
+
+    // Step 1: Scan for full name first
+    let searchIndex = 0;
+    while (true) {
+        const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
+        if (foundIndex === -1) break;
+        mentionCount++;
+        searchIndex = foundIndex + fullNameLower.length;
+    }
+
+    // Step 2: Split into parts and scan for partial names (min 2 chars)
+    const nameParts = new Set<string>();
+    for (const part of fullNameLower.split(/\s+/)) {
+        if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
+    }
+
     for (const namePart of nameParts) {
-        let searchIndex = 0;
+        let partSearchIndex = 0;
         while (true) {
-            const foundIndex = textLower.indexOf(namePart, searchIndex);
+            const foundIndex = textLower.indexOf(namePart, partSearchIndex);
             if (foundIndex === -1) break;
             mentionCount++;
-            searchIndex = foundIndex + namePart.length;
+            partSearchIndex = foundIndex + namePart.length;
         }
     }
+
+    if (mentionCount === 0) return 1;
 
     const multiplier = (mentionCount * sensitivity) + 1;
 
