@@ -786,7 +786,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         for (const [key, mems] of Object.entries(character.memories)) {
             if (key === 'global' || participantIds.has(key)) {
                 for (const mem of mems) {
-                    if (mem.content?.trim()) {
+                    // Safely check if content exists and is a string before trimming
+                    if (mem.content && typeof mem.content === 'string' && mem.content.trim()) {
                         relevantMemories.push(mem.content.trim());
                     }
                 }
