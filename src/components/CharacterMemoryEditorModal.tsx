@@ -22,7 +22,7 @@ export function CharacterMemoryEditorModal({
     const [chatNameMap, setChatNameMap] = useState<Map<string, string>>(new Map());
     const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>({});
     const [hasChanges, setHasChanges] = useState(false);
-    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
 
     useEffect(() => {
         if (isOpen && character) {
@@ -30,7 +30,7 @@ export function CharacterMemoryEditorModal({
             setHasChanges(false);
             setEditingId(null);
             setEditContent('');
-            setShowBulkDeleteConfirm(false);
+            setShowMassDeleteConfirm(false);
 
             (async () => {
                 try {
@@ -88,12 +88,12 @@ export function CharacterMemoryEditorModal({
         }
     };
 
-    const handleBulkDelete = () => {
+    const handleMassDelete = () => {
         setLocalMemories({});
         setHasChanges(true);
         setEditingId(null);
         setEditContent('');
-        setShowBulkDeleteConfirm(false);
+        setShowMassDeleteConfirm(false);
     };
 
     const handleSaveAndClose = () => {
@@ -117,17 +117,17 @@ export function CharacterMemoryEditorModal({
                 <div className="modal-header">
                     <h2>Memories ({totalMemories})</h2>
                     <div className="editor-modal-actions">
-                        {totalMemories > 0 && !showBulkDeleteConfirm && (
+                        {totalMemories > 0 && !showMassDeleteConfirm && (
                             <button
                                 type="button"
                                 className="editor-btn editor-btn-cancel"
-                                onClick={() => setShowBulkDeleteConfirm(true)}
+                                onClick={() => setShowMassDeleteConfirm(true)}
                                 style={{ color: '#ff4444' }}
                             >
                                 Delete All
                             </button>
                         )}
-                        {showBulkDeleteConfirm && (
+                        {showMassDeleteConfirm && (
                             <>
                                 <span style={{ fontSize: '0.75rem', opacity: 0.8, alignSelf: 'center' }}>
                                     Delete all {totalMemories} memories?
@@ -135,7 +135,7 @@ export function CharacterMemoryEditorModal({
                                 <button
                                     type="button"
                                     className="editor-btn editor-btn-cancel"
-                                    onClick={handleBulkDelete}
+                                    onClick={handleMassDelete}
                                     style={{ color: '#ff4444', fontWeight: 'bold' }}
                                 >
                                     Confirm
@@ -143,16 +143,16 @@ export function CharacterMemoryEditorModal({
                                 <button
                                     type="button"
                                     className="editor-btn editor-btn-cancel"
-                                    onClick={() => setShowBulkDeleteConfirm(false)}
+                                    onClick={() => setShowMassDeleteConfirm(false)}
                                 >
                                     Cancel
                                 </button>
                             </>
                         )}
-                        {hasChanges && !showBulkDeleteConfirm && (
+                        {hasChanges && !showMassDeleteConfirm && (
                             <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveAndClose}>Save</button>
                         )}
-                        {!showBulkDeleteConfirm && (
+                        {!showMassDeleteConfirm && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose}>
                                 {hasChanges ? 'Discard' : 'Close'}
                             </button>
