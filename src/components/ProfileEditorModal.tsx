@@ -157,8 +157,8 @@ export function ProfileEditorModal({
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
-                setChatProbability(existingProfile.chatProbability ?? 0);
-                setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
+                setChatProbability(existingProfile.chatProbability ?? -1);
+                setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
                 setNameSensitivity(existingProfile.nameSensitivity ?? -1);
                 setResponseDelayWeight(existingProfile.responseDelayWeight ?? -1);
                 setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
@@ -587,18 +587,18 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === 0 ? '(Character default)' : ""}
+                                    {chatProbability === -1 ? '(Character default)' : ""}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
                                 value={chatProbability}
-                                minimumValue={0}
+                                minimumValue={-1}
                                 maximumValue={1}
                                 stepValue={0.05}
                                 decimals={2}
                                 onChange={setChatProbability}
-                                description="0 = disabled (use per-character setting). Slide right to override all participants."
+                                description="-1 = disabled (use per-character setting). Slide right to override all participants."
                             />
                         </div>
 
@@ -606,18 +606,18 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === 0 ? '(Character default)' : ''}
+                                    {maximumChatStamina === -1 ? '(Character default)' : ''}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
                                 value={maximumChatStamina}
-                                minimumValue={0}
+                                minimumValue={-1}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setMaximumChatStamina(Math.round(val))}
-                                description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
+                                description="-1 = disabled (use per-character setting). Slide right to set a shared stamina cap."
                             />
                         </div>
 
