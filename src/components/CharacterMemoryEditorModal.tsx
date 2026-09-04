@@ -136,7 +136,7 @@ export function CharacterMemoryEditorModal({
                                     type="button"
                                     className="editor-btn editor-btn-cancel"
                                     onClick={handleMassDelete}
-                                    style={{ color: '#ff4444', fontWeight: 'bold' }}
+                                    style={{ color: '#ff4444' }}
                                 >
                                     Confirm
                                 </button>
