@@ -248,7 +248,7 @@ export function CharacterEditorModal({
         if (!card) { setSubmitError("Not a valid character card PNG."); return; }
         const fields = mapCardToEditorFields(card);
         setName(fields.name); setDescription(fields.description); setSystemPrompt(fields.systemPrompt); setThinkPrompt(fields.thinkPrompt);
-        setAppearancePrompt(''); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
+        setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
         setAutoDetected({ iw: null, cp: null, ms: null }); setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
         setResponseDelayWeightStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
@@ -256,7 +256,7 @@ export function CharacterEditorModal({
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
         setEnableMemoryWriting(false); setEnableMemoryReading(false); setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
-        countFieldTokens('appearancePrompt', ''); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
+        countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
         setSubmitError(null);
     };
 
