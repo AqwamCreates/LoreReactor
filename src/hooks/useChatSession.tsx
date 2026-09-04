@@ -330,7 +330,10 @@ export function useChatSession() {
         data: ChatData,
     ): Promise<void> => {
         const profile = data.Profile;
-        if (!profile?.enableMemoryWriting) return;
+
+        const effectiveWrite = profile?.enableMemoryWriting ?? 0;
+        const enableMemoryWriting = effectiveWrite === -1 ? false : effectiveWrite === 1 ? true : (character.enableMemoryWriting ?? false);
+        if (!enableMemoryWriting) return;
 
         const triggerIndex = rawText.indexOf(memoryWriteTrigger);
         if (triggerIndex === -1) return;
@@ -344,12 +347,33 @@ export function useChatSession() {
         if (!ep && !model?.apiKey) return;
         const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
+        const effectiveRetentionWeight = (() => {
+            const profileValue = profile?.memoryRetentionWeight;
+            if (profileValue === undefined || profileValue === -1) return character.memoryRetentionWeight ?? 1;
+            return profileValue;
+        })();
+
         const ts = Date.now();
 
         for (const other of otherParticipants) {
-            const relevantMessages = data.chatMessageHistory.filter(
+            const allRelevant = data.chatMessageHistory.filter(
                 m => m.character.id === character.id || m.character.id === other.id
             );
+
+            // memoryRetentionWeight controls how many messages back we look
+            // 0 = only latest message pair
+            // 1 = default (all relevant messages)
+            // >1 = all relevant messages (same as 1, no upper limit needed)
+            // <1 but >0 = fraction of available messages
+            let relevantMessages: typeof allRelevant;
+            if (effectiveRetentionWeight <= 0) {
+                relevantMessages = allRelevant.slice(-2);
+            } else if (effectiveRetentionWeight < 1) {
+                const count = Math.max(2, Math.round(allRelevant.length * effectiveRetentionWeight));
+                relevantMessages = allRelevant.slice(-count);
+            } else {
+                relevantMessages = allRelevant;
+            }
 
             if (relevantMessages.length === 0) continue;
 
@@ -369,6 +393,7 @@ export function useChatSession() {
             character.memories[other.id] = [newMemory];
         }
 
+        // Global memory uses full history regardless of retention weight
         const globalSummary = await compressChunk(data.chatMessageHistory, lmCtx, 512);
         if (globalSummary) {
             const globalMemory: Memory = {

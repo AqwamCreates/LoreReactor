@@ -5,7 +5,7 @@ import type { Character, Sampler, LanguageModel, Memory } from '../types';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
-import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText } from '../hooks/chatTraitsDetection';
+import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getResponseDelayWeightValueFromText, getMemoryRetentionWeightValueFromText, getContextRelevanceSensitivityValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
@@ -15,6 +15,7 @@ import './main.css';
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
+const DEFAULT_NAME_SENSITIVITY_VALUE = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const tokenEngine = new LanguageModelEngine();
@@ -59,6 +60,10 @@ export function CharacterEditorModal({
     const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>('-1');
     const [chatProbabilityStr, setChatProbabilityStr] = useState<string>('-1');
     const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>('-1');
+    const [nameSensitivityStr, setNameSensitivityStr] = useState<string>('-1');
+    const [responseDelayWeightStr, setResponseDelayWeightStr] = useState<string>('-1');
+    const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>('-1');
+    const [contextRelevanceSensitivityStr, setContextRelevanceSensitivityStr] = useState<string>('-1');
 
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
     const [voiceName, setVoiceName] = useState<string>('');
@@ -133,6 +138,10 @@ export function CharacterEditorModal({
                 setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
                 setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
                 setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
+                setNameSensitivityStr(String(existingCharacter.nameSensitivity ?? -1));
+                setResponseDelayWeightStr(String(existingCharacter.responseDelayWeight ?? -1));
+                setMemoryRetentionWeightStr(String(existingCharacter.memoryRetentionWeight ?? -1));
+                setContextRelevanceSensitivityStr(String(existingCharacter.contextRelevanceSensitivity ?? -1));
                 setExistingVoiceName(existingCharacter.voice || '');
                 setVoiceName(existingCharacter.voice || '');
                 setVoiceFile(null);
@@ -151,7 +160,8 @@ export function CharacterEditorModal({
                 setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setFirstMessage('');
                 setImageFile(null); setImagePreview(null);
                 setSelectedSamplerId(allSamplers[0]?.id || ''); setSelectedStopPatternIds([]);
-                setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
+                setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
+                setResponseDelayWeightStr('-1'); setMemoryRetentionWeightStr('-1'); setContextRelevanceSensitivityStr('-1');
                 setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
                 setDoNotInjectCharacterImage(false);
                 setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
@@ -163,16 +173,66 @@ export function CharacterEditorModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, existingCharacter, allSamplers]);
 
+    const normalizeStatValue = (raw: string, fieldMax: number): string => {
+        const val = Number.parseFloat(raw);
+        if (Number.isNaN(val) || val < 0) return '-1';
+        return String(Math.min(Math.max(val, 0), fieldMax));
+    };
+
     const handleSystemPromptBlur = () => {
         const currentIW = Number.parseFloat(initiativeWeightStr);
         const currentCP = Number.parseFloat(chatProbabilityStr);
         const currentMS = Number.parseFloat(maximumChatStaminaStr);
-        if (currentIW !== -1 && currentCP !== -1 && currentMS !== -1) return;
+        const currentNS = Number.parseFloat(nameSensitivityStr);
+        const currentRDW = Number.parseFloat(responseDelayWeightStr);
+        const currentMRW = Number.parseFloat(memoryRetentionWeightStr);
+        const currentCRS = Number.parseFloat(contextRelevanceSensitivityStr);
+
+        const iwIsAuto = currentIW === -1;
+        const cpIsAuto = currentCP === -1;
+        const msIsAuto = currentMS === -1;
+        const nsIsAuto = currentNS === -1;
+        const rdwIsAuto = currentRDW === -1;
+        const mrwIsAuto = currentMRW === -1;
+        const crsIsAuto = currentCRS === -1;
+
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !rdwIsAuto && !mrwIsAuto && !crsIsAuto) return;
+
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
-        if (currentIW === -1) { const v = getInitiativeWeightValueFromText(combinedText); setInitiativeWeightStr(String(v)); newDetected.iw = v; }
-        if (currentCP === -1) { const v = getChatProbabilityValue(combinedText); setChatProbabilityStr(String(v)); newDetected.cp = v; }
-        if (currentMS === -1) { const v = getMaximumChatStaminaValueFromText(combinedText); setMaximumChatStaminaStr(String(Math.round(v))); newDetected.ms = Math.round(v); }
+
+        if (iwIsAuto) {
+            const value = getInitiativeWeightValueFromText(combinedText);
+            setInitiativeWeightStr(String(value));
+            newDetected.iw = value;
+        }
+        if (cpIsAuto) {
+            const value = getChatProbabilityValue(combinedText);
+            setChatProbabilityStr(String(value));
+            newDetected.cp = value;
+        }
+        if (msIsAuto) {
+            const value = getMaximumChatStaminaValueFromText(combinedText);
+            setMaximumChatStaminaStr(String(Math.round(value)));
+            newDetected.ms = Math.round(value);
+        }
+        if (nsIsAuto) {
+            const value = getNameSensitivityValueFromText(combinedText);
+            setNameSensitivityStr(String(value));
+        }
+        if (rdwIsAuto) {
+            const value = getResponseDelayWeightValueFromText(combinedText);
+            setResponseDelayWeightStr(String(value));
+        }
+        if (mrwIsAuto) {
+            const value = getMemoryRetentionWeightValueFromText(combinedText);
+            setMemoryRetentionWeightStr(String(value));
+        }
+        if (crsIsAuto) {
+            const value = getContextRelevanceSensitivityValueFromText(combinedText);
+            setContextRelevanceSensitivityStr(String(value));
+        }
+
         setAutoDetected(newDetected);
     };
 
@@ -195,7 +255,8 @@ export function CharacterEditorModal({
         setName(fields.name); setDescription(fields.description); setSystemPrompt(fields.systemPrompt); setThinkPrompt(fields.thinkPrompt);
         setAppearancePrompt(''); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
-        setAutoDetected({ iw: null, cp: null, ms: null }); setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
+        setAutoDetected({ iw: null, cp: null, ms: null }); setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
+        setResponseDelayWeightStr('-1'); setMemoryRetentionWeightStr('-1'); setContextRelevanceSensitivityStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
         setEnableMemoryWriting(false); setEnableMemoryReading(false); setMemories({});
@@ -229,19 +290,31 @@ export function CharacterEditorModal({
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
+        const rawNS = Number.parseFloat(nameSensitivityStr);
+        const rawRDW = Number.parseFloat(responseDelayWeightStr);
+        const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
+        const rawCRS = Number.parseFloat(contextRelevanceSensitivityStr);
         const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
         const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
         const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
 
-        let finalIW: number, finalCP: number, finalMS: number;
+        let finalIW: number, finalCP: number, finalMS: number, finalNS: number, finalRDW: number, finalMRW: number, finalCRS: number;
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
+        const nsValid = !Number.isNaN(rawNS) && rawNS >= 0;
+        const rdwValid = !Number.isNaN(rawRDW) && rawRDW >= 0;
+        const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
+        const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
 
         if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
             finalMS = msValid ? Math.round(rawMS) : (existingCharacter.maximumChatStamina ?? -1);
+            finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY_VALUE);
+            finalRDW = rdwValid ? rawRDW : (existingCharacter.responseDelayWeight ?? 0);
+            finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? 1);
+            finalCRS = crsValid ? rawCRS : (existingCharacter.contextRelevanceSensitivity ?? 1);
             if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
                 finalIW = getInitiativeWeightValueFromText(t); finalCP = getChatProbabilityValue(t); finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
@@ -250,6 +323,10 @@ export function CharacterEditorModal({
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT_VALUE;
             finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY_VALUE;
             finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
+            finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY_VALUE;
+            finalRDW = rdwValid ? rawRDW : 0;
+            finalMRW = mrwValid ? rawMRW : 1;
+            finalCRS = crsValid ? rawCRS : 1;
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
                 const dIW = getInitiativeWeightValueFromText(t); const dCP = getChatProbabilityValue(t); const dMS = getMaximumChatStaminaValueFromText(t);
@@ -270,6 +347,7 @@ export function CharacterEditorModal({
             dialoguePrompt: dialoguePrompt.trim() || undefined,
             image: finalImageFilename ?? undefined, voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
+            nameSensitivity: finalNS, responseDelayWeight: finalRDW, memoryRetentionWeight: finalMRW, contextRelevanceSensitivity: finalCRS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
@@ -287,8 +365,7 @@ export function CharacterEditorModal({
     if (!isOpen) return null;
 
     const renderTokenCount = (field: keyof TokenCounts) => {
-        let count = tokenCounts[field];
-        count = count === null ? 0 : count;
+        const count = tokenCounts[field]; if (count === null) return null;
         return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`${count.toLocaleString()} token(s)`}</div>;
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
@@ -365,7 +442,7 @@ export function CharacterEditorModal({
                                     </div>
 
                                     {/* Advanced Settings + Memory Buttons */}
-                                    <div style={{ display: 'flex', gap: '8px'}}>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>
                                             ⚙️ Advanced Settings
                                         </button>
@@ -387,6 +464,10 @@ export function CharacterEditorModal({
                 initiativeWeightStr={initiativeWeightStr}
                 chatProbabilityStr={chatProbabilityStr}
                 maximumChatStaminaStr={maximumChatStaminaStr}
+                nameSensitivityStr={nameSensitivityStr}
+                responseDelayWeightStr={responseDelayWeightStr}
+                memoryRetentionWeightStr={memoryRetentionWeightStr}
+                contextRelevanceSensitivityStr={contextRelevanceSensitivityStr}
                 numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
                 numberOfMessagesToDisableMetaThinkInstructionsStr={numberOfMessagesToDisableMetaThinkInstructionsStr}
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
@@ -398,6 +479,10 @@ export function CharacterEditorModal({
                 onInitiativeWeightChange={setInitiativeWeightStr}
                 onChatProbabilityChange={setChatProbabilityStr}
                 onMaximumChatStaminaChange={setMaximumChatStaminaStr}
+                onNameSensitivityChange={setNameSensitivityStr}
+                onResponseDelayWeightChange={setResponseDelayWeightStr}
+                onMemoryRetentionWeightChange={setMemoryRetentionWeightStr}
+                onContextRelevanceSensitivityChange={setContextRelevanceSensitivityStr}
                 onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}
                 onDisableMetaChange={setNumberOfMessagesToDisableMetaThinkInstructionsStr}
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}

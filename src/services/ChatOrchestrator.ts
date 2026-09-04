@@ -3,8 +3,45 @@ import type { Character, ChatData } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability } from '../hooks/characterLogic';
 import { saveRawChatData } from '../hooks/storage';
 
-interface TurnExecutor {
-    (data: ChatData, character: Character, signal: AbortSignal, onToken: (t: string) => void): Promise<ChatData | null>;
+type TurnExecutor = (data: ChatData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<ChatData | null>
+
+function getEffectiveNameSensitivity(character: Character, profile: ChatData['Profile']): number {
+    const profileValue = profile?.nameSensitivity;
+    if (profileValue === undefined || profileValue === -1) return character.nameSensitivity ?? 1;
+    return profileValue;
+}
+
+function getEffectiveResponseDelayWeight(character: Character, profile: ChatData['Profile']): number {
+    const profileValue = profile?.responseDelayWeight;
+    if (profileValue === undefined || profileValue === -1) return character.responseDelayWeight ?? 0;
+    return profileValue;
+}
+
+function getNameSensitivityMultiplier(character: Character, chatData: ChatData): number {
+    const sensitivity = getEffectiveNameSensitivity(character, chatData.Profile);
+    if (sensitivity === 0 || sensitivity === 1) return 1;
+
+    const history = chatData.chatMessageHistory;
+    if (history.length === 0) return 1;
+
+    const latestMessage = history[history.length - 1];
+    if (latestMessage.character.id === character.id) return 1;
+
+    const nameLower = character.name.toLowerCase();
+    const textLower = latestMessage.textContent.toLowerCase();
+
+    let mentionCount = 0;
+    let searchIndex = 0;
+    while (true) {
+        const foundIndex = textLower.indexOf(nameLower, searchIndex);
+        if (foundIndex === -1) break;
+        mentionCount++;
+        searchIndex = foundIndex + nameLower.length;
+    }
+
+    if (mentionCount === 0) return 1;
+
+    return mentionCount * sensitivity;
 }
 
 export async function runTurnSequence(
@@ -19,26 +56,21 @@ export async function runTurnSequence(
     const profile = currentChatData.Profile;
     let workingData = { ...currentChatData, chatMessageHistory: [...currentChatData.chatMessageHistory] };
 
-    // ✅ Determine who spoke last (before this sequence started)
     const lastMsgBeforeSequence = workingData.chatMessageHistory.length > 0
         ? workingData.chatMessageHistory[workingData.chatMessageHistory.length - 1]
         : null;
     let lastSpeakerId: string | null = lastMsgBeforeSequence?.character.id ?? null;
 
-    // ✅ Track which AIs have already spoken this sequence
     const spokenThisSequence = new Set<string>();
-
-    // ✅ Multi-turn loop
 
     while (!abortController.signal.aborted) {
 
-        // ✅ Get eligible AIs: exclude protagonist, last speaker, and anyone who already spoke
         const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
         const eligible = allAI.filter(p => p.id !== lastSpeakerId && !spokenThisSequence.has(p.id));
 
         if (eligible.length === 0) break;
 
-        // ✅ Pick one speaker by initiative weight
+        // ✅ Pick one speaker by initiative weight × name sensitivity
         let selectedSpeaker: Character | null;
 
         if (eligible.length === 1) {
@@ -47,7 +79,9 @@ export async function runTurnSequence(
             const initPool: { char: Character; weight: number }[] = [];
             let totalWeight = 0;
             for (const p of eligible) {
-                const w = getEffectiveInitiativeWeight(p, profile);
+                const baseWeight = getEffectiveInitiativeWeight(p, profile);
+                const nameMultiplier = getNameSensitivityMultiplier(p, workingData);
+                const w = baseWeight * nameMultiplier;
                 if (w > 0) {
                     initPool.push({ char: p, weight: w });
                     totalWeight += w;
@@ -74,8 +108,13 @@ export async function runTurnSequence(
         // ✅ Probability gate: does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
         if (Math.random() >= effectiveProb) {
-            // Character stays quiet — mark as spoken so we don't pick them again
-            // but don't generate a message
+            spokenThisSequence.add(selectedSpeaker.id);
+            continue;
+        }
+
+        // ✅ Response delay gate: higher weight = more likely to skip this turn
+        const delayWeight = getEffectiveResponseDelayWeight(selectedSpeaker, profile);
+        if (delayWeight > 0 && Math.random() < delayWeight) {
             spokenThisSequence.add(selectedSpeaker.id);
             continue;
         }

@@ -107,11 +107,6 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     return null;
 }
 
-const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
-        if (profileValue === undefined || profileValue === -1) return characterValue;
-        return profileValue;
-    };
-
 function filterArrayBasedOnContext(
     characterIdArray: string[],
     textContentArray: string[],
@@ -179,12 +174,17 @@ function filterArrayBasedOnTarget(
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
-function doesContextMatch(context: Context, searchSpace: string): boolean {
+function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier: number = 1): boolean {
     const regexTrigger = context.regularExpressionTrigger;
     if (!regexTrigger) return true;
     try {
         const regex = new RegExp(regexTrigger);
-        return regex.test(searchSpace);
+        const matched = regex.test(searchSpace);
+        if (!matched) return false;
+        // If sensitivity < 1, randomly reject matches (less observant characters miss context cues)
+        // If sensitivity >= 1, always accept (more observant characters never miss)
+        if (sensitivityMultiplier >= 1) return true;
+        return Math.random() < sensitivityMultiplier;
     } catch (e) {
         console.warn(`Invalid regex in context ${context.name}`, e);
         return false;
@@ -218,8 +218,10 @@ async function resolveContextEntries(
     currentCharacterId: string,
     getFilteredData: (ctxType: string, tgtType: string) => { characterIdArray: string[]; textContentArray: string[] },
     runtimePort?: number,
-    fetchedContentMap?: Map<string, string>
+    fetchedContentMap?: Map<string, string>,
+    contextRelevanceSensitivity?: number
 ): Promise<{ context: Context; formattedLine: string }[]> {
+    const sensitivityForCharacter = contextRelevanceSensitivity ?? 1;
     const activated = new Set<string>();
     const activatedMap = new Map<string, Context>();
 
@@ -233,7 +235,7 @@ async function resolveContextEntries(
 
         if (filteredTexts.length === 0) {
             if (!context.regularExpressionTrigger) continue;
-            if (doesContextMatch(context, chatSearchSpace)) {
+            if (doesContextMatch(context, chatSearchSpace, sensitivityForCharacter)) {
                 activated.add(context.id);
                 activatedMap.set(context.id, context);
             }
@@ -243,7 +245,7 @@ async function resolveContextEntries(
         const searchSpace = filteredTexts.join('\n');
         const combinedSearch = `${searchSpace}\n${chatSearchSpace}`;
 
-        if (doesContextMatch(context, combinedSearch)) {
+        if (doesContextMatch(context, combinedSearch, sensitivityForCharacter)) {
             activated.add(context.id);
             activatedMap.set(context.id, context);
         }
@@ -279,7 +281,7 @@ async function resolveContextEntries(
             if (contextMaxDepth === 0) continue;
             if (recursionDepth > contextMaxDepth) continue;
 
-            if (doesContextMatch(context, activatedText)) {
+            if (doesContextMatch(context, activatedText, sensitivityForCharacter)) {
                 activated.add(context.id);
                 activatedMap.set(context.id, context);
                 activationDepth.set(context.id, recursionDepth);
@@ -374,12 +376,20 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
+    const enableMemoryWriting = (() => {
+        const effectiveWrite = profile?.enableMemoryWriting ?? 0;
+        return effectiveWrite === -1 ? false : effectiveWrite === 1 ? true : (character.enableMemoryWriting ?? false);
+    })();
+    const enableMemoryReading = (() => {
+        const effectiveRead = profile?.enableMemoryReading ?? 0;
+        return effectiveRead === -1 ? false : effectiveRead === 1 ? true : (character.enableMemoryReading ?? false);
+    })();
 
-    const effectiveEnableMemoryWriting = profile?.enableMemoryWriting ?? 0; 
-    const effectiveEnableMemoryReading = profile?.enableMemoryReading ?? 0;
-
-    const enableMemoryWriting = effectiveEnableMemoryWriting === -1 ? false : effectiveEnableMemoryWriting === 1 ? true : (character.enableMemoryWriting ?? false);
-    const enableMemoryReading = effectiveEnableMemoryReading === -1 ? false : effectiveEnableMemoryReading === 1 ? true : (character.enableMemoryReading ?? false);
+    const effectiveContextSensitivity = (() => {
+        const profileValue = profile?.contextRelevanceSensitivity;
+        if (profileValue === undefined || profileValue === -1) return character.contextRelevanceSensitivity ?? 1;
+        return profileValue;
+    })();
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -511,7 +521,8 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         characterId,
         getFilteredData,
         runtimePort,
-        fetchedContentMap
+        fetchedContentMap,
+        effectiveContextSensitivity
     );
 
     const protagonistEverRevealed = revealIndexByCharId.has(protagonist.id);
@@ -762,6 +773,11 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
         'Text Injection': textInjectionLines,
+    };
+
+    const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
+        if (profileValue === undefined || profileValue === -1) return characterValue;
+        return profileValue;
     };
 
     const numberOfMessagesToDisableThinkPrompt = resolveDisablePrompt(profile?.numberOfMessagesToDisableThinkPrompt, character.numberOfMessagesToDisableThinkPrompt);

@@ -149,6 +149,10 @@ export interface Character extends ObjectData  {
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
+  nameSensitivity: number;
+  responseDelayWeight: number;
+  memoryRetentionWeight: number;
+  contextRelevanceSensitivity: number;
   sampler?: Sampler | undefined;
   stopPatterns?: [StopPattern]
   doNotInjectCharacterImage?: boolean;
@@ -172,6 +176,10 @@ export interface RawCharacter extends RawData {
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
+  nameSensitivity: number;
+  responseDelayWeight: number;
+  memoryRetentionWeight: number;
+  contextRelevanceSensitivity: number;
   samplerId?: string | undefined; // Store only the sampler ID here
   stopPatternIds?: [number]
   doNotInjectCharacterImage?: boolean;
@@ -353,6 +361,10 @@ export interface Profile extends ObjectData {
   forceEqualInitiative: boolean;
   chatProbability: number; // 0 means it is disabled and uses character default.
   maximumChatStamina: number; // 0 means it is disabled and uses character default..
+  nameSensitivity: number;
+  responseDelayWeight: number;
+  memoryRetentionWeight: number;
+  contextRelevanceSensitivity: number;
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   narrateNormalText: boolean;
   narrateQuotedText: boolean;
@@ -378,6 +390,10 @@ export interface RawProfile extends RawData{
   forceEqualInitiative: boolean;
   chatProbability: number; // -1 means it is disabled and uses character default.
   maximumChatStamina: number; // -1 means it is disabled and uses character default..
+  nameSensitivity: number;
+  responseDelayWeight: number;
+  memoryRetentionWeight: number;
+  contextRelevanceSensitivity: number;
   cacheInvalidationReductionLevel: number // 0 for no cache invalidation reduction, 1 forces name injection, 2 forces prompt injection.
   narrateNormalText: boolean;
   narrateQuotedText: boolean;
