@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, BudgetStrategy, LanguageModel, Memory } from '../types';
 import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl, saveRawCharacter } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage, memoryWriteTrigger } from './chatLogic';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
@@ -14,6 +14,7 @@ import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
+import { memoryWriteTrigger } from '../stringList';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -324,6 +325,8 @@ export function useChatSession() {
 
     // ─── Memory Trigger Processing ──────────────────────────────────
 
+    // ─── Memory Trigger Processing ──────────────────────────────────
+
     const processMemoryTrigger = useCallback(async (
         rawText: string,
         character: Character,
@@ -378,13 +381,13 @@ export function useChatSession() {
             if (relevantMessages.length === 0) continue;
 
             // Use character-aware compression
-            const summary = await makeCharacterMemory(data, character, lmCtx);
-            if (!summary) continue;
+            const summaryContext = await makeCharacterMemory(data, character, lmCtx);
+            if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
                 id: uuidv4(),
                 name: `Memory with ${other.name}`,
-                content: summary,
+                content: summaryContext.text, // <--- FIX: Use .text from the Context object
                 chatData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,
@@ -396,12 +399,12 @@ export function useChatSession() {
 
         // Global memory uses full history regardless of retention weight
         // Also use character-aware compression for global memory
-        const globalSummary = await makeCharacterMemory(data, character, lmCtx);
-        if (globalSummary) {
+        const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx);
+        if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),
                 name: 'Global Memory',
-                content: globalSummary,
+                content: globalSummaryContext.text, // <--- FIX: Use .text from the Context object
                 chatData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,

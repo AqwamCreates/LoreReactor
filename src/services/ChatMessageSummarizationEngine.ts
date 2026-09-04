@@ -2,9 +2,13 @@
 import type { ChatData, ChatMessage, Context, Character } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getParticipantTag } from '../hooks/chatLogic';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId } from '../hooks/chatLogic';
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 
 const engine = new LanguageModelEngine();
+
+const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
+const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
@@ -91,27 +95,26 @@ export async function makeCharacterMemory(
     if (history.length === 0) return null;
 
     const participantTag = getParticipantTag(character, chatData.participants);
-    const systemPrompt = character.systemPrompt ? `\nSystem Prompt: ${character.systemPrompt}` : '';
-    const thinkPrompt = character.thinkPrompt ? `\nThink Prompt: ${character.thinkPrompt}` : '';
+    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${character.systemPrompt}${contextEndString}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${character.thinkPrompt}${contextEndString}` : '';
 
-    const formattedMessages = history.map(m =>
-        `${m.character.name}: ${m.textContent}`
-    ).join('\n\n');
+    const revealIndexByCharacterId = getRevealIndexByCharacterId(chatData);
 
-    const perspectiveInstruction = `
-        You are summarizing this memory for ${participantTag}.
-        Write this summary from the perspective of ${participantTag} using first-person ("I", "my") if appropriate.
-        Reflect the personality defined by these prompts: ${systemPrompt}${thinkPrompt}
-        Focus on facts and feelings relevant to ${participantTag}.
-    `;
+    const {chatHistoryPrompt} = createChatHistoryPrompt(chatData, character, revealIndexByCharacterId);
 
-    const prompt = `${perspectiveInstruction}\n\nConversation History:\n${formattedMessages}\n\nMemory Entry:`;
+    const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
+
+    const memoryInjection = `${contextStartString}`;
+
+    const promptLines = [systemPrompt, thinkPrompt, startOfMemoryLine, chatHistoryPrompt, endOfMemoryLine, perspectiveInstruction, memoryInjection];
+
+    const prompt = promptLines.join('\n\n');
     
     const requestBody: any = {
         prompt,
         n_predict: maxTokens,
         temperature: 1,
-        stop: ['\n\n\n'],
+        stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
     };
 
     const result = await engine.generateCompletion(requestBody, languageModelContext);
