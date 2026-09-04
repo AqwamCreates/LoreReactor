@@ -108,9 +108,10 @@ export function CharacterEditorModal({
         if (tokenCountTimeoutsRef.current[field]) clearTimeout(tokenCountTimeoutsRef.current[field]);
         tokenCountTimeoutsRef.current[field] = setTimeout(async () => {
             setCountingField(field);
-            try { const ctx = getModelContext(); const count = await tokenEngine.countTokens(text, ctx); setTokenCounts(prev => ({ ...prev, [field]: count })); }
-            catch { setTokenCounts(prev => ({ ...prev, [field]: Math.ceil(text.length / 4) })); }
-            finally { setCountingField(prev => prev === field ? null : prev); }
+            const ctx = getModelContext()
+            const count = await tokenEngine.countTokens(text, ctx)
+            setTokenCounts(prev => ({ ...prev, [field]: count }))
+            setCountingField(prev => prev === field ? null : prev);
         }, 500);
     }, [getModelContext]);
 
@@ -172,12 +173,6 @@ export function CharacterEditorModal({
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, existingCharacter, allSamplers]);
-
-    const normalizeStatValue = (raw: string, fieldMax: number): string => {
-        const val = Number.parseFloat(raw);
-        if (Number.isNaN(val) || val < 0) return '-1';
-        return String(Math.min(Math.max(val, 0), fieldMax));
-    };
 
     const handleSystemPromptBlur = () => {
         const currentIW = Number.parseFloat(initiativeWeightStr);
@@ -298,7 +293,13 @@ export function CharacterEditorModal({
         const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
         const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
 
-        let finalIW: number, finalCP: number, finalMS: number, finalNS: number, finalRDW: number, finalMRW: number, finalCRS: number;
+        let finalIW: number;
+        let finalCP: number;
+        let finalMS: number;
+        let finalNS: number;
+        let finalRDW: number;
+        let finalMRW: number;
+        let finalCRS: number;
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
