@@ -26,8 +26,8 @@ const endingAppearancePromptLine = `${contextStartString}End Of The Characters' 
 const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
 const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
-const startOfContextLine = `${contextStartString}Start Of Context.${contextEndString}`;
-const endOfContextLine = `${contextStartString}End Of Context.${contextEndString}`;
+const startOfContextLine = `${contextStartString}Start Of The Context.${contextEndString}`;
+const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
 
 const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
