@@ -418,7 +418,6 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       if (loadedSampler) sampler = loadedSampler;
     }
 
-    const now = Date.now()
     const memories = await hydrateMemories(rawCharacter.memories);
 
     return { 
@@ -434,20 +433,20 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       initiativeWeight: rawCharacter.initiativeWeight,
       chatProbability: rawCharacter.chatProbability, 
       maximumChatStamina: rawCharacter.maximumChatStamina,
-      nameSensitivity: rawCharacter.nameSensitivity || 1,
-      responseDelayWeight: rawCharacter.responseDelayWeight || 1,
-      memoryRetentionWeight: rawCharacter.memoryRetentionWeight || 1,
-      contextSensitivity: rawCharacter.contextSensitivity || 1,
+      nameSensitivity: rawCharacter.nameSensitivity,
+      responseDelayWeight: rawCharacter.responseDelayWeight,
+      memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
+      contextSensitivity: rawCharacter.contextSensitivity,
       sampler,
       doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
-      numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt || 1,
-      numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 1,
-      numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 1,
-      enableMemoryWriting: rawCharacter.enableMemoryWriting || false,
-      enableMemoryReading: rawCharacter.enableMemoryReading || false,
+      numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
+      numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
+      numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
+      enableMemoryWriting: rawCharacter.enableMemoryWriting,
+      enableMemoryReading: rawCharacter.enableMemoryReading,
       memories,
-      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
+      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
+      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
     };
   } catch (e) {
     console.warn(`Failed to load character ${id}`, e);
@@ -487,7 +486,6 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
     if (!rawCharacter) return null;
 
-    const now = Date.now()
     const memories = await hydrateMemories(rawCharacter.memories);
 
     return {
@@ -501,19 +499,19 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         initiativeWeight: rawCharacter.initiativeWeight,
         chatProbability: rawCharacter.chatProbability,
         maximumChatStamina: rawCharacter.maximumChatStamina,
-        nameSensitivity: rawCharacter.nameSensitivity || 1,
-        responseDelayWeight: rawCharacter.responseDelayWeight || 1,
-        memoryRetentionWeight: rawCharacter.memoryRetentionWeight || 1,
-        contextSensitivity: rawCharacter.contextSensitivity || 1,
-        numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt || 1,
-        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions || 1,
-        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt || 1,
+        nameSensitivity: rawCharacter.nameSensitivity,
+        responseDelayWeight: rawCharacter.responseDelayWeight,
+        memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
+        contextSensitivity: rawCharacter.contextSensitivity,
+        numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
+        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
+        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
         sampler: undefined, // ← Not hydrated — loaded on demand
-        enableMemoryWriting: rawCharacter.enableMemoryWriting || false,
-        enableMemoryReading: rawCharacter.enableMemoryReading || false,
+        enableMemoryWriting: rawCharacter.enableMemoryWriting,
+        enableMemoryReading: rawCharacter.enableMemoryReading,
         memories,
-        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp || now,
+        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
     };
 }
 
@@ -535,8 +533,6 @@ export async function loadRawContextManifest(): Promise<string[]> {
 export async function loadRawContext(id: string): Promise<Context | null> {
     const rawContext = await fetchJson<RawContext>(`${PATHS.contexts}/${id}.json`);
     if (!rawContext) return null;
-
-    const now = Date.now()
 
     return { 
         id, 
@@ -560,10 +556,10 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         maximumRecursionDepth: rawContext.maximumRecursionDepth,
         insertionDepth: rawContext.insertionDepth,
         characterBindings: rawContext.characterBindings,
-        useBase64Encoding: rawContext.useBase64Encoding ?? false,
+        useBase64Encoding: rawContext.useBase64Encoding,
         isAutoGenerated: rawContext.isAutoGenerated,
-        firstCreatedTimestamp: rawContext.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp || now,
+        firstCreatedTimestamp: rawContext.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp,
     };
 }
 
@@ -611,8 +607,8 @@ export async function loadRawModel(id: string): Promise<LanguageModel | null> {
         cacheHitCostPerOneMillionOfTokens: rawModel.cacheHitCostPerOneMillionOfTokens,
         cacheMissCostPerOneMillionOfTokens: rawModel.cacheMissCostPerOneMillionOfTokens,
         outputGenerationCostPerOneMillionOfTokens: rawModel.outputGenerationCostPerOneMillionOfTokens,
-        firstCreatedTimestamp: rawModel.firstCreatedTimestamp || Date.now(),
-        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp || Date.now(),
+        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
     };
 }
 
@@ -747,8 +743,8 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1,
         numberOfMessagesToDisableDialoguePrompt: rawProfile.numberOfMessagesToDisableDialoguePrompt ?? 1,
         forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
-        chatProbability: rawProfile.chatProbability ?? 0,
-        maximumChatStamina: rawProfile.maximumChatStamina ?? 0,
+        chatProbability: rawProfile.chatProbability ?? -1,
+        maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
         nameSensitivity: rawProfile.nameSensitivity ?? -1,
         responseDelayWeight: rawProfile.responseDelayWeight ?? -1,
         memoryRetentionWeight: rawProfile.memoryRetentionWeight ?? -1,
@@ -870,12 +866,18 @@ async function buildChatDataShell(
       id: rawChatData.protagonistId,
       name: '[Deleted Character]',
       description: 'This character has been deleted.',
-      initiativeWeight: 0,
-      chatProbability: 0,
-      maximumChatStamina: 0,
+      initiativeWeight: 1,
+      chatProbability: 0.5,
+      maximumChatStamina: 4,
+      nameSensitivity: 1,
+      responseDelayWeight: 1,
+      memoryRetentionWeight: 1,
+      contextSensitivity: 1,
       numberOfMessagesToDisableThinkPrompt: 0,
       numberOfMessagesToDisableMetaThinkInstructions: 0,
       numberOfMessagesToDisableDialoguePrompt: 0,
+      enableMemoryWriting: false,
+      enableMemoryReading: false,
       memories: {},
       firstCreatedTimestamp: now,
       lastUpdatedTimestamp: now,
@@ -891,12 +893,18 @@ async function buildChatDataShell(
         id: pid,
         name: '[Deleted Character]',
         description: 'This character has been deleted.',
-        initiativeWeight: 0,
-        chatProbability: 0,
-        maximumChatStamina: 0,
+        initiativeWeight: 1,
+        chatProbability: 0.5,
+        maximumChatStamina: 4,
+        nameSensitivity: 1,
+        responseDelayWeight: 1,
+        memoryRetentionWeight: 1,
+        contextSensitivity: 1,
         numberOfMessagesToDisableThinkPrompt: 0,
         numberOfMessagesToDisableMetaThinkInstructions: 0,
         numberOfMessagesToDisableDialoguePrompt: 0,
+        enableMemoryWriting: false,
+        enableMemoryReading: false,
         memories: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
