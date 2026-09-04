@@ -116,9 +116,9 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
-    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(1);
-    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(1);
-    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(1);
+    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(-1);
+    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
+    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
@@ -126,8 +126,8 @@ export function ProfileEditorModal({
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState(false);
-    const [enableMemoryReading, setEnableMemoryReading] = useState(false);
+    const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
+    const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
     const [narrateNormalText, setNarrateNormalText] = useState(true);
     const [narrateQuotedText, setNarrateQuotedText] = useState(false);
     const [narrateBoldedText, setNarrateBoldedText] = useState(false);
@@ -147,9 +147,9 @@ export function ProfileEditorModal({
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
-                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? 1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1);
-                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? 1);
+                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
+                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
+                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
@@ -157,8 +157,8 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-                setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? false);
-                setEnableMemoryReading(existingProfile.enableMemoryReading ?? false);
+                setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
+                setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
                 setNarrateNormalText(existingProfile.narrateNormalText ?? true);
                 setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
                 setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
@@ -177,9 +177,9 @@ export function ProfileEditorModal({
                 setDescription('');
                 setForceNameReveal(false);
                 setForceNoCharacterImageInjection(false);
-                setNumberOfMessagesToDisableThinkPrompt(1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(1);
-                setNumberOfMessagesToDisableDialoguePrompt(1);
+                setNumberOfMessagesToDisableThinkPrompt(-1);
+                setNumberOfMessagesToDisableMetaThinkInstructions(-1);
+                setNumberOfMessagesToDisableDialoguePrompt(-1);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
                 setForceEqualInitiative(false);
@@ -187,8 +187,8 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(0);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
-                setEnableMemoryWriting(false);
-                setEnableMemoryReading(false);
+                setEnableMemoryWriting(0);
+                setEnableMemoryReading(0);
                 setNarrateNormalText(true);
                 setNarrateQuotedText(false);
                 setNarrateBoldedText(false);
@@ -510,12 +510,12 @@ export function ProfileEditorModal({
                             <SliderInput
                                 label="Number of Messages to Disable Think Prompt"
                                 value={numberOfMessagesToDisableThinkPrompt}
-                                minimumValue={0}
+                                minimumValue={-1}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))}
-                                description="All participants disable the think prompt after X messages made by the responding participant."
+                                description="-1 = auto defer to character default. N = disable after N messages."
                             />
                         </div>
 
@@ -523,12 +523,12 @@ export function ProfileEditorModal({
                             <SliderInput
                                 label="Number of Messages to Disable Meta-Thinking"
                                 value={numberOfMessagesToDisableMetaThinkInstructions}
-                                minimumValue={0}
+                                minimumValue={-1}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="All participants disable the meta-think instructions after X messages made by the responding participant."
+                                description="-1 = auto defer to character default. N = disable after N messages."
                             />
                         </div>
 
@@ -536,12 +536,12 @@ export function ProfileEditorModal({
                             <SliderInput
                                 label="Number of Messages to Disable Dialogue Prompt"
                                 value={numberOfMessagesToDisableDialoguePrompt}
-                                minimumValue={0}
+                                minimumValue={-1}
                                 maximumValue={10}
                                 stepValue={1}
                                 decimals={0}
                                 onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
-                                description="All participants disable the dialogue prompt after X messages made by the responding participant."
+                                description="-1 = auto defer to character default. N = disable after N messages."
                             />
                         </div>
                     </div>
@@ -683,30 +683,42 @@ export function ProfileEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Memory</span>
 
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={enableMemoryReading}
-                                onChange={(e) => setEnableMemoryReading(e.target.checked)}
-                                className="editor-checkbox-input"
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Reading Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)'}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={enableMemoryReading}
+                                minimumValue={-1}
+                                maximumValue={1}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setEnableMemoryReading(Math.round(val))}
+                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
                             />
-                            <span>Enable Memory Reading</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Inject stored character memories into the prompt. Characters will recall past interactions across chat sessions.
                         </div>
 
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={enableMemoryWriting}
-                                onChange={(e) => setEnableMemoryWriting(e.target.checked)}
-                                className="editor-checkbox-input"
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Writing Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)'}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={enableMemoryWriting}
+                                minimumValue={-1}
+                                maximumValue={1}
+                                stepValue={1}
+                                decimals={0}
+                                onChange={(val) => setEnableMemoryWriting(Math.round(val))}
+                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
                             />
-                            <span>Enable Memory Writing</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Allow the model to save new memories based on the language model's decisions. Memories persist on the character across all chat sessions.
                         </div>
                     </div>
 

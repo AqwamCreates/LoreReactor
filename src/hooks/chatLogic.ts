@@ -107,6 +107,11 @@ export function findPreviousChatMessage(chatData: ChatData, characterId: string)
     return null;
 }
 
+const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
+        if (profileValue === undefined || profileValue === -1) return characterValue;
+        return profileValue;
+    };
+
 function filterArrayBasedOnContext(
     characterIdArray: string[],
     textContentArray: string[],
@@ -369,8 +374,12 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
-    const enableMemoryWriting = profile?.enableMemoryWriting ?? false;
-    const enableMemoryReading = profile?.enableMemoryReading ?? false;
+
+    const effectiveEnableMemoryWriting = profile?.enableMemoryWriting ?? 0; 
+    const effectiveEnableMemoryReading = profile?.enableMemoryReading ?? 0;
+
+    const enableMemoryWriting = effectiveEnableMemoryWriting === -1 ? false : effectiveEnableMemoryWriting === 1 ? true : (character.enableMemoryWriting ?? false);
+    const enableMemoryReading = effectiveEnableMemoryReading === -1 ? false : effectiveEnableMemoryReading === 1 ? true : (character.enableMemoryReading ?? false);
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -755,9 +764,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         'Text Injection': textInjectionLines,
     };
 
-    const numberOfMessagesToDisableThinkPrompt = profile?.numberOfMessagesToDisableThinkPrompt ?? character.numberOfMessagesToDisableThinkPrompt ?? 1;
-    const numberOfMessagesToDisableMetaThinkInstructions = profile?.numberOfMessagesToDisableMetaThinkInstructions ?? character.numberOfMessagesToDisableMetaThinkInstructions ?? 1;
-    const numberOfMessagesToDisableDialoguePrompt = profile?.numberOfMessagesToDisableDialoguePrompt ?? character.numberOfMessagesToDisableDialoguePrompt ?? 1;
+    const numberOfMessagesToDisableThinkPrompt = resolveDisablePrompt(profile?.numberOfMessagesToDisableThinkPrompt, character.numberOfMessagesToDisableThinkPrompt);
+    const numberOfMessagesToDisableMetaThinkInstructions = resolveDisablePrompt(profile?.numberOfMessagesToDisableMetaThinkInstructions, character.numberOfMessagesToDisableMetaThinkInstructions);
+    const numberOfMessagesToDisableDialoguePrompt = resolveDisablePrompt(profile?.numberOfMessagesToDisableDialoguePrompt, character.numberOfMessagesToDisableDialoguePrompt);
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
         blockMap['Think Prompt'] = undefined;
