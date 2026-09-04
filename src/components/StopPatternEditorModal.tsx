@@ -25,8 +25,13 @@ export function StopPatternEditorModal({
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
-    const [testText, setTestText] = useState('');
-    const [testResult, setTestResult] = useState<boolean | null>(null);
+
+    const [activationTestText, setActivationTestText] = useState('');
+    const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
+
+    const [deactivationTestText, setDeactivationTestText] = useState('');
+    const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
+
     const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string; deactivationRegex?: string }>({});
 
     useEffect(() => {
@@ -48,9 +53,14 @@ export function StopPatternEditorModal({
                 setRegexContext('global');
                 setRegexTarget('everyone');
             }
+
             setErrors({});
-            setTestText('');
-            setTestResult(null);
+
+            setActivationTestText('');
+            setActivationTestResult(null);
+
+            setDeactivationTestText('');
+            setDeactivationTestResult(null);
         }
     }, [isOpen, existingStopPattern]);
 
@@ -80,17 +90,33 @@ export function StopPatternEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleTestRegex = () => {
-        if (!regexActivationTrigger.trim() || !testText.trim()) {
-            setTestResult(null);
+    const handleTestActivationRegex = () => {
+        if (!regexActivationTrigger.trim() || !activationTestText.trim()) {
+            setActivationTestResult(null);
             return;
         }
+
         try {
             const regex = new RegExp(regexActivationTrigger);
-            setTestResult(regex.test(testText));
+            setActivationTestResult(regex.test(activationTestText));
         } catch (e) {
-            setTestResult(null);
+            setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
+        }
+    };
+
+    const handleTestDeactivationRegex = () => {
+        if (!regexDeactivationTrigger.trim() || !deactivationTestText.trim()) {
+            setDeactivationTestResult(null);
+            return;
+        }
+
+        try {
+            const regex = new RegExp(regexDeactivationTrigger);
+            setDeactivationTestResult(regex.test(deactivationTestText));
+        } catch (e) {
+            setDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
         }
     };
 
@@ -151,7 +177,10 @@ export function StopPatternEditorModal({
                         <input
                             type="text"
                             value={name}
-                            onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }}
+                            onChange={(e) => {
+                                setName(e.target.value);
+                                if (errors.name) setErrors({ ...errors, name: undefined });
+                            }}
                             className={`editor-input ${errors.name ? 'error' : ''}`}
                             placeholder="End Of Turn, Character Stop, Paragraph Stop"
                         />
@@ -175,7 +204,10 @@ export function StopPatternEditorModal({
                         <label className="editor-label">Pattern <span style={{ color: '#ff4444' }}>*</span></label>
                         <textarea
                             value={pattern}
-                            onChange={(e) => { setPattern(e.target.value); if (errors.pattern) setErrors({ ...errors, pattern: undefined }); }}
+                            onChange={(e) => {
+                                setPattern(e.target.value);
+                                if (errors.pattern) setErrors({ ...errors, pattern: undefined });
+                            }}
                             className={`editor-textarea whitespace-visible ${errors.pattern ? 'error' : ''}`}
                             placeholder="\n\n or \nCharacter 2: or <|end_of_turn|>"
                             rows={4}
@@ -197,7 +229,11 @@ export function StopPatternEditorModal({
                                 <input
                                     type="text"
                                     value={regexActivationTrigger}
-                                    onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }}
+                                    onChange={(e) => {
+                                        setRegexActivationTrigger(e.target.value);
+                                        if (errors.regex) setErrors({ ...errors, regex: undefined });
+                                        setActivationTestResult(null);
+                                    }}
                                     className={`editor-input ${errors.regex ? 'error' : ''}`}
                                     style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
                                     placeholder="/battle|combat|fight/i"
@@ -206,14 +242,58 @@ export function StopPatternEditorModal({
                             </div>
                         </div>
 
+                        {/* Activation Regex Tester */}
+                        {regexActivationTrigger.trim() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                    <input
+                                        type="text"
+                                        value={activationTestText}
+                                        onChange={(e) => {
+                                            setActivationTestText(e.target.value);
+                                            setActivationTestResult(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleTestActivationRegex();
+                                            }
+                                        }}
+                                        className="editor-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                        placeholder="Enter text to test against the activation regex"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleTestActivationRegex}
+                                        className="editor-btn editor-btn-save"
+                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                        disabled={!activationTestText.trim()}
+                                    >
+                                        Test
+                                    </button>
+                                </div>
+                                {activationTestResult !== null && (
+                                    <div className={activationTestResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
+                                        {activationTestResult ? '✅ Activation matches!' : '❌ Activation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Deactivation Trigger */}
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                        <div className="editor-row-full" style={{ marginTop: '12px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Deactivation Trigger</label>
                                 <input
                                     type="text"
                                     value={regexDeactivationTrigger}
-                                    onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }}
+                                    onChange={(e) => {
+                                        setRegexDeactivationTrigger(e.target.value);
+                                        if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined });
+                                        setDeactivationTestResult(null);
+                                    }}
                                     className={`editor-input ${errors.deactivationRegex ? 'error' : ''}`}
                                     style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
                                     placeholder="/peace|calm|aftermath/i"
@@ -224,6 +304,46 @@ export function StopPatternEditorModal({
                                 </div>
                             </div>
                         </div>
+
+                        {/* Deactivation Regex Tester */}
+                        {regexDeactivationTrigger.trim() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Test Deactivation Pattern</label>
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                    <input
+                                        type="text"
+                                        value={deactivationTestText}
+                                        onChange={(e) => {
+                                            setDeactivationTestText(e.target.value);
+                                            setDeactivationTestResult(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleTestDeactivationRegex();
+                                            }
+                                        }}
+                                        className="editor-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                        placeholder="Enter text to test against the deactivation regex"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleTestDeactivationRegex}
+                                        className="editor-btn editor-btn-save"
+                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                        disabled={!deactivationTestText.trim()}
+                                    >
+                                        Test
+                                    </button>
+                                </div>
+                                {deactivationTestResult !== null && (
+                                    <div className={deactivationTestResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
+                                        {deactivationTestResult ? '✅ Deactivation matches!' : '❌ Deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Regex Context & Target */}
                         <div className="editor-row" style={{ marginTop: '8px' }}>
@@ -254,38 +374,6 @@ export function StopPatternEditorModal({
                                 </select>
                             </div>
                         </div>
-
-                        {/* Regex Tester */}
-                        {regexActivationTrigger.trim() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
-                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
-                                    <input
-                                        type="text"
-                                        value={testText}
-                                        onChange={(e) => { setTestText(e.target.value); setTestResult(null); }}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }}
-                                        className="editor-input"
-                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                        placeholder="Enter text to test against the activation regex"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleTestRegex}
-                                        className="editor-btn editor-btn-save"
-                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
-                                        disabled={!testText.trim()}
-                                    >
-                                        Test
-                                    </button>
-                                </div>
-                                {testResult !== null && (
-                                    <div className={testResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
-                                        {testResult ? '✅ Matches!' : '❌ No match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>

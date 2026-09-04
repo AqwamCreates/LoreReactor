@@ -41,8 +41,13 @@ export function ContextEditorModal({
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
-    const [testText, setTestText] = useState('');
-    const [testResult, setTestResult] = useState<boolean | null>(null);
+
+    const [activationTestText, setActivationTestText] = useState('');
+    const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
+
+    const [deactivationTestText, setDeactivationTestText] = useState('');
+    const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
+
     const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; deactivationRegex?: string; images?: string; urls?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,8 +162,10 @@ export function ContextEditorModal({
                 setLimitLinksToSubdirectory(false);
             }
             setErrors({});
-            setTestText('');
-            setTestResult(null);
+            setActivationTestText('');
+            setActivationTestResult(null);
+            setDeactivationTestText('');
+            setDeactivationTestResult(null);
         }
     }, [isOpen, existingContext]);
 
@@ -242,14 +249,25 @@ export function ContextEditorModal({
         }
     };
 
-    const handleTestRegex = () => {
-        if (!regexActivationTrigger.trim() || !testText.trim()) { setTestResult(null); return; }
+    const handleTestActivationRegex = () => {
+        if (!regexActivationTrigger.trim() || !activationTestText.trim()) { setActivationTestResult(null); return; }
         try {
             const regex = new RegExp(regexActivationTrigger);
-            setTestResult(regex.test(testText));
+            setActivationTestResult(regex.test(activationTestText));
         } catch (e) {
-            setTestResult(null);
+            setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
+        }
+    };
+
+    const handleTestDeactivationRegex = () => {
+        if (!regexDeactivationTrigger.trim() || !deactivationTestText.trim()) { setDeactivationTestResult(null); return; }
+        try {
+            const regex = new RegExp(regexDeactivationTrigger);
+            setDeactivationTestResult(regex.test(deactivationTestText));
+        } catch (e) {
+            setDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
         }
     };
 
@@ -501,19 +519,54 @@ export function ContextEditorModal({
                         <div className="editor-row-full">
                             <div>
                                 <label className="editor-label editor-label-small">Activation Trigger</label>
-                                <input type="text" value={regexActivationTrigger} onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/pattern/i" />
+                                <input type="text" value={regexActivationTrigger} onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/pattern/i" />
                                 {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
                             </div>
                         </div>
+
+                        {/* Activation Regex Tester */}
+                        {regexActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={activationTestText} onChange={(e) => { setActivationTestText(e.target.value); setActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestActivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!activationTestText.trim()}>Test</button>
+                                </div>
+                                {activationTestResult !== null && (
+                                    <div className={`context-test-result ${activationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {activationTestResult ? '✅ Activation matches!' : '❌ Activation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Deactivation Trigger */}
                         <div className="editor-row-full" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Deactivation Trigger</label>
-                                <input type="text" value={regexDeactivationTrigger} onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }} className={`editor-input context-mono-input ${errors.deactivationRegex ? 'error' : ''}`} placeholder="/peace|calm|aftermath/i" />
+                                <input type="text" value={regexDeactivationTrigger} onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); setDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.deactivationRegex ? 'error' : ''}`} placeholder="/peace|calm|aftermath/i" />
                                 {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Optional. Deactivates this context entry when matched.
+                                </div>
                             </div>
                         </div>
+
+                        {/* Deactivation Regex Tester */}
+                        {regexDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={deactivationTestText} onChange={(e) => { setDeactivationTestText(e.target.value); setDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestDeactivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!deactivationTestText.trim()}>Test</button>
+                                </div>
+                                {deactivationTestResult !== null && (
+                                    <div className={`context-test-result ${deactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {deactivationTestResult ? '✅ Deactivation matches!' : '❌ Deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Context & Target */}
                         <div className="editor-row" style={{ marginTop: '8px' }}>
@@ -530,22 +583,6 @@ export function ContextEditorModal({
                                 </select>
                             </div>
                         </div>
-
-                        {/* Regex Tester */}
-                        {regexActivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={testText} onChange={(e) => { setTestText(e.target.value); setTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!testText.trim()}>Test</button>
-                                </div>
-                                {testResult !== null && (
-                                    <div className={`context-test-result ${testResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {testResult ? '✅ Matches!' : '❌ No match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
 
                     <div className="editor-section">
@@ -575,7 +612,6 @@ export function ContextEditorModal({
                                 <span className="editor-label editor-label-small">Character Bindings</span>
                                 <div className="context-binding-hint">Only inject when these characters speak. Empty = all characters.</div>
                                 <div className="context-character-binding-list">
-                                    {characterBindings.length === 0 && <div className="context-tag-empty-message">No character bindings — applies to all.</div>}
                                     {characterBindings.map(id => {
                                         const char = getCharacterById(id);
                                         if (!char) return null;
