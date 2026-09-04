@@ -1,0 +1,210 @@
+// src/components/CharacterMemoryModal.tsx
+import { useState, useEffect } from 'react';
+import type { Character, Memory, ChatData } from '../types';
+import { loadAllRawChatData } from '../hooks/storage';
+import './main.css';
+
+interface CharacterMemoryEditorModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    character: Character | null;
+    onSaveMemories: (memories: Record<string, Memory[]>) => void;
+}
+
+export function CharacterMemoryEditorModal({
+    isOpen,
+    onClose,
+    character,
+    onSaveMemories,
+}: CharacterMemoryEditorModalProps) {
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
+    const [chatNameMap, setChatNameMap] = useState<Map<string, string>>(new Map());
+    const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>({});
+    const [hasChanges, setHasChanges] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && character) {
+            setLocalMemories(structuredClone(character.memories ?? {}));
+            setHasChanges(false);
+            setEditingId(null);
+            setEditContent('');
+
+            (async () => {
+                try {
+                    const chats = await loadAllRawChatData();
+                    const map = new Map<string, string>();
+                    for (const c of chats) {
+                        if (c) map.set(c.id, c.name || 'Untitled Chat');
+                    }
+                    setChatNameMap(map);
+                } catch { /* ignore */ }
+            })();
+        }
+    }, [isOpen, character]);
+
+    if (!isOpen || !character) return null;
+
+    const handleStartEdit = (mem: Memory) => {
+        setEditingId(mem.id);
+        setEditContent(mem.content);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditContent('');
+    };
+
+    const handleSaveEdit = () => {
+        if (!editingId) return;
+        const updated: Record<string, Memory[]> = {};
+        for (const [key, mems] of Object.entries(localMemories)) {
+            updated[key] = mems.map(m =>
+                m.id === editingId ? { ...m, content: editContent, lastUpdatedTimestamp: Date.now() } : m
+            );
+        }
+        setLocalMemories(updated);
+        setHasChanges(true);
+        setEditingId(null);
+        setEditContent('');
+    };
+
+    const handleDelete = (memId: string) => {
+        const updated: Record<string, Memory[]> = {};
+        for (const [key, mems] of Object.entries(localMemories)) {
+            updated[key] = mems.filter(m => m.id !== memId);
+        }
+        // Remove empty keys
+        for (const key of Object.keys(updated)) {
+            if (updated[key].length === 0) delete updated[key];
+        }
+        setLocalMemories(updated);
+        setHasChanges(true);
+        if (editingId === memId) {
+            setEditingId(null);
+            setEditContent('');
+        }
+    };
+
+    const handleSaveAndClose = () => {
+        onSaveMemories(localMemories);
+        onClose();
+    };
+
+    const handleClose = () => {
+        if (hasChanges) {
+            onSaveMemories(localMemories);
+        }
+        onClose();
+    };
+
+    const entries = Object.entries(localMemories);
+    const totalMemories = entries.reduce((sum, [, mems]) => sum + mems.length, 0);
+
+    return (
+        <div className="modal-overlay" onClick={handleClose}>
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h2>Memories ({totalMemories})</h2>
+                    <div className="editor-modal-actions">
+                        {hasChanges && (
+                            <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveAndClose}>Save</button>
+                        )}
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose}>
+                            {hasChanges ? 'Discard' : 'Close'}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="modal-body editor-modal-body">
+                    {entries.length === 0 ? (
+                        <div className="empty-state">No memories stored for this character.</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {entries.map(([key, mems]) => (
+                                <div key={key} className="editor-section">
+                                    <span className="editor-section-title">
+                                        {key === 'global' ? '🌐 Global' : `💬 ${key}`}
+                                    </span>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {mems.map(mem => {
+                                            const isEditing = editingId === mem.id;
+                                            const chatName = chatNameMap.get(mem.chatData?.id ?? '') || 'Unknown Chat';
+
+                                            return (
+                                                <div key={mem.id} style={{
+                                                    padding: '10px 12px',
+                                                    background: 'var(--social-bg)',
+                                                    border: '1px solid var(--border)',
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    {isEditing ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <textarea
+                                                                value={editContent}
+                                                                onChange={(e) => setEditContent(e.target.value)}
+                                                                className="editor-textarea"
+                                                                rows={4}
+                                                                autoFocus
+                                                            />
+                                                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCancelEdit}>Cancel</button>
+                                                                <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveEdit}>Save</button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <div style={{
+                                                                fontSize: '0.75rem',
+                                                                lineHeight: '1.4',
+                                                                whiteSpace: 'pre-wrap',
+                                                                wordBreak: 'break-word',
+                                                            }}>
+                                                                {mem.content}
+                                                            </div>
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                marginTop: '8px',
+                                                                fontSize: '0.6rem',
+                                                                opacity: 0.5,
+                                                            }}>
+                                                                <span>Source: {chatName}</span>
+                                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="toolbar-btn"
+                                                                        onClick={() => handleStartEdit(mem)}
+                                                                        title="Edit memory"
+                                                                        style={{ fontSize: '0.65rem' }}
+                                                                    >
+                                                                        ✏️
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="toolbar-btn"
+                                                                        onClick={() => handleDelete(mem.id)}
+                                                                        title="Delete memory"
+                                                                        style={{ fontSize: '0.65rem', color: '#ff4444' }}
+                                                                    >
+                                                                        🗑️
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
