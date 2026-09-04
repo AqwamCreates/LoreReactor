@@ -45,9 +45,11 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
         }
     }
 
-    const isIgnored = (index: number, length: number): boolean => {
+    const isIgnored = (matchStart: number, matchLength: number): boolean => {
+        const matchEnd = matchStart + matchLength;
         for (const range of ignoreRanges) {
-            if (index >= range.start && index < range.end) return true;
+            // Overlap check: match overlaps with ignore range if they share any characters
+            if (matchStart < range.end && matchEnd > range.start) return true;
         }
         return false;
     };
@@ -58,11 +60,12 @@ function getNameSensitivityMultiplier(character: Character, chatData: ChatData):
     let searchIndex = 0;
     while (true) {
         const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
+        const fullNameLength = fullNameLower.length;
         if (foundIndex === -1) break;
-        if (!isIgnored(foundIndex, fullNameLower.length)) {
+        if (!isIgnored(foundIndex, fullNameLength)) {
             mentionCount++;
         }
-        searchIndex = foundIndex + fullNameLower.length;
+        searchIndex = foundIndex + fullNameLength;
     }
 
     // Step 2: Split into parts and scan for partial names (min 2 chars)
