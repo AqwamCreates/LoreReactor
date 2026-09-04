@@ -175,7 +175,7 @@ function filterArrayBasedOnTarget(
 }
 
 function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier: number = 1): boolean {
-    const regexTrigger = context.regularExpressionTrigger;
+    const regexTrigger = context.regularExpressionActivationTrigger;
     if (!regexTrigger) return true;
     try {
         const regex = new RegExp(regexTrigger);
@@ -234,7 +234,7 @@ async function resolveContextEntries(
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
         if (filteredTexts.length === 0) {
-            if (!context.regularExpressionTrigger) continue;
+            if (!context.regularExpressionActivationTrigger) continue;
             if (doesContextMatch(context, chatSearchSpace, sensitivityForCharacter)) {
                 activated.add(context.id);
                 activatedMap.set(context.id, context);
@@ -552,7 +552,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
-        const regexTrigger = stopPattern.regularExpressionTrigger;
+        const regexTrigger = stopPattern.regularExpressionActivationTrigger;
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
         if (!regexTrigger) {

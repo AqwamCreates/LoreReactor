@@ -1,424 +1,129 @@
-// src/components/ProfileEditorModal.tsx
+// src/components/StopPatternEditorModal.tsx
 import { useState, useEffect } from 'react';
-import type { Profile, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
-import { SliderInput } from './SliderInput';
+import type { StopPattern } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
-interface ProfileEditorModalProps {
+interface StopPatternEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (profile: Profile) => void;
-    existingProfile?: Profile | null;
+    onSave: (stopPattern: StopPattern) => void;
+    onDelete?: (id: string) => void;
+    existingStopPattern?: StopPattern | null;
 }
 
-const ALL_BLOCK_TYPES: PromptBlockType[] = [
-    'System Prompt',
-    'Think Prompt',
-    'Meta Think Instruction',
-    'Appearance Prompt',
-    'Dialogue Prompt',
-    'Memory',
-    'Chat History',
-    'Context',
-    'Fatigue Information',
-    'Date And Time',
-    'Text Injection'
-];
-
-const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
-];
-
-const CACHE_LEVEL_DESCRIPTIONS = [
-    'No injection.',
-    'Inject all participant names upfront.',
-    'Inject all participant names + all system prompts upfront.',
-    'Inject all participant names + system prompts + think prompts upfront.',
-];
-
-const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
-    'Sliding Window Replace': 'Replace old messages with per-message summaries beyond the window size.',
-    'Periodic Compression': 'Compress every M messages into a summary paragraph at regular intervals.',
-    'Recursive Summary': 'Build hierarchical summaries: chunks → meta-summaries → global summary.',
-    'Observation Masking': 'Hide older messages by relevance score. Keep only what matters to the current context.',
-};
-
-const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
-    'Sliding Window Replace',
-    'Periodic Compression',
-    'Recursive Summary',
-    'Observation Masking',
-];
-
-function getDefaultSummarizationSteps(): SummarizationStep[] {
-    const now = Date.now();
-    return [
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Sliding Window Replace',
-            strategyType: 'Sliding Window Replace',
-            enabled: true,
-            order: 0,
-            slidingWindowSize: 10,
-            summaryTokenBudget: 256,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Periodic Compression',
-            strategyType: 'Periodic Compression',
-            enabled: false,
-            order: 1,
-            compressionInterval: 20,
-            compressionChunkSize: 10,
-            summaryTokenBudget: 512,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Recursive Summary',
-            strategyType: 'Recursive Summary',
-            enabled: false,
-            order: 2,
-            recursiveChunkSize: 10,
-            recursiveMaxDepth: 3,
-            summaryTokenBudget: 1024,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Observation Masking',
-            strategyType: 'Observation Masking',
-            enabled: false,
-            order: 3,
-            maskingRelevanceThreshold: 0.3,
-            maskingKeywordWeight: 0.7,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-    ];
-}
-
-export function ProfileEditorModal({
+export function StopPatternEditorModal({
     isOpen,
     onClose,
     onSave,
-    existingProfile,
-}: ProfileEditorModalProps) {
+    existingStopPattern,
+}: StopPatternEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [forceNameReveal, setForceNameReveal] = useState(false);
-    const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
-    const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(-1);
-    const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
-    const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
-    const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
-    const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
-    const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
-    const [chatProbability, setChatProbability] = useState<number>(0);
-    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
-    const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
-    const [responseDelayWeight, setResponseDelayWeight] = useState<number>(-1);
-    const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
-    const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
-    const [cacheLevel, setCacheLevel] = useState<number>(0);
-    const [stripThinkTokens, setStripThinkTokens] = useState(false);
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
-    const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
-    const [narrateNormalText, setNarrateNormalText] = useState(true);
-    const [narrateQuotedText, setNarrateQuotedText] = useState(false);
-    const [narrateBoldedText, setNarrateBoldedText] = useState(false);
-    const [narrateItalicizedText, setNarrateItalicizedText] = useState(false);
-    const [inputStrategy, setInputStrategy] = useState<PromptBlockType[]>([...DEFAULT_STRATEGY]);
-    const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>([]);
-    const [errors, setErrors] = useState<{ name?: string }>({});
-
-    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-    const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
-    const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+    const [pattern, setPattern] = useState('');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
+    const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
+    const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
+    const [testText, setTestText] = useState('');
+    const [testResult, setTestResult] = useState<boolean | null>(null);
+    const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string; deactivationRegex?: string }>({});
 
     useEffect(() => {
         if (isOpen) {
-            if (existingProfile) {
-                setName(existingProfile.name || '');
-                setDescription(existingProfile.description || '');
-                setForceNameReveal(existingProfile.forceNameReveal ?? false);
-                setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
-                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
-                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
-                setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
-                setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
-                setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
-                setChatProbability(existingProfile.chatProbability ?? 0);
-                setMaximumChatStamina(existingProfile.maximumChatStamina ?? 0);
-                setNameSensitivity(existingProfile.nameSensitivity ?? -1);
-                setResponseDelayWeight(existingProfile.responseDelayWeight ?? -1);
-                setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
-                setContextSensitivity(existingProfile.contextSensitivity ?? -1);
-                setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
-                setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-                setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
-                setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
-                setNarrateNormalText(existingProfile.narrateNormalText ?? true);
-                setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
-                setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
-                setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-                const savedStrategy = existingProfile.inputStrategy?.length
-                    ? existingProfile.inputStrategy
-                    : [...DEFAULT_STRATEGY];
-                setInputStrategy(savedStrategy);
-                setSummarizationSteps(
-                    existingProfile.summarizationSteps?.length
-                        ? [...existingProfile.summarizationSteps].sort((a, b) => a.order - b.order)
-                        : getDefaultSummarizationSteps()
-                );
+            if (existingStopPattern) {
+                setName(existingStopPattern.name || '');
+                setDescription(existingStopPattern.description || '');
+                setPattern(existingStopPattern.pattern || '');
+                setRegexActivationTrigger(existingStopPattern.regularExpressionActivationTrigger || '');
+                setRegexDeactivationTrigger(existingStopPattern.regularExpressionDeactivationTrigger || '');
+                setRegexContext(existingStopPattern.regularExpressionContext || 'global');
+                setRegexTarget(existingStopPattern.regularExpressionTarget || 'everyone');
             } else {
                 setName('');
                 setDescription('');
-                setForceNameReveal(false);
-                setForceNoCharacterImageInjection(false);
-                setNumberOfMessagesToDisableThinkPrompt(-1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(-1);
-                setNumberOfMessagesToDisableDialoguePrompt(-1);
-                setForceNoContextImageInjection(false);
-                setUseCurrentDateAndTime(false);
-                setForceEqualInitiative(false);
-                setChatProbability(0);
-                setMaximumChatStamina(0);
-                setNameSensitivity(-1);
-                setResponseDelayWeight(-1);
-                setMemoryRetentionWeight(-1);
-                setContextSensitivity(-1);
-                setCacheLevel(0);
-                setStripThinkTokens(false);
-                setEnableMemoryWriting(0);
-                setEnableMemoryReading(0);
-                setNarrateNormalText(true);
-                setNarrateQuotedText(false);
-                setNarrateBoldedText(false);
-                setNarrateItalicizedText(false);
-                setInputStrategy([...DEFAULT_STRATEGY]);
-                setSummarizationSteps(getDefaultSummarizationSteps());
+                setPattern('');
+                setRegexActivationTrigger('');
+                setRegexDeactivationTrigger('');
+                setRegexContext('global');
+                setRegexTarget('everyone');
             }
             setErrors({});
-            setDraggedIndex(null);
-            setDraggedStepIndex(null);
-            setExpandedStepId(null);
+            setTestText('');
+            setTestResult(null);
         }
-    }, [isOpen, existingProfile]);
+    }, [isOpen, existingStopPattern]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string } = {};
+        const newErrors: { name?: string; pattern?: string; regex?: string; deactivationRegex?: string } = {};
+
         if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!pattern.trim()) newErrors.pattern = 'Stop pattern is required.';
+
+        if (regexActivationTrigger.trim()) {
+            try {
+                new RegExp(regexActivationTrigger);
+            } catch (e) {
+                newErrors.regex = 'Invalid activation regular expression.';
+            }
+        }
+
+        if (regexDeactivationTrigger.trim()) {
+            try {
+                new RegExp(regexDeactivationTrigger);
+            } catch (e) {
+                newErrors.deactivationRegex = 'Invalid deactivation regular expression.';
+            }
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
-        if (!validate()) return;
+    const handleTestRegex = () => {
+        if (!regexActivationTrigger.trim() || !testText.trim()) {
+            setTestResult(null);
+            return;
+        }
+        try {
+            const regex = new RegExp(regexActivationTrigger);
+            setTestResult(regex.test(testText));
+        } catch (e) {
+            setTestResult(null);
+            setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
+        }
+    };
+
+    const buildStopPatternFromForm = (isNewClone: boolean): StopPattern | null => {
+        if (!validate()) return null;
 
         const now = Date.now();
-        const profile: Profile = {
-            id: existingProfile?.id || crypto.randomUUID(),
-            name: name.trim(),
+        return {
+            id: isNewClone ? uuidv4() : (existingStopPattern?.id || uuidv4()),
+            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
-            forceNameReveal,
-            forceNoCharacterImageInjection,
-            numberOfMessagesToDisableThinkPrompt,
-            numberOfMessagesToDisableMetaThinkInstructions,
-            numberOfMessagesToDisableDialoguePrompt,
-            forceNoContextImageInjection,
-            useCurrentDateAndTime,
-            forceEqualInitiative,
-            chatProbability,
-            maximumChatStamina,
-            nameSensitivity,
-            responseDelayWeight,
-            memoryRetentionWeight,
-            contextSensitivity,
-            cacheInvalidationReductionLevel: cacheLevel,
-            stripThinkTokens,
-            enableMemoryWriting,
-            enableMemoryReading,
-            narrateNormalText,
-            narrateQuotedText,
-            narrateBoldedText,
-            narrateItalicizedText,
-            inputStrategy,
-            summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, order: i, lastUpdatedTimestamp: now })),
-            firstCreatedTimestamp: existingProfile?.firstCreatedTimestamp || now,
+            pattern: pattern.trim(),
+            regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
+            regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
+            regularExpressionContext: regexContext,
+            regularExpressionTarget: regexTarget,
+            firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
-        onSave(profile);
+    const handleSubmit = () => {
+        const stopPattern = buildStopPatternFromForm(false);
+        if (!stopPattern) return;
+        onSave(stopPattern);
         onClose();
     };
 
     const handleClone = () => {
-        if (!validate()) return;
-
-        const now = Date.now();
-        const cloned: Profile = {
-            id: crypto.randomUUID(),
-            name: `${name.trim()} (Clone)`,
-            description: description.trim() || undefined,
-            forceNameReveal,
-            forceNoCharacterImageInjection,
-            numberOfMessagesToDisableThinkPrompt,
-            numberOfMessagesToDisableMetaThinkInstructions,
-            numberOfMessagesToDisableDialoguePrompt,
-            forceNoContextImageInjection,
-            useCurrentDateAndTime,
-            forceEqualInitiative,
-            chatProbability,
-            maximumChatStamina,
-            nameSensitivity,
-            responseDelayWeight,
-            memoryRetentionWeight,
-            contextSensitivity,
-            cacheInvalidationReductionLevel: cacheLevel,
-            stripThinkTokens,
-            enableMemoryWriting,
-            enableMemoryReading,
-            narrateNormalText,
-            narrateQuotedText,
-            narrateBoldedText,
-            narrateItalicizedText,
-            inputStrategy: [...inputStrategy],
-            summarizationSteps: summarizationSteps.map((s, i) => ({
-                ...s,
-                id: `step-${crypto.randomUUID()}`,
-                order: i,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-            })),
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        };
-
-        onSave(cloned);
+        const clonedStopPattern = buildStopPatternFromForm(true);
+        if (!clonedStopPattern) return;
+        onSave(clonedStopPattern);
         onClose();
-    };
-
-    // --- Prompt block drag handlers ---
-    const handleDragStart = (e: React.DragEvent, index: number) => {
-        setDraggedIndex(index);
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(index));
-        setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0);
-    };
-
-    const handleDragEnd = (e: React.DragEvent) => {
-        (e.target as HTMLElement).style.opacity = '1';
-        setDraggedIndex(null);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
-    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-        e.preventDefault();
-        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
-        if (dragIndex === dropIndex) return;
-        const newOrder = [...inputStrategy];
-        const [removed] = newOrder.splice(dragIndex, 1);
-        newOrder.splice(dropIndex, 0, removed);
-        setInputStrategy(newOrder);
-        setDraggedIndex(null);
-    };
-
-    const moveBlock = (index: number, direction: -1 | 1) => {
-        const newIndex = index + direction;
-        if (newIndex < 0 || newIndex >= inputStrategy.length) return;
-        const newOrder = [...inputStrategy];
-        [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
-        setInputStrategy(newOrder);
-    };
-
-    const addBlock = (blockType: PromptBlockType) => {
-        if (!inputStrategy.includes(blockType)) {
-            setInputStrategy(prev => [...prev, blockType]);
-        }
-    };
-
-    const removeBlock = (index: number) => {
-        setInputStrategy(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const missingBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
-
-    // --- Summarization step drag handlers ---
-    const handleStepDragStart = (e: React.DragEvent, index: number) => {
-        setDraggedStepIndex(index);
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(index));
-        setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0);
-    };
-
-    const handleStepDragEnd = (e: React.DragEvent) => {
-        (e.target as HTMLElement).style.opacity = '1';
-        setDraggedStepIndex(null);
-    };
-
-    const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
-        e.preventDefault();
-        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
-        if (dragIndex === dropIndex) return;
-        const newSteps = [...summarizationSteps];
-        const [removed] = newSteps.splice(dragIndex, 1);
-        newSteps.splice(dropIndex, 0, removed);
-        setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
-        setDraggedStepIndex(null);
-    };
-
-    const moveStep = (index: number, direction: -1 | 1) => {
-        const newIndex = index + direction;
-        if (newIndex < 0 || newIndex >= summarizationSteps.length) return;
-        const newSteps = [...summarizationSteps];
-        [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]];
-        setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
-    };
-
-    const updateStepField = <K extends keyof SummarizationStep>(index: number, field: K, value: SummarizationStep[K]) => {
-        setSummarizationSteps(prev => prev.map((s, i) =>
-            i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s
-        ));
-    };
-
-    const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
-        const now = Date.now();
-        const newStep: SummarizationStep = {
-            id: `step-${crypto.randomUUID()}`,
-            name: strategyType,
-            strategyType,
-            enabled: true,
-            order: summarizationSteps.length,
-            summaryTokenBudget: 512,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        };
-        if (strategyType === 'Sliding Window Replace') newStep.slidingWindowSize = 10;
-        if (strategyType === 'Periodic Compression') { newStep.compressionInterval = 20; newStep.compressionChunkSize = 10; }
-        if (strategyType === 'Recursive Summary') { newStep.recursiveChunkSize = 10; newStep.recursiveMaxDepth = 3; }
-        if (strategyType === 'Observation Masking') { newStep.maskingRelevanceThreshold = 0.3; newStep.maskingKeywordWeight = 0.7; }
-
-        setSummarizationSteps(prev => [...prev, newStep]);
-    };
-
-    const removeSummarizationStep = (index: number) => {
-        setSummarizationSteps(prev => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i })));
-        if (expandedStepId === summarizationSteps[index]?.id) setExpandedStepId(null);
     };
 
     if (!isOpen) return null;
@@ -427,10 +132,10 @@ export function ProfileEditorModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingProfile ? 'Edit Profile' : 'Create New Profile'}</h2>
+                    <h2>{existingStopPattern ? 'Edit Stop Pattern' : 'Create New Stop Pattern'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {existingProfile && (
+                        {existingStopPattern && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
                                 Clone
                             </button>
@@ -448,7 +153,7 @@ export function ProfileEditorModal({
                             value={name}
                             onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }}
                             className={`editor-input ${errors.name ? 'error' : ''}`}
-                            placeholder="e.g., Default RP, No Cache Mode, Strict Names"
+                            placeholder="End Of Turn, Character Stop, Paragraph Stop"
                         />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
@@ -460,658 +165,125 @@ export function ProfileEditorModal({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             className="editor-textarea"
-                            placeholder="Describe when to use this profile"
+                            placeholder="Brief description of when to use this stop pattern"
                             rows={2}
                         />
                     </div>
 
-                    {/* Display Section */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Display</span>
-                        
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceNameReveal}
-                                onChange={(e) => setForceNameReveal(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force Name Reveal</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Always show character names instead of "Character X".
-                        </div>
-                    </div>
-
-                    {/* Injection Section */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Injection</span>
-
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceNoCharacterImageInjection}
-                                onChange={(e) => setForceNoCharacterImageInjection(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force No Character Image Injection</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent character images from being sent to the model, even if the character has one assigned.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={forceNoContextImageInjection}
-                                onChange={(e) => setForceNoContextImageInjection(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force No Context Image Injection</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent context images from being sent to the model.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={useCurrentDateAndTime}
-                                onChange={(e) => setUseCurrentDateAndTime(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Use Current Date And Time</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
-                        </div>
-
-                        <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Think Prompt"
-                                value={numberOfMessagesToDisableThinkPrompt}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
-                        </div>
-
-                        <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Meta-Thinking"
-                                value={numberOfMessagesToDisableMetaThinkInstructions}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
-                        </div>
-
-                        <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Dialogue Prompt"
-                                value={numberOfMessagesToDisableDialoguePrompt}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
-                        </div>
-                    </div>
-
-                    {/* Turn Sequencing Overrides */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Turn Sequencing</span>
-
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceEqualInitiative}
-                                onChange={(e) => setForceEqualInitiative(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force Equal Initiative</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px', marginBottom: '12px' }}>
-                            All participants get equal initiative weight regardless of character settings.
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === 0 ? '(Character default)' : ""}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={chatProbability}
-                                minimumValue={0}
-                                maximumValue={1}
-                                stepValue={0.05}
-                                decimals={2}
-                                onChange={setChatProbability}
-                                description="0 = disabled (use per-character setting). Slide right to override all participants."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === 0 ? '(Character default)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={maximumChatStamina}
-                                minimumValue={0}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setMaximumChatStamina(Math.round(val))}
-                                description="0 = disabled (use per-character setting). Slide right to set a shared stamina cap."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Name Sensitivity Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={nameSensitivity}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={0.5}
-                                decimals={1}
-                                onChange={setNameSensitivity}
-                                description="-1 = defer to character default. 0 = disabled. N = multiplier per name mention in latest message."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Response Delay Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {responseDelayWeight === -1 ? '(Character default)' : responseDelayWeight === 0 ? '(Disabled)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={responseDelayWeight}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={0.05}
-                                decimals={2}
-                                onChange={setResponseDelayWeight}
-                                description="-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Retention Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={memoryRetentionWeight}
-                                minimumValue={-1}
-                                maximumValue={2}
-                                stepValue={0.1}
-                                decimals={1}
-                                onChange={setMemoryRetentionWeight}
-                                description="-1 = defer to character. 0 = minimal history. 1 = full history. Controls how far back memories reach."
-                            />
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Context Sensitivity Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={contextSensitivity}
-                                minimumValue={-1}
-                                maximumValue={2}
-                                stepValue={0.1}
-                                decimals={1}
-                                onChange={setContextSensitivity}
-                                description="-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger."
-                            />
-                        </div>
-                    </div>
-
-                    {/* Cache Invalidation Reduction */}
-                    <div className="editor-section">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
-                        </div>
-                        <SliderInput
-                            label=""
-                            value={cacheLevel}
-                            minimumValue={0}
-                            maximumValue={3}
-                            stepValue={1}
-                            decimals={0}
-                            onChange={(val) => setCacheLevel(Math.round(val))}
-                            description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''}
+                    {/* Pattern */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <label className="editor-label">Pattern <span style={{ color: '#ff4444' }}>*</span></label>
+                        <textarea
+                            value={pattern}
+                            onChange={(e) => { setPattern(e.target.value); if (errors.pattern) setErrors({ ...errors, pattern: undefined }); }}
+                            className={`editor-textarea whitespace-visible ${errors.pattern ? 'error' : ''}`}
+                            placeholder="\n\n or \nCharacter 2: or <|end_of_turn|>"
+                            rows={4}
                         />
-                    </div>
-
-                    {/* Voice Narration */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Voice Narration</span>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateNormalText}
-                                    onChange={(e) => setNarrateNormalText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Normal Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateQuotedText}
-                                    onChange={(e) => setNarrateQuotedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Quoted Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateBoldedText}
-                                    onChange={(e) => setNarrateBoldedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Bolded Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateItalicizedText}
-                                    onChange={(e) => setNarrateItalicizedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Italicized Text</span>
-                            </label>
+                        {errors.pattern && <div className="editor-error-message">{errors.pattern}</div>}
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-h)', opacity: 0.6, marginTop: '4px' }}>
+                            ℹ️ Newlines (<code>\n</code>) are visible in this box.
                         </div>
                     </div>
 
-                    {/* Strip Think Tokens */}
+                    {/* Regular Expression Section */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Output Processing</span>
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={stripThinkTokens}
-                                onChange={(e) => setStripThinkTokens(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Strip Think Tokens</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Remove &lt;think&gt;...&lt;/think&gt; blocks from displayed output. The model still uses them internally.
-                        </div>
-                    </div>
+                        <span className="editor-section-title">Regular Expression</span>
 
-                    {/* Memory */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Memory</span>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Reading Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
+                        {/* Activation Trigger */}
+                        <div className="editor-row-full">
+                            <div>
+                                <label className="editor-label editor-label-small">Activation Trigger</label>
+                                <input
+                                    type="text"
+                                    value={regexActivationTrigger}
+                                    onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }}
+                                    className={`editor-input ${errors.regex ? 'error' : ''}`}
+                                    style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                    placeholder="/battle|combat|fight/i"
+                                />
+                                {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
                             </div>
-                            <SliderInput
-                                label=""
-                                value={enableMemoryReading}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableMemoryReading(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
                         </div>
 
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Writing Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
+                        {/* Deactivation Trigger */}
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Deactivation Trigger</label>
+                                <input
+                                    type="text"
+                                    value={regexDeactivationTrigger}
+                                    onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }}
+                                    className={`editor-input ${errors.deactivationRegex ? 'error' : ''}`}
+                                    style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                    placeholder="/peace|calm|aftermath/i"
+                                />
+                                {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Optional. Deactivates this stop pattern when matched.
+                                </div>
                             </div>
-                            <SliderInput
-                                label=""
-                                value={enableMemoryWriting}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableMemoryWriting(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
-                        </div>
-                    </div>
-
-                    {/* Input Strategy Order */}
-                    <div className="editor-section">
-                        <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Prompt Block Order</span>
-                            <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
-                        </div>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Controls the order in which prompt sections are assembled.
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {inputStrategy.map((blockType, index) => {
-                                const isDragging = draggedIndex === index;
-                                return (
-                                    <div
-                                        key={`${blockType}-${index}`}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, index)}
-                                        onDragEnd={handleDragEnd}
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => handleDrop(e, index)}
-                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
-                                        style={{ padding: '6px 8px' }}
-                                    >
-                                        <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
-                                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>
-                                                {index + 1}. {blockType}
-                                            </span>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                            <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                            <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-btn" title="Move down" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
-                                            <button type="button" onClick={() => removeBlock(index)} className="toolbar-btn" title="Remove from order" style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}>×</button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {missingBlocks.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
+                        {/* Regex Context & Target */}
+                        <div className="editor-row" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Context</label>
                                 <select
-                                    onChange={(e) => {
-                                        const val = e.target.value as PromptBlockType;
-                                        if (val) addBlock(val);
-                                        e.target.value = '';
-                                    }}
+                                    value={regexContext}
+                                    onChange={(e) => setRegexContext(e.target.value as any)}
                                     className="editor-select"
-                                    defaultValue=""
+                                    disabled={!regexActivationTrigger.trim()}
                                 >
-                                    <option value="" disabled>+ Add a missing block</option>
-                                    {missingBlocks.map(b => (
-                                        <option key={b} value={b}>{b}</option>
-                                    ))}
+                                    <option value="global">Global</option>
+                                    <option value="local">Local</option>
+                                    <option value="previous">Previous</option>
                                 </select>
                             </div>
-                        )}
-                    </div>
-
-                    {/* Summarization Pipeline */}
-                    <div className="editor-section">
-                        <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Summarization Pipeline</span>
-                            <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
+                            <div>
+                                <label className="editor-label editor-label-small">Target</label>
+                                <select
+                                    value={regexTarget}
+                                    onChange={(e) => setRegexTarget(e.target.value as any)}
+                                    className="editor-select"
+                                    disabled={!regexActivationTrigger.trim()}
+                                >
+                                    <option value="everyone">Everyone</option>
+                                    <option value="listener">Listener</option>
+                                    <option value="self">Self</option>
+                                </select>
+                            </div>
                         </div>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Controls how messages are summarized based on the order of the individual text summarizers.
-                        </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {summarizationSteps.map((step, index) => {
-                                const isDragging = draggedStepIndex === index;
-                                const isExpanded = expandedStepId === step.id;
-
-                                return (
-                                    <div key={step.id}>
-                                        <div
-                                            draggable
-                                            onDragStart={(e) => handleStepDragStart(e, index)}
-                                            onDragEnd={handleStepDragEnd}
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) => handleStepDrop(e, index)}
-                                            className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
-                                            style={{ padding: '6px 8px', cursor: 'pointer' }}
-                                            onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
-                                        >
-                                            <div className="sampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div>
-
-                                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 'bold',
-                                                    color: 'var(--text-h)',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                    {index + 1}. {step.name}
-                                                </span>
-                                            </div>
-
-                                            <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                                <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-btn" title="Move down" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
-                                                <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-btn" title="Remove step" style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}>×</button>
-                                                <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-                                            </div>
-                                        </div>
-
-                                        {isExpanded && (
-                                            <div style={{
-                                                padding: '10px 12px',
-                                                margin: '0 0 4px 0',
-                                                background: 'var(--social-bg)',
-                                                border: '1px solid var(--border)',
-                                                borderTop: 'none',
-                                                borderRadius: '0 0 6px 6px',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: '8px',
-                                            }}>
-                                                <div style={{ fontSize: '0.65rem', opacity: 0.6, fontStyle: 'italic' }}>
-                                                    {STRATEGY_DESCRIPTIONS[step.strategyType]}
-                                                </div>
-
-                                                {step.strategyType === 'Sliding Window Replace' && (
-                                                    <div>
-                                                        <label className="editor-label editor-label-small">Window Size</label>
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            max="50"
-                                                            value={step.slidingWindowSize ?? 10}
-                                                            onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keep last N messages verbatim</div>
-                                                    </div>
-                                                )}
-
-                                                {step.strategyType === 'Periodic Compression' && (
-                                                    <div className="editor-row">
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Compression Interval</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="100"
-                                                                value={step.compressionInterval ?? 20}
-                                                                onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Compress every M messages</div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Chunk Size</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="50"
-                                                                value={step.compressionChunkSize ?? 10}
-                                                                onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per compression chunk</div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {step.strategyType === 'Recursive Summary' && (
-                                                    <div className="editor-row">
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Chunk Size</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="50"
-                                                                value={step.recursiveChunkSize ?? 10}
-                                                                onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per chunk at layer 0</div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Max Depth</label>
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                max="5"
-                                                                value={step.recursiveMaxDepth ?? 3}
-                                                                onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max recursion layers</div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {step.strategyType === 'Observation Masking' && (
-                                                    <div className="editor-row">
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Relevance Threshold</label>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max="1"
-                                                                step="0.05"
-                                                                value={step.maskingRelevanceThreshold ?? 0.3}
-                                                                onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Min score to include (0.0–1.0)</div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="editor-label editor-label-small">Keyword Weight</label>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max="1"
-                                                                step="0.05"
-                                                                value={step.maskingKeywordWeight ?? 0.7}
-                                                                onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keyword vs recency balance</div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                <div className="editor-row">
-                                                    <div>
-                                                        <label className="editor-label editor-label-small">Summary Token Budget</label>
-                                                        <input
-                                                            type="number"
-                                                            min="64"
-                                                            max="4096"
-                                                            step="64"
-                                                            value={step.summaryTokenBudget ?? 512}
-                                                            onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max tokens for generated summaries</div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="editor-label editor-label-small">Trigger Threshold</label>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max="131072"
-                                                            step="1024"
-                                                            value={step.triggerTokenThreshold ?? 0}
-                                                            onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>0 = auto based on context length</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                        {/* Regex Tester */}
+                        {regexActivationTrigger.trim() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                                    <input
+                                        type="text"
+                                        value={testText}
+                                        onChange={(e) => { setTestText(e.target.value); setTestResult(null); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }}
+                                        className="editor-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                        placeholder="Enter text to test against the activation regex"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleTestRegex}
+                                        className="editor-btn editor-btn-save"
+                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
+                                        disabled={!testText.trim()}
+                                    >
+                                        Test
+                                    </button>
+                                </div>
+                                {testResult !== null && (
+                                    <div className={testResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
+                                        {testResult ? '✅ Matches!' : '❌ No match'}
                                     </div>
-                                );
-                            })}
-                        </div>
-
-                        <div style={{ marginTop: '8px' }}>
-                            <select
-                                onChange={(e) => {
-                                    const val = e.target.value as SummarizationStrategyType;
-                                    if (val) addSummarizationStep(val);
-                                    e.target.value = '';
-                                }}
-                                className="editor-select"
-                                defaultValue=""
-                            >
-                                <option value="" disabled>+ Add a summarization step</option>
-                                {ALL_STRATEGY_TYPES.map(t => (
-                                    <option key={t} value={t}>{t}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {summarizationSteps.length === 0 && (
-                            <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>
-                                No summarization steps configured. Add one above to enable context management.
+                                )}
                             </div>
                         )}
                     </div>

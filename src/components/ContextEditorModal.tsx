@@ -37,12 +37,13 @@ export function ContextEditorModal({
 
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
 
-    const [regexTrigger, setRegexTrigger] = useState('');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
     const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
     const [testText, setTestText] = useState('');
     const [testResult, setTestResult] = useState<boolean | null>(null);
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; urls?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; deactivationRegex?: string; images?: string; urls?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // ✅ Token count for the text field — uses countTokens with runtime port, falls back to estimate
@@ -101,7 +102,8 @@ export function ContextEditorModal({
                 }
 
                 setImageFiles([]);
-                setRegexTrigger(existingContext.regularExpressionTrigger || '');
+                setRegexActivationTrigger(existingContext.regularExpressionActivationTrigger || '');
+                setRegexDeactivationTrigger(existingContext.regularExpressionDeactivationTrigger || '');
                 setRegexContext(existingContext.regularExpressionContext || 'global');
                 setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
 
@@ -131,7 +133,8 @@ export function ContextEditorModal({
                 setImageFiles([]);
                 setImagePreviews([]);
                 setUseBase64Encoding(false);
-                setRegexTrigger('');
+                setRegexActivationTrigger('');
+                setRegexDeactivationTrigger('');
                 setRegexContext('global');
                 setRegexTarget('everyone');
 
@@ -160,7 +163,7 @@ export function ContextEditorModal({
     }, [isOpen, existingContext]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string; images?: string; urls?: string } = {};
+        const newErrors: { name?: string; text?: string; regex?: string; deactivationRegex?: string; images?: string; urls?: string } = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasUrls = urls.length > 0;
@@ -173,8 +176,12 @@ export function ContextEditorModal({
             newErrors.images = 'Either text, images, URLs, or search terms are required.';
         }
 
-        if (regexTrigger.trim()) {
-            try { new RegExp(regexTrigger); } catch (e) { newErrors.regex = 'Invalid regular expression pattern.'; }
+        if (regexActivationTrigger.trim()) {
+            try { new RegExp(regexActivationTrigger); } catch (e) { newErrors.regex = 'Invalid activation regular expression.'; }
+        }
+
+        if (regexDeactivationTrigger.trim()) {
+            try { new RegExp(regexDeactivationTrigger); } catch (e) { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
         }
 
         for (const url of urls) {
@@ -236,13 +243,13 @@ export function ContextEditorModal({
     };
 
     const handleTestRegex = () => {
-        if (!regexTrigger.trim() || !testText.trim()) { setTestResult(null); return; }
+        if (!regexActivationTrigger.trim() || !testText.trim()) { setTestResult(null); return; }
         try {
-            const regex = new RegExp(regexTrigger);
+            const regex = new RegExp(regexActivationTrigger);
             setTestResult(regex.test(testText));
         } catch (e) {
             setTestResult(null);
-            setErrors(prev => ({ ...prev, regex: 'Invalid regular expression pattern.' }));
+            setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
         }
     };
 
@@ -296,7 +303,8 @@ export function ContextEditorModal({
             description: description.trim() || undefined,
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
-            regularExpressionTrigger: regexTrigger.trim() || undefined,
+            regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
+            regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
             useBase64Encoding: useBase64Encoding,
@@ -488,30 +496,48 @@ export function ContextEditorModal({
 
                     <div className="editor-section">
                         <span className="editor-section-title">Regular Expression</span>
+
+                        {/* Activation Trigger */}
                         <div className="editor-row-full">
                             <div>
-                                <label className="editor-label editor-label-small">Trigger Pattern</label>
-                                <input type="text" value={regexTrigger} onChange={(e) => { setRegexTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/pattern/i" />
+                                <label className="editor-label editor-label-small">Activation Trigger</label>
+                                <input type="text" value={regexActivationTrigger} onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/pattern/i" />
                                 {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
                             </div>
                         </div>
-                        <div className="editor-row">
+
+                        {/* Deactivation Trigger */}
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Deactivation Trigger</label>
+                                <input type="text" value={regexDeactivationTrigger} onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); }} className={`editor-input context-mono-input ${errors.deactivationRegex ? 'error' : ''}`} placeholder="/peace|calm|aftermath/i" />
+                                {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Optional. Deactivates this context entry when matched.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Context & Target */}
+                        <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context</label>
-                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as any)} className="editor-select" disabled={!regexTrigger.trim()}>
+                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as any)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
                                 </select>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Target</label>
-                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as any)} className="editor-select" disabled={!regexTrigger.trim()}>
+                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as any)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
                                 </select>
                             </div>
                         </div>
-                        {regexTrigger.trim() && (
+
+                        {/* Regex Tester */}
+                        {regexActivationTrigger.trim() && (
                             <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Pattern</label>
+                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
                                 <div className="context-test-row">
                                     <input type="text" value={testText} onChange={(e) => { setTestText(e.target.value); setTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
                                     <button type="button" onClick={handleTestRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!testText.trim()}>Test</button>

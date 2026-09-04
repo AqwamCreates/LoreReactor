@@ -113,7 +113,7 @@ function renderChatSubtext(c: any) {
 
 function renderContextSubtext(i: any) {
   const parts: string[] = [];
-  if (!i.regularExpressionTrigger) parts.push('📌'); else parts.push('⚡');
+  if (!i.regularExpressionActivationTrigger) parts.push('📌'); else parts.push('⚡');
   if (i.images?.length > 0) parts.push(`🖼️${i.images.length}`);
   if (i.searchTerms?.length > 0) parts.push(`🔎${i.searchTerms.length}`);
   if (i.urls?.length > 0) parts.push(`🔗${i.urls.length}`);
@@ -1033,7 +1033,7 @@ function App() {
         {isSamplerListOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSamplerListOpen(false)} onSelect={s => handleOpenSamplerEditor(s)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
         {isSamplerEditorOpen && <SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />}
 
-        {isStopListOpen && <ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={s => stopModal.open(s)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={s => <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />}
+        {isStopListOpen && <ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={s => stopModal.open(s)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={s => <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />}
         {stopModal.isOpen && <StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} existingStopPattern={stopModal.itemToEdit} />}
 
         {isBudgetStrategyListOpen && <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={s => budgetModal.open(s)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={s => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />}
