@@ -1,7 +1,7 @@
 // src/hooks/useChatListManager.ts
 import { useState, useEffect, useCallback } from 'react';
 import type { ChatData } from '../types';
-import { loadAllRawChatData, deleteRawChatData } from './storage';
+import { loadAllRawChatDataShells, deleteRawChatData } from './storage';
 
 export function useChatListManager() {
     const [chats, setChats] = useState<ChatData[]>([]);
@@ -10,7 +10,7 @@ export function useChatListManager() {
     const loadChats = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await loadAllRawChatData();
+            const data = await loadAllRawChatDataShells();
             // Sort by newest first
             const sorted = data.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
             setChats(sorted);
