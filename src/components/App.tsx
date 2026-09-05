@@ -91,9 +91,12 @@ function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
 function renderProfileSubtext(profile: Profile) {
   const flags: string[] = [];
   if (profile.forceNameReveal) flags.push('Force Names');
-  if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
-  if (profile.stripThinkTokens) flags.push('Strip Think');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
+  if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
+  if (profile.enableMemoryReading) flags.push('Memory Read');
+  if (profile.enableMemoryWriting) flags.push('Memory Write');
+  if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.responseDelayWeight !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Character Stats Override');
+
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
       {flags.length > 0
@@ -783,10 +786,18 @@ function App() {
 
   const handleToggleExtension = async (extId: string) => {
     if (!chatData) return;
-    const cur = ((chatData as any).extensions || []).map((e: any) => e.id);
-    const ni = cur.includes(extId) ? cur.filter((i: string) => i !== extId) : [...cur, extId];
-    const uc = { ...chatData } as any;
-    uc.extensions = allExtensions.filter(e => ni.includes(e.id));
+    const extensionValue = Object.getOwnPropertyDescriptor(chatData, 'extensions')?.value;
+    const currentExtensions = Array.isArray(extensionValue)
+      ? extensionValue.filter((extension): extension is Extension => {
+          if (typeof extension !== 'object' || extension === null || !('id' in extension)) return false;
+          return typeof extension.id === 'string';
+        })
+      : [];
+    const currentExtensionIds = currentExtensions.map(extension => extension.id);
+    const nextExtensionIds = currentExtensionIds.includes(extId)
+      ? currentExtensionIds.filter(id => id !== extId)
+      : [...currentExtensionIds, extId];
+    const uc = { ...chatData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) };
     setChatData(uc); addToast('Extensions updated.', 'info');
   };
 
@@ -815,7 +826,8 @@ function App() {
   };
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setPendingFiles(p => [...p, ...Array.from(e.target.files!)]);
+    const files = e.target.files;
+    if (files) setPendingFiles(p => [...p, ...Array.from(files)]);
     e.target.value = '';
   };
 
