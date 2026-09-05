@@ -242,6 +242,7 @@ function App() {
   const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [actions, setActions] = useState<InterjectableAction[]>([]);
+  const [actionsLoading, setActionsLoading] = useState(true);
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
   const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() =>
@@ -292,6 +293,7 @@ function App() {
   // ✅ Loading state hooks — uses !isLoading instead of .length > 0
   const loadSteps = useMemo<LoadStep[]>(() => [
     { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
+    { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
     { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
     { id: 'contexts', label: 'Contexts', icon: '🌍', done: !contextsLoading },
     { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
@@ -299,7 +301,7 @@ function App() {
     { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
     { id: 'profiles', label: 'Profiles', icon: '⚙️', done: !profilesLoading },
     { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-  ], [charsLoading, modelsLoading, contextsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
+  ], [charsLoading, modelsLoading, contextsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading, actionsLoading]);
   
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
@@ -325,7 +327,6 @@ function App() {
   }, [selectedModelId, allModels, runningModels]);
 
   const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
-  const hasSession = !!currentCharacter && !!chatData;
   const isMassActive = massDeleteId !== null;
   const massStartIndex = isMassActive && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
   const branchOffIndex = chatData?.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
@@ -342,6 +343,20 @@ function App() {
   }, [chatData]);
 
   // ✅ 3. EFFECTS
+
+  // ✅ Load interjectable actions
+  useEffect(() => { 
+    loadInterjectableActions().then((loaded) => {
+      setActions(loaded);
+      setActionsLoading(false);
+    }).catch(() => {
+      setActionsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => { 
+    if (actions.length > 0 && !actionsLoading) saveInterjectableActions(actions); 
+  }, [actions, actionsLoading]);
 
   // ✅ Active chat restoration — runs exactly once via ref guard
   useEffect(() => {
@@ -400,7 +415,7 @@ function App() {
           parentChatMessageId: null,
         });
       }
-      setActiveChatRestored(true);
+      setTimeout(() => setActiveChatRestored(true), 0);
       return;
     }
 
@@ -483,6 +498,13 @@ function App() {
       localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
     }
   }, [defaultCharacterId]);
+
+  // ✅ Persist current protagonist as default character for new chats
+  useEffect(() => {
+    if (currentCharacter?.id && activeChatRestored) {
+      setDefaultCharacterId(currentCharacter.id);
+    }
+  }, [currentCharacter?.id, activeChatRestored]);
 
   useEffect(() => {
     if (selectedModelId) {
@@ -667,7 +689,7 @@ function App() {
   // ✅ Reset modified flag when switching to a different chat
   useEffect(() => {
     chatModifiedRef.current = false;
-  }, [chatData?.id]);
+  }, []);
 
   // ✅ Mark chat as modified when meaningful content is added
   useEffect(() => {
