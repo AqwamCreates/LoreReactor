@@ -179,7 +179,9 @@ function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boo
 // ─── App ────────────────────────────────────────────────────────────
 
 function App() {
-  // Session
+  // ✅ 1. ALL HOOKS MUST BE CALLED HERE FIRST
+  
+  // Session Hook
   const {
     chatData, setChatData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
@@ -190,9 +192,10 @@ function App() {
     activeStrategy, processProtagonistImageSilently,
   } = useChatSession();
 
+  // Toast Hook
   const { addToast } = useToast();
 
-  // Managers
+  // Manager Hooks
   const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
@@ -211,7 +214,7 @@ function App() {
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
   const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
-  // UI state
+  // UI state hooks
   const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
   const [inputText, setInputText] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -234,7 +237,7 @@ function App() {
   
   const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
 
-  // Panel visibility
+  // Panel visibility hooks
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isContextListOpen, setIsContextListOpen] = useState(false);
@@ -264,7 +267,7 @@ function App() {
     chatDataRef.current = chatData;
   }, [chatData]);
 
-  // Loading state
+  // Loading state hooks
   const loadSteps = useMemo<LoadStep[]>(() => [
     { id: 'characters', label: 'Characters', icon: '🎭', done: allCharacters.length > 0 },
     { id: 'models', label: 'Models', icon: '🤖', done: allModels.length > 0 },
@@ -275,10 +278,12 @@ function App() {
     { id: 'profiles', label: 'Profiles', icon: '⚙️', done: allProfiles.length > 0 },
     { id: 'chats', label: 'Chat Sessions', icon: '💬', done: allChats.length > 0 },
   ], [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
+  
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
-  // ✅ Derived model readiness
+  // ✅ 2. LOGIC & DERIVED VALUES
+  
   const isModelReady = useMemo(() => {
     if (!selectedModelId) return false;
     const selectedModel = allModels.find(m => m.id === selectedModelId);
@@ -314,7 +319,7 @@ function App() {
     return total;
   }, [chatData]);
 
-  // ─── Effects: Persistence & Restoration ───────────────────────────
+  // ✅ 3. EFFECTS
 
   useEffect(() => { 
     loadInterjectableActions().then(setActions); 
@@ -324,7 +329,6 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
-  // ✅ Load Saved Chat on Mount
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
@@ -363,7 +367,6 @@ function App() {
     }
   }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
 
-  // ✅ Save Active Chat ID when it changes
   useEffect(() => {
     if (chatData?.id) {
       localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, chatData.id);
@@ -455,7 +458,6 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // ✅ Robust Entity Synchronization & Deletion Handling
   useEffect(() => {
     const currentChat = chatDataRef.current;
     if (!currentChat) return;
@@ -569,8 +571,6 @@ function App() {
     return () => clearTimeout(t);
   }, [loadSteps, isInitializing]);
 
-  // ─── Effects: DOM Behavior ──────────────────────────────────────
-
   useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = 'auto';
@@ -636,19 +636,6 @@ function App() {
     chatHistoryElement.scrollTop = 0;
   }, [viewMode, chatHistoryRef]);
 
-  const deactivateToolbar = useCallback(() => {
-    if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
-    setActiveToolbarId(null);
-  }, []);
-
-  useEffect(() => {
-    const el = chatHistoryRef.current; if (!el) return;
-    const fn = () => { if (activeToolbarId) deactivateToolbar(); };
-    el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
-  }, [activeToolbarId, deactivateToolbar, chatHistoryRef]);
-
-  useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
-
   useEffect(() => {
     if (!chatData?.chatMessageHistory || !chatData.participants) return;
     let isCancelled = false;
@@ -689,7 +676,28 @@ function App() {
     return () => { isCancelled = true; };
   }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
 
-  // ─── Toolbar Handlers ───────────────────────────────────────────
+  // Save new chats when they are created
+  useEffect(() => {
+    if (chatData && chatData.chatMessageHistory.length === 0 && chatData.id) {
+       saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
+    }
+  }, [chatData?.id, chatData?.chatMessageHistory.length]);
+
+
+  // ✅ 4. CALLBACKS
+
+  const deactivateToolbar = useCallback(() => {
+    if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
+    setActiveToolbarId(null);
+  }, []);
+
+  useEffect(() => {
+    const el = chatHistoryRef.current; if (!el) return;
+    const fn = () => { if (activeToolbarId) deactivateToolbar(); };
+    el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
+  }, [activeToolbarId, deactivateToolbar, chatHistoryRef]);
+
+  useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
 
   const activateToolbar = useCallback((mid: string) => {
     if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
@@ -719,8 +727,6 @@ function App() {
     if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
   }, []);
 
-  // ─── Chat Operations ────────────────────────────────────────────
-
   const safeAutoSave = useCallback(async (data: ChatData | null) => {
     if (!data) return;
     if (data.chatMessageHistory.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
@@ -747,21 +753,8 @@ function App() {
     
     if (c) { 
       startNewChat(c); 
-      // Save immediately so it appears in the list
-      // We need to wait for state to update slightly or save the object directly if startNewChat returns it
-      // For now, we rely on the effect in useChatSession or manual save if needed. 
-      // Since startNewChat sets state, we can't save immediately synchronously.
-      // We'll let the user interact or add a useEffect to save new chats.
     }
   }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
-
-  // Save new chats when they are created (detected by empty history and new ID)
-  useEffect(() => {
-    if (chatData && chatData.chatMessageHistory.length === 0 && chatData.id) {
-       saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
-    }
-  }, [chatData?.id, chatData?.chatMessageHistory.length]);
-
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); await safeAutoSave(chatData);
@@ -980,12 +973,12 @@ function App() {
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
-  // ─── Loading Screen ─────────────────────────────────────────────
-
+  // ✅ 5. EARLY RETURNS (Only AFTER all hooks are defined)
+  
   if (isInitializing) return <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />;
 
-  // ─── Streaming Indicators ───────────────────────────────────────
-
+  // ✅ 6. RENDER RETURN
+  
   const streamingIndicators = (
     <>
       {isLoading && streamingCharacter && !streamingText && (
@@ -1012,8 +1005,6 @@ function App() {
       )}
     </>
   );
-
-  // ─── Main Render ────────────────────────────────────────────────
 
   return (
     <>
