@@ -316,12 +316,12 @@ function App() {
       (async () => {
         try {
           // 1. Load the basic metadata first
-          const raw = await loadRawChatData(savedChatId);
-          if (raw) {
+          const chatData = await loadRawChatData(savedChatId);
+          if (chatData) {
             // 2. If messages are missing (lazy loading), fetch them
-            let fullChat = raw;
-            if (!raw.chatMessageHistory || raw.chatMessageHistory.length === 0) {
-              fullChat = await loadChatMessages(raw as any);
+            let fullChat = chatData;
+            if (!chatData.chatMessageHistory || chatData.chatMessageHistory.length === 0) {
+              fullChat = await loadChatMessages(chatData as ChatData);
             }
             
             if (fullChat) {
@@ -331,8 +331,8 @@ function App() {
               let protagonist = chatData.protagonist;
               if (protagonist && !protagonist.systemPrompt) {
                  // If the protagonist is a "shallow" reference, load the full character
-                 const fullChar = await loadFullCharacter(protagonist.id);
-                 if (fullChar) protagonist = fullChar;
+                  const fullChar = await loadFullCharacter(protagonist.id);
+                  if (fullChar) protagonist = fullChar;
               }
 
               setChatData({ ...chatData, protagonist });
@@ -479,14 +479,14 @@ function App() {
         const fresh = allContexts.find(c => c.id === ctx.id);
         return (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) ? fresh : ctx;
       });
-      if (freshContexts.some((c, i) => c !== chatData.contexts![i])) {
+      if (freshContexts.some((c, i) => c !== chatData.contexts?.[i])) {
         updated.contexts = freshContexts;
         changed = true;
       }
     }
 
     if (chatData.Profile) {
-      const freshProfile = allProfiles.find(p => p.id === chatData.Profile!.id);
+      const freshProfile = allProfiles.find(p => p.id === chatData.Profile?.id);
       if (freshProfile && freshProfile.lastUpdatedTimestamp !== chatData.Profile.lastUpdatedTimestamp) {
         updated.Profile = freshProfile;
         changed = true;
@@ -539,13 +539,13 @@ function App() {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = 'auto';
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`;
-  }, [inputText]);
+  });
 
   useEffect(() => {
     if (!editTextareaRef.current || !editingId) return;
     editTextareaRef.current.style.height = 'auto';
     editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
-  }, [editDraft, editingId]);
+  });
 
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) {
@@ -591,12 +591,13 @@ function App() {
       obs.disconnect();
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
+  }, [viewMode, currentCharacter?.id, centerAvatar, chatData, chatHistoryRef]);
 
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current || suppressAutoScrollRef.current) return;
-    chatHistoryRef.current.scrollTop = 0;
-  }, [viewMode, chatHistoryRef]);
+    const chatHistoryElement = chatHistoryRef.current;
+    if (viewMode !== 'cinematic' || !chatHistoryElement || suppressAutoScrollRef.current) return;
+    chatHistoryElement.scrollTop = 0;
+  }, [viewMode]);
 
   const deactivateToolbar = useCallback(() => {
     if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
