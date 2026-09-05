@@ -906,7 +906,6 @@ async function buildChatDataShell(
   
   let protagonist = charMap.get(rawChatData.protagonistId);
   if (!protagonist) {
-    // Create placeholder so chat history still loads
     protagonist = {
       id: rawChatData.protagonistId,
       name: '[Deleted Character]',
@@ -933,7 +932,6 @@ async function buildChatDataShell(
     .map(pid => {
       const found = charMap.get(pid);
       if (found) return found;
-      // Placeholder for deleted participants
       return {
         id: pid,
         name: '[Deleted Character]',
@@ -986,10 +984,13 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
     if (chatData.chatMessageHistory.length > 0) return chatData;
 
     const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${chatData.id}.json`);
-    if (!rawChatData || !rawChatData.chatMessageIdHistory?.length) return chatData;
+    // ✅ Guard: if raw data is missing or has no message IDs, return shell as-is
+    if (!rawChatData || !rawChatData.chatMessageIdHistory || rawChatData.chatMessageIdHistory.length === 0) {
+        return chatData;
+    }
 
     const charMap = new Map<string, Character>();
-    charMap.set(chatData.protagonist.id, chatData.protagonist);
+    if (chatData.protagonist) charMap.set(chatData.protagonist.id, chatData.protagonist);
     for (const p of chatData.participants) {
         charMap.set(p.id, p);
     }
@@ -1005,7 +1006,7 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
             id: messageId, 
             ...messageWithoutCharId, 
             character: character || { 
-                id: rawMessage.characterId, 
+                id: characterId, 
                 name: '[Unknown]', 
                 firstCreatedTimestamp: Date.now(), 
                 lastUpdatedTimestamp: Date.now() 
@@ -1018,19 +1019,49 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
     return { ...chatData, chatMessageHistory, numberOfMessages: chatMessageHistory.length };
 }
 
-export async function loadRawChatData(id: string): Promise<ChatData | null> {
+/**
+ * ✅ Loads a single chat using pre-loaded shell maps when available.
+ * Falls back to targeted individual loads (not full dataset scans).
+ */
+export async function loadRawChatData(
+  id: string,
+  existingCharShells?: Character[]
+): Promise<ChatData | null> {
   const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
   if (!rawChatData) return null;
 
-  const [allCharacters, allContexts, allProfiles] = await Promise.all([ 
-    loadAllRawCharacters(), 
-    loadAllRawContexts(),
-    loadAllRawProfiles()
-  ]);
-  
-  const charMap = new Map(allCharacters.map(c => [c.id, c]));
-  const contextMap = new Map(allContexts.map(i => [i.id, i]));
-  const profileMap = new Map(allProfiles.map(p => [p.id, p]));
+  // Build character map from pre-loaded shells or load only needed shells
+  const charMap = new Map<string, Character>();
+  if (existingCharShells && existingCharShells.length > 0) {
+    for (const c of existingCharShells) charMap.set(c.id, c);
+  } else {
+    const neededIds = [...new Set([rawChatData.protagonistId, ...(rawChatData.participantIds || [])])];
+    const shells = await Promise.all(neededIds.map(loadCharacterShell));
+    for (const s of shells) { if (s) charMap.set(s.id, s); }
+  }
+
+  // Load only this chat's contexts individually
+  const contextMap = new Map<string, Context>();
+if (rawChatData.contextIds?.length) {
+  const ctxResults = await Promise.all(
+    rawChatData.contextIds.map(async (cid) => {
+      try {
+        return await loadRawContext(cid);
+      } catch {
+        console.warn(`Context ${cid} not found, skipping.`);
+        return null;
+      }
+    })
+  );
+  for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
+}
+
+  // Load only this chat's profile individually
+  const profileMap = new Map<string, Profile>();
+  if (rawChatData.ProfileId) {
+    const p = await loadRawProfile(rawChatData.ProfileId);
+    if (p) profileMap.set(p.id, p);
+  }
 
   const shell = await buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
   if (!shell) return null;
@@ -1038,19 +1069,17 @@ export async function loadRawChatData(id: string): Promise<ChatData | null> {
   return loadChatMessages(shell);
 }
 
+/**
+ * ✅ Loads all chat shells for list display using character shells only.
+ * No full character/context/profile hydration — deferred to when chat is opened.
+ */
 export async function loadAllRawChatData(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  const [allCharacters, allContexts, allProfiles] = await Promise.all([
-    loadAllRawCharacters(),
-    loadAllRawContexts(),
-    loadAllRawProfiles()
-  ]);
-
-  const charMap = new Map(allCharacters.map(c => [c.id, c]));
-  const contextMap = new Map(allContexts.map(i => [i.id, i]));
-  const profileMap = new Map(allProfiles.map(p => [p.id, p]));
+  // Load all character shells once (fast, no sampler/memory hydration)
+  const allCharShells = await loadAllCharacterShells();
+  const charMap = new Map(allCharShells.map(c => [c.id, c]));
 
   const results: (ChatData | null)[] = [];
   
@@ -1059,6 +1088,21 @@ export async function loadAllRawChatData(): Promise<ChatData[]> {
     const batchPromises = batchIds.map(async (id) => {
       const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
       if (!raw) return null;
+
+      // Load only this chat's contexts individually
+      const contextMap = new Map<string, Context>();
+      if (raw.contextIds?.length) {
+        const ctxs = await Promise.all(raw.contextIds.map(loadRawContext));
+        for (const c of ctxs) { if (c) contextMap.set(c.id, c); }
+      }
+
+      // Load only this chat's profile individually
+      const profileMap = new Map<string, Profile>();
+      if (raw.ProfileId) {
+        const p = await loadRawProfile(raw.ProfileId);
+        if (p) profileMap.set(p.id, p);
+      }
+
       return buildChatDataShell(id, raw, charMap, contextMap, profileMap);
     });
     
@@ -1074,6 +1118,9 @@ export async function loadAllRawChatData(): Promise<ChatData[]> {
 }
 
 export async function saveRawChatData(chatData: ChatData): Promise<void> {
+  // Don't save sessions without a valid protagonist
+  if (!chatData.protagonist?.id) return;
+
   const saveMessagePromises = chatData.chatMessageHistory.map(message => {
     const { id, character, ...rawMsg } = message;
     const payload = {
@@ -1088,7 +1135,7 @@ export async function saveRawChatData(chatData: ChatData): Promise<void> {
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, chatMessageHistory, numberOfMessages, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
+  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
   const payload: RawChatData = {
     ...rawChatData, 
     protagonistId: protagonist.id, 
