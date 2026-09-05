@@ -399,26 +399,20 @@ export function ModelEditorModal({
         onClose();
     };
 
-    const handleDelete = () => {
-        if (!existingModel) return;
-        if (!window.confirm(`Delete model "${existingModel.name}" permanently?`)) return;
-        onDelete?.(existingModel.id);
-        onClose();
-    };
-
     // Helper to handle file selection
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
-        if (e.target.files && e.target.files[0]) {
+        const file = e.target.files?.[0];
+        if (file) {
             // For security reasons, browsers only provide the filename, not the full path.
             // However, for local apps or specific configurations, this might be sufficient.
             // If you need the full path, you might need a different approach (e.g., drag-and-drop with path access if supported).
-            setter(e.target.files[0].path || e.target.files[0].name);
+            setter((file as File & { path?: string }).path ?? file.name);
         }
     };
 
     if (!isOpen) return null;
 
-    const cacheTypes = getCacheTypes(backend);
+    const cacheTypes = getCacheTypes(backend || "");
     const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
