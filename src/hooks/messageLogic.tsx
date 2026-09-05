@@ -1,12 +1,12 @@
 // src/hooks/messageLogic.ts
-import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
+import { deleteRawChatMessage, saveRawChatData, loadAllRawChatDataShells } from './storage';
 import { deleteChatMessage as calculateDelete, editChatMessageInChatData } from './chatLogic';
 import type { ChatData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
-    const allChats = await loadAllRawChatData();
+    const allChats = await loadAllRawChatDataShells();
     const points = new Set<string>();
     
     for (const c of allChats) {

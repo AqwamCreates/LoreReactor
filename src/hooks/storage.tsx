@@ -1073,44 +1073,33 @@ if (rawChatData.contextIds?.length) {
  * ✅ Loads all chat shells for list display using character shells only.
  * No full character/context/profile hydration — deferred to when chat is opened.
  */
-export async function loadAllRawChatData(): Promise<ChatData[]> {
+export async function loadAllRawChatDataShells(): Promise<ChatData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  // Load all character shells once (fast, no sampler/memory hydration)
+  // Load all character shells once
   const allCharShells = await loadAllCharacterShells();
   const charMap = new Map(allCharShells.map(c => [c.id, c]));
 
   const results: (ChatData | null)[] = [];
   
-  for (let i = 0; i < ids.length; i += 3) {
-    const batchIds = ids.slice(i, i + 3);
+  for (let i = 0; i < ids.length; i += 5) {
+    const batchIds = ids.slice(i, i + 5);
     const batchPromises = batchIds.map(async (id) => {
       const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
       if (!raw) return null;
 
-      // Load only this chat's contexts individually
-      const contextMap = new Map<string, Context>();
-      if (raw.contextIds?.length) {
-        const ctxs = await Promise.all(raw.contextIds.map(loadRawContext));
-        for (const c of ctxs) { if (c) contextMap.set(c.id, c); }
-      }
-
-      // Load only this chat's profile individually
-      const profileMap = new Map<string, Profile>();
-      if (raw.ProfileId) {
-        const p = await loadRawProfile(raw.ProfileId);
-        if (p) profileMap.set(p.id, p);
-      }
-
-      return buildChatDataShell(id, raw, charMap, contextMap, profileMap);
+      // Build minimal shell — no contexts, no profile hydration
+      const emptyContextMap = new Map<string, Context>();
+      const emptyProfileMap = new Map<string, Profile>();
+      return buildChatDataShell(id, raw, charMap, emptyContextMap, emptyProfileMap);
     });
     
     const batchResults = await Promise.all(batchPromises);
     results.push(...batchResults);
     
-    if (i + 3 < ids.length) {
-      await new Promise(resolve => setTimeout(resolve, 20));
+    if (i + 5 < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
   }
 

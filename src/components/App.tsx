@@ -154,25 +154,40 @@ function renderExtensionSubtext(ext: { extensionType: string; description: strin
 
 function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boolean }) {
   const done = steps.filter(s => s.done).length;
+  const current = steps.find(s => !s.done);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
       <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '320px', maxWidth: '90vw' }}>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
         {steps.map(step => (
-          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0, background: step.done ? 'var(--accent)' : 'transparent', border: `1px solid ${step.done ? 'var(--accent)' : 'var(--border)'}`, color: step.done ? '#fff' : 'var(--text-h)', transition: 'all 0.3s ease', opacity: step.done ? 1 : 0.5 }}>
-              {step.done ? '✓' : step.icon}
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <span style={{ fontSize: '0.7rem', opacity: step.done ? 1 : 0.5, color: step.done ? 'var(--accent)' : 'var(--text-h)', transition: 'all 0.3s ease', fontWeight: step.done ? 'bold' : 'normal' }}>{step.label}</span>
-              <div style={{ width: '100%', height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
-                <div style={{ width: step.done ? '100%' : '0%', height: '100%', borderRadius: '2px', background: 'var(--accent)', transition: 'width 0.4s ease-out', boxShadow: step.done ? '0 0 6px rgba(var(--accent-rgb, 100, 200, 255), 0.5)' : 'none' }} />
-              </div>
-            </div>
+          <div
+            key={step.id}
+            title={step.label}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.1rem',
+              border: step.done ? '1px solid var(--accent)' : '1px solid var(--border)',
+              boxShadow: step.done ? '0 0 10px var(--accent), 0 0 4px var(--accent)' : 'none',
+              opacity: step.done ? 1 : 0.25,
+              transition: 'all 0.4s ease',
+            }}
+          >
+            {step.icon}
           </div>
         ))}
       </div>
-      <div style={{ marginTop: '24px', fontSize: '0.75rem', opacity: 0.5 }}>{done}/{steps.length} systems initialized</div>
+      <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '8px' }}>
+        {current ? `Loading ${current.label.toLowerCase()}...` : 'Finalizing...'}
+      </div>
+      <div style={{ width: '280px', maxWidth: '80vw', height: '3px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
+        <div style={{ width: `${(done / steps.length) * 100}%`, height: '100%', borderRadius: '2px', background: 'var(--accent)', transition: 'width 0.3s ease-out', boxShadow: '0 0 8px var(--accent)' }} />
+      </div>
+      <div style={{ marginTop: '10px', fontSize: '0.7rem', opacity: 0.4 }}>{done}/{steps.length}</div>
     </div>
   );
 }
@@ -638,12 +653,13 @@ function App() {
   // ✅ No forced timeout — loading screen stays until all managers report done
   useEffect(() => {
     if (!isInitializing) return;
-    if (loadSteps.every(s => s.done)) {
+    // Wait for both: all managers done AND active chat restoration complete
+    if (loadSteps.every(s => s.done) && activeChatRestored) {
       setIsFadeOut(true);
       const t = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
       return () => clearTimeout(t);
     }
-  }, [loadSteps, isInitializing]);
+  }, [loadSteps, isInitializing, activeChatRestored]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
