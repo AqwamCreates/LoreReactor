@@ -653,11 +653,14 @@ function App() {
   // ✅ No forced timeout — loading screen stays until all managers report done
   useEffect(() => {
     if (!isInitializing) return;
-    // Wait for both: all managers done AND active chat restoration complete
     if (loadSteps.every(s => s.done) && activeChatRestored) {
-      setIsFadeOut(true);
-      const t = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
-      return () => clearTimeout(t);
+      // Hold for 600ms so user sees all icons lit up before fade
+      const hold = setTimeout(() => {
+        setIsFadeOut(true);
+        const fade = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
+        return () => clearTimeout(fade);
+      }, 600);
+      return () => clearTimeout(hold);
     }
   }, [loadSteps, isInitializing, activeChatRestored]);
 
