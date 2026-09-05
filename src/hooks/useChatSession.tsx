@@ -1,20 +1,20 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { runTurnSequence } from '../../application/usecases/chatOrchestrator';
-import { findPreviousChatMessage, addMessageToChatData, createChatMessage, prepareRequestBody, convertIdsToDisplayNames, createNewChatData, editChatMessageInChatData } from '../../application/usecases/chatService';
-import { editMessage, clearPartialFlag } from '../../application/usecases/messageService';
-import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary, makeCharacterMemory } from '../../application/usecases/summarizationEngine';
-import { localAddress, localURL } from '../../configurations';
-import { type ModelPricing, calculateRequestCost } from '../../core/utils/costCalculator';
-import { getEffectiveMaximumChatStamina, generateChatStamina, consumeChatStamina } from '../../domain/services/characterService';
-import { saveRawChatData, type LanguageModelContext, type TextToSpeedLanguageModelContext, getCharacterVoiceUrl, saveRawCharacter, type StreamCallbacks, deleteRawChatMessage } from '../../infrastructure';
-import { BudgetStrategyEngine } from '../../infrastructure/models/budgetStrategyEngine';
-import { LanguageModelEngine } from '../../infrastructure/models/languageModelEngine';
-import { TextToSpeechModelEngine } from '../../infrastructure/models/textToSpeechEngine';
-import { memoryWriteTrigger } from '../../stringList';
-import type { Character, ChatData, LanguageModel, BudgetStrategy, Memory } from '../../types';
-import { useToast } from '../contexts/ToastContext';
-import { generateId } from '../../core';
+import type { Character, ChatData, BudgetStrategy, LanguageModel, Memory } from '../types';
+import { saveRawChatData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
+import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
+import { runTurnSequence } from '../services/ChatOrchestrator';
+import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
+import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
+import { editMessage, clearPartialFlag } from './messageLogic';
+import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from './characterLogic';
+import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '../context/ToastContext';
+import { localAddress, localURL } from '../configurations';
+import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
+import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
+import { memoryWriteTrigger } from '../stringList';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -366,7 +366,7 @@ export function useChatSession() {
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
-                id: generateId(),
+                id: uuidv4(),
                 name: `Memory with ${other.name}`,
                 content: summaryContext.text,
                 chatData: data,
@@ -381,7 +381,7 @@ export function useChatSession() {
         const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
-                id: generateId(),
+                id: uuidv4(),
                 name: 'Global Memory',
                 content: globalSummaryContext.text,
                 chatData: data,
@@ -696,9 +696,7 @@ export function useChatSession() {
                         const currentData = chatDataRef.current || dataWithRegen;
                         await editMessage(currentData, messageId, currentStreamedText);
                         await saveRawChatData(currentData);
-                    } catch (saveError) {
-                        console.error('Failed to save resumed partial text:', saveError);
-                    }
+                    } catch { }
                 }
             }
             pendingPartialRef.current = null;
@@ -761,7 +759,7 @@ export function useChatSession() {
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
-        const silent: Character = { ...char, sampler: { ...s, id: s?.id || generateId(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
+        const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
         try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, ''); }
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }

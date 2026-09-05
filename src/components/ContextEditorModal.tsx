@@ -2,10 +2,10 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine } from '../types';
-import { generateId } from '../core';
+import { uploadContextImage } from '../hooks/storage';
+import { v4 as uuidv4 } from 'uuid';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
-import { uploadContextImage } from '../infrastructure';
-import { LanguageModelEngine } from '../infrastructure/models/languageModelEngine';
 
 const tokenEngine = new LanguageModelEngine();
 
@@ -316,7 +316,7 @@ export function ContextEditorModal({
         const hasWebContent = hasUrls || hasSearchTerms;
 
         return {
-            id: isNewClone ? generateId() : (existingContext?.id || generateId()),
+            id: isNewClone ? uuidv4() : (existingContext?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,

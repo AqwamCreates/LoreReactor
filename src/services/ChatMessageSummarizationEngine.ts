@@ -1,12 +1,9 @@
 // src/services/ChatMessageSummarizationEngine.ts
-
-import type { Context } from "react";
-import type { LanguageModelContext } from "../../infrastructure";
-import { LanguageModelEngine } from "../../infrastructure/models/languageModelEngine";
-import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString } from "../../stringList";
-import type { ChatMessage, ChatData, Character } from "../../types";
-import { getParticipantTag, replacePlaceholders, getRevealIndexByCharacterId, createChatHistoryPrompt } from "./chatService";
-
+import type { ChatData, ChatMessage, Context, Character } from '../types';
+import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { v4 as uuidv4 } from 'uuid';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 
 const engine = new LanguageModelEngine();
 
@@ -127,7 +124,7 @@ export async function makeCharacterMemory(
 
     const now = Date.now();
     return {
-        id: `memory-${character.id}-${generateId()}`,
+        id: `memory-${character.id}-${uuidv4()}`,
         name: `[Memory] ${character.name}'s Perspective`,
         description: `Character-specific memory for ID: ${character.id}`,
         text: result.text.trim(),
@@ -174,7 +171,7 @@ export async function generatePeriodicCompression(
         const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
         if (!compressed) continue;
         newContexts.push({
-            id: `auto-summary-${generateId()}`,
+            id: `auto-summary-${uuidv4()}`,
             name: `[Auto-Summary] Messages ${startIdx + 1}–${endIdx}`,
             description: `msgs:${startIdx}-${endIdx}`,
             text: compressed,
@@ -241,7 +238,7 @@ export async function generateRecursiveSummary(
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
-            id: `auto-recursive-l0-${generateId()}`,
+            id: `auto-recursive-l0-${uuidv4()}`,
             name: `[Recursive L0] Messages ${startIdx + 1}–${endIdx}`,
             description: `recursive-l0:${startIdx}-${endIdx}`,
             text: compressed,
@@ -268,7 +265,7 @@ export async function generateRecursiveSummary(
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
-                    id: `auto-recursive-l${currentLayerIndex}-${generateId()}`,
+                    id: `auto-recursive-l${currentLayerIndex}-${uuidv4()}`,
                     name: `[Recursive L${currentLayerIndex}] Merged segment ${Math.floor(i / 2) + 1}`,
                     description: `recursive-l${currentLayerIndex}:segment-${Math.floor(i / 2)}`,
                     text: merged,
@@ -288,7 +285,7 @@ export async function generateRecursiveSummary(
         const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
-                id: `auto-recursive-global-${generateId()}`,
+                id: `auto-recursive-global-${uuidv4()}`,
                 name: "[Recursive Global] Full conversation summary",
                 description: fullRangeKey,
                 text: globalSummary,
@@ -302,7 +299,7 @@ export async function generateRecursiveSummary(
         }
     } else if (currentLayerSummaries.length === 1 && currentLayerIndex > 0) {
         newContexts.push({
-            id: `auto-recursive-global-${generateId()}`,
+            id: `auto-recursive-global-${uuidv4()}`,
             name: "[Recursive Global] Full conversation summary",
             description: fullRangeKey,
             text: currentLayerSummaries[0],

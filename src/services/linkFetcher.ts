@@ -1,12 +1,9 @@
 // src/services/linkFetcher.ts
-
-import { generateId } from '../../core';
-import type { searchEngine } from '../../types';
-import type { LanguageModelContext } from '../models';
-import { LanguageModelEngine } from '../models/languageModelEngine';
-import { findWebpageByUrl, saveRawWebpage } from '../persistence';
-import type { WebpageImageInfo } from './webpageSummarizer';
-import { summarizeWebpageContent, mergeWebpageSummaries } from './webpageSummarizer';
+import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
+import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
+import type { searchEngine } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
@@ -370,7 +367,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         // Save to persistent disk cache
         try {
             await saveRawWebpage({
-                id: generateId(),
+                id: uuidv4(),
                 name: url,
                 url,
                 content,

@@ -1,9 +1,7 @@
 // src/services/ChatOrchestrator.ts
-
-import { getEffectiveInitiativeWeight, getNameSensitivityMultiplier, getEffectiveChatProbability, getEffectiveResponseDelayWeight } from '../../domain/services/characterService';
-import { saveRawChatData } from '../../infrastructure';
-import type { ChatData, Character } from '../../types';
-
+import type { Character, ChatData } from '../types';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveResponseDelayWeight } from '../hooks/characterLogic';
+import { saveRawChatData } from '../hooks/storage';
 
 type TurnExecutor = (data: ChatData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<ChatData | null>
 

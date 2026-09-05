@@ -1,9 +1,14 @@
 // src/hooks/storage.ts
+import type { 
+  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
+  Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
+  SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
+  Memory, RawMemory
+} from '../types';
 
-import type { Context } from 'react';
-import { generateId } from '../../core';
-import { localURL } from '../../configurations';
-import type { Sampler, LanguageModel, InterjectableAction, SummarizationStep, Memory, RawMemory, ChatData, Character, StopPattern, RawStopPattern, RawSampler, RawCharacter, RawContext, RawLanguageModel, BudgetStrategy, RawBudgetStrategy, Profile, RawProfile, RawSummarizationStep, Webpage, RawWebpage, RawChatData, RawChatMessage, ChatMessage } from '../../types';
+import { localURL } from '../configurations';
+import { v4 as uuidv4 } from 'uuid';
 
 const now = Date.now()
 
@@ -750,7 +755,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
     const rawSteps = rawProfile.summarizationSteps || [];
     const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
         ? rawSteps.map((step, i) => ({
-            id: step.id || `step-${generateId()}`,
+            id: step.id || `step-${uuidv4()}`,
             name: step.name || step.strategyType,
             description: step.description,
             strategyType: step.strategyType,
@@ -1104,7 +1109,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   if (!sourceChat) throw new Error("Source chat not found");
   const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === parentChatMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
-  const newChatId = generateId();
+  const newChatId = uuidv4();
   const newPayload: RawChatData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistId: sourceChat.protagonist.id,

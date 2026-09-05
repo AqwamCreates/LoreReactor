@@ -1,9 +1,8 @@
 // src/hooks/messageLogic.ts
-
-import { generateId } from '../../core';
-import { loadAllRawChatData, saveRawChatData, deleteRawChatMessage } from '../../infrastructure';
-import type { ChatData } from '../../types';
-import { editChatMessageInChatData } from './chatService';
+import { deleteRawChatMessage, saveRawChatData, loadAllRawChatData } from './storage';
+import { deleteChatMessage as calculateDelete, editChatMessageInChatData } from './chatLogic';
+import type { ChatData } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentChatMessageIds(chatId: string): Promise<Set<string>> {
@@ -122,7 +121,7 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
 
     const branchedChat: ChatData = {
         ...currentChat,
-        id: generateId(),
+        id: uuidv4(),
         name: `${currentChat.name} (Branch)`,
         contexts: [...(currentChat.contexts || [])],
         participants: [...currentChat.participants],
@@ -153,7 +152,7 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
     // Deep clone messages so they get new IDs and don't share references
     const clonedMessages = currentChat.chatMessageHistory.slice(0, cloneIndex + 1).map(msg => ({
         ...msg,
-        id: generateId(),
+        id: uuidv4(),
         character: { ...msg.character },
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -161,7 +160,7 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
     }));
 
     const clonedChat: ChatData = {
-        id: generateId(),
+        id: uuidv4(),
         name: `${currentChat.name} (Clone)`,
         protagonist: { ...currentChat.protagonist },
         participants: currentChat.participants.map(p => ({ ...p })),
