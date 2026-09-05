@@ -475,7 +475,7 @@ export function ModelEditorModal({
                                 className="editor-btn editor-btn-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
-                                📁 Browse
+                                📁
                             </button>
                             <input 
                                 ref={modelFileRef} 
@@ -504,7 +504,7 @@ export function ModelEditorModal({
                                 className="editor-btn editor-btn-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
-                                📁 Browse
+                                📁
                             </button>
                             <input 
                                 ref={mmprojFileRef} 
@@ -534,7 +534,7 @@ export function ModelEditorModal({
                                 className="editor-btn editor-btn-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
-                                📁 Browse
+                                📁
                             </button>
                             <input 
                                 ref={loraFileRef} 
@@ -707,7 +707,7 @@ export function ModelEditorModal({
                                     className="editor-btn editor-btn-cancel"
                                     style={{ padding: '6px 12px' }}
                                 >
-                                    📁 Browse
+                                    📁
                                 </button>
                                 <input 
                                     ref={draftFileRef} 
