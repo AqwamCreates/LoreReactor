@@ -1,7 +1,6 @@
 // src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, Memory } from '../types';
-import { loadAllRawChatData } from '../hooks/storage';
 import './main.css';
 
 interface CharacterMemoryEditorModalProps {
@@ -267,4 +266,8 @@ export function CharacterMemoryEditorModal({
             </div>
         </div>
     );
+}
+
+function loadAllRawChatData() {
+    throw new Error('Function not implemented.');
 }

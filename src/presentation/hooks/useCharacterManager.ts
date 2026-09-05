@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Character } from '../types';
-import { loadAllCharacterShells, loadRawCharacter, saveRawCharacter, deleteRawCharacter } from './storage';
+import { loadAllCharacterShells, loadRawCharacter, saveRawCharacter, deleteRawCharacter } from '../../infrastructure';
+import type { Character } from '../../types';
 
 export function useCharacterManager() {
     const [characters, setCharacters] = useState<Character[]>([]);

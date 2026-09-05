@@ -1,8 +1,8 @@
 // src/hooks/useProfileManager.ts
 import { useState, useEffect } from 'react';
-import type { Profile } from '../types';
-import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from './storage';
-import { useToast } from '../context/ToastContext';
+import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../../infrastructure';
+import type { Profile } from '../../types';
+import { useToast } from '../contexts/ToastContext';
 
 export function useProfileManager() {
     const [profiles, setProfiles] = useState<Profile[]>([]);

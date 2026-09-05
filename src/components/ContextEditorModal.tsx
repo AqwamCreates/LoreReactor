@@ -2,10 +2,10 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine } from '../types';
-import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
+import { uploadContextImage } from '../infrastructure';
+import { LanguageModelEngine } from '../infrastructure/models/languageModelEngine';
 
 const tokenEngine = new LanguageModelEngine();
 

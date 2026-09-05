@@ -1,20 +1,19 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, BudgetStrategy, LanguageModel, Memory } from '../types';
-import { saveRawChatData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
-import { runTurnSequence } from '../services/ChatOrchestrator';
-import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
-import { editMessage, clearPartialFlag } from './messageLogic';
-import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from './characterLogic';
-import { v4 as uuidv4 } from 'uuid';
-import { useToast } from '../context/ToastContext';
-import { localAddress, localURL } from '../configurations';
-import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
-import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
-import { memoryWriteTrigger } from '../stringList';
+import type { runTurnSequence } from '../../application/usecases/chatOrchestrator';
+import { findPreviousChatMessage, addMessageToChatData, createChatMessage, prepareRequestBody, convertIdsToDisplayNames, createNewChatData, editChatMessageInChatData } from '../../application/usecases/chatService';
+import { editMessage, clearPartialFlag } from '../../application/usecases/messageService';
+import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary, makeCharacterMemory } from '../../application/usecases/summarizationEngine';
+import { localAddress, localURL } from '../../configurations';
+import { type ModelPricing, calculateRequestCost } from '../../core/utils/costCalculator';
+import { getEffectiveMaximumChatStamina, generateChatStamina, consumeChatStamina } from '../../domain/services/characterService';
+import { saveRawChatData, type LanguageModelContext, type TextToSpeedLanguageModelContext, getCharacterVoiceUrl, saveRawCharacter, type StreamCallbacks, deleteRawChatMessage } from '../../infrastructure';
+import { BudgetStrategyEngine } from '../../infrastructure/models/budgetStrategyEngine';
+import { LanguageModelEngine } from '../../infrastructure/models/LanguageModelEngine';
+import { TextToSpeechModelEngine } from '../../infrastructure/models/textToSpeechEngine';
+import { memoryWriteTrigger } from '../../stringList';
+import type { Character, ChatData, LanguageModel, BudgetStrategy, Memory } from '../../types';
+import { useToast } from '../contexts/ToastContext';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
