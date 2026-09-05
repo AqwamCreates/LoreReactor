@@ -137,8 +137,14 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     }
 
     const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      return null; 
+    // Allow JSON or plain text/array responses from directory listings
+    if (!contentType || (!contentType.includes("application/json") && !contentType.includes("text/plain"))) {
+       // Some servers might return text/plain for simple arrays
+       if (contentType && contentType.includes("text")) {
+           // Fall through to parse
+       } else {
+           return null;
+       }
     }
 
     const text = await response.text();
@@ -173,14 +179,52 @@ async function deleteResource(url: string): Promise<void> {
   if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
 }
 
-async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
+/**
+ * Ensures a manifest exists for the given folder.
+ * If missing, it scans the folder for .json files (excluding manifest.json)
+ * and creates the manifest.
+ */
+async function ensureManifest(folderPath: string): Promise<string[]> {
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
+  
+  // 1. Try to load existing manifest
   let currentIds = await fetchJson<string[]>(manifestUrl);
   
-  if (!currentIds || !Array.isArray(currentIds)) {
-    currentIds = [];
+  // 2. If manifest exists and is valid, return it
+  if (currentIds && Array.isArray(currentIds)) {
+    return currentIds;
   }
 
+  // 3. Manifest missing or invalid -> Scan directory
+  console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
+  try {
+    // The server returns an array of filenames for GET requests to directories
+    const files = await fetchJson<string[]>(folderPath);
+    
+    if (files && Array.isArray(files)) {
+      // Filter for .json files and exclude the manifest itself
+      const ids = files
+        .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
+        .map(f => f.replace('.json', ''));
+      
+      console.log(`Found ${ids.length} items in ${folderPath}. Creating manifest.`);
+      
+      // Save the newly generated manifest
+      await putJson(manifestUrl, ids);
+      return ids;
+    }
+  } catch (e) {
+    console.warn(`Failed to scan directory ${folderPath}:`, e);
+  }
+
+  // 4. Fallback: Return empty array if scan failed
+  return [];
+}
+
+async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
+  // Ensure manifest exists first (scans if necessary)
+  const currentIds = await ensureManifest(folderPath);
+  
   let newIds: string[];
   if (action === 'add') { 
     if (currentIds.includes(id)) return; 
@@ -189,6 +233,7 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
     newIds = currentIds.filter(existingId => existingId !== id); 
   }
   
+  const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   await putJson(manifestUrl, newIds);
 }
 
@@ -221,7 +266,7 @@ async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T
 // --- Memory Repository ---
 
 export async function loadRawMemoryManifest(): Promise<string[]> { 
-  return await fetchJson<string[]>(`${PATHS.memories}/${MANIFEST_FILE}`) || []; 
+  return await ensureManifest(PATHS.memories); 
 }
 
 export async function loadRawMemory(id: string): Promise<Memory | null> {
@@ -306,7 +351,7 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
 
 // --- Stop Pattern Repository ---
 export async function loadRawStopPatternManifest(): Promise<string[]> { 
-  return await fetchJson<string[]>(`${PATHS.stopPatterns}/${MANIFEST_FILE}`) || []; 
+  return await ensureManifest(PATHS.stopPatterns); 
 }
 
 export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
@@ -349,7 +394,7 @@ export async function deleteRawStopPattern(id: string): Promise<void> {
 
 // --- Sampler Repository ---
 export async function loadRawSamplerManifest(): Promise<string[]> { 
-  return await fetchJson<string[]>(`${PATHS.samplers}/${MANIFEST_FILE}`) || []; 
+  return await ensureManifest(PATHS.samplers); 
 }
 
 export async function loadRawSampler(id: string): Promise<Sampler | null> {
@@ -402,7 +447,7 @@ export async function deleteRawSampler(id: string): Promise<void> {
 
 // --- Character Repository ---
 export async function loadRawCharacterManifest(): Promise<string[]> { 
-  return await fetchJson<string[]>(`${PATHS.characters}/${MANIFEST_FILE}`) || []; 
+  return await ensureManifest(PATHS.characters); 
 }
 
 export async function loadRawCharacter(id: string): Promise<Character | null> {
@@ -527,7 +572,7 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
 
 // --- Context Repository ---
 export async function loadRawContextManifest(): Promise<string[]> { 
-    return await fetchJson<string[]>(`${PATHS.contexts}/${MANIFEST_FILE}`) || []; 
+    return await ensureManifest(PATHS.contexts); 
 }
 
 export async function loadRawContext(id: string): Promise<Context | null> {
@@ -586,7 +631,7 @@ export async function deleteRawContext(id: string): Promise<void> {
 
 // --- Language Model Repository ---
 export async function loadRawModelManifest(): Promise<string[]> {
-    return await fetchJson<string[]>(`${PATHS.models}/${MANIFEST_FILE}`) || [];
+    return await ensureManifest(PATHS.models);
 }
 
 export async function loadRawModel(id: string): Promise<LanguageModel | null> {
@@ -635,7 +680,7 @@ export async function deleteRawModel(id: string): Promise<void> {
 
 // --- Budget Strategy Repository ---
 export async function loadRawBudgetStrategyManifest(): Promise<string[]> {
-    return await fetchJson<string[]>(`${PATHS.budgetStrategies}/${MANIFEST_FILE}`) || [];
+    return await ensureManifest(PATHS.budgetStrategies);
 }
 
 export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy | null> {
@@ -698,7 +743,7 @@ export async function deleteRawBudgetStrategy(id: string): Promise<void> {
 
 // --- Profile Repository ---
 export async function loadRawProfileManifest(): Promise<string[]> {
-    return await fetchJson<string[]>(`${PATHS.profiles}/${MANIFEST_FILE}`) || [];
+    return await ensureManifest(PATHS.profiles);
 }
 
 export async function loadRawProfile(id: string): Promise<Profile | null> {
@@ -791,7 +836,7 @@ export async function deleteRawProfile(id: string): Promise<void> {
 
 // --- Webpage Repository ---
 export async function loadRawWebpageManifest(): Promise<string[]> {
-    return await fetchJson<string[]>(`${PATHS.webpages}/${MANIFEST_FILE}`) || [];
+    return await ensureManifest(PATHS.webpages);
 }
 
 export async function loadRawWebpage(id: string): Promise<Webpage | null> {
@@ -846,7 +891,7 @@ export async function deleteRawChatMessage(id: string): Promise<void> {
 
 // --- Chat Data Repository ---
 export async function loadRawChatManifest(): Promise<string[]> { 
-    return await fetchJson<string[]>(`${PATHS.chatData}/${MANIFEST_FILE}`) || []; 
+    return await ensureManifest(PATHS.chatData); 
 }
 
 async function buildChatDataShell(
@@ -1097,7 +1142,7 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
   await putJson(PATHS.actions, actions);
 }
 
-// --- Helpers ---
+// --- helpers ---
 export function getCharacterImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
   const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;

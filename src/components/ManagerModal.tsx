@@ -1,5 +1,5 @@
 // src/components/ManagerModal.tsx
-import type React from 'react';
+import React from 'react';
 import { useState, useMemo } from 'react';
 import './main.css';
 
@@ -45,11 +45,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     const [searchQuery, setSearchQuery] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-    if (!isOpen) return null;
-
     const get_singular_noun = (plural: string) => {
         if (plural.endsWith('ies')) {
-            return plural.slice(0, -3) + 'y';
+            return `${plural.slice(0, -3)}y`;
         }
         if (plural.endsWith('s')) {
             return plural.slice(0, -1);
@@ -106,11 +104,13 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 if (typeof subtextNode === 'string') {
                     subtextMatch = subtextNode.toLowerCase().includes(query);
                 } else if (subtextNode && typeof subtextNode === 'object') {
-                    const extractText = (node: any): string => {
+                    const extractText = (node: React.ReactNode): string => {
                         if (node == null || typeof node === 'boolean') return '';
                         if (typeof node === 'string' || typeof node === 'number') return String(node);
                         if (Array.isArray(node)) return node.map(extractText).join(' ');
-                        if (node.props?.children) return extractText(node.props.children);
+                        if (React.isValidElement(node)) {
+                            return extractText((node.props as { children?: React.ReactNode }).children);
+                        }
                         return '';
                     };
                     const textContent = extractText(subtextNode);
@@ -121,6 +121,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             return nameMatch || subtextMatch;
         });
     }, [sortedItems, searchQuery, renderSubtext]);
+
+    if (!isOpen) return null;
 
     const handleDeleteClick = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
