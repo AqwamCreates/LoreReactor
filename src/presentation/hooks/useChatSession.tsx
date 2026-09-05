@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { runTurnSequence } from '../../application/usecases/chatOrchestrator';
+import { runTurnSequence } from '../../application/usecases/chatOrchestrator';
 import { findPreviousChatMessage, addMessageToChatData, createChatMessage, prepareRequestBody, convertIdsToDisplayNames, createNewChatData, editChatMessageInChatData } from '../../application/usecases/chatService';
 import { editMessage, clearPartialFlag } from '../../application/usecases/messageService';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary, makeCharacterMemory } from '../../application/usecases/summarizationEngine';
@@ -9,11 +9,12 @@ import { type ModelPricing, calculateRequestCost } from '../../core/utils/costCa
 import { getEffectiveMaximumChatStamina, generateChatStamina, consumeChatStamina } from '../../domain/services/characterService';
 import { saveRawChatData, type LanguageModelContext, type TextToSpeedLanguageModelContext, getCharacterVoiceUrl, saveRawCharacter, type StreamCallbacks, deleteRawChatMessage } from '../../infrastructure';
 import { BudgetStrategyEngine } from '../../infrastructure/models/budgetStrategyEngine';
-import { LanguageModelEngine } from '../../infrastructure/models/LanguageModelEngine';
+import { LanguageModelEngine } from '../../infrastructure/models/languageModelEngine';
 import { TextToSpeechModelEngine } from '../../infrastructure/models/textToSpeechEngine';
 import { memoryWriteTrigger } from '../../stringList';
 import type { Character, ChatData, LanguageModel, BudgetStrategy, Memory } from '../../types';
 import { useToast } from '../contexts/ToastContext';
+import { v4 as uuidv4 } from 'uuid';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -695,7 +696,9 @@ export function useChatSession() {
                         const currentData = chatDataRef.current || dataWithRegen;
                         await editMessage(currentData, messageId, currentStreamedText);
                         await saveRawChatData(currentData);
-                    } catch { }
+                    } catch (saveError) {
+                        console.error('Failed to save resumed partial text:', saveError);
+                    }
                 }
             }
             pendingPartialRef.current = null;
