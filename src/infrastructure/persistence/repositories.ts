@@ -1,7 +1,7 @@
 // src/hooks/storage.ts
 
 import type { Context } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../../core';
 import { localURL } from '../../configurations';
 import type { Sampler, LanguageModel, InterjectableAction, SummarizationStep, Memory, RawMemory, ChatData, Character, StopPattern, RawStopPattern, RawSampler, RawCharacter, RawContext, RawLanguageModel, BudgetStrategy, RawBudgetStrategy, Profile, RawProfile, RawSummarizationStep, Webpage, RawWebpage, RawChatData, RawChatMessage, ChatMessage } from '../../types';
 
@@ -750,7 +750,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
     const rawSteps = rawProfile.summarizationSteps || [];
     const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
         ? rawSteps.map((step, i) => ({
-            id: step.id || `step-${uuidv4()}`,
+            id: step.id || `step-${generateId()}`,
             name: step.name || step.strategyType,
             description: step.description,
             strategyType: step.strategyType,
@@ -1104,7 +1104,7 @@ export async function branchRawChatData(parentChatDataId: string, parentChatMess
   if (!sourceChat) throw new Error("Source chat not found");
   const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === parentChatMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
-  const newChatId = uuidv4();
+  const newChatId = generateId();
   const newPayload: RawChatData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistId: sourceChat.protagonist.id,

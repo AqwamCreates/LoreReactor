@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../core';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import './main.css';
@@ -339,7 +339,7 @@ export function CharacterEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? uuidv4() : (existingCharacter?.id || uuidv4()),
+            id: isNewClone ? generateId() : (existingCharacter?.id || generateId()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description, systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,

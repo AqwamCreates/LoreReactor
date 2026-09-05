@@ -1,6 +1,6 @@
 // src/services/linkFetcher.ts
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../../core';
 import type { searchEngine } from '../../types';
 import type { LanguageModelContext } from '../models';
 import { LanguageModelEngine } from '../models/languageModelEngine';
@@ -370,7 +370,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         // Save to persistent disk cache
         try {
             await saveRawWebpage({
-                id: uuidv4(),
+                id: generateId(),
                 name: url,
                 url,
                 content,
