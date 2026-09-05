@@ -1,5 +1,5 @@
 // src/hooks/useModelManager.ts
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from './storage';
 import { useToast } from '../context/ToastContext';
@@ -13,6 +13,15 @@ interface ModelState {
     isIdle?: boolean;
 }
 
+interface ModelSlot {
+    busy?: boolean;
+    processing?: boolean;
+}
+
+interface ActiveModel {
+    id: string;
+}
+
 export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -23,8 +32,13 @@ export function useModelManager() {
     const { addToast } = useToast();
     const API_BASE = localURL;
     const idleNotifiedRef = useRef<Set<string>>(new Set());
+    const runningModelsRef = useRef(runningModels);
 
-    const fetchStatus = async () => {
+    useEffect(() => {
+        runningModelsRef.current = runningModels;
+    }, [runningModels]);
+
+    const fetchStatus = useCallback(async () => {
         try {
             const res = await fetch(`${API_BASE}/models/status`);
             if (!res.ok) return;
@@ -33,7 +47,7 @@ export function useModelManager() {
             const newStatus: Record<string, ModelState> = {};
             
             for (const m of data.activeModels || []) {
-                const prevIdle = runningModels[m.id]?.isIdle ?? false;
+                const prevIdle = runningModelsRef.current[m.id]?.isIdle ?? false;
                 
                 newStatus[m.id] = {
                     isRunning: true,
@@ -47,10 +61,14 @@ export function useModelManager() {
                         const slotsRes = await fetch(`${localAddress}:${m.port}/slots`);
                         if (!slotsRes.ok) continue;
                         
-                        const slots = await slotsRes.json();
+                        const slots: unknown = await slotsRes.json();
                         const allIdle = Array.isArray(slots) && 
                             slots.length > 0 && 
-                            slots.every((s: any) => !s.busy && !s.processing);
+                            slots.every((s: unknown) => {
+                                if (typeof s !== 'object' || s === null) return false;
+                                const slot = s as ModelSlot;
+                                return !slot.busy && !slot.processing;
+                            });
                         
                         newStatus[m.id].isIdle = allIdle;
                         
@@ -60,32 +78,41 @@ export function useModelManager() {
                         } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.delete(m.id);
                         }
-                    } catch (e) { /* ignore */ }
+                    } catch (e) {
+                        const message = e instanceof Error ? e.message : "Unknown error";
+                        console.error(`Failed to fetch status for model ${m.id}:`, e);
+                        addToast(`Failed to fetch status for model ${m.id}: ${message}`, "error");
+                    }
                 }
             }
             
-            const activeIds = new Set(data.activeModels?.map((m: any) => m.id) || []);
+            const activeIds = new Set(data.activeModels?.map((m: ActiveModel) => m.id) || []);
             for (const id of idleNotifiedRef.current) {
                 if (!activeIds.has(id)) idleNotifiedRef.current.delete(id);
             }
 
             setRunningModels(newStatus);
-        } catch (e) { /* ignore */ }
-    };
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error("Failed to fetch model status", e);
+            addToast(`Failed to fetch model status: ${message}`, "error");
+        }
+    }, [API_BASE, addToast]);
 
-    const loadModels = async () => {
+    const loadModels = useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await loadAllRawModels();
             setModels(data);
             await fetchStatus();
-        } catch (err) {
-            console.error("Failed to load models", err);
-            addToast("Failed to load models list", "error");
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error("Failed to load models", e);
+            addToast(`Failed to load models list: ${message}`, "error");
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [addToast, fetchStatus]);
 
     const saveModel = async (model: LanguageModel) => {
         try {
@@ -93,9 +120,10 @@ export function useModelManager() {
             await loadModels();
             addToast(`Model ${model.name} saved`, "success");
             return true;
-        } catch (err) {
-            console.error("Failed to save model", err);
-            addToast("Failed to save model", "error");
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error("Failed to save model", e);
+            addToast(`Failed to save model: ${message}`, "error");
             return false;
         }
     };
@@ -109,9 +137,10 @@ export function useModelManager() {
             await loadModels();
             addToast("Model deleted", "info");
             return true;
-        } catch (err) {
-            console.error("Failed to delete model", err);
-            addToast("Failed to delete model", "error");
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error("Failed to delete model", e);
+            addToast(`Failed to delete model: ${message}`, "error");
             return false;
         }
     };
@@ -134,8 +163,9 @@ export function useModelManager() {
                 return true;
             }
             return false;
-        } catch (err) {
-            console.error(`Failed to unload model ${id}:`, err);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error(`Failed to unload model ${id}:`, message);
             return false;
         }
     };
@@ -152,7 +182,7 @@ export function useModelManager() {
         }
     };
 
-    const toggleModelLoad = async (id: string, forceUnload: boolean = false) => {
+    const toggleModelLoad = async (id: string, forceUnload = false) => {
         const model = models.find(m => m.id === id);
         if (!model) return;
 
@@ -174,14 +204,15 @@ export function useModelManager() {
         
         if (isCurrentlyRunning && !forceUnload) {
             try {
-                addToast(`Stopping model...`, "info");
+                addToast("Stopping model...", "info");
                 const success = await unloadModelInternal(id);
                 if (success) {
-                    addToast(`Model stopped successfully`, "success");
+                    addToast("Model stopped successfully", "success");
                     if (selectedModelId === id) setSelectedModelId(null);
                 }
-            } catch (err) {
-                addToast("Failed to stop model", "error");
+            } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : "Unknown error";
+                addToast(`Failed to stop model: ${message}`, "error");
             }
         } 
         else if (!isCurrentlyRunning) {
@@ -216,8 +247,9 @@ export function useModelManager() {
                 } else {
                     throw new Error((await res.json()).error || "Unknown error");
                 }
-            } catch (err: any) {
-                addToast(`Failed to start: ${err.message}`, "error");
+            } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : "Unknown error";
+                addToast(`Failed to start: ${message}`, "error");
             }
         }
         else if (isCurrentlyRunning && selectedModelId !== id) {
@@ -228,10 +260,15 @@ export function useModelManager() {
     };
 
     useEffect(() => {
-        loadModels();
+        const timeout = setTimeout(() => {
+            void loadModels();
+        }, 0);
         const interval = setInterval(fetchStatus, 2000);
-        return () => clearInterval(interval);
-    }, []);
+        return () => {
+            clearTimeout(timeout);
+            clearInterval(interval);
+        };
+    }, [fetchStatus, loadModels]);
 
     return { 
         models, 

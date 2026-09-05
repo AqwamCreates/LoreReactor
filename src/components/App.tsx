@@ -63,7 +63,7 @@ const MemoizedMessageText = React.memo(({ text }: { text: string }) => (
 
 // ─── Render Helpers ─────────────────────────────────────────────────
 
-function renderModelSubtext(model: LanguageModel, runningModels: Record<string, any>, selectedModelId: string | null) {
+function renderModelSubtext(model: LanguageModel, runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>, selectedModelId: string | null) {
   const ms = runningModels[model.id];
   const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
   return (
@@ -103,7 +103,13 @@ function renderProfileSubtext(profile: Profile) {
   );
 }
 
-function renderChatSubtext(c: any) {
+function renderChatSubtext(c: {
+  parentChatDataId?: string;
+  numberOfMessages?: number;
+  chatMessageHistory: unknown[];
+  participants?: unknown[];
+  contexts?: unknown[];
+}) {
   const parts: string[] = [];
   if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`);
   parts.push(`${c.numberOfMessages ?? c.chatMessageHistory.length} message${(c.numberOfMessages ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`);
@@ -112,17 +118,26 @@ function renderChatSubtext(c: any) {
   return parts.join(' • ');
 }
 
-function renderContextSubtext(i: any) {
+function renderContextSubtext(i: {
+  regularExpressionActivationTrigger?: string;
+  images?: unknown[];
+  searchTerms?: unknown[];
+  urls?: unknown[];
+  text?: string;
+}) {
   const parts: string[] = [];
+  const imageCount = i.images?.length ?? 0;
+  const searchTermCount = i.searchTerms?.length ?? 0;
+  const urlCount = i.urls?.length ?? 0;
   if (!i.regularExpressionActivationTrigger) parts.push('📌'); else parts.push('⚡');
-  if (i.images?.length > 0) parts.push(`🖼️${i.images.length}`);
-  if (i.searchTerms?.length > 0) parts.push(`🔎${i.searchTerms.length}`);
-  if (i.urls?.length > 0) parts.push(`🔗${i.urls.length}`);
-  parts.push((i.text?.substring(0, 50) || '') + '...');
+  if (imageCount > 0) parts.push(`🖼️${imageCount}`);
+  if (searchTermCount > 0) parts.push(`🔎${searchTermCount}`);
+  if (urlCount > 0) parts.push(`🔗${urlCount}`);
+  parts.push(`${i.text?.substring(0, 50) || ''}...`);
   return parts.join(' ');
 }
 
-function renderExtensionSubtext(ext: any) {
+function renderExtensionSubtext(ext: { extensionType: string; description: string }) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.8 }}>
       <span style={{ fontSize: '0.65rem', background: 'var(--border)', padding: '2px 3px', borderRadius: '4px', textTransform: 'uppercase' }}>{ext.extensionType.replace(/_/g, ' ')}</span>
@@ -345,7 +360,7 @@ function App() {
         }
       })();
     }
-  }, [setChatData, setCurrentCharacter, setSelectedModelId]);
+  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -501,7 +516,7 @@ function App() {
     }
 
     if (changed) setChatData(updated);
-  }, [allCharacters, allContexts, allProfiles]);
+  }, [allCharacters, allContexts, allProfiles, chatData, currentCharacter, setChatData, setCurrentCharacter]);
 
   useEffect(() => {
     if (!activeStrategy) return;
@@ -521,7 +536,7 @@ function App() {
     }
 
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
-  }, [allModels]);
+  }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
   useEffect(() => {
     if (!isInitializing) return;
@@ -548,11 +563,12 @@ function App() {
   });
 
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) {
+    const chatHistoryElement = chatHistoryRef.current;
+    if (viewMode !== 'cinematic' || !chatHistoryElement || !chatData || !chatData.chatMessageHistory.length) {
       const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
       return () => window.clearTimeout(resetAvatar);
     }
-    const opts = { root: chatHistoryRef.current, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
+    const opts = { root: chatHistoryElement, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
     const obs = new IntersectionObserver(entries => {
       const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
       if (best.intersectionRatio <= 0.5) return;
@@ -572,7 +588,7 @@ function App() {
       (best.target as HTMLElement).classList.add('is-active');
       lastViewedMessageIdRef.current = mid;
     }, opts);
-    for (const el of chatHistoryRef.current.querySelectorAll('[data-message-id]')) {
+    for (const el of chatHistoryElement.querySelectorAll('[data-message-id]')) {
       obs.observe(el);
     }
     let fallbackTimer: number | undefined;
@@ -597,7 +613,7 @@ function App() {
     const chatHistoryElement = chatHistoryRef.current;
     if (viewMode !== 'cinematic' || !chatHistoryElement || suppressAutoScrollRef.current) return;
     chatHistoryElement.scrollTop = 0;
-  }, [viewMode]);
+  }, [viewMode, chatHistoryRef]);
 
   const deactivateToolbar = useCallback(() => {
     if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
@@ -608,7 +624,7 @@ function App() {
     const el = chatHistoryRef.current; if (!el) return;
     const fn = () => { if (activeToolbarId) deactivateToolbar(); };
     el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
-  }, [activeToolbarId, deactivateToolbar]);
+  }, [activeToolbarId, deactivateToolbar, chatHistoryRef]);
 
   useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
 
