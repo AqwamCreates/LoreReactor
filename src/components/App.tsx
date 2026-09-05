@@ -25,7 +25,7 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
-import { LanguageModelEngine } from '../services/LanguageModelEngine'; // ✅ Import Token Engine
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
@@ -40,9 +40,9 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
-const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId'; // ✅ Added
+const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
 
-const tokenEngine = new LanguageModelEngine(); // ✅ Instantiate Token Engine
+const tokenEngine = new LanguageModelEngine();
 
 interface NavButtonProps { icon: string; label: string; onClick: () => void }
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
@@ -187,7 +187,7 @@ function App() {
     generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
-    activeStrategy,
+    activeStrategy, processProtagonistImageSilently,
   } = useChatSession();
 
   const { addToast } = useToast();
@@ -232,7 +232,6 @@ function App() {
     localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY)
   );
   
-  // ✅ New State for Max Participant Tokens
   const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
 
   // Panel visibility
@@ -259,9 +258,8 @@ function App() {
   const isLongPressingRef = useRef(false);
   const suppressNextClickRef = useRef(false);
   const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
-  const chatDataRef = useRef<ChatData | null>(null); // ✅ Added for stable sync
+  const chatDataRef = useRef<ChatData | null>(null);
 
-  // Keep ref in sync
   useEffect(() => {
     chatDataRef.current = chatData;
   }, [chatData]);
@@ -280,7 +278,7 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
-  // ✅ Derived model readiness — cloud models are always ready when selected
+  // ✅ Derived model readiness
   const isModelReady = useMemo(() => {
     if (!selectedModelId) return false;
     const selectedModel = allModels.find(m => m.id === selectedModelId);
@@ -307,7 +305,6 @@ function App() {
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
-  // ✅ Maximum context tokens (worst-case text context only, no images)
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!chatData?.contexts?.length) return 0;
     let total = 0;
@@ -327,22 +324,20 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
+  // ✅ Load Saved Chat on Mount
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
 
     if (savedModelId) {
-      // Defer model selection slightly to allow managers to initialize
       setTimeout(() => setSelectedModelId(savedModelId), 0);
     }
 
     if (savedChatId) {
       (async () => {
         try {
-          // 1. Load the basic metadata first
           const chatData = await loadRawChatData(savedChatId);
           if (chatData) {
-            // 2. If messages are missing (lazy loading), fetch them
             let fullChat = chatData;
             if (!chatData.chatMessageHistory || chatData.chatMessageHistory.length === 0) {
               fullChat = await loadChatMessages(chatData as ChatData);
@@ -350,11 +345,8 @@ function App() {
             
             if (fullChat) {
               const chatData = fullChat as ChatData;
-              
-              // 3. Ensure the protagonist character is fully loaded
               let protagonist = chatData.protagonist;
               if (protagonist && !protagonist.systemPrompt) {
-                 // If the protagonist is a "shallow" reference, load the full character
                   const fullChar = await loadFullCharacter(protagonist.id);
                   if (fullChar) protagonist = fullChar;
               }
@@ -371,6 +363,7 @@ function App() {
     }
   }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
 
+  // ✅ Save Active Chat ID when it changes
   useEffect(() => {
     if (chatData?.id) {
       localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, chatData.id);
@@ -405,7 +398,6 @@ function App() {
     }
   }, [defaultCharacterId]);
 
-  // ✅ Save Model Selection
   useEffect(() => {
     if (selectedModelId) {
       localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId);
@@ -414,30 +406,17 @@ function App() {
     }
   }, [selectedModelId]);
 
-  // ✅ Validate Model Selection
   useEffect(() => {
     if (!selectedModelId || allModels.length === 0) return;
-
     const selectedModel = allModels.find(m => m.id === selectedModelId);
-    
-    // If model was deleted from storage, clear selection
     if (!selectedModel) {
       setSelectedModelId(null);
       return;
     }
-
     const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend);
-
-    if (isCloudModel) {
-      // Cloud models are always valid if they exist in storage
-      return; 
-    }
-
-    // For local models, check if they are currently running
+    if (isCloudModel) return; 
     const isRunning = runningModels[selectedModelId]?.isRunning;
-    
     if (!isRunning) {
-      // If it's not running, deselect it.
       setSelectedModelId(null);
     }
   }, [selectedModelId, allModels, runningModels]);
@@ -445,7 +424,6 @@ function App() {
   useEffect(() => {
     const parentChatDataId = chatData?.parentChatDataId;
     if (!parentChatDataId) return;
-
     let cancelled = false;
     (async () => {
       try {
@@ -455,7 +433,6 @@ function App() {
         if (!cancelled) setBranchSourceTitle(null);
       }
     })();
-
     return () => { cancelled = true; };
   }, [chatData?.parentChatDataId]);
 
@@ -478,7 +455,7 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // ✅ Robust Entity Synchronization & Deletion Handling (No Loop)
+  // ✅ Robust Entity Synchronization & Deletion Handling
   useEffect(() => {
     const currentChat = chatDataRef.current;
     if (!currentChat) return;
@@ -486,10 +463,8 @@ function App() {
     let changed = false;
     const updated = { ...currentChat };
 
-    // 1. Check Protagonist
     const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist.id);
     if (!freshProtag) {
-      // Protagonist was deleted! Fallback to default or first available
       console.warn(`Protagonist ${currentChat.protagonist.id} was deleted. Resetting.`);
       const fallback = allCharacters[0]; 
       if (fallback) {
@@ -501,7 +476,6 @@ function App() {
       changed = true;
     }
 
-    // 2. Check Participants (Filter out deleted ones)
     const validParticipants = currentChat.participants.filter(p => {
       const exists = allCharacters.some(c => c.id === p.id);
       if (!exists) {
@@ -511,7 +485,6 @@ function App() {
       return exists;
     });
 
-    // Also update timestamps for remaining participants
     const freshParticipants = validParticipants.map(p => {
       const fresh = allCharacters.find(c => c.id === p.id);
       return (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) ? fresh : p;
@@ -523,7 +496,6 @@ function App() {
       changed = true;
     }
 
-    // 3. Check Contexts (Filter out deleted ones)
     if (currentChat.contexts?.length) {
       const validContexts = currentChat.contexts.filter(ctx => {
         const exists = allContexts.some(c => c.id === ctx.id);
@@ -546,7 +518,6 @@ function App() {
       }
     }
 
-    // 4. Check Profile
     if (currentChat.Profile) {
       const freshProfile = allProfiles.find(p => p.id === currentChat.Profile?.id);
       if (!freshProfile) {
@@ -559,7 +530,6 @@ function App() {
       }
     }
 
-    // 5. Check Current Character (if different from protagonist)
     if (currentCharacter) {
       const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
       if (!freshCurrent) {
@@ -570,25 +540,22 @@ function App() {
     }
 
     if (changed) setChatData(updated);
-  }, [allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]); // Removed chatData from deps
+  }, [allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]);
 
   useEffect(() => {
     if (!activeStrategy) return;
     let stratChanged = false;
     const updatedStrat = { ...activeStrategy };
-
     const freshOnline = allModels.find(m => m.id === activeStrategy.onlineModel.id);
     if (freshOnline && freshOnline.lastUpdatedTimestamp !== activeStrategy.onlineModel.lastUpdatedTimestamp) {
       updatedStrat.onlineModel = freshOnline;
       stratChanged = true;
     }
-
     const freshLocal = allModels.find(m => m.id === activeStrategy.localModel.id);
     if (freshLocal && freshLocal.lastUpdatedTimestamp !== activeStrategy.localModel.lastUpdatedTimestamp) {
       updatedStrat.localModel = freshLocal;
       stratChanged = true;
     }
-
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
@@ -682,24 +649,17 @@ function App() {
 
   useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
 
-  // ✅ NEW EFFECT: Calculate Max Tokens Per Participant using TokenEngine
   useEffect(() => {
     if (!chatData?.chatMessageHistory || !chatData.participants) return;
-
     let isCancelled = false;
-
     const calculateMaxTokens = async () => {
       const participantCounts: Record<string, number> = {};
-      
-      // Initialize counts for all known participants
       for (const p of chatData.participants) {
         participantCounts[p.id] = 0;
       }
       if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
         participantCounts[chatData.protagonist.id] = 0;
       }
-
-      // Get model context for accurate tokenization
       const selectedModel = allModels.find(m => m.id === selectedModelId);
       const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
       const modelContext = selectedModel ? {
@@ -710,8 +670,6 @@ function App() {
           : undefined,
         runtimePort,
       } : undefined;
-
-      // Aggregate tokens per character
       for (const msg of chatData.chatMessageHistory) {
         if (msg.character && msg.textContent) {
           const charId = msg.character.id;
@@ -723,18 +681,12 @@ function App() {
           }
         }
       }
-
       if (isCancelled) return;
-
       const maxTokens = Math.max(...Object.values(participantCounts), 0);
       setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(maxTokens);
     };
-
     calculateMaxTokens();
-
-    return () => {
-      isCancelled = true;
-    };
+    return () => { isCancelled = true; };
   }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
 
   // ─── Toolbar Handlers ───────────────────────────────────────────
@@ -785,11 +737,8 @@ function App() {
   }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
   const handleNewChat = useCallback(async () => {
-    // 1. Save current chat if it exists
     await safeAutoSave(chatData); 
     clearFetchCache();
-    
-    // 2. Clear the stored active chat ID so we don't restore it later
     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
 
     let c = currentCharacter;
@@ -798,11 +747,21 @@ function App() {
     
     if (c) { 
       startNewChat(c); 
-      refreshChatList(); 
-      setIsChatListOpen(false); 
-      lastViewedMessageIdRef.current = null; 
+      // Save immediately so it appears in the list
+      // We need to wait for state to update slightly or save the object directly if startNewChat returns it
+      // For now, we rely on the effect in useChatSession or manual save if needed. 
+      // Since startNewChat sets state, we can't save immediately synchronously.
+      // We'll let the user interact or add a useEffect to save new chats.
     }
-  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList, safeAutoSave]);
+  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
+
+  // Save new chats when they are created (detected by empty history and new ID)
+  useEffect(() => {
+    if (chatData && chatData.chatMessageHistory.length === 0 && chatData.id) {
+       saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
+    }
+  }, [chatData?.id, chatData?.chatMessageHistory.length]);
+
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); await safeAutoSave(chatData);

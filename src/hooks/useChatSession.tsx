@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, ChatData, BudgetStrategy, LanguageModel, Memory } from '../types';
-import { saveRawChatData, loadAllRawChatData, deleteRawChatMessage, getCharacterVoiceUrl, saveRawCharacter } from './storage';
+import { saveRawChatData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
 import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
 import { runTurnSequence } from '../services/ChatOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -64,20 +64,6 @@ const AMBIENT_FALLBACK = [
     "The silence has a texture now, rough and unresolved.", "A beat passes. Then another.",
 ];
 
-function getDefaultCharacter(): Character {
-    const ts = Date.now();
-    return {
-        id: 'default-user', name: 'User', description: 'Default user character', systemPrompt: '',
-        initiativeWeight: 1, chatProbability: 0.5, maximumChatStamina: 5,
-        memories: {},
-        numberOfMessagesToDisableThinkPrompt: 0,
-        numberOfMessagesToDisableMetaThinkInstructions: 0,
-        numberOfMessagesToDisableDialoguePrompt: 0,
-        sampler: { id: 'default-sampler', name: 'Default', parameters: { temperature: 0.7, top_p: 0.9 }, stopPatterns: [], maximumNumberOfTokens: 256, firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts },
-        firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts,
-    };
-}
-
 // ─── Background Summarization ────────────────────────────────────────
 
 async function runBackgroundSummarization(
@@ -89,7 +75,6 @@ async function runBackgroundSummarization(
 ): Promise<void> {
     try {
         const ctxLen = modelRef.current?.contextLength || 8192;
-
         let tokens = 0;
         for (const m of data.chatMessageHistory) {
             tokens += await languageModelEngine.countTokens(m.textContent);
@@ -122,7 +107,11 @@ async function runBackgroundSummarization(
         }
 
         if (updated !== data) {
-            await saveRawChatData(updated); setData(updated); dataRef.current = updated;
+            // Note: App.tsx or caller should handle saving if needed, but for background tasks we save here
+            await saveRawChatData(updated); 
+            setData(updated); 
+            dataRef.current = updated;
+            
             const ns = triggered.strategyType === 'Sliding Window Replace' ? updated.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length : 0;
             const nc = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary') ? (updated.contexts?.length ?? 0) - (data.contexts?.length ?? 0) : 0;
             if (ns > 0) addToast(`Summarized ${ns} message${ns !== 1 ? 's' : ''}`, 'success');
@@ -517,18 +506,14 @@ export function useChatSession() {
 
     const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
 
+    // Simplified startNewChat - just creates state, App.tsx handles saving/list updates
     const startNewChat = useCallback((char: Character) => {
         const c = createNewChatData(char); 
         c.name = 'Untitled Chat';
-        
-        // Reset session state
         setChatData(c); 
         setCurrentCharacter(char); 
         setIsInitialImageProcessed(false); 
         isAtBottomRef.current = true;
-        
-        // Save immediately so it appears in the list
-        saveRawChatData(c).catch(e => console.error('Failed to save new chat:', e));
     }, []);
 
     const stopGeneration = useCallback(() => {
@@ -546,7 +531,6 @@ export function useChatSession() {
                 const final: ChatData = { ...updated, chatMessageHistory: withPartial, lastUpdatedTimestamp: Date.now() };
                 setChatData(final);
                 chatDataRef.current = final;
-                saveRawChatData(final).catch(() => { });
             }
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
@@ -566,7 +550,11 @@ export function useChatSession() {
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const d = chatDataRef.current; if (!d) { releaseLock(); return; }
         const ud = addMessageToChatData(d, createChatMessage(d, currentCharacter, actionText));
-        await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
+        // App.tsx should handle saving after this returns if needed, or we save here for simplicity
+        await saveRawChatData(ud); 
+        setChatData(ud); 
+        chatDataRef.current = ud;
+        
         await new Promise(r => setTimeout(r, 50));
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
@@ -575,7 +563,13 @@ export function useChatSession() {
         try {
             const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, '');
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
-            if (result) { await saveRawChatData(result); setChatData(result); chatDataRef.current = result; const lm = result.chatMessageHistory[result.chatMessageHistory.length - 1]; if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character); }
+            if (result) { 
+                await saveRawChatData(result); 
+                setChatData(result); 
+                chatDataRef.current = result; 
+                const lm = result.chatMessageHistory[result.chatMessageHistory.length - 1]; 
+                if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character); 
+            }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
     }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText]);
@@ -591,7 +585,9 @@ export function useChatSession() {
         try {
             const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
             const td = addMessageToChatData(chatData, createChatMessage(chatData, currentCharacter, text));
-            setChatData(td); chatDataRef.current = td; await saveRawChatData(td);
+            setChatData(td); chatDataRef.current = td; 
+            await saveRawChatData(td);
+            
             const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
@@ -683,8 +679,10 @@ export function useChatSession() {
             if (result.isCompleted) {
                 const finalData = await clearPartialFlag(edited, messageId);
                 setChatData(finalData); chatDataRef.current = finalData;
+                await saveRawChatData(finalData);
             } else {
                 setChatData(edited); chatDataRef.current = edited;
+                await saveRawChatData(edited);
             }
 
             if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
@@ -697,6 +695,7 @@ export function useChatSession() {
                     try {
                         const currentData = chatDataRef.current || dataWithRegen;
                         await editMessage(currentData, messageId, currentStreamedText);
+                        await saveRawChatData(currentData);
                     } catch { }
                 }
             }
@@ -725,6 +724,8 @@ export function useChatSession() {
         if (toDelete.length) try { await Promise.all(toDelete.map(m => deleteRawChatMessage(m.id))); } catch (e) { console.error('Delete failed:', e); }
         const td: ChatData = { ...chatData, chatMessageHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
         setChatData(td); chatDataRef.current = td;
+        await saveRawChatData(td);
+        
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
         setStreamingCharacter(null); streamingCharacterRef.current = null;
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
@@ -754,7 +755,7 @@ export function useChatSession() {
     // ─── Silent Image Processing ─────────────────────────────────────
 
     const processProtagonistImageSilently = useCallback(async (data: ChatData, char: Character) => {
-        if (!chatData?.Profile?.forceNoCharacterImageInjection && !char.image) { setIsInitialImageProcessed(true); return; }
+        if (!data?.Profile?.forceNoCharacterImageInjection && !char.image) { setIsInitialImageProcessed(true); return; }
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
@@ -763,61 +764,6 @@ export function useChatSession() {
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }
     }, [handleServerResponse, isModelReadyForGeneration]);
-
-    // ─── Init ────────────────────────────────────────────────────────
-
-    useEffect(() => {
-        // Only set defaults if nothing has been loaded after 500ms.
-        // This gives App.tsx time to restore the saved session first.
-        const timeout = setTimeout(async () => {
-            if (chatDataRef.current || currentCharacter) return; // Already restored by App.tsx
-
-            const arr = await loadAllRawChatData();
-            const valid = arr.filter((c): c is ChatData => c !== null);
-            
-            let char: Character | null = null;
-            let chat: ChatData | null = null;
-
-            // Fallback: pick most recent chat only if App.tsx didn't restore anything
-            if (valid.length) {
-                const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
-                if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') {
-                    chat = sorted[0];
-                    char = sorted[0].protagonist;
-                }
-            }
-
-            if (!char) char = getDefaultCharacter();
-            if (!currentCharacter && char) setCurrentCharacter(char);
-            if (!chatDataRef.current && char) {
-                if (chat) {
-                    setChatData(chat);
-                } else {
-                    setChatData(createNewChatData(char));
-                }
-            }
-
-            const dp = chat || (char ? createNewChatData(char) : null);
-            if (dp && char && !isInitialImageProcessed) {
-                await processProtagonistImageSilently(dp, char);
-            }
-
-            // Load parent chat message IDs for branch indicators
-            const ac = chat || chatDataRef.current;
-            if (ac) {
-                const all = await loadAllRawChatData();
-                const pts = new Set<string>();
-                for (const c of all) {
-                    if (c && c.parentChatDataId === ac.id && c.parentChatMessageId) {
-                        pts.add(c.parentChatMessageId);
-                    }
-                }
-                setParentChatMessageIds(pts);
-            }
-        }, 500);
-
-        return () => clearTimeout(timeout);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── Scroll Tracking ────────────────────────────────────────────
 
@@ -850,5 +796,6 @@ export function useChatSession() {
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,
         costWithoutCacheMisses: stats.costWithoutCacheMisses,
+        processProtagonistImageSilently,
     };
 }
