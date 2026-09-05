@@ -1,47 +1,119 @@
-# === STANDARD BUILD & DEPENDENCIES ===
-node_modules
-dist
-dist-ssr
-*.local
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+```
+# Dependencies
+node_modules/
 
-# === EDITOR & OS ===
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Build artifacts
+dist/
+build/
+target/
+
+# TypeScript/JavaScript compiled files
+*.js
+*.jsx
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
 
-# === USER DATA (DEFAULT: IGNORE EVERYTHING) ===
-# We ignore the whole user_data folder by default to protect privacy
-user_data/
+# Logs
+*.log
 
-# === EXCEPTIONS: SHARE THESE DEFAULT CONFIGS ===
-# The '!' symbol tells Git to track these specific folders despite the rule above
-!user_data/sampler_data/
-!user_data/stop_patterns_data/
-!user_data/budget_strategy_data/
+# Coverage
+coverage/
+htmlcov/
+*.coverage
 
-# === KEEP THESE PRIVATE (NO EXCEPTIONS) ===
-# These contain personal chats, custom characters, images, and cache files
-# They will remain ignored because of the 'user_data/' rule at the top
-# user_data/chat_data/
-# user_data/chat_messages/
-# user_data/character_data/
-# user_data/character_images/
-# user_data/character_voices/
-# user_data/context_data/
-# user_data/kv_caches/
-# user_data/extensions/
+# Python related (if any Python in project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.nox/
 
-llama/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# MyPy cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pytest cache
+.pytest_cache/
+
+# Gradle
+.gradle/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Vim
+*.un~
+Session.vim
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# IntelliJ IDEA
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Visual Studio Code
+.vscode/tasks.json
+.vscode/launch.json
+
+# Temporary folders for file processing
+!/node_modules/*/*/tmp
+!/node_modules/*/*/*/tmp
+
+# System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+```
