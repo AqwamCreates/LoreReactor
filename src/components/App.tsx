@@ -31,7 +31,7 @@ import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
-  ChatData, RawChatData, Extension, InterjectableAction, Profile
+  ChatData, Extension, InterjectableAction, Profile
 } from '../types';
 
 // ─── Constants & Types ──────────────────────────────────────────────
@@ -40,6 +40,7 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
+const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId'; // ✅ Added
 
 const tokenEngine = new LanguageModelEngine(); // ✅ Instantiate Token Engine
 
@@ -179,7 +180,7 @@ function App() {
   const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
   const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
-  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId } = useModelManager();
+  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
   const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
   const { extensions: allExtensions, deleteExtension } = useExtensionManager();
   const { profiles: allProfiles, saveProfile, deleteProfile } = useProfileManager();
@@ -206,8 +207,12 @@ function App() {
   const [actions, setActions] = useState<InterjectableAction[]>([]);
   const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
   const [branchSourceTitle, setBranchSourceTitle] = useState<string | null>(null);
-  const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(null);
-  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(null);
+  const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() =>
+    localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER)
+  );
+  const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(() =>
+    localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY)
+  );
   
   // ✅ New State for Max Participant Tokens
   const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
@@ -238,16 +243,16 @@ function App() {
   const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
 
   // Loading state
-  const [loadSteps, setLoadSteps] = useState<LoadStep[]>([
-    { id: 'characters', label: 'Characters', icon: '🎭', done: false },
-    { id: 'models', label: 'Models', icon: '🤖', done: false },
-    { id: 'contexts', label: 'Contexts', icon: '🌍', done: false },
-    { id: 'samplers', label: 'Samplers', icon: '🎚️', done: false },
-    { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: false },
-    { id: 'budget', label: 'Budget', icon: '💰', done: false },
-    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: false },
-    { id: 'chats', label: 'Chat Sessions', icon: '💬', done: false },
-  ]);
+  const loadSteps = useMemo<LoadStep[]>(() => [
+    { id: 'characters', label: 'Characters', icon: '🎭', done: allCharacters.length > 0 },
+    { id: 'models', label: 'Models', icon: '🤖', done: allModels.length > 0 },
+    { id: 'contexts', label: 'Contexts', icon: '🌍', done: allContexts.length > 0 },
+    { id: 'samplers', label: 'Samplers', icon: '🎚️', done: allSamplers.length > 0 },
+    { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: allStopPatterns.length > 0 },
+    { id: 'budget', label: 'Budget', icon: '💰', done: allBudgetStrategies.length > 0 },
+    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: allProfiles.length > 0 },
+    { id: 'chats', label: 'Chat Sessions', icon: '💬', done: allChats.length > 0 },
+  ], [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
 
@@ -286,30 +291,52 @@ function App() {
       if (ctx.text) total += Math.ceil(ctx.text.length / 4);
     }
     return total;
-  }, [chatData?.contexts]);
+  }, [chatData]);
 
   // ─── Effects: Persistence & Restoration ───────────────────────────
 
-  useEffect(() => { loadInterjectableActions().then(setActions); }, []);
-  useEffect(() => { if (actions.length > 0) saveInterjectableActions(actions); }, [actions]);
+  useEffect(() => { 
+    loadInterjectableActions().then(setActions); 
+  }, []);
+  
+  useEffect(() => { 
+    if (actions.length > 0) saveInterjectableActions(actions); 
+  }, [actions]);
 
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
-    const savedBudgetId = localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY);
-    const savedDefaultCharId = localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER);
+    const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
 
-    if (savedDefaultCharId) setDefaultCharacterId(savedDefaultCharId);
-    if (savedBudgetId) setSelectedBudgetStrategyId(savedBudgetId);
+    if (savedModelId) {
+      // Defer model selection slightly to allow managers to initialize
+      setTimeout(() => setSelectedModelId(savedModelId), 0);
+    }
 
     if (savedChatId) {
       (async () => {
         try {
+          // 1. Load the basic metadata first
           const raw = await loadRawChatData(savedChatId);
           if (raw) {
-            const full = raw.chatMessageHistory?.length ? raw : await loadChatMessages(raw as any);
-            if (full) {
-              setChatData(full as ChatData);
-              if ((full as ChatData).protagonist) setCurrentCharacter((full as ChatData).protagonist);
+            // 2. If messages are missing (lazy loading), fetch them
+            let fullChat = raw;
+            if (!raw.chatMessageHistory || raw.chatMessageHistory.length === 0) {
+              fullChat = await loadChatMessages(raw as any);
+            }
+            
+            if (fullChat) {
+              const chatData = fullChat as ChatData;
+              
+              // 3. Ensure the protagonist character is fully loaded
+              let protagonist = chatData.protagonist;
+              if (protagonist && !protagonist.systemPrompt) {
+                 // If the protagonist is a "shallow" reference, load the full character
+                 const fullChar = await loadFullCharacter(protagonist.id);
+                 if (fullChar) protagonist = fullChar;
+              }
+
+              setChatData({ ...chatData, protagonist });
+              if (protagonist) setCurrentCharacter(protagonist);
             }
           }
         } catch (e) {
@@ -318,7 +345,7 @@ function App() {
         }
       })();
     }
-  }, []);
+  }, [setChatData, setCurrentCharacter, setSelectedModelId]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -342,7 +369,7 @@ function App() {
     if (strategy) {
       setActiveBudgetStrategy(strategy);
     } else {
-      setSelectedBudgetStrategyId(null);
+      localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
     }
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
@@ -354,12 +381,58 @@ function App() {
     }
   }, [defaultCharacterId]);
 
+  // ✅ Save Model Selection
   useEffect(() => {
+    if (selectedModelId) {
+      localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL);
+    }
+  }, [selectedModelId]);
+
+  // ✅ Validate Model Selection
+  useEffect(() => {
+    if (!selectedModelId || allModels.length === 0) return;
+
+    const selectedModel = allModels.find(m => m.id === selectedModelId);
+    
+    // If model was deleted from storage, clear selection
+    if (!selectedModel) {
+      setSelectedModelId(null);
+      return;
+    }
+
+    const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend);
+
+    if (isCloudModel) {
+      // Cloud models are always valid if they exist in storage
+      return; 
+    }
+
+    // For local models, check if they are currently running
+    const isRunning = runningModels[selectedModelId]?.isRunning;
+    
+    if (!isRunning) {
+      // If it's not running, deselect it.
+      setSelectedModelId(null);
+    }
+  }, [selectedModelId, allModels, runningModels]);
+
+  useEffect(() => {
+    const parentChatDataId = chatData?.parentChatDataId;
+    if (!parentChatDataId) return;
+
+    let cancelled = false;
     (async () => {
-      if (!chatData?.parentChatDataId) { setBranchSourceTitle(null); return; }
-      try { const s = await loadRawChatData(chatData.parentChatDataId); setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null); }
-      catch { setBranchSourceTitle(null); }
+      try {
+        const s = await loadRawChatData(parentChatDataId);
+        if (!cancelled) setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null);
+      } catch {
+        if (!cancelled) setBranchSourceTitle(null);
+      }
     })();
+
+    return () => { cancelled = true; };
   }, [chatData?.parentChatDataId]);
 
   useEffect(() => {
@@ -451,21 +524,6 @@ function App() {
   }, [allModels]);
 
   useEffect(() => {
-    setLoadSteps(prev => prev.map(s => ({
-      ...s,
-      done: s.id === 'characters' ? allCharacters.length > 0
-        : s.id === 'models' ? allModels.length > 0
-        : s.id === 'contexts' ? allContexts.length > 0
-        : s.id === 'samplers' ? allSamplers.length > 0
-        : s.id === 'stopPatterns' ? allStopPatterns.length > 0
-        : s.id === 'budget' ? allBudgetStrategies.length > 0
-        : s.id === 'profiles' ? allProfiles.length > 0
-        : s.id === 'chats' ? allChats.length > 0
-        : s.done,
-    })));
-  }, [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
-
-  useEffect(() => {
     if (!isInitializing) return;
     if (loadSteps.every(s => s.done)) {
       const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 200);
@@ -490,7 +548,10 @@ function App() {
   }, [editDraft, editingId]);
 
   useEffect(() => {
-    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) { setCenterAvatar(null); return; }
+    if (viewMode !== 'cinematic' || !chatHistoryRef.current || !chatData || !chatData.chatMessageHistory.length) {
+      const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
+      return () => window.clearTimeout(resetAvatar);
+    }
     const opts = { root: chatHistoryRef.current, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
     const obs = new IntersectionObserver(entries => {
       const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
@@ -505,30 +566,48 @@ function App() {
         avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
       }
       setCenterAvatar(avatar);
-      document.querySelectorAll('.message-row').forEach(el => el.classList.remove('is-active'));
+      for (const el of document.querySelectorAll('.message-row')) {
+        el.classList.remove('is-active');
+      }
       (best.target as HTMLElement).classList.add('is-active');
       lastViewedMessageIdRef.current = mid;
     }, opts);
-    chatHistoryRef.current.querySelectorAll('[data-message-id]').forEach(el => obs.observe(el));
-    if (!centerAvatar) {
-      for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
-        const m = chatData.chatMessageHistory[i];
-        if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) { setCenterAvatar(m.character); break; }
-      }
+    for (const el of chatHistoryRef.current.querySelectorAll('[data-message-id]')) {
+      obs.observe(el);
     }
-    return () => obs.disconnect();
+    let fallbackTimer: number | undefined;
+    if (!centerAvatar) {
+      fallbackTimer = window.setTimeout(() => {
+        for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
+          const m = chatData.chatMessageHistory[i];
+          if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
+            setCenterAvatar(m.character);
+            break;
+          }
+        }
+      }, 0);
+    }
+    return () => {
+      obs.disconnect();
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
   }, [viewMode, chatData?.chatMessageHistory, chatData?.chatMessageHistory.length, currentCharacter?.id]);
 
   useEffect(() => {
     if (viewMode !== 'cinematic' || !chatHistoryRef.current || suppressAutoScrollRef.current) return;
     chatHistoryRef.current.scrollTop = 0;
-  }, [viewMode, chatData?.chatMessageHistory.length, streamingText]);
+  }, [viewMode, chatHistoryRef]);
+
+  const deactivateToolbar = useCallback(() => {
+    if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
+    setActiveToolbarId(null);
+  }, []);
 
   useEffect(() => {
     const el = chatHistoryRef.current; if (!el) return;
     const fn = () => { if (activeToolbarId) deactivateToolbar(); };
     el.addEventListener('scroll', fn, { passive: true }); return () => el.removeEventListener('scroll', fn);
-  }, [activeToolbarId]);
+  }, [activeToolbarId, deactivateToolbar]);
 
   useEffect(() => () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current); }, []);
 
@@ -542,9 +621,9 @@ function App() {
       const participantCounts: Record<string, number> = {};
       
       // Initialize counts for all known participants
-      chatData.participants.forEach(p => {
+      for (const p of chatData.participants) {
         participantCounts[p.id] = 0;
-      });
+      }
       if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
         participantCounts[chatData.protagonist.id] = 0;
       }
@@ -555,24 +634,21 @@ function App() {
       const modelContext = selectedModel ? {
         apiKey: selectedModel.apiKey,
         backend: selectedModel.backend,
-        modelPath: (selectedModel as any).modelPath || (selectedModel as any).parameters?.modelPath,
+        modelPath: typeof selectedModel.parameters?.modelPath === 'string'
+          ? selectedModel.parameters.modelPath
+          : undefined,
         runtimePort,
       } : undefined;
 
       // Aggregate tokens per character
-      // Note: We process messages in batches or sequentially to avoid blocking UI if history is huge
-      // For now, we iterate. If history is massive, this might need optimization (e.g. only calc new messages)
       for (const msg of chatData.chatMessageHistory) {
         if (msg.character && msg.textContent) {
           const charId = msg.character.id;
           if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
-             // Use tokenEngine for accurate count based on selected model
-             // Fallback to estimation inside tokenEngine if no model context
-             const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
-             
-             if (participantCounts[charId] !== undefined) {
-               participantCounts[charId] += tokens;
-             }
+              const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
+              if (participantCounts[charId] !== undefined) {
+                participantCounts[charId] += tokens;
+              }
           }
         }
       }
@@ -596,11 +672,6 @@ function App() {
     if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
     setActiveToolbarId(mid);
     toolbarAutoHideRef.current = setTimeout(() => setActiveToolbarId(p => p === mid ? null : p), 8000);
-  }, []);
-
-  const deactivateToolbar = useCallback(() => {
-    if (toolbarAutoHideRef.current) clearTimeout(toolbarAutoHideRef.current);
-    setActiveToolbarId(null);
   }, []);
 
   const handleBubbleTouchStart = useCallback((e: React.TouchEvent, mid: string) => {
@@ -627,11 +698,11 @@ function App() {
 
   // ─── Chat Operations ────────────────────────────────────────────
 
-  const safeAutoSave = async (data: ChatData | null) => {
+  const safeAutoSave = useCallback(async (data: ChatData | null) => {
     if (!data) return;
     if (data.chatMessageHistory.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
     try { await saveRawChatData(data); } catch (e) { console.error('Auto-save failed:', e); }
-  };
+  }, []);
 
   const handleSwitchChat = useCallback(async (id: string) => {
     const sel = allChats.find(c => c.id === id); if (!sel) return;
@@ -640,7 +711,7 @@ function App() {
     if (!sel.chatMessageHistory.length) try { chat = await loadChatMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
     setChatData(chat); if (chat.protagonist) setCurrentCharacter(chat.protagonist);
     refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null;
-  }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast]);
+  }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
   const handleNewChat = useCallback(async () => {
     await safeAutoSave(chatData); clearFetchCache();
@@ -648,7 +719,7 @@ function App() {
     if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
     if (!c && allChats.length) c = allChats[0].protagonist;
     if (c) { startNewChat(c); refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null; }
-  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList]);
+  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList, safeAutoSave]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); await safeAutoSave(chatData);
@@ -722,7 +793,7 @@ function App() {
     if (!chatData) return;
     const t = editTitleValue.trim() || 'Untitled Chat';
     setChatData({ ...chatData, name: t } as ChatData);
-    saveRawChatData({ ...chatData, name: t } as RawChatData);
+    saveRawChatData({ ...chatData, name: t });
     refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
   };
 
@@ -834,12 +905,12 @@ function App() {
     if (container && chatData) {
       const cr = container.getBoundingClientRect();
       const ids = new Set(chatData.chatMessageHistory.map(m => m.id));
-      let bestTop = Infinity;
-      container.querySelectorAll('[data-message-id]').forEach(el => {
-        const id = el.getAttribute('data-message-id'); if (!id || !ids.has(id)) return;
+      let bestTop = Number.POSITIVE_INFINITY;
+      for (const el of container.querySelectorAll('[data-message-id]')) {
+        const id = el.getAttribute('data-message-id'); if (!id || !ids.has(id)) continue;
         const r = el.getBoundingClientRect();
         if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === id); }
-      });
+      }
     }
     if (targetIdx === -1 && lastViewedMessageIdRef.current && chatData) targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
     if (targetIdx >= 0 && chatData) lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIdx].id;
@@ -909,7 +980,7 @@ function App() {
             </div>
             <div className="header-controls-group">
               <button type="button" className="view-mode-toggle" onClick={() => chatData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
-              <button onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
+              <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
               <ChatStatisticsBar
                 generationSpeed={generationSpeed}
                 timeToFirstToken={timeToFirstToken}

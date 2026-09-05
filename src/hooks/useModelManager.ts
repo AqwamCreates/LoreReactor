@@ -17,12 +17,12 @@ export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [runningModels, setRunningModels] = useState<Record<string, ModelState>>({});
+    // selectedModelId is now controlled externally via setSelectedModelId prop or return value
     const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
     
     const { addToast } = useToast();
     const API_BASE = localURL;
     const idleNotifiedRef = useRef<Set<string>>(new Set());
-    const hasAutoSelectedRef = useRef(false);
 
     const fetchStatus = async () => {
         try {
@@ -45,10 +45,7 @@ export function useModelManager() {
                 if (m.status === 'ready' && m.port) {
                     try {
                         const slotsRes = await fetch(`${localAddress}:${m.port}/slots`);
-                        
-                        if (!slotsRes.ok) {
-                            continue;
-                        }
+                        if (!slotsRes.ok) continue;
                         
                         const slots = await slotsRes.json();
                         const allIdle = Array.isArray(slots) && 
@@ -63,9 +60,7 @@ export function useModelManager() {
                         } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.delete(m.id);
                         }
-                    } catch (e) {
-                        // Network error — preserve existing idle state
-                    }
+                    } catch (e) { /* ignore */ }
                 }
             }
             
@@ -75,18 +70,7 @@ export function useModelManager() {
             }
 
             setRunningModels(newStatus);
-
-            if (!hasAutoSelectedRef.current && data.activeModels && data.activeModels.length > 0) {
-                hasAutoSelectedRef.current = true;
-                const readyModel = data.activeModels.find((m: any) => m.status === 'ready');
-                const modelToSelect = readyModel || data.activeModels[0];
-                if (modelToSelect) {
-                    setSelectedModelId(modelToSelect.id);
-                }
-            }
-        } catch (e) {
-            // Server down or unreachable — ignore silently
-        }
+        } catch (e) { /* ignore */ }
     };
 
     const loadModels = async () => {
@@ -156,7 +140,6 @@ export function useModelManager() {
         }
     };
 
-    // ✅ NEW HELPER: Unload any running local model that isn't the targetId
     const unloadOtherRunningModels = async (targetId: string) => {
         const otherRunningIds = Object.entries(runningModels)
             .filter(([rid, state]) => rid !== targetId && state.isRunning)
@@ -173,8 +156,6 @@ export function useModelManager() {
         const model = models.find(m => m.id === id);
         if (!model) return;
 
-        // ✅ Cloud models with API keys don't need local loading.
-        // Just select/deselect them.
         const isCloudModel = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
 
         if (isCloudModel) {
@@ -182,9 +163,7 @@ export function useModelManager() {
                 setSelectedModelId(null);
                 addToast(`Cloud model ${model.name} deselected`, "info");
             } else {
-                // ✅ If selecting a cloud model, unload any running local models
                 await unloadOtherRunningModels(id);
-                
                 setSelectedModelId(id);
                 addToast(`Cloud model ${model.name} selected`, "success");
             }
@@ -197,60 +176,28 @@ export function useModelManager() {
             try {
                 addToast(`Stopping model...`, "info");
                 const success = await unloadModelInternal(id);
-                
                 if (success) {
                     addToast(`Model stopped successfully`, "success");
-                    
-                    if (selectedModelId === id) {
-                        setSelectedModelId(null);
-                    }
-                } else {
-                    throw new Error("Failed to unload");
+                    if (selectedModelId === id) setSelectedModelId(null);
                 }
             } catch (err) {
                 addToast("Failed to stop model", "error");
-                console.error(err);
             }
         } 
         else if (!isCurrentlyRunning) {
-            // ✅ Unload any other running model first (using the new helper)
             await unloadOtherRunningModels(id);
-
             const modelPath = model.model || '';
+            const args: string[] = ['-c', model.contextLength.toString(), '-ngl', '99'];
+            if (model.mmproj?.trim()) args.push('--mmproj', model.mmproj.trim());
+            if (model.lora?.trim()) args.push('--lora', model.lora.trim());
             
-            // Build args array with context length, GPU layers, mmproj, and lora
-            const args: string[] = [];
-            args.push('-c', model.contextLength.toString());
-            args.push('-ngl', '99');
-
-            // Add mmproj if configured
-            if (model.mmproj && model.mmproj.trim()) {
-                args.push('--mmproj', model.mmproj.trim());
-            }
-
-            // Add LoRA adapter if configured
-            if (model.lora && model.lora.trim()) {
-                args.push('--lora', model.lora.trim());
-            }
-
-            // Append any extra args from model parameters
             const params = model.parameters || {};
             if (params.gpu_layers !== undefined) {
                 const nglIndex = args.indexOf('-ngl');
-                if (nglIndex !== -1) {
-                    args[nglIndex + 1] = String(params.gpu_layers);
-                }
+                if (nglIndex !== -1) args[nglIndex + 1] = String(params.gpu_layers);
             }
-            if (params.cache_type_k) {
-                args.push('-ctk', String(params.cache_type_k));
-            }
-            if (params.cache_type_v) {
-                args.push('-ctv', String(params.cache_type_v));
-            }
-            
             if (params.extra_flags && String(params.extra_flags).trim()) {
-                const extraArgs = String(params.extra_flags).trim().split(/\s+/);
-                args.push(...extraArgs);
+                args.push(...String(params.extra_flags).trim().split(/\s+/));
             }
             
             try {
@@ -258,38 +205,22 @@ export function useModelManager() {
                 const res = await fetch(`${API_BASE}/models/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: model.id,
-                        modelPath: modelPath,
-                        args
-                    })
+                    body: JSON.stringify({ id: model.id, modelPath, args })
                 });
 
                 if (res.ok) {
                     const data = await res.json();
                     addToast(`Model loaded on port ${data.port}`, "success");
-                    setRunningModels(prev => ({
-                        ...prev,
-                        [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false }
-                    }));
-                    
+                    setRunningModels(prev => ({ ...prev, [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false } }));
                     setSelectedModelId(id);
                 } else {
-                    const errData = await res.json();
-                    throw new Error(errData.error || "Unknown error");
+                    throw new Error((await res.json()).error || "Unknown error");
                 }
             } catch (err: any) {
                 addToast(`Failed to start: ${err.message}`, "error");
-                console.error(err);
             }
         }
-        else if (isCurrentlyRunning && forceUnload) {
-             // Handle force unload if needed elsewhere
-             await unloadModelInternal(id);
-        }
-        else if (isCurrentlyRunning && !forceUnload && selectedModelId !== id) {
-            // ✅ If clicking a running local model that isn't selected, just select it
-            // (and ensure others are unloaded, though there shouldn't be any)
+        else if (isCurrentlyRunning && selectedModelId !== id) {
             await unloadOtherRunningModels(id);
             setSelectedModelId(id);
             addToast(`Model ${model.name} selected`, "success");

@@ -325,8 +325,6 @@ export function useChatSession() {
 
     // ─── Memory Trigger Processing ──────────────────────────────────
 
-    // ─── Memory Trigger Processing ──────────────────────────────────
-
     const processMemoryTrigger = useCallback(async (
         rawText: string,
         character: Character,
@@ -363,11 +361,6 @@ export function useChatSession() {
                 m => m.character.id === character.id || m.character.id === other.id
             );
 
-            // memoryRetentionWeight controls how many messages back we look
-            // 0 = only latest message pair
-            // 1 = default (all relevant messages)
-            // >1 = all relevant messages (same as 1, no upper limit needed)
-            // <1 but >0 = fraction of available messages
             let relevantMessages: typeof allRelevant;
             if (effectiveRetentionWeight <= 0) {
                 relevantMessages = allRelevant.slice(-2);
@@ -380,14 +373,13 @@ export function useChatSession() {
 
             if (relevantMessages.length === 0) continue;
 
-            // Use character-aware compression
             const summaryContext = await makeCharacterMemory(data, character, lmCtx);
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
                 id: uuidv4(),
                 name: `Memory with ${other.name}`,
-                content: summaryContext.text, // <--- FIX: Use .text from the Context object
+                content: summaryContext.text,
                 chatData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,
@@ -397,14 +389,12 @@ export function useChatSession() {
             character.memories[other.id] = [newMemory];
         }
 
-        // Global memory uses full history regardless of retention weight
-        // Also use character-aware compression for global memory
         const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),
                 name: 'Global Memory',
-                content: globalSummaryContext.text, // <--- FIX: Use .text from the Context object
+                content: globalSummaryContext.text,
                 chatData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,
@@ -477,7 +467,6 @@ export function useChatSession() {
 
             if (!rawText || !rawText.trim()) return null;
 
-            // Process memory trigger before stripping from display text
             await processMemoryTrigger(rawText, character, dataWithRegen);
 
             const displayText = convertIdsToDisplayNames(rawText, dataWithRegen);
@@ -770,23 +759,57 @@ export function useChatSession() {
     // ─── Init ────────────────────────────────────────────────────────
 
     useEffect(() => {
-        (async () => {
+        // Only set defaults if nothing has been loaded after 500ms.
+        // This gives App.tsx time to restore the saved session first.
+        const timeout = setTimeout(async () => {
+            if (chatDataRef.current || currentCharacter) return; // Already restored by App.tsx
+
             const arr = await loadAllRawChatData();
             const valid = arr.filter((c): c is ChatData => c !== null);
+            
             let char: Character | null = null;
             let chat: ChatData | null = null;
-            if (valid.length) { const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp); if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') { chat = sorted[0]; char = sorted[0].protagonist; } }
+
+            // Fallback: pick most recent chat only if App.tsx didn't restore anything
+            if (valid.length) {
+                const sorted = [...valid].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
+                if (sorted[0].protagonist && sorted[0].protagonist.id !== 'default-user') {
+                    chat = sorted[0];
+                    char = sorted[0].protagonist;
+                }
+            }
+
             if (!char) char = getDefaultCharacter();
             if (!currentCharacter && char) setCurrentCharacter(char);
-            if (!chatData && char) { if (chat) setChatData(chat); else setChatData(createNewChatData(char)); }
-            const dp = chat || (char ? createNewChatData(char) : null);
-            if (dp && char && !isInitialImageProcessed) await processProtagonistImageSilently(dp, char);
-            if (chatData || chat) {
-                const ac = chat || chatData;
-                if (ac) { const all = await loadAllRawChatData(); const pts = new Set<string>(); for (const c of all) if (c && c.parentChatDataId === ac.id && c.parentChatMessageId) pts.add(c.parentChatMessageId); setParentChatMessageIds(pts); }
+            if (!chatDataRef.current && char) {
+                if (chat) {
+                    setChatData(chat);
+                } else {
+                    setChatData(createNewChatData(char));
+                }
             }
-        })();
-    }, []);
+
+            const dp = chat || (char ? createNewChatData(char) : null);
+            if (dp && char && !isInitialImageProcessed) {
+                await processProtagonistImageSilently(dp, char);
+            }
+
+            // Load parent chat message IDs for branch indicators
+            const ac = chat || chatDataRef.current;
+            if (ac) {
+                const all = await loadAllRawChatData();
+                const pts = new Set<string>();
+                for (const c of all) {
+                    if (c && c.parentChatDataId === ac.id && c.parentChatMessageId) {
+                        pts.add(c.parentChatMessageId);
+                    }
+                }
+                setParentChatMessageIds(pts);
+            }
+        }, 500);
+
+        return () => clearTimeout(timeout);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── Scroll Tracking ────────────────────────────────────────────
 
