@@ -162,6 +162,12 @@ export function ModelEditorModal({
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
+    // Refs for file inputs
+    const modelFileRef = useRef<HTMLInputElement>(null);
+    const mmprojFileRef = useRef<HTMLInputElement>(null);
+    const loraFileRef = useRef<HTMLInputElement>(null);
+    const draftFileRef = useRef<HTMLInputElement>(null);
+
     const isLoadingExistingRef = useRef(false);
 
     const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
@@ -396,6 +402,16 @@ export function ModelEditorModal({
         onClose();
     };
 
+    // Helper to handle file selection
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+        if (e.target.files && e.target.files[0]) {
+            // For security reasons, browsers only provide the filename, not the full path.
+            // However, for local apps or specific configurations, this might be sufficient.
+            // If you need the full path, you might need a different approach (e.g., drag-and-drop with path access if supported).
+            setter(e.target.files[0].path || e.target.files[0].name);
+        }
+    };
+
     if (!isOpen) return null;
 
     const cacheTypes = getCacheTypes(backend);
@@ -444,20 +460,89 @@ export function ModelEditorModal({
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
-                        <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace' }} placeholder="/path/to/model.gguf" />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input 
+                                type="text" 
+                                value={modelPath} 
+                                onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} 
+                                className={`editor-input ${errors.model ? 'error' : ''}`} 
+                                style={{ fontFamily: 'monospace', flex: 1 }} 
+                                placeholder="/path/to/model.gguf" 
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => modelFileRef.current?.click()} 
+                                className="editor-btn editor-btn-cancel"
+                                style={{ padding: '6px 12px' }}
+                            >
+                                📁 Browse
+                            </button>
+                            <input 
+                                ref={modelFileRef} 
+                                type="file" 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => handleFileSelect(e, setModelPath)} 
+                            />
+                        </div>
                         {errors.model && <div className="editor-error-message">{errors.model}</div>}
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">MMProj Path</label>
-                        <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/mmproj.gguf" />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input 
+                                type="text" 
+                                value={mmprojPath} 
+                                onChange={(e) => setMmprojPath(e.target.value)} 
+                                className="editor-input" 
+                                style={{ fontFamily: 'monospace', flex: 1 }} 
+                                placeholder="/path/to/mmproj.gguf" 
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => mmprojFileRef.current?.click()} 
+                                className="editor-btn editor-btn-cancel"
+                                style={{ padding: '6px 12px' }}
+                            >
+                                📁 Browse
+                            </button>
+                            <input 
+                                ref={mmprojFileRef} 
+                                type="file" 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => handleFileSelect(e, setMmprojPath)} 
+                            />
+                        </div>
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
                     {/* ✅ LoRA Adapter Path */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">LoRA Adapter Path</label>
-                        <input type="text" value={loraPath} onChange={(e) => setLoraPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/lora-adapter.gguf" />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input 
+                                type="text" 
+                                value={loraPath} 
+                                onChange={(e) => setLoraPath(e.target.value)} 
+                                className="editor-input" 
+                                style={{ fontFamily: 'monospace', flex: 1 }} 
+                                placeholder="/path/to/lora-adapter.gguf" 
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => loraFileRef.current?.click()} 
+                                className="editor-btn editor-btn-cancel"
+                                style={{ padding: '6px 12px' }}
+                            >
+                                📁 Browse
+                            </button>
+                            <input 
+                                ref={loraFileRef} 
+                                type="file" 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => handleFileSelect(e, setLoraPath)} 
+                            />
+                        </div>
                         {loraPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Language model has been modified.</div>}
                     </div>
 
@@ -605,10 +690,31 @@ export function ModelEditorModal({
 
                     <div className="editor-section">
                         <span className="editor-section-title">Speculative Decoding</span>
-                        <div className="editor-row-full" style={{ marginBottom: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Draft Model</label>
-                                <input type="text" value={settings.draft_model} onChange={(e) => handleSettingChange('draft_model', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="/path/to/draft/model.gguf" />
+                        <div style={{ marginBottom: '16px' }}>
+                            <label className="editor-label">Draft Model Path</label>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <input 
+                                    type="text" 
+                                    value={settings.draft_model} 
+                                    onChange={(e) => handleSettingChange('draft_model', e.target.value)} 
+                                    className="editor-input" 
+                                    style={{ fontFamily: 'monospace', flex: 1 }} 
+                                    placeholder="/path/to/draft/model.gguf" 
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => draftFileRef.current?.click()} 
+                                    className="editor-btn editor-btn-cancel"
+                                    style={{ padding: '6px 12px' }}
+                                >
+                                    📁 Browse
+                                </button>
+                                <input 
+                                    ref={draftFileRef} 
+                                    type="file" 
+                                    style={{ display: 'none' }} 
+                                    onChange={(e) => handleFileSelect(e, (val) => handleSettingChange('draft_model', val))} 
+                                />
                             </div>
                         </div>
                         <div className="editor-row">
