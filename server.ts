@@ -28,7 +28,7 @@ const activeModels: Map<string, ModelInstance> = new Map();
 const Colors = {
   Reset: "\x1b[0m", Bright: "\x1b[1m", Dim: "\x1b[2m",
   FgBlue: "\x1b[34m", FgGreen: "\x1b[32m", FgRed: "\x1b[31m",
-  FgYellow: "\x1b[33m", FgCyan: "\x1b[36m", FgMagenta: "\x1b[35m",
+  FgYellow: "\x1b[33m", FgCyan: "\x1b[36m", FgMagenta: "\x1b[35m", FgWhite: "\x1b[37m",
   BgBlue: "\x1b[44m", BgWhite: "\x1b[47m",
 };
 
@@ -71,7 +71,7 @@ async function waitForModelReady(port: number, timeoutMs = 60000): Promise<boole
     try {
       await fetch(`http://127.0.0.1:${port}/health`);
       return true;
-    } catch (e) {
+    } catch {
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -87,7 +87,7 @@ app.use('/user_data', (req, res) => {
   }
 
   const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
-  const dir = path.dirname(filePath);
+  const directory = path.dirname(filePath);
   
   const originalStatus = res.status.bind(res);
   
@@ -113,7 +113,7 @@ app.use('/user_data', (req, res) => {
         fs.readdir(filePath, (err, files) => {
           if (err) {
             log.reqError('GET', req.url || '/', 500);
-            return res.status(500).json({ error: 'Dir Read Error' });
+            return res.status(500).json({ error: 'Directory Read Error' });
           }
           res.json(files);
         });
@@ -131,7 +131,7 @@ app.use('/user_data', (req, res) => {
             fs.readFile(filePath, (ie, buf) => {
               if (ie) {
                 log.reqError('GET', req.url || '/', 500);
-                return res.status(500).send('Img Error');
+                return res.status(500).send('Image Error');
               }
               res.send(buf);
             });
@@ -143,25 +143,31 @@ app.use('/user_data', (req, res) => {
   }
 
   if (req.method === 'PUT') {
-    if (!fs.existsSync(dir)) {
-      try { fs.mkdirSync(dir, { recursive: true }); log.success(`Created dir: ${dir}`); }
-      catch (e: any) { return res.status(500).json({ error: 'Mkdir Failed', details: e.message }); }
+    if (!fs.existsSync(directory)) {
+      try { fs.mkdirSync(directory, { recursive: true }); log.success(`Created directory: ${directory}`); }
+      catch (e: unknown) {
+        const details = e instanceof Error ? e.message : 'Unknown error';
+        return res.status(500).json({ error: 'Mkdir Failed', details });
+      }
     }
-    const body = req.body as any;
+    const body: unknown = req.body;
     const isImage = relativePath.includes('character_images/') || relativePath.includes('context_data/');
-    if (isImage && body?.base64) {
+    const base64 = typeof body === 'object' && body !== null && 'base64' in body && typeof body.base64 === 'string'
+      ? body.base64
+      : undefined;
+    if (isImage && base64) {
       try {
-        const buffer = Buffer.from(body.base64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-        fs.writeFile(filePath, buffer, (err: any) => err ? res.status(500).json({ error: 'Write Img Failed' }) : res.json({ success: true }));
+        const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+        fs.writeFile(filePath, buffer, (err) => err ? res.status(500).json({ error: 'Write Image Failed' }) : res.json({ success: true }));
         return;
-      } catch (e: any) { return res.status(400).json({ error: 'Invalid Base64' }); }
+      } catch { return res.status(400).json({ error: 'Invalid Base64' }); }
     }
-    fs.writeFile(filePath, JSON.stringify(req.body, null, 2), (err: any) => err ? res.status(500).json({ error: 'Write JSON Failed' }) : res.json({ success: true }));
+    fs.writeFile(filePath, JSON.stringify(body, null, 2), (err) => err ? res.status(500).json({ error: 'Write JSON Failed' }) : res.json({ success: true }));
     return;
   }
 
   if (req.method === 'DELETE') {
-    fs.unlink(filePath, (err: any) => {
+    fs.unlink(filePath, (err) => {
       if (err && err.code !== 'ENOENT') return res.status(500).json({ error: 'Delete Failed' });
       res.json({ success: true });
     });
@@ -285,7 +291,15 @@ app.post('/models/unload', (req, res) => {
 
   log.info(`Unloading model ${id}...`);
   instance.process.kill('SIGTERM');
-  setTimeout(() => { if (instance.process.pid) { try { process.kill(instance.process.pid, 'SIGKILL'); } catch(e) {} } }, 2000);
+  setTimeout(() => {
+    if (instance.process.pid) {
+      try {
+        process.kill(instance.process.pid, 'SIGKILL');
+      } catch {
+        // The process may have exited before the forced termination.
+      }
+    }
+  }, 2000);
   activeModels.delete(id);
   log.success(`Model ${id} unloaded`);
   res.json({ success: true, message: 'Model unloaded' });
@@ -293,13 +307,18 @@ app.post('/models/unload', (req, res) => {
 
 app.all('/proxy/:modelId/{*path}', (req, res) => {
   const modelId = req.params.modelId;
-  const remainingPath = req.params.path || '';
+  const remainingPath = (req.params as { path?: string }).path || '';
   const instance = activeModels.get(modelId);
   if (!instance || instance.status !== 'ready') return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
 
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
   fetch(targetUrl, {
-    method: req.method, headers: req.headers as any,
+    method: req.method,
+    headers: Object.fromEntries(
+      Object.entries(req.headers).flatMap(([key, value]) =>
+        value === undefined ? [] : [[key, Array.isArray(value) ? value.join(', ') : value]],
+      ),
+    ),
     body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
   })
   .then(response => response.json())
@@ -350,8 +369,9 @@ app.post('/fetch', async (req, res) => {
         text,
       });
     }
-  } catch (e: any) {
-    const errorMsg = e.name === 'AbortError' ? 'Timeout' : e.message;
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e : new Error(String(e));
+    const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
     // ✅ Log fetch errors
     log.reqError('FETCH', url, 0);
     log.warn(`Fetch failed for ${url}: ${errorMsg}`);
