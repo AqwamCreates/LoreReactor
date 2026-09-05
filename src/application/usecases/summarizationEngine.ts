@@ -127,7 +127,7 @@ export async function makeCharacterMemory(
 
     const now = Date.now();
     return {
-        id: `memory-${character.id}-${uuidv4()}`,
+        id: `memory-${character.id}-${generateId()}`,
         name: `[Memory] ${character.name}'s Perspective`,
         description: `Character-specific memory for ID: ${character.id}`,
         text: result.text.trim(),
@@ -174,7 +174,7 @@ export async function generatePeriodicCompression(
         const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
         if (!compressed) continue;
         newContexts.push({
-            id: `auto-summary-${uuidv4()}`,
+            id: `auto-summary-${generateId()}`,
             name: `[Auto-Summary] Messages ${startIdx + 1}–${endIdx}`,
             description: `msgs:${startIdx}-${endIdx}`,
             text: compressed,
@@ -241,7 +241,7 @@ export async function generateRecursiveSummary(
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
-            id: `auto-recursive-l0-${uuidv4()}`,
+            id: `auto-recursive-l0-${generateId()}`,
             name: `[Recursive L0] Messages ${startIdx + 1}–${endIdx}`,
             description: `recursive-l0:${startIdx}-${endIdx}`,
             text: compressed,
@@ -268,7 +268,7 @@ export async function generateRecursiveSummary(
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
-                    id: `auto-recursive-l${currentLayerIndex}-${uuidv4()}`,
+                    id: `auto-recursive-l${currentLayerIndex}-${generateId()}`,
                     name: `[Recursive L${currentLayerIndex}] Merged segment ${Math.floor(i / 2) + 1}`,
                     description: `recursive-l${currentLayerIndex}:segment-${Math.floor(i / 2)}`,
                     text: merged,
@@ -288,7 +288,7 @@ export async function generateRecursiveSummary(
         const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens);
         if (globalSummary) {
             newContexts.push({
-                id: `auto-recursive-global-${uuidv4()}`,
+                id: `auto-recursive-global-${generateId()}`,
                 name: "[Recursive Global] Full conversation summary",
                 description: fullRangeKey,
                 text: globalSummary,
@@ -302,7 +302,7 @@ export async function generateRecursiveSummary(
         }
     } else if (currentLayerSummaries.length === 1 && currentLayerIndex > 0) {
         newContexts.push({
-            id: `auto-recursive-global-${uuidv4()}`,
+            id: `auto-recursive-global-${generateId()}`,
             name: "[Recursive Global] Full conversation summary",
             description: fullRangeKey,
             text: currentLayerSummaries[0],

@@ -14,7 +14,7 @@ import { TextToSpeechModelEngine } from '../../infrastructure/models/textToSpeec
 import { memoryWriteTrigger } from '../../stringList';
 import type { Character, ChatData, LanguageModel, BudgetStrategy, Memory } from '../../types';
 import { useToast } from '../contexts/ToastContext';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../../core';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -366,7 +366,7 @@ export function useChatSession() {
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
-                id: uuidv4(),
+                id: generateId(),
                 name: `Memory with ${other.name}`,
                 content: summaryContext.text,
                 chatData: data,
@@ -381,7 +381,7 @@ export function useChatSession() {
         const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
-                id: uuidv4(),
+                id: generateId(),
                 name: 'Global Memory',
                 content: globalSummaryContext.text,
                 chatData: data,
@@ -761,7 +761,7 @@ export function useChatSession() {
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
-        const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
+        const silent: Character = { ...char, sampler: { ...s, id: s?.id || generateId(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
         try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, ''); }
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }

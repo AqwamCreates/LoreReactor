@@ -330,7 +330,7 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
-  // 🛑 FIXED: Chat restoration with race condition guard
+  // 🛑 FIXED: Chat restoration with race condition guard + fallback recovery
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
@@ -365,6 +365,13 @@ function App() {
         } catch (e) {
           console.error('Failed to restore active chat:', e);
           localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+          // ✅ FALLBACK: Start a fresh chat so user isn't stuck
+          const fallbackChar = defaultCharacterId
+            ? allCharacters.find(c => c.id === defaultCharacterId)
+            : allCharacters[0];
+          if (fallbackChar) {
+            startNewChat(fallbackChar);
+          }
         } finally {
           isRestoringChatRef.current = false;
         }
@@ -372,7 +379,7 @@ function App() {
     } else {
       isRestoringChatRef.current = false;
     }
-  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
+  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, defaultCharacterId, allCharacters, startNewChat]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -580,6 +587,29 @@ function App() {
     const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 4000);
     return () => clearTimeout(t);
   }, [loadSteps, isInitializing]);
+
+  // ✅ SAFETY NET: If we finished initializing but have no session, auto-create one
+  useEffect(() => {
+    if (isInitializing) return;
+    if (chatData && currentCharacter) return; // Already have a valid session
+    
+    // Give restoration a brief grace period before forcing fallback
+    const timer = setTimeout(() => {
+      if (chatDataRef.current && currentCharacter) return; // Restored during grace period
+      
+      const fallbackChar = defaultCharacterId
+        ? allCharacters.find(c => c.id === defaultCharacterId)
+        : allCharacters[0];
+      
+      if (fallbackChar) {
+        startNewChat(fallbackChar);
+      } else {
+        addToast('No characters available. Create one to start chatting.', 'error');
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [isInitializing, chatData, currentCharacter, defaultCharacterId, allCharacters, startNewChat, addToast]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -1026,7 +1056,21 @@ function App() {
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {!hasSession && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}><div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div><div style={{ fontSize: '0.85rem' }}>Loading workspace...</div></div>}
+        {/* ✅ FIXED: Actionable empty state instead of dead-end loading message */}
+        {!hasSession && !isInitializing && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.7, gap: '16px' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
+            <div style={{ fontSize: '0.85rem' }}>No active chat session</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="nav-btn" onClick={() => setIsCharListOpen(true)}>
+                <span style={{ marginRight: '6px' }}>🎭</span>Select Character
+              </button>
+              <button type="button" className="nav-btn" onClick={handleNewChat}>
+                <span style={{ marginRight: '6px' }}>💬</span>New Chat
+              </button>
+            </div>
+          </div>
+        )}
 
         {hasSession && <>
           {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}

@@ -1,6 +1,6 @@
 // src/hooks/messageLogic.ts
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../../core';
 import { loadAllRawChatData, saveRawChatData, deleteRawChatMessage } from '../../infrastructure';
 import type { ChatData } from '../../types';
 import { editChatMessageInChatData } from './chatService';
@@ -122,7 +122,7 @@ export async function branchMessage(currentChat: ChatData, messageId: string): P
 
     const branchedChat: ChatData = {
         ...currentChat,
-        id: uuidv4(),
+        id: generateId(),
         name: `${currentChat.name} (Branch)`,
         contexts: [...(currentChat.contexts || [])],
         participants: [...currentChat.participants],
@@ -153,7 +153,7 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
     // Deep clone messages so they get new IDs and don't share references
     const clonedMessages = currentChat.chatMessageHistory.slice(0, cloneIndex + 1).map(msg => ({
         ...msg,
-        id: uuidv4(),
+        id: generateId(),
         character: { ...msg.character },
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -161,7 +161,7 @@ export async function cloneChatUpToMessage(currentChat: ChatData, messageId: str
     }));
 
     const clonedChat: ChatData = {
-        id: uuidv4(),
+        id: generateId(),
         name: `${currentChat.name} (Clone)`,
         protagonist: { ...currentChat.protagonist },
         participants: currentChat.participants.map(p => ({ ...p })),

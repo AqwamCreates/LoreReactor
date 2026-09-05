@@ -2,18 +2,10 @@
  * Storage Implementation - Main storage access layer
  * This consolidates all storage operations from the original storage.tsx
  */
+import { localURL } from "../../configurations";
+import { getTimestamp, DEFAULT_VALUES, MANIFEST_FILE } from "../../core";
+import type { Sampler, LanguageModel } from "../../types";
 
-import type {
-  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext,
-  LanguageModel, RawLanguageModel, Character, RawCharacter, ChatMessage,
-  RawChatMessage, ChatData, RawChatData, BudgetStrategy, RawBudgetStrategy,
-  InterjectableAction, Profile, RawProfile, SummarizationStep, RawSummarizationStep,
-  Webpage, RawWebpage, Memory, RawMemory
-} from '../../core/types';
-import { localURL } from '../../configurations';
-import { v4 as uuidv4 } from 'uuid';
-import { PATHS, MANIFEST_FILE, DEFAULT_VALUES } from '../../core/constants';
-import { generateId, getTimestamp, loadInBatches, filterNull, fileToBase64 } from '../../core/utils';
 
 // Default objects
 const now = getTimestamp();
@@ -143,4 +135,4 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
 }
 
 // Export storage functions
-export { fetchJson, putJson, deleteResource, ensureManifest, updateManifest, fileToBase64 };
+export { fetchJson, putJson, deleteResource, ensureManifest, updateManifest };

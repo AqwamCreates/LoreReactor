@@ -1,7 +1,7 @@
 // src/components/StopPatternEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { StopPattern } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '../core';
 import './main.css';
 
 interface StopPatternEditorModalProps {
@@ -125,7 +125,7 @@ export function StopPatternEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? uuidv4() : (existingStopPattern?.id || uuidv4()),
+            id: isNewClone ? generateId() : (existingStopPattern?.id || generateId()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             pattern: pattern.trim(),
