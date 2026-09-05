@@ -785,11 +785,23 @@ function App() {
   }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
   const handleNewChat = useCallback(async () => {
-    await safeAutoSave(chatData); clearFetchCache();
+    // 1. Save current chat if it exists
+    await safeAutoSave(chatData); 
+    clearFetchCache();
+    
+    // 2. Clear the stored active chat ID so we don't restore it later
+    localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+
     let c = currentCharacter;
     if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
     if (!c && allChats.length) c = allChats[0].protagonist;
-    if (c) { startNewChat(c); refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null; }
+    
+    if (c) { 
+      startNewChat(c); 
+      refreshChatList(); 
+      setIsChatListOpen(false); 
+      lastViewedMessageIdRef.current = null; 
+    }
   }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, refreshChatList, safeAutoSave]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
