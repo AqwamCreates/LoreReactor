@@ -518,8 +518,16 @@ export function useChatSession() {
     const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
 
     const startNewChat = useCallback((char: Character) => {
-        const c = createNewChatData(char); c.name = 'Untitled Chat';
-        setChatData(c); setCurrentCharacter(char); setIsInitialImageProcessed(false); isAtBottomRef.current = true;
+        const c = createNewChatData(char); 
+        c.name = 'Untitled Chat';
+        
+        // Reset session state
+        setChatData(c); 
+        setCurrentCharacter(char); 
+        setIsInitialImageProcessed(false); 
+        isAtBottomRef.current = true;
+        
+        // Save immediately so it appears in the list
         saveRawChatData(c).catch(e => console.error('Failed to save new chat:', e));
     }, []);
 
