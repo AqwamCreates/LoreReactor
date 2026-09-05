@@ -316,17 +316,6 @@ app.post('/fetch', async (req, res) => {
     return res.status(400).json({ error: 'Missing url' });
   }
 
-  // Block internal/private IPs
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.toLowerCase();
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
-      return res.status(403).json({ ok: false, status: 403, error: 'Internal URLs are not allowed' });
-    }
-  } catch {
-    return res.status(400).json({ ok: false, status: 400, error: 'Invalid URL' });
-  }
-
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
