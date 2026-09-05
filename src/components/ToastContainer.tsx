@@ -1,6 +1,6 @@
 // src/components/ToastContainer.tsx
-
-import { useToast } from "../presentation/contexts/ToastContext";
+import React from 'react';
+import { useToast } from '../context/ToastContext';
 
 export function ToastContainer() {
   const { toasts, removeToast } = useToast();

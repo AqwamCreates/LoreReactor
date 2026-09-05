@@ -2,14 +2,15 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory } from '../types';
-import { generateId } from '../core';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import type { LanguageModelContext } from '../services/LanguageModelEngine';
+import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
+import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getResponseDelayWeightValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
+import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
+import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import './main.css';
-import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getResponseDelayWeightValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../domain/services/chatTraitsDetectionService';
-import { type LanguageModelContext, uploadCharacterImage, uploadCharacterVoice } from '../infrastructure';
-import { parseCharacterCard, mapCardToEditorFields } from '../infrastructure/api/characterCardParser';
-import { LanguageModelEngine } from '../infrastructure/models/languageModelEngine';
 
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
@@ -339,7 +340,7 @@ export function CharacterEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? generateId() : (existingCharacter?.id || generateId()),
+            id: isNewClone ? uuidv4() : (existingCharacter?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description, systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,

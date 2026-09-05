@@ -1,6 +1,6 @@
 // src/hooks/useEntityModal.ts
 import { useState, useCallback } from 'react';
-import { useToast } from '../contexts/ToastContext';
+import { useToast } from '../context/ToastContext';
 
 export function useEntityModal<T>(
     saveFn: (item: T) => Promise<boolean>,

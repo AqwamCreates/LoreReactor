@@ -1,7 +1,7 @@
 // src/hooks/useChatListManager.ts
 import { useState, useEffect, useCallback } from 'react';
-import { loadAllRawChatData, deleteRawChatData } from '../../infrastructure';
-import type { ChatData } from '../../types';
+import type { ChatData } from '../types';
+import { loadAllRawChatData, deleteRawChatData } from './storage';
 
 export function useChatListManager() {
     const [chats, setChats] = useState<ChatData[]>([]);

@@ -1,10 +1,10 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
-import { generateId } from '../core';
+import { vramUseEstimation } from '../hooks/vramUseEstimation';
+import { v4 as uuidv4 } from 'uuid';
 import { allBackends, cloudBackends } from '../languageModelInformation';
 import './main.css';
-import { vramUseEstimation } from '../presentation/hooks/vramUseEstimation';
 
 interface ModelEditorModalProps {
     isOpen: boolean;
@@ -367,7 +367,7 @@ export function ModelEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? generateId() : (existingModel?.id || generateId()),
+            id: isNewClone ? uuidv4() : (existingModel?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             backend,

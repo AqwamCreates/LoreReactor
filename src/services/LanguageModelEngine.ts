@@ -1,8 +1,6 @@
 // src/services/LanguageModelEngine.ts
-
-import type { localAddress } from "../../configurations";
-import { cloudEndpoints, cloudBackends, cloudTokenizeEndpoints } from "../../languageModelInformation";
-
+import { localAddress } from "../configurations";
+import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
 
 export interface TokenStats {
   fullText: string;

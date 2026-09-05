@@ -1,22 +1,21 @@
 // src/App.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { editMessage, deleteMessage, massDeleteMessages, branchMessage, cloneChatUpToMessage } from '../application/usecases/messageService';
-import { getCharacterImageUrl, loadInterjectableActions, saveInterjectableActions, loadRawChatData, loadChatMessages, saveRawChatData, clearFetchCache, loadRawContext } from '../infrastructure';
-import { LanguageModelEngine } from '../infrastructure/models/languageModelEngine';
-import { useToast } from '../presentation/contexts/ToastContext';
-import { getDelayedDisplayName } from '../presentation/hooks/immersionLogic';
-import { useBudgetStrategyManager } from '../presentation/hooks/useBudgetStrategyManager';
-import { useCharacterManager } from '../presentation/hooks/useCharacterManager';
-import { useChatListManager } from '../presentation/hooks/useChatListManager';
-import { useChatSession } from '../presentation/hooks/useChatSession';
-import { useContextManager } from '../presentation/hooks/useContextManager';
-import { useEntityModal } from '../presentation/hooks/useEntityModal';
-import { useExtensionManager } from '../presentation/hooks/useExtensionManager';
-import { useModelManager } from '../presentation/hooks/useModelManager';
-import { useProfileManager } from '../presentation/hooks/useProfileManager';
-import { useSamplerManager } from '../presentation/hooks/useSamplerManager';
-import { useStopPatternManager } from '../presentation/hooks/useStopPatternManager';
-import { formatMessageText } from '../presentation/utils/textFormatter';
+import { useChatSession } from '../hooks/useChatSession';
+import { useChatListManager } from '../hooks/useChatListManager';
+import { useCharacterManager } from '../hooks/useCharacterManager';
+import { useContextManager } from '../hooks/useContextManager';
+import { useSamplerManager } from '../hooks/useSamplerManager';
+import { useStopPatternManager } from '../hooks/useStopPatternManager';
+import { useModelManager } from '../hooks/useModelManager';
+import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
+import { useExtensionManager } from '../hooks/useExtensionManager';
+import { useProfileManager } from '../hooks/useProfileManager';
+import { useEntityModal } from '../hooks/useEntityModal';
+import { useToast } from '../context/ToastContext';
+import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawContext } from '../hooks/storage';
+import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
+import { clearFetchCache } from '../hooks/chatLogic';
+import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
@@ -26,13 +25,14 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
+import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
   ChatData, Extension, InterjectableAction, Profile
 } from '../types';
-
 
 // ─── Constants & Types ──────────────────────────────────────────────
 
@@ -262,7 +262,6 @@ function App() {
   const suppressNextClickRef = useRef(false);
   const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
   const chatDataRef = useRef<ChatData | null>(null);
-  const isRestoringChatRef = useRef(false);
 
   useEffect(() => {
     chatDataRef.current = chatData;
@@ -330,7 +329,6 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
-  // 🛑 FIXED: Chat restoration with race condition guard + fallback recovery
   useEffect(() => {
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
@@ -340,7 +338,6 @@ function App() {
     }
 
     if (savedChatId) {
-      isRestoringChatRef.current = true;
       (async () => {
         try {
           const chatData = await loadRawChatData(savedChatId);
@@ -351,35 +348,24 @@ function App() {
             }
             
             if (fullChat) {
-              const cd = fullChat as ChatData;
-              let protagonist = cd.protagonist;
+              const chatData = fullChat as ChatData;
+              let protagonist = chatData.protagonist;
               if (protagonist && !protagonist.systemPrompt) {
                   const fullChar = await loadFullCharacter(protagonist.id);
                   if (fullChar) protagonist = fullChar;
               }
 
-              setChatData({ ...cd, protagonist });
+              setChatData({ ...chatData, protagonist });
               if (protagonist) setCurrentCharacter(protagonist);
             }
           }
         } catch (e) {
           console.error('Failed to restore active chat:', e);
           localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-          // ✅ FALLBACK: Start a fresh chat so user isn't stuck
-          const fallbackChar = defaultCharacterId
-            ? allCharacters.find(c => c.id === defaultCharacterId)
-            : allCharacters[0];
-          if (fallbackChar) {
-            startNewChat(fallbackChar);
-          }
-        } finally {
-          isRestoringChatRef.current = false;
         }
       })();
-    } else {
-      isRestoringChatRef.current = false;
     }
-  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, defaultCharacterId, allCharacters, startNewChat]);
+  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -472,10 +458,7 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // 🛑 FIXED: Validation effect now respects restoration guard
   useEffect(() => {
-    if (isRestoringChatRef.current) return;
-
     const currentChat = chatDataRef.current;
     if (!currentChat) return;
 
@@ -588,29 +571,6 @@ function App() {
     return () => clearTimeout(t);
   }, [loadSteps, isInitializing]);
 
-  // ✅ SAFETY NET: If we finished initializing but have no session, auto-create one
-  useEffect(() => {
-    if (isInitializing) return;
-    if (chatData && currentCharacter) return; // Already have a valid session
-    
-    // Give restoration a brief grace period before forcing fallback
-    const timer = setTimeout(() => {
-      if (chatDataRef.current && currentCharacter) return; // Restored during grace period
-      
-      const fallbackChar = defaultCharacterId
-        ? allCharacters.find(c => c.id === defaultCharacterId)
-        : allCharacters[0];
-      
-      if (fallbackChar) {
-        startNewChat(fallbackChar);
-      } else {
-        addToast('No characters available. Create one to start chatting.', 'error');
-      }
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [isInitializing, chatData, currentCharacter, defaultCharacterId, allCharacters, startNewChat, addToast]);
-
   useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = 'auto';
@@ -676,51 +636,44 @@ function App() {
     chatHistoryElement.scrollTop = 0;
   }, [viewMode, chatHistoryRef]);
 
-  // 🛑 FIXED: Token counting now guarded + debounced
   useEffect(() => {
-    if (isRestoringChatRef.current) return;
     if (!chatData?.chatMessageHistory || !chatData.participants) return;
-
-    const timer = setTimeout(() => {
-      let isCancelled = false;
-      const calculateMaxTokens = async () => {
-        const participantCounts: Record<string, number> = {};
-        for (const p of chatData.participants) {
-          participantCounts[p.id] = 0;
-        }
-        if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
-          participantCounts[chatData.protagonist.id] = 0;
-        }
-        const selectedModel = allModels.find(m => m.id === selectedModelId);
-        const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
-        const modelContext = selectedModel ? {
-          apiKey: selectedModel.apiKey,
-          backend: selectedModel.backend,
-          modelPath: typeof selectedModel.parameters?.modelPath === 'string'
-            ? selectedModel.parameters.modelPath
-            : undefined,
-          runtimePort,
-        } : undefined;
-        for (const msg of chatData.chatMessageHistory) {
-          if (msg.character && msg.textContent) {
-            const charId = msg.character.id;
-            if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
-                const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
-                if (participantCounts[charId] !== undefined) {
-                  participantCounts[charId] += tokens;
-                }
-            }
+    let isCancelled = false;
+    const calculateMaxTokens = async () => {
+      const participantCounts: Record<string, number> = {};
+      for (const p of chatData.participants) {
+        participantCounts[p.id] = 0;
+      }
+      if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
+        participantCounts[chatData.protagonist.id] = 0;
+      }
+      const selectedModel = allModels.find(m => m.id === selectedModelId);
+      const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
+      const modelContext = selectedModel ? {
+        apiKey: selectedModel.apiKey,
+        backend: selectedModel.backend,
+        modelPath: typeof selectedModel.parameters?.modelPath === 'string'
+          ? selectedModel.parameters.modelPath
+          : undefined,
+        runtimePort,
+      } : undefined;
+      for (const msg of chatData.chatMessageHistory) {
+        if (msg.character && msg.textContent) {
+          const charId = msg.character.id;
+          if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
+              const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
+              if (participantCounts[charId] !== undefined) {
+                participantCounts[charId] += tokens;
+              }
           }
         }
-        if (isCancelled) return;
-        const maxTokens = Math.max(...Object.values(participantCounts), 0);
-        setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(maxTokens);
-      };
-      calculateMaxTokens();
-      return () => { isCancelled = true; };
-    }, 1500);
-
-    return () => clearTimeout(timer);
+      }
+      if (isCancelled) return;
+      const maxTokens = Math.max(...Object.values(participantCounts), 0);
+      setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(maxTokens);
+    };
+    calculateMaxTokens();
+    return () => { isCancelled = true; };
   }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
 
   // Save new chats when they are created
@@ -1056,21 +1009,7 @@ function App() {
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {/* ✅ FIXED: Actionable empty state instead of dead-end loading message */}
-        {!hasSession && !isInitializing && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.7, gap: '16px' }}>
-            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
-            <div style={{ fontSize: '0.85rem' }}>No active chat session</div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="nav-btn" onClick={() => setIsCharListOpen(true)}>
-                <span style={{ marginRight: '6px' }}>🎭</span>Select Character
-              </button>
-              <button type="button" className="nav-btn" onClick={handleNewChat}>
-                <span style={{ marginRight: '6px' }}>💬</span>New Chat
-              </button>
-            </div>
-          </div>
-        )}
+        {!hasSession && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}><div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div><div style={{ fontSize: '0.85rem' }}>Loading workspace...</div></div>}
 
         {hasSession && <>
           {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
