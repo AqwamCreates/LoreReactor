@@ -29,6 +29,7 @@ import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
+import { v4 as uuidv4 } from 'uuid';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
   ChatData, Extension, InterjectableAction, Profile
@@ -195,16 +196,16 @@ function App() {
   // Toast Hook
   const { addToast } = useToast();
 
-  // Manager Hooks
-  const { chats: allChats, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
-  const { characters: allCharacters, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
-  const { contexts: allContexts, saveContext, deleteContext } = useContextManager();
-  const { Samplers: allSamplers, saveSampler, deleteSampler } = useSamplerManager();
-  const { stopPatterns: allStopPatterns, saveStopPattern, deleteStopPattern } = useStopPatternManager();
-  const { models: allModels, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
-  const { strategies: allBudgetStrategies, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
-  const { extensions: allExtensions, deleteExtension } = useExtensionManager();
-  const { profiles: allProfiles, saveProfile, deleteProfile } = useProfileManager();
+  // Manager Hooks — destructure isLoading from ALL
+  const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
+  const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
+  const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
+  const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
+  const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
+  const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
+  const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
+  const { extensions: allExtensions, isLoading: extLoading, deleteExtension } = useExtensionManager();
+  const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
 
   // Entity modals
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
@@ -250,6 +251,9 @@ function App() {
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
 
+  // ✅ Active chat restoration guard
+  const [activeChatRestored, setActiveChatRestored] = useState(false);
+
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -267,17 +271,17 @@ function App() {
     chatDataRef.current = chatData;
   }, [chatData]);
 
-  // Loading state hooks
+  // ✅ Loading state hooks — uses !isLoading instead of .length > 0
   const loadSteps = useMemo<LoadStep[]>(() => [
-    { id: 'characters', label: 'Characters', icon: '🎭', done: allCharacters.length > 0 },
-    { id: 'models', label: 'Models', icon: '🤖', done: allModels.length > 0 },
-    { id: 'contexts', label: 'Contexts', icon: '🌍', done: allContexts.length > 0 },
-    { id: 'samplers', label: 'Samplers', icon: '🎚️', done: allSamplers.length > 0 },
-    { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: allStopPatterns.length > 0 },
-    { id: 'budget', label: 'Budget', icon: '💰', done: allBudgetStrategies.length > 0 },
-    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: allProfiles.length > 0 },
-    { id: 'chats', label: 'Chat Sessions', icon: '💬', done: allChats.length > 0 },
-  ], [allCharacters, allModels, allContexts, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allChats]);
+    { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
+    { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
+    { id: 'contexts', label: 'Contexts', icon: '🌍', done: !contextsLoading },
+    { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
+    { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
+    { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
+    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: !profilesLoading },
+    { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
+  ], [charsLoading, modelsLoading, contextsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
   
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
@@ -329,7 +333,10 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
+  // ✅ Active chat restoration — always results in a usable session
   useEffect(() => {
+    if (charsLoading) return;
+
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
 
@@ -337,35 +344,87 @@ function App() {
       setTimeout(() => setSelectedModelId(savedModelId), 0);
     }
 
-    if (savedChatId) {
-      (async () => {
-        try {
-          const chatData = await loadRawChatData(savedChatId);
-          if (chatData) {
-            let fullChat = chatData;
-            if (!chatData.chatMessageHistory || chatData.chatMessageHistory.length === 0) {
-              fullChat = await loadChatMessages(chatData as ChatData);
-            }
-            
-            if (fullChat) {
-              const chatData = fullChat as ChatData;
-              let protagonist = chatData.protagonist;
+    if (!savedChatId) {
+      // No saved chat — create empty session immediately
+      let char: Character | null = null;
+      if (defaultCharacterId) {
+        char = allCharacters.find(c => c.id === defaultCharacterId) || null;
+      }
+      if (!char && allCharacters.length > 0) {
+        char = allCharacters[0];
+      }
+      if (char) {
+        startNewChat(char);
+      } else {
+        // No characters at all — create bare session so we're never stuck
+        setCurrentCharacter(null);
+        setChatData({
+          id: uuidv4(),
+          name: 'Untitled Chat',
+          protagonist: null as unknown as Character,
+          participants: [],
+          contexts: [],
+          chatMessageHistory: [],
+          numberOfMessages: 0,
+          firstCreatedTimestamp: Date.now(),
+          lastUpdatedTimestamp: Date.now(),
+          parentChatDataId: null,
+          parentChatMessageId: null,
+        });
+      }
+      setActiveChatRestored(true);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const chatDataResult = await loadRawChatData(savedChatId, allCharacters);
+        if (cancelled) return;
+
+        if (chatDataResult) {
+          let fullChat = chatDataResult;
+          // ✅ Only attempt message loading if the shell indicates messages exist
+          if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.chatMessageHistory.length === 0) {
+              try {
+                  fullChat = await loadChatMessages(chatDataResult);
+              } catch (e) {
+                  console.warn('Failed to load chat messages, using shell:', e);
+                  // Keep the shell — it has metadata even without messages
+              }
+          }
+          
+          if (fullChat && !cancelled) {
+              const cd = fullChat as ChatData;
+              let protagonist = cd.protagonist;
               if (protagonist && !protagonist.systemPrompt) {
                   const fullChar = await loadFullCharacter(protagonist.id);
-                  if (fullChar) protagonist = fullChar;
+                  if (fullChar && !cancelled) protagonist = fullChar;
               }
 
-              setChatData({ ...chatData, protagonist });
+              setChatData({ ...cd, protagonist });
               if (protagonist) setCurrentCharacter(protagonist);
-            }
+          } else {
+              console.warn('Active chat could not be loaded, clearing reference.');
+              localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+              if (allCharacters.length > 0) {
+                  startNewChat(allCharacters[0]);
+              }
           }
-        } catch (e) {
-          console.error('Failed to restore active chat:', e);
-          localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+      }
+    } catch (e) {
+        console.error('Failed to restore active chat:', e);
+        localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+        if (allCharacters.length > 0) {
+          startNewChat(allCharacters[0]);
         }
-      })();
-    }
-  }, [loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId]);
+      } finally {
+        if (!cancelled) setActiveChatRestored(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [charsLoading, allCharacters, defaultCharacterId, loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, startNewChat]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -430,14 +489,14 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const s = await loadRawChatData(parentChatDataId);
+        const s = await loadRawChatData(parentChatDataId, allCharacters);
         if (!cancelled) setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null);
       } catch {
         if (!cancelled) setBranchSourceTitle(null);
       }
     })();
     return () => { cancelled = true; };
-  }, [chatData?.parentChatDataId]);
+  }, [chatData?.parentChatDataId, allCharacters]);
 
   useEffect(() => {
     if (defaultCharacterId && allCharacters.length > 0) {
@@ -458,22 +517,25 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
+  // ✅ Guarded sync effect — won't run until active chat restoration is complete
   useEffect(() => {
+    if (!activeChatRestored) return;
+
     const currentChat = chatDataRef.current;
     if (!currentChat) return;
 
     let changed = false;
     const updated = { ...currentChat };
 
-    const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist.id);
-    if (!freshProtag) {
+    const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist?.id);
+    if (!freshProtag && currentChat.protagonist) {
       console.warn(`Protagonist ${currentChat.protagonist.id} was deleted. Resetting.`);
       const fallback = allCharacters[0]; 
       if (fallback) {
         updated.protagonist = fallback;
         changed = true;
       }
-    } else if (freshProtag.lastUpdatedTimestamp !== currentChat.protagonist.lastUpdatedTimestamp) {
+    } else if (freshProtag && freshProtag.lastUpdatedTimestamp !== currentChat.protagonist?.lastUpdatedTimestamp) {
       updated.protagonist = freshProtag;
       changed = true;
     }
@@ -542,7 +604,7 @@ function App() {
     }
 
     if (changed) setChatData(updated);
-  }, [allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]);
+  }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]);
 
   useEffect(() => {
     if (!activeStrategy) return;
@@ -561,14 +623,14 @@ function App() {
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
+  // ✅ No forced timeout — loading screen stays until all managers report done
   useEffect(() => {
     if (!isInitializing) return;
     if (loadSteps.every(s => s.done)) {
-      const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 200);
+      setIsFadeOut(true);
+      const t = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => { setIsFadeOut(true); setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); }, 4000);
-    return () => clearTimeout(t);
   }, [loadSteps, isInitializing]);
 
   useEffect(() => {
@@ -764,7 +826,7 @@ function App() {
 
   const handleToggleParticipant = async (charId: string) => {
     if (!chatData) return;
-    if (charId === chatData.protagonist.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
+    if (charId === chatData.protagonist?.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
     const ids = chatData.participants.map(p => p.id);
     let np: Character[];
     if (ids.includes(charId)) { np = chatData.participants.filter(p => p.id !== charId); }
@@ -773,7 +835,7 @@ function App() {
       const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
       np = [...chatData.participants, ch];
     }
-    if (!np.find(p => p.id === chatData.protagonist.id)) np.unshift(chatData.protagonist);
+    if (!np.find(p => p.id === chatData.protagonist?.id)) np.unshift(chatData.protagonist);
     const uc = { ...chatData, participants: np };
     setChatData(uc);
     if (!np.find(p => p.id === currentCharacter?.id)) setCurrentCharacter(uc.protagonist);
@@ -881,7 +943,7 @@ function App() {
   const handleNavigateToSource = async () => {
     if (!chatData?.parentChatDataId) return;
     try {
-      const s = await loadRawChatData(chatData.parentChatDataId);
+      const s = await loadRawChatData(chatData.parentChatDataId, allCharacters);
       if (s) { const f = s as unknown as ChatData; setChatData(f); if (f.protagonist) setCurrentCharacter(f.protagonist); refreshChatList(); addToast(`Navigated back to "${f.name || 'Untitled Chat'}"`, 'info'); }
       else addToast('Source chat not found.', 'error');
     } catch { addToast('Failed to navigate to source chat.', 'error'); }
@@ -1009,9 +1071,18 @@ function App() {
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {!hasSession && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}><div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div><div style={{ fontSize: '0.85rem' }}>Loading workspace...</div></div>}
+        {/* ✅ No more dead-end "Loading workspace..." screen.
+            The restoration effect guarantees a session exists post-init.
+            If somehow chatData is still null, show minimal prompt to create character. */}
+        {!chatData && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
+            <div style={{ fontSize: '0.85rem' }}>Create a character to begin.</div>
+            <button type="button" onClick={() => charModal.open()} style={{ marginTop: '8px', padding: '8px 20px', fontSize: '0.85rem', fontWeight: 'bold', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>🎭 Create Character</button>
+          </div>
+        )}
 
-        {hasSession && <>
+        {chatData && <>
           {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
 
           <header className="app-header"><div className="header-content"><div className="header-top">
@@ -1134,7 +1205,7 @@ function App() {
 
         {isChatListOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={c => handleSwitchChat(c.id)} onDelete={id => handleDeleteChat({ stopPropagation: () => {} } as any, id)} onCreateNew={handleNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
 
-        {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist.id} />}
+        {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist?.id} />}
         {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
 
         {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={chatData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
@@ -1158,7 +1229,7 @@ function App() {
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
       </div>
 
-      {actionMenuTarget && hasSession && (
+      {actionMenuTarget && chatData && (
         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={e => e.stopPropagation()}>
           <div className="action-menu-header"><span>Interject Action</span></div>
           <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={e => setMenuSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={e => e.stopPropagation()} />
