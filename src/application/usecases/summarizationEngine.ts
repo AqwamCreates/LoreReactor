@@ -1,9 +1,12 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { ChatData, ChatMessage, Context, Character } from '../types';
-import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
-import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
-import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
+
+import type { Context } from "react";
+import type { LanguageModelContext } from "../../infrastructure";
+import { LanguageModelEngine } from "../../infrastructure/models/languageModelEngine";
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString } from "../../stringList";
+import type { ChatMessage, ChatData, Character } from "../../types";
+import { getParticipantTag, replacePlaceholders, getRevealIndexByCharacterId, createChatHistoryPrompt } from "./chatService";
+
 
 const engine = new LanguageModelEngine();
 

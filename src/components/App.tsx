@@ -1,21 +1,6 @@
 // src/App.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useChatSession } from '../hooks/useChatSession';
-import { useChatListManager } from '../hooks/useChatListManager';
-import { useCharacterManager } from '../hooks/useCharacterManager';
-import { useContextManager } from '../hooks/useContextManager';
-import { useSamplerManager } from '../hooks/useSamplerManager';
-import { useStopPatternManager } from '../hooks/useStopPatternManager';
-import { useModelManager } from '../hooks/useModelManager';
-import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
-import { useExtensionManager } from '../hooks/useExtensionManager';
-import { useProfileManager } from '../hooks/useProfileManager';
-import { useEntityModal } from '../hooks/useEntityModal';
-import { useToast } from '../context/ToastContext';
-import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawContext } from '../hooks/storage';
-import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
-import { clearFetchCache } from '../hooks/chatLogic';
-import { getDelayedDisplayName } from '../hooks/immersionLogic';
+
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
@@ -25,14 +10,29 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
-import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
 import type {
   Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
   ChatData, Extension, InterjectableAction, Profile
 } from '../types';
+import { editMessage, deleteMessage, massDeleteMessages, branchMessage, cloneChatUpToMessage } from '../application/usecases/messageService';
+import { getCharacterImageUrl, loadInterjectableActions, saveInterjectableActions, loadRawChatData, loadChatMessages, saveRawChatData, clearFetchCache, loadRawContext } from '../infrastructure';
+import { useToast } from '../presentation/contexts/ToastContext';
+import { getDelayedDisplayName } from '../presentation/hooks/immersionLogic';
+import { useBudgetStrategyManager } from '../presentation/hooks/useBudgetStrategyManager';
+import { useCharacterManager } from '../presentation/hooks/useCharacterManager';
+import { useChatListManager } from '../presentation/hooks/useChatListManager';
+import { useChatSession } from '../presentation/hooks/useChatSession';
+import { useContextManager } from '../presentation/hooks/useContextManager';
+import { useEntityModal } from '../presentation/hooks/useEntityModal';
+import { useExtensionManager } from '../presentation/hooks/useExtensionManager';
+import { useModelManager } from '../presentation/hooks/useModelManager';
+import { useProfileManager } from '../presentation/hooks/useProfileManager';
+import { useSamplerManager } from '../presentation/hooks/useSamplerManager';
+import { useStopPatternManager } from '../presentation/hooks/useStopPatternManager';
+import { LanguageModelEngine } from '../infrastructure/models/languageModelEngine';
+import { formatMessageText } from '../presentation/utils/textFormatter';
 
 // ─── Constants & Types ──────────────────────────────────────────────
 
@@ -189,7 +189,7 @@ function App() {
     generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
-    activeStrategy, processProtagonistImageSilently,
+    activeStrategy,
   } = useChatSession();
 
   // Toast Hook

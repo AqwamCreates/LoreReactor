@@ -1,10 +1,10 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { LanguageModel, StopPattern } from '../types';
-import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { allBackends, cloudBackends } from '../languageModelInformation';
 import './main.css';
+import { vramUseEstimation } from '../presentation/hooks/vramUseEstimation';
 
 interface ModelEditorModalProps {
     isOpen: boolean;

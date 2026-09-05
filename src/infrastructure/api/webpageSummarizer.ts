@@ -1,5 +1,7 @@
 // src/services/WebpageSummarizationEngine.ts
-import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+
+import type { LanguageModelContext } from "../models";
+import { LanguageModelEngine } from "../models/languageModelEngine";
 
 const engine = new LanguageModelEngine();
 

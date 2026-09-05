@@ -1,14 +1,9 @@
 // src/hooks/storage.ts
-import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
-  Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
-  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
-  SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
-  Memory, RawMemory
-} from '../types';
 
-import { localURL } from '../configurations';
+import type { Context } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { localURL } from '../../configurations';
+import type { Sampler, LanguageModel, InterjectableAction, SummarizationStep, Memory, RawMemory, ChatData, Character, StopPattern, RawStopPattern, RawSampler, RawCharacter, RawContext, RawLanguageModel, BudgetStrategy, RawBudgetStrategy, Profile, RawProfile, RawSummarizationStep, Webpage, RawWebpage, RawChatData, RawChatMessage, ChatMessage } from '../../types';
 
 const now = Date.now()
 
