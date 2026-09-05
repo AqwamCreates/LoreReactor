@@ -53,12 +53,12 @@ function getCurrentDateAndTimeString(): string {
     });
 }
 
-function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
+export function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
     if (!text) return text;
     const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    result = result.replace(/\{\{protagonist\}\}/g, protagonistString);
+    result = result.replace(/\{\{user\}\}/g, protagonistString);       // <--- ADD THIS
     return result;
 }
 

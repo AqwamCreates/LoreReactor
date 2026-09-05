@@ -2,7 +2,7 @@
 import type { ChatData, ChatMessage, Context, Character } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId } from '../hooks/chatLogic';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 
 const engine = new LanguageModelEngine();
@@ -87,16 +87,18 @@ async function compressChunk(
  */
 export async function makeCharacterMemory(
     chatData: ChatData, 
-    character: Character, 
+    character: Character,
     languageModelContext: LanguageModelContext, 
     maxTokens = 512
 ): Promise<Context | null> {
     const history = chatData.chatMessageHistory;
     if (history.length === 0) return null;
 
-    const participantTag = getParticipantTag(character, chatData.participants);
-    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${character.systemPrompt}${contextEndString}` : '';
-    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${character.thinkPrompt}${contextEndString}` : '';
+    const participants = chatData.participants;
+    const participantTag = getParticipantTag(character, participants);
+    const protagonistTag = getParticipantTag(chatData.protagonist, participants);
+    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, chatData.protagonist?.name || null)}${contextEndString}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, chatData.protagonist?.name || null)}${contextEndString}` : '';
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(chatData);
 
