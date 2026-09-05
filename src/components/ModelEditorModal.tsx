@@ -176,15 +176,16 @@ export function ModelEditorModal({
         keyCacheType: settings.cache_type_k,
         valueCacheType: settings.cache_type_v,
         contextSize: contextLength || 8192,
-        backend: backend,
+        backend: backend || "",
     });
 
-    const isCloudBackend = cloudBackends.includes(backend);
+    const isCloudBackend = cloudBackends.includes(backend || "");
     const isLlamaCpp = backend === 'Llama.cpp';
 
     useEffect(() => {
         if (isOpen) {
-            if (existingModel) {
+            const timer = window.setTimeout(() => {
+                if (existingModel) {
                 isLoadingExistingRef.current = true;
 
                 setName(existingModel.name || '');
@@ -238,7 +239,7 @@ export function ModelEditorModal({
                 } else {
                     setSettings({ ...DEFAULT_SETTINGS });
                 }
-            } else {
+                } else {
                 isLoadingExistingRef.current = false;
                 setName('');
                 setDescription('');
@@ -253,8 +254,11 @@ export function ModelEditorModal({
                 setOutputGenerationCostPerMillion(0);
                 setSettings({ ...DEFAULT_SETTINGS });
                 setSelectedStopPatternIds([]);
-            }
-            setErrors({});
+                }
+                setErrors({});
+            }, 0);
+
+            return () => window.clearTimeout(timer);
         }
     }, [isOpen, existingModel]);
 
@@ -341,17 +345,17 @@ export function ModelEditorModal({
         if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
         if (settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
-        if (settings.draft_model && settings.draft_model.trim()) params.draft_model = settings.draft_model;
+        if (settings.draft_model?.trim()) params.draft_model = settings.draft_model;
         if (settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
-        if (settings.device_draft && settings.device_draft.trim()) params.device_draft = settings.device_draft;
+        if (settings.device_draft?.trim()) params.device_draft = settings.device_draft;
         if (settings.parallel !== DEFAULT_SETTINGS.parallel) params.parallel = settings.parallel;
         if (settings.threads !== DEFAULT_SETTINGS.threads) params.threads = settings.threads;
         if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) params.threads_batch = settings.threads_batch;
         if (settings.batch_size !== DEFAULT_SETTINGS.batch_size) params.batch_size = settings.batch_size;
         if (settings.ubatch_size !== DEFAULT_SETTINGS.ubatch_size) params.ubatch_size = settings.ubatch_size;
         if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) params.fit_target = settings.fit_target;
-        if (settings.tensor_split && settings.tensor_split.trim()) params.tensor_split = settings.tensor_split;
-        if (settings.extra_flags && settings.extra_flags.trim()) params.extra_flags = settings.extra_flags;
+        if (settings.tensor_split?.trim()) params.tensor_split = settings.tensor_split;
+        if (settings.extra_flags?.trim()) params.extra_flags = settings.extra_flags;
         if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
         if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;
         if (settings.no_mmap !== DEFAULT_SETTINGS.no_mmap) params.no_mmap = settings.no_mmap;
