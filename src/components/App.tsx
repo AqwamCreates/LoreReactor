@@ -259,6 +259,12 @@ function App() {
   const isLongPressingRef = useRef(false);
   const suppressNextClickRef = useRef(false);
   const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
+  const chatDataRef = useRef<ChatData | null>(null); // ✅ Added for stable sync
+
+  // Keep ref in sync
+  useEffect(() => {
+    chatDataRef.current = chatData;
+  }, [chatData]);
 
   // Loading state
   const loadSteps = useMemo<LoadStep[]>(() => [
@@ -472,54 +478,99 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
+  // ✅ Robust Entity Synchronization & Deletion Handling (No Loop)
   useEffect(() => {
-    if (!chatData) return;
-    let changed = false;
-    const updated = { ...chatData };
+    const currentChat = chatDataRef.current;
+    if (!currentChat) return;
 
-    const freshProtag = allCharacters.find(c => c.id === chatData.protagonist.id);
-    if (freshProtag && freshProtag.lastUpdatedTimestamp !== chatData.protagonist.lastUpdatedTimestamp) {
+    let changed = false;
+    const updated = { ...currentChat };
+
+    // 1. Check Protagonist
+    const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist.id);
+    if (!freshProtag) {
+      // Protagonist was deleted! Fallback to default or first available
+      console.warn(`Protagonist ${currentChat.protagonist.id} was deleted. Resetting.`);
+      const fallback = allCharacters[0]; 
+      if (fallback) {
+        updated.protagonist = fallback;
+        changed = true;
+      }
+    } else if (freshProtag.lastUpdatedTimestamp !== currentChat.protagonist.lastUpdatedTimestamp) {
       updated.protagonist = freshProtag;
       changed = true;
     }
 
-    const freshParticipants = chatData.participants.map(p => {
+    // 2. Check Participants (Filter out deleted ones)
+    const validParticipants = currentChat.participants.filter(p => {
+      const exists = allCharacters.some(c => c.id === p.id);
+      if (!exists) {
+        console.warn(`Participant ${p.id} was deleted. Removing from chat.`);
+        changed = true;
+      }
+      return exists;
+    });
+
+    // Also update timestamps for remaining participants
+    const freshParticipants = validParticipants.map(p => {
       const fresh = allCharacters.find(c => c.id === p.id);
       return (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) ? fresh : p;
     });
-    if (freshParticipants.some((p, i) => p !== chatData.participants[i])) {
+
+    if (freshParticipants.length !== currentChat.participants.length || 
+        freshParticipants.some((p, i) => p !== currentChat.participants[i])) {
       updated.participants = freshParticipants;
       changed = true;
     }
 
-    if (chatData.contexts?.length) {
-      const freshContexts = chatData.contexts.map(ctx => {
+    // 3. Check Contexts (Filter out deleted ones)
+    if (currentChat.contexts?.length) {
+      const validContexts = currentChat.contexts.filter(ctx => {
+        const exists = allContexts.some(c => c.id === ctx.id);
+        if (!exists) {
+          console.warn(`Context ${ctx.id} was deleted. Removing from chat.`);
+          changed = true;
+        }
+        return exists;
+      });
+
+      const freshContexts = validContexts.map(ctx => {
         const fresh = allContexts.find(c => c.id === ctx.id);
         return (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) ? fresh : ctx;
       });
-      if (freshContexts.some((c, i) => c !== chatData.contexts?.[i])) {
+
+      if (freshContexts.length !== currentChat.contexts.length ||
+          freshContexts.some((c, i) => c !== currentChat.contexts?.[i])) {
         updated.contexts = freshContexts;
         changed = true;
       }
     }
 
-    if (chatData.Profile) {
-      const freshProfile = allProfiles.find(p => p.id === chatData.Profile?.id);
-      if (freshProfile && freshProfile.lastUpdatedTimestamp !== chatData.Profile.lastUpdatedTimestamp) {
+    // 4. Check Profile
+    if (currentChat.Profile) {
+      const freshProfile = allProfiles.find(p => p.id === currentChat.Profile?.id);
+      if (!freshProfile) {
+        console.warn(`Profile ${currentChat.Profile.id} was deleted. Clearing from chat.`);
+        updated.Profile = undefined;
+        changed = true;
+      } else if (freshProfile.lastUpdatedTimestamp !== currentChat.Profile.lastUpdatedTimestamp) {
         updated.Profile = freshProfile;
         changed = true;
       }
     }
 
+    // 5. Check Current Character (if different from protagonist)
     if (currentCharacter) {
       const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
-      if (freshCurrent && freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
+      if (!freshCurrent) {
+         setCurrentCharacter(updated.protagonist);
+      } else if (freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
         setCurrentCharacter(freshCurrent);
       }
     }
 
     if (changed) setChatData(updated);
-  }, [allCharacters, allContexts, allProfiles, chatData, currentCharacter, setChatData, setCurrentCharacter]);
+  }, [allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]); // Removed chatData from deps
 
   useEffect(() => {
     if (!activeStrategy) return;
