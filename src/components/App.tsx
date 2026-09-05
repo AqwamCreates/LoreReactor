@@ -270,6 +270,7 @@ function App() {
   const [activeChatRestored, setActiveChatRestored] = useState(false);
   const restorationDoneRef = useRef(false);
   const initialSyncSkippedRef = useRef(false);
+  const chatModifiedRef = useRef(false);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -650,11 +651,10 @@ function App() {
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
-  // ✅ No forced timeout — loading screen stays until all managers report done
+  // ✅ Delay fadeout after all steps complete and chat is restored
   useEffect(() => {
     if (!isInitializing) return;
     if (loadSteps.every(s => s.done) && activeChatRestored) {
-      // Hold for 600ms so user sees all icons lit up before fade
       const hold = setTimeout(() => {
         setIsFadeOut(true);
         const fade = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
@@ -663,6 +663,38 @@ function App() {
       return () => clearTimeout(hold);
     }
   }, [loadSteps, isInitializing, activeChatRestored]);
+
+  // ✅ Reset modified flag when switching to a different chat
+  useEffect(() => {
+    chatModifiedRef.current = false;
+  }, [chatData?.id]);
+
+  // ✅ Mark chat as modified when meaningful content is added
+  useEffect(() => {
+    if (!chatData || !chatData.id) return;
+    if (chatModifiedRef.current) return;
+
+    const wasModified = 
+      chatData.chatMessageHistory.length > 0 ||
+      chatData.participants.length > 1 ||
+      (chatData.contexts?.length ?? 0) > 0 ||
+      !!chatData.Profile;
+
+    if (wasModified) {
+      chatModifiedRef.current = true;
+    }
+  }, [chatData]);
+
+  // ✅ Save new chat to disk when it becomes modified for the first time
+  useEffect(() => {
+    if (!chatData || !chatData.id || !chatModifiedRef.current) return;
+
+    const existsOnDisk = allChats.some(c => c.id === chatData.id);
+    if (!existsOnDisk) {
+      saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
+      refreshChatList();
+    }
+  }, [chatData, allChats, refreshChatList]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -768,13 +800,6 @@ function App() {
     calculateMaxTokens();
     return () => { isCancelled = true; };
   }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
-
-  // Save new chats when they are created
-  useEffect(() => {
-    if (chatData && chatData.chatMessageHistory.length === 0 && chatData.id) {
-       saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
-    }
-  }, [chatData?.id, chatData?.chatMessageHistory.length]);
 
 
   // ✅ 4. CALLBACKS
@@ -928,6 +953,7 @@ function App() {
   const handleSaveTitle = () => {
     if (!chatData) return;
     const t = editTitleValue.trim() || 'Untitled Chat';
+    chatModifiedRef.current = true;
     setChatData({ ...chatData, name: t } as ChatData);
     saveRawChatData({ ...chatData, name: t });
     refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
