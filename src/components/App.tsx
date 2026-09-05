@@ -253,6 +253,8 @@ function App() {
 
   // ✅ Active chat restoration guard
   const [activeChatRestored, setActiveChatRestored] = useState(false);
+  const restorationDoneRef = useRef(false);
+  const initialSyncSkippedRef = useRef(false);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -325,17 +327,12 @@ function App() {
 
   // ✅ 3. EFFECTS
 
-  useEffect(() => { 
-    loadInterjectableActions().then(setActions); 
-  }, []);
-  
-  useEffect(() => { 
-    if (actions.length > 0) saveInterjectableActions(actions); 
-  }, [actions]);
-
-  // ✅ Active chat restoration — always results in a usable session
+  // ✅ Active chat restoration — runs exactly once via ref guard
   useEffect(() => {
-    if (charsLoading) return;
+    if (restorationDoneRef.current) return;
+    if (charsLoading || chatsLoading) return;
+
+    restorationDoneRef.current = true;
 
     const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
     const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
@@ -344,19 +341,34 @@ function App() {
       setTimeout(() => setSelectedModelId(savedModelId), 0);
     }
 
-    if (!savedChatId) {
-      // No saved chat — create empty session immediately
-      let char: Character | null = null;
-      if (defaultCharacterId) {
-        char = allCharacters.find(c => c.id === defaultCharacterId) || null;
+    const activateChat = async (chat: ChatData) => {
+      let fullChat = chat;
+      if (!chat.chatMessageHistory.length && (chat.numberOfMessages ?? 0) > 0) {
+        try {
+          fullChat = await loadChatMessages(chat);
+        } catch (e) {
+          console.warn('Failed to load chat messages for fallback:', e);
+        }
       }
-      if (!char && allCharacters.length > 0) {
-        char = allCharacters[0];
-      }
-      if (char) {
-        startNewChat(char);
+      if (fullChat.protagonist) {
+        let protagonist = fullChat.protagonist;
+        if (!protagonist.systemPrompt) {
+          const fullChar = await loadFullCharacter(protagonist.id);
+          if (fullChar) protagonist = fullChar;
+        }
+        setChatData({ ...fullChat, protagonist });
+        setCurrentCharacter(protagonist);
       } else {
-        // No characters at all — create bare session so we're never stuck
+        setChatData(fullChat);
+      }
+    };
+
+    if (!savedChatId) {
+      if (allChats.length > 0) {
+        activateChat(allChats[0]);
+      } else if (allCharacters.length > 0) {
+        startNewChat(allCharacters[0]);
+      } else {
         setCurrentCharacter(null);
         setChatData({
           id: uuidv4(),
@@ -376,55 +388,51 @@ function App() {
       return;
     }
 
-    let cancelled = false;
     (async () => {
       try {
         const chatDataResult = await loadRawChatData(savedChatId, allCharacters);
-        if (cancelled) return;
 
         if (chatDataResult) {
           let fullChat = chatDataResult;
-          // ✅ Only attempt message loading if the shell indicates messages exist
           if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.chatMessageHistory.length === 0) {
-              try {
-                  fullChat = await loadChatMessages(chatDataResult);
-              } catch (e) {
-                  console.warn('Failed to load chat messages, using shell:', e);
-                  // Keep the shell — it has metadata even without messages
-              }
+            try {
+              fullChat = await loadChatMessages(chatDataResult);
+            } catch (e) {
+              console.warn('Failed to load chat messages, using shell:', e);
+            }
           }
-          
-          if (fullChat && !cancelled) {
-              const cd = fullChat as ChatData;
-              let protagonist = cd.protagonist;
-              if (protagonist && !protagonist.systemPrompt) {
-                  const fullChar = await loadFullCharacter(protagonist.id);
-                  if (fullChar && !cancelled) protagonist = fullChar;
-              }
 
-              setChatData({ ...cd, protagonist });
-              if (protagonist) setCurrentCharacter(protagonist);
-          } else {
-              console.warn('Active chat could not be loaded, clearing reference.');
-              localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-              if (allCharacters.length > 0) {
-                  startNewChat(allCharacters[0]);
-              }
+          const cd = fullChat as ChatData;
+          let protagonist = cd.protagonist;
+          if (protagonist && !protagonist.systemPrompt) {
+            const fullChar = await loadFullCharacter(protagonist.id);
+            if (fullChar) protagonist = fullChar;
           }
-      }
-    } catch (e) {
+
+          setChatData({ ...cd, protagonist });
+          if (protagonist) setCurrentCharacter(protagonist);
+        } else {
+          console.warn('Active chat not found, falling back.');
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+          if (allChats.length > 0) {
+            await activateChat(allChats[0]);
+          } else if (allCharacters.length > 0) {
+            startNewChat(allCharacters[0]);
+          }
+        }
+      } catch (e) {
         console.error('Failed to restore active chat:', e);
         localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-        if (allCharacters.length > 0) {
+        if (allChats.length > 0) {
+          await activateChat(allChats[0]);
+        } else if (allCharacters.length > 0) {
           startNewChat(allCharacters[0]);
         }
       } finally {
-        if (!cancelled) setActiveChatRestored(true);
+        setActiveChatRestored(true);
       }
     })();
-
-    return () => { cancelled = true; };
-  }, [charsLoading, allCharacters, defaultCharacterId, loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, startNewChat]);
+  }, [charsLoading, chatsLoading, allCharacters, allChats, loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, startNewChat]);
 
   useEffect(() => {
     if (chatData?.id) {
@@ -517,9 +525,13 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // ✅ Guarded sync effect — won't run until active chat restoration is complete
+  // ✅ Sync effect — skips initial load, only runs on subsequent entity changes
   useEffect(() => {
     if (!activeChatRestored) return;
+    if (!initialSyncSkippedRef.current) {
+      initialSyncSkippedRef.current = true;
+      return;
+    }
 
     const currentChat = chatDataRef.current;
     if (!currentChat) return;
@@ -1071,9 +1083,6 @@ function App() {
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {/* ✅ No more dead-end "Loading workspace..." screen.
-            The restoration effect guarantees a session exists post-init.
-            If somehow chatData is still null, show minimal prompt to create character. */}
         {!chatData && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
             <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
