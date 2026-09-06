@@ -26,11 +26,11 @@ const endingAppearancePromptLine = `${contextStartString}End Of The Characters' 
 const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
 const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
-const startOfContextLine = `${contextStartString}Start Of The Context.${contextEndString}`;
-const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
-
 const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
+
+const startOfContextLine = `${contextStartString}Start Of The Context.${contextEndString}`;
+const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
 
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
@@ -817,13 +817,9 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
                 // Location name and description
                 const locationName = location.name || 'Unknown Location';
-                const locationDescription = location.description?.trim();
                 const locationText = location.text?.trim();
 
                 let locationContent = `${contextStartString}Current Location: ${locationName}`;
-                if (locationDescription) {
-                    locationContent += `\n${locationDescription}`;
-                }
                 if (locationText) {
                     locationContent += `\n\n${locationText}`;
                 }
