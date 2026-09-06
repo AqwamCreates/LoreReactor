@@ -820,7 +820,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
-        enableCharacterExpression: rawProfile.enableCharacterExpression ?? true,
+        enableCharacterExpression: rawProfile.enableCharacterExpression ?? false,
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
         forceNoContextImageInjection: rawProfile.forceNoContextImageInjection,
         useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,

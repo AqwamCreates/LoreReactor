@@ -20,6 +20,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Memory',
     'Chat History',
     'Context',
+    'Location',
     'Fatigue Information',
     'Date And Time',
     'Text Injection'
@@ -115,6 +116,7 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
+    const [enableCharacterExpression, setEnableCharacterExpression] = useState(true);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
     const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(-1);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
@@ -150,6 +152,7 @@ export function ProfileEditorModal({
                 setName(existingProfile.name || '');
                 setDescription(existingProfile.description || '');
                 setForceNameReveal(existingProfile.forceNameReveal ?? false);
+                setEnableCharacterExpression(existingProfile.enableCharacterExpression ?? false);
                 setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
                 setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
                 setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
@@ -184,6 +187,7 @@ export function ProfileEditorModal({
                 setName('');
                 setDescription('');
                 setForceNameReveal(false);
+                setEnableCharacterExpression(true);
                 setForceNoCharacterImageInjection(false);
                 setNumberOfMessagesToDisableThinkPrompt(-1);
                 setNumberOfMessagesToDisableMetaThinkInstructions(-1);
@@ -231,6 +235,7 @@ export function ProfileEditorModal({
             name: name.trim(),
             description: description.trim() || undefined,
             forceNameReveal,
+            enableCharacterExpression,
             forceNoCharacterImageInjection,
             numberOfMessagesToDisableThinkPrompt,
             numberOfMessagesToDisableMetaThinkInstructions,
@@ -271,6 +276,7 @@ export function ProfileEditorModal({
             name: `${name.trim()} (Clone)`,
             description: description.trim() || undefined,
             forceNameReveal,
+            enableCharacterExpression,
             forceNoCharacterImageInjection,
             numberOfMessagesToDisableThinkPrompt,
             numberOfMessagesToDisableMetaThinkInstructions,
@@ -481,6 +487,19 @@ export function ProfileEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Always show character names instead of "Character X".
                         </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={enableCharacterExpression}
+                                onChange={(e) => setEnableCharacterExpression(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Enable Character Expression</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral portrait.
+                        </div>
                     </div>
 
                     {/* Injection Section */}
@@ -510,7 +529,7 @@ export function ProfileEditorModal({
                             <span>Force No Context Image Injection</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent context images from being sent to the model.
+                            Prevent context and location images from being sent to the model.
                         </div>
 
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>

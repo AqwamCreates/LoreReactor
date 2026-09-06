@@ -432,7 +432,7 @@ export function useChatSession() {
                     onToken(s.fullText);
 
                     // ✅ Real-time sentiment during budget strategy streaming
-                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
                         if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
@@ -463,7 +463,7 @@ export function useChatSession() {
                             onToken?.(s.fullText);
 
                             // ✅ Real-time sentiment during standard streaming
-                            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                             if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                                 const sentiment = await sentimentEngine.analyze(s.fullText);
                                 if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
@@ -502,7 +502,7 @@ export function useChatSession() {
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
 
             // ✅ Stamp character expression from final generated text
-            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawText);
                 if (sentiment) {
@@ -738,7 +738,7 @@ export function useChatSession() {
                     throttledSetStreamingText(displayText);
 
                     // ✅ Real-time sentiment during resume streaming
-                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && displayText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(displayText);
                         if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
@@ -769,7 +769,7 @@ export function useChatSession() {
             }
 
             // ✅ Stamp expression on resumed message
-            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawOutput);
                 if (sentiment) {

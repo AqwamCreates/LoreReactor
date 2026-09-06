@@ -10,6 +10,7 @@ import { parseCharacterCard, mapCardToEditorFields } from '../services/character
 import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
+import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import './main.css';
 
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
@@ -82,6 +83,11 @@ export function CharacterEditorModal({
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
+    const [showImageEditor, setShowImageEditor] = useState(false);
+    const [emotionImages, setEmotionImages] = useState<Record<string, string>>({});
+
+    // For new characters without UUID yet, assign a temporary ID for image uploads
+    const [pendingCharacterId, setPendingCharacterId] = useState<string | null>(null);
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
         iw: null, cp: null, ms: null,
@@ -123,6 +129,7 @@ export function CharacterEditorModal({
             setAutoDetected({ iw: null, cp: null, ms: null });
             setShowAdvancedSettings(false);
             setShowMemoryManager(false);
+            setShowImageEditor(false);
 
             if (existingCharacter) {
                 setName(existingCharacter.name || '');
@@ -132,8 +139,15 @@ export function CharacterEditorModal({
                 setAppearancePrompt(existingCharacter.appearancePrompt || '');
                 setDialoguePrompt(existingCharacter.dialoguePrompt || '');
                 setFirstMessage('');
-                setImagePreview(existingCharacter.image ? `/user_data/character_images/${existingCharacter.image}` : null);
+
+                // ✅ Load from images record, map neutral to main preview
+                const imgs = existingCharacter.images ?? {};
+                setEmotionImages(imgs);
+                const neutralFilename = imgs['neutral'];
+                setImagePreview(neutralFilename ? `/user_data/character_images/${existingCharacter.id}/${neutralFilename}` : null);
                 setImageFile(null);
+                setPendingCharacterId(null);
+
                 setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
                 setSelectedStopPatternIds(existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || []);
                 setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
@@ -160,6 +174,8 @@ export function CharacterEditorModal({
             } else {
                 setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setFirstMessage('');
                 setImageFile(null); setImagePreview(null);
+                setEmotionImages({});
+                setPendingCharacterId(uuidv4());
                 setSelectedSamplerId(allSamplers[0]?.id || ''); setSelectedStopPatternIds([]);
                 setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
                 setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
@@ -232,7 +248,18 @@ export function CharacterEditorModal({
     };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); } };
-    const handleRemoveImage = (e: React.MouseEvent) => { e.stopPropagation(); setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
+    const handleRemoveImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setImageFile(null);
+        setImagePreview(null);
+        // Also remove neutral from emotion images
+        setEmotionImages(prev => {
+            const next = { ...prev };
+            delete next['neutral'];
+            return next;
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
     const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const file = e.target.files[0];
@@ -268,10 +295,23 @@ export function CharacterEditorModal({
         setSubmitError(null);
         if (!name.trim()) { setSubmitError("Name is required!"); return null; }
 
-        let finalImageFilename = existingCharacter?.image || null;
+        // ✅ Determine the character ID for image uploads
+        const targetCharacterId = isNewClone
+            ? uuidv4()
+            : (existingCharacter?.id || pendingCharacterId || uuidv4());
+
+        // ✅ Build images record with neutral from main portrait
+        let finalImages: Record<string, string> = isNewClone ? {} : { ...(existingCharacter?.images ?? {}) };
+
+        // Merge in any emotion images edited via the image editor modal
+        finalImages = { ...finalImages, ...emotionImages };
+
         if (imageFile) {
             setIsUploading(true);
-            try { finalImageFilename = await uploadCharacterImage(imageFile); } catch (err) { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
+            try {
+                const neutralFilename = await uploadCharacterImage(targetCharacterId, imageFile);
+                finalImages['neutral'] = neutralFilename;
+            } catch (err) { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
             setIsUploading(false);
         }
 
@@ -340,13 +380,14 @@ export function CharacterEditorModal({
 
         const now = Date.now();
         return {
-            id: isNewClone ? uuidv4() : (existingCharacter?.id || uuidv4()),
+            id: targetCharacterId,
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description, systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,
             appearancePrompt: appearancePrompt.trim() || undefined,
             dialoguePrompt: dialoguePrompt.trim() || undefined,
-            image: finalImageFilename ?? undefined, voice: finalVoiceFilename, sampler: finalSampler,
+            images: finalImages,
+            voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             nameSensitivity: finalNS, skipProbability: finalRDW, memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
@@ -371,6 +412,9 @@ export function CharacterEditorModal({
         return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`~${displayCount.toLocaleString()} token(s)`}</div>;
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
+
+    // ✅ Effective character ID for the image editor (existing or pending)
+    const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
 
     return (
         <>
@@ -403,6 +447,18 @@ export function CharacterEditorModal({
                                     </div>
                                     <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
                                 </div>
+
+                                {/* ✅ Add More Images button */}
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-cancel"
+                                    onClick={() => setShowImageEditor(true)}
+                                    disabled={isUploading}
+                                    style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}
+                                >
+                                    More Images ({Object.keys(emotionImages).length})
+                                </button>
+
                                 <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
                                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
                                 <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
@@ -499,6 +555,25 @@ export function CharacterEditorModal({
                 onClose={() => setShowMemoryManager(false)}
                 character={existingCharacter || null}
                 onSaveMemories={setMemories}
+            />
+
+            {/* ✅ Image Editor Sub-Modal */}
+            <CharacterImageEditorModal
+                isOpen={showImageEditor}
+                onClose={() => setShowImageEditor(false)}
+                characterId={effectiveCharacterId}
+                images={emotionImages}
+                onSave={(updatedImages) => {
+                    setEmotionImages(updatedImages);
+                    // Sync neutral preview
+                    const neutral = updatedImages.neutral;
+                    if (neutral) {
+                        setImagePreview(`/user_data/character_images/${effectiveCharacterId}/${neutral}`);
+                        setImageFile(null);
+                    } else if (!imageFile) {
+                        setImagePreview(null);
+                    }
+                }}
             />
         </>
     );

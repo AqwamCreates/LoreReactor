@@ -102,7 +102,7 @@ function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
 function renderProfileSubtext(profile: Profile) {
   const flags: string[] = [];
   if (profile.forceNameReveal) flags.push('Force Names');
-  if (profile.enableCharacterExpression) flags.push('Expressions');
+  if (profile.enableCharacterExpression) flags.push('Character Expressions');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
   if (profile.enableMemoryReading) flags.push('Memory Read');
