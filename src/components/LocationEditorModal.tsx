@@ -40,6 +40,7 @@ export function LocationEditorModal({
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
     const [globalWeight, setGlobalWeight] = useState<number>(1);
     const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
+    const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -86,6 +87,7 @@ export function LocationEditorModal({
                 setLocationBindings(existingLocation.locationBindings ?? []);
                 setGlobalWeight(existingLocation.globalWeight ?? 1);
                 setCharacterWeights(existingLocation.characterWeights ?? {});
+                setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
             } else {
                 setName('');
                 setDescription('');
@@ -97,6 +99,7 @@ export function LocationEditorModal({
                 setLocationBindings([]);
                 setGlobalWeight(1);
                 setCharacterWeights({});
+                setUseBase64Encoding(false);
             }
             setErrors({});
             setActivationTestText('');
@@ -187,6 +190,7 @@ export function LocationEditorModal({
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
             globalWeight: globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
+            useBase64Encoding,
             firstCreatedTimestamp: isNewClone ? now : (existingLocation?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -381,6 +385,22 @@ export function LocationEditorModal({
                                 </select>
                             </div>
                         )}
+                    </div>
+
+                    <div className="editor-section">
+                        <span className="editor-section-title">Encoding</span>
+                        <label className="editor-checkbox-label">
+                            <input
+                                type="checkbox"
+                                checked={useBase64Encoding}
+                                onChange={(e) => setUseBase64Encoding(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Use Base64 Encoding</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Encode location text as base64 in the prompt. Useful for preventing the model from treating location descriptions as instructions.
+                        </div>
                     </div>
                 </div>
             </div>

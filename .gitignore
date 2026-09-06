@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Dependencies
 node_modules/
 
@@ -89,4 +88,3 @@ user_data/
 # user_data/extensions/
 
 llama/
->>>>>>> parent of 524cbd4 (**Add Application Layer Architecture and Core Services**)
