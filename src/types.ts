@@ -281,7 +281,7 @@ export interface RawInteractionData extends RawData {
   participantIds: string[];
   contextIds: string[];
   locationIds: string[];
-  interactionMessageIdHistory: string[];
+  interactionIdHistory: string[];
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   ProfileId?: string;

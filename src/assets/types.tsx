@@ -43,7 +43,7 @@ export interface InteractionData {
   protagonistId: string;
   participantIds: string[];
   instructionIds?: string[];
-  interactionMessageIdHistory: string[];
+  interactionIdHistory: string[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
 }

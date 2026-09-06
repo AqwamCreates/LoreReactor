@@ -998,7 +998,7 @@ async function buildInteractionDataShell(
     contexts,
     locations,
     interactionHistory: [],
-    numberOfMessages: rawInteractionData.interactionMessageIdHistory?.length ?? 0,
+    numberOfMessages: rawInteractionData.interactionIdHistory?.length ?? 0,
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
@@ -1008,35 +1008,37 @@ async function buildInteractionDataShell(
 }
 
 export async function loadInteractionMessages(interactionData: InteractionData): Promise<InteractionData> {
+    // Already hydrated — return as-is
     if (interactionData.interactionHistory.length > 0) return interactionData;
 
     const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
-    if (!rawInteractionData || !rawInteractionData.interactionMessageIdHistory || rawInteractionData.interactionMessageIdHistory.length === 0) {
+    if (!rawInteractionData || !rawInteractionData.interactionIdHistory || rawInteractionData.interactionIdHistory.length === 0) {
         return interactionData;
     }
 
+    // Build character lookup from already-hydrated shell
     const charMap = new Map<string, Character>();
     if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
     for (const p of interactionData.participants) {
         charMap.set(p.id, p);
     }
 
-    const messagePromises = rawInteractionData.interactionMessageIdHistory.map(async (messageId) => {
+    const messagePromises = rawInteractionData.interactionIdHistory.map(async (messageId) => {
         const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
         if (!rawMessage) return null;
-        
+
         const character = charMap.get(rawMessage.characterId);
         const { characterId, ...messageWithoutCharId } = rawMessage;
-        
-        return { 
-            id: messageId, 
-            ...messageWithoutCharId, 
-            character: character || { 
-                id: characterId, 
-                name: '[Unknown]', 
-                firstCreatedTimestamp: Date.now(), 
-                lastUpdatedTimestamp: Date.now() 
-            } as Character 
+
+        return {
+            id: messageId,
+            ...messageWithoutCharId,
+            character: character || {
+                id: characterId,
+                name: '[Unknown]',
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now()
+            } as Character
         };
     });
 
@@ -1165,7 +1167,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     participantIds: participants.map(p => p.id),
     contextIds: contexts?.map(i => i.id) || [],
     locationIds: locations?.map(l => l.id) || [],
-    interactionMessageIdHistory: interactionHistory.map(m => m.id),
+    interactionIdHistory: interactionHistory.map(m => m.id),
     parentInteractionDataId: parentInteractionDataId || null, 
     parentInteractionMessageId: parentInteractionMessageId || null,
     ProfileId: Profile?.id,
@@ -1187,7 +1189,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
     locationIds: sourceChat.locations?.map(l => l.id) || [],
-    interactionMessageIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
+    interactionIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 
