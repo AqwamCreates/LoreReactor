@@ -424,7 +424,53 @@ export function useChatSession() {
 
             if (strat) {
                 const previousCost = budgetCumulativeCostRef.current;
-                const engine = new BudgetStrategyEngine(strat, previousCost);
+
+                // Callback that triggers model loading via the backend API
+                const loadLocalModel = async (modelId: string): Promise<number | null> => {
+                    // Check if already running
+                    const existing = running[modelId];
+                    if (existing?.port) return existing.port;
+
+                    // Find model definition for load parameters
+                    const targetModel = strat.localModels.find(m => m.id === modelId) || strat.onlineModels.find(m => m.id === modelId);
+                    if (!targetModel) return null;
+
+                    // Cloud models don't need loading
+                    if (targetModel.apiKey && targetModel.backend) return null;
+
+                    try {
+                        const modelPath = targetModel.model || '';
+                        const params = targetModel.parameters || {};
+                        const args: string[] = ['-c', targetModel.contextLength.toString()];
+                        const ngl = params.gpu_layers !== undefined ? Number(params.gpu_layers) : 99;
+                        args.push('-ngl', String(ngl));
+                        if (targetModel.mmproj) args.push('--mmproj', String(targetModel.mmproj).trim());
+                        if (targetModel.lora) args.push('--lora', String(targetModel.lora).trim());
+                        if (params.cache_type_k) args.push('-ctk', String(params.cache_type_k));
+                        if (params.cache_type_v) args.push('-ctv', String(params.cache_type_v));
+                        if (params.batch_size && Number(params.batch_size) !== 1024) args.push('-b', String(params.batch_size));
+                        if (params.ubatch_size && Number(params.ubatch_size) !== 1024) args.push('-ub', String(params.ubatch_size));
+                        if (params.threads && Number(params.threads) > 0) args.push('-t', String(params.threads));
+                        const extraFlags = params.extra_flags ? String(params.extra_flags).trim() : '';
+                        if (extraFlags) args.push(...extraFlags.split(/\s+/));
+
+                        const res = await fetch(`${localURL}/models/load`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: targetModel.id, modelPath, args }),
+                        });
+
+                        if (res.ok) {
+                            const responseData = await res.json();
+                            return responseData.port ?? null;
+                        }
+                    } catch (e) {
+                        console.warn(`Auto-load of model ${targetModel.name} failed:`, e);
+                    }
+                    return null;
+                };
+
+                const bse = new BudgetStrategyEngine(strat, running, previousCost, loadLocalModel);
                 const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
                     setGenerationSpeed(s.msPerToken);
                     if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
@@ -441,9 +487,9 @@ export function useChatSession() {
                         }
                     }
                 }} : undefined;
-                rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
-                budgetCumulativeCostRef.current = engine.currentCost;
-                const requestCost = engine.currentCost - previousCost;
+                rawText = await bse.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
+                budgetCumulativeCostRef.current = bse.currentCost;
+                const requestCost = bse.currentCost - previousCost;
                 if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
             } else {
                 if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }

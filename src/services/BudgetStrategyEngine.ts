@@ -6,15 +6,6 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 
 const engine = new LanguageModelEngine();
 
-function buildModelContext(model: LanguageModel): LanguageModelContext {
-    return {
-        apiKey: model.apiKey,
-        backend: model.backend,
-        modelPath: model.model,
-        runtimePort: (model.parameters as any)?._runtimePort,
-    };
-}
-
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
         cacheHitPerMillion: model.cacheHitCostPerOneMillionOfTokens ?? 0,
@@ -61,15 +52,27 @@ function isQuotaError(e: unknown): boolean {
     const status = (e as any)?.status ?? (e as any)?.statusCode;
     const message = ((e as Error)?.message || '').toLowerCase();
     return status === 429 || status === 403 || status === 503 ||
-        message.includes('rate limit') || message.includes('quota') ||
+        message.includes('rate limit') || message.includes('usage limit') ||
+        message.includes('quota') || message.includes('credit') || 
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
-        message.includes('usage limit') || message.includes('too many requests');
+        message.includes('subscribe') || message.includes('too many requests');
+}
+
+export interface RunningModelState {
+    isRunning: boolean;
+    port?: number;
 }
 
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
     public currentCost = 0;
+
+    /** Snapshot of running models at time of construction */
+    private runningModels: Record<string, RunningModelState>;
+
+    /** Callback to load a local model by ID. Returns the port on success, null on failure. */
+    private loadLocalModel: ((id: string) => Promise<number | null>) | null;
 
     /** Index into each pool — exhaust-first means we stay on the same index until it fails. */
     private onlineIndex = 0;
@@ -79,9 +82,64 @@ export class BudgetStrategyEngine {
     private failedOnlineIndices = new Set<number>();
     private failedLocalIndices = new Set<number>();
 
-    constructor(strategy: BudgetStrategy, initialCost = 0) {
+    constructor(
+        strategy: BudgetStrategy,
+        runningModels: Record<string, RunningModelState>,
+        initialCost = 0,
+        loadLocalModel?: (id: string) => Promise<number | null>,
+    ) {
         this.strategy = strategy;
+        this.runningModels = runningModels;
         this.currentCost = initialCost;
+        this.loadLocalModel = loadLocalModel ?? null;
+    }
+
+    /** Builds a model context, resolving runtimePort from the running models map. */
+    private buildModelContext(model: LanguageModel): LanguageModelContext {
+        const isCloud = !!model.apiKey && model.backend;
+        const running = this.runningModels[model.id];
+        const runtimePort = isCloud ? undefined : (running?.port || (model.parameters as any)?._runtimePort);
+
+        return {
+            apiKey: model.apiKey,
+            backend: model.backend,
+            modelPath: model.model,
+            runtimePort,
+        };
+    }
+
+    /** Checks if a model is ready to use (cloud models are always ready, local models need a port). */
+    private isModelReady(model: LanguageModel): boolean {
+        const isCloud = !!model.apiKey && model.backend;
+        if (isCloud) return true;
+        const running = this.runningModels[model.id];
+        return !!(running?.port || (model.parameters as any)?._runtimePort);
+    }
+
+    /** Attempts to load a local model if it's not already running. Returns true if ready after call. */
+    private async ensureModelLoaded(model: LanguageModel): Promise<boolean> {
+        if (this.isModelReady(model)) return true;
+
+        const isCloud = !!model.apiKey && model.backend;
+        if (isCloud) return true;
+
+        if (!this.loadLocalModel) return false;
+
+        try {
+            const port = await this.loadLocalModel(model.id);
+            if (port) {
+                // Update our local snapshot so subsequent calls see the new port
+                this.runningModels = {
+                    ...this.runningModels,
+                    [model.id]: { isRunning: true, port },
+                };
+                return true;
+            }
+        } catch (e) {
+            console.warn(`Failed to auto-load model ${model.name}:`, e);
+        }
+
+        return false;
     }
 
     /**
@@ -141,7 +199,15 @@ export class BudgetStrategyEngine {
             const selection = this.selectFromPool(primaryPool, primaryIndex, primaryFailedSet);
             if (!selection) break;
 
-            const primaryCtx = buildModelContext(selection.model);
+            // Auto-load local model if not already running
+            const loaded = await this.ensureModelLoaded(selection.model);
+            if (!loaded) {
+                primaryFailedSet.add(selection.index);
+                console.warn(`Model ${selection.model.name} could not be loaded, skipping.`);
+                continue;
+            }
+
+            const primaryCtx = this.buildModelContext(selection.model);
             const pricing = buildPricing(selection.model);
             const runtimePort = primaryCtx.runtimePort;
 
@@ -156,7 +222,6 @@ export class BudgetStrategyEngine {
                 );
 
                 // Success — update persistent index to this model for next request
-                // (exhaust-first: keep using this model until it fails)
                 if (useOnline) {
                     this.onlineIndex = selection.index;
                 } else {
@@ -192,7 +257,15 @@ export class BudgetStrategyEngine {
                 const selection = this.selectFromPool(fallbackPool, fallbackIndex, fallbackFailedSet);
                 if (!selection) break;
 
-                const fallbackCtx = buildModelContext(selection.model);
+                // Auto-load fallback model if not already running
+                const loaded = await this.ensureModelLoaded(selection.model);
+                if (!loaded) {
+                    fallbackFailedSet.add(selection.index);
+                    console.warn(`Fallback model ${selection.model.name} could not be loaded, skipping.`);
+                    continue;
+                }
+
+                const fallbackCtx = this.buildModelContext(selection.model);
                 const fallbackPricing = buildPricing(selection.model);
                 const fallbackPort = fallbackCtx.runtimePort;
 
