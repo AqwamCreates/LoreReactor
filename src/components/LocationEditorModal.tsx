@@ -15,6 +15,7 @@ interface LocationEditorModalProps {
     onSave: (location: Location) => void;
     existingLocation?: Location | null;
     allCharacters?: Character[];
+    allLocations?: Location[];
     runtimePort?: number;
 }
 
@@ -24,6 +25,7 @@ export function LocationEditorModal({
     onSave,
     existingLocation,
     allCharacters = [],
+    allLocations = [],
     runtimePort,
 }: LocationEditorModalProps) {
     const [name, setName] = useState('');
@@ -35,6 +37,7 @@ export function LocationEditorModal({
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
+    const [locationBindings, setLocationBindings] = useState<string[]>([]);
     const [globalWeight, setGlobalWeight] = useState<number>(1);
     const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
 
@@ -80,6 +83,7 @@ export function LocationEditorModal({
                 setImageFiles([]);
                 setRegexActivationTrigger(existingLocation.regularExpressionActivationTrigger || '');
                 setCharacterBindings(existingLocation.characterBindings ?? []);
+                setLocationBindings(existingLocation.locationBindings ?? []);
                 setGlobalWeight(existingLocation.globalWeight ?? 1);
                 setCharacterWeights(existingLocation.characterWeights ?? {});
             } else {
@@ -90,6 +94,7 @@ export function LocationEditorModal({
                 setImagePreviews([]);
                 setRegexActivationTrigger('');
                 setCharacterBindings([]);
+                setLocationBindings([]);
                 setGlobalWeight(1);
                 setCharacterWeights({});
             }
@@ -178,7 +183,8 @@ export function LocationEditorModal({
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
-            characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
+            characterBindings: characterBindings.length > 0 ? characterBindings : [],
+            locationBindings: locationBindings.length > 0 ? locationBindings : [],
             globalWeight: globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
             firstCreatedTimestamp: isNewClone ? now : (existingLocation?.firstCreatedTimestamp || now),
@@ -208,6 +214,10 @@ export function LocationEditorModal({
     const imagesRequiresAsterisk = !hasText;
 
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
+    const getLocationById = (id: string) => allLocations.find(l => l.id === id);
+
+    // Filter out self-reference from available location bindings
+    const availableLocationsForBinding = allLocations.filter(l => l.id !== existingLocation?.id);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -290,7 +300,7 @@ export function LocationEditorModal({
                         )}
                     </div>
 
-                    {allCharacters.length > 0 && (
+                    {(
                         <div className="editor-section">
                             <span className="editor-section-title">Character Bindings</span>
                             <div className="context-field-group">
@@ -315,6 +325,31 @@ export function LocationEditorModal({
                         </div>
                     )}
 
+                    {(
+                        <div className="editor-section">
+                            <span className="editor-section-title">Location Bindings</span>
+                            <div className="context-field-group">
+                                <div className="context-binding-hint">Characters can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
+                                <div className="context-character-binding-list">
+                                    {locationBindings.map(id => {
+                                        const loc = getLocationById(id);
+                                        if (!loc) return null;
+                                        return (
+                                            <div key={id} className="context-character-binding-chip">
+                                                <span className="context-character-binding-name">{loc.name}</span>
+                                                <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                    <option value="" disabled>+ Connect from a location</option>
+                                    {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="editor-section">
                         <span className="editor-section-title">Movement Weights</span>
                         <div className="context-field-group">
@@ -323,7 +358,7 @@ export function LocationEditorModal({
                             <div className="context-field-hint">Base likelihood for any character to enter this location. Higher = more likely. Used when no character-specific weight is set.</div>
                         </div>
 
-                        {allCharacters.length > 0 && (
+                        {(
                             <div className="context-field-group">
                                 <span className="editor-label editor-label-small">Character-Specific Weights</span>
                                 <div className="context-binding-hint">Override global weight per character. Characters not listed use the global weight.</div>

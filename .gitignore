@@ -78,12 +78,13 @@ user_data/
 # === KEEP THESE PRIVATE (NO EXCEPTIONS) ===
 # These contain personal chats, custom characters, images, and cache files
 # They will remain ignored because of the 'user_data/' rule at the top
-# user_data/chat_data/
+# user_data/interaction_data/
 # user_data/interaction_messages/
 # user_data/character_data/
 # user_data/character_images/
 # user_data/character_voices/
 # user_data/context_data/
+# user_data/location_data/
 # user_data/kv_caches/
 # user_data/extensions/
 

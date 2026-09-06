@@ -607,7 +607,7 @@ export function ContextEditorModal({
                             </div>
                         </div>
 
-                        {allCharacters.length > 0 && (
+                        {(
                             <div className="context-field-group">
                                 <span className="editor-label editor-label-small">Character Bindings</span>
                                 <div className="context-binding-hint">Only inject when these characters speak. Empty = all characters.</div>

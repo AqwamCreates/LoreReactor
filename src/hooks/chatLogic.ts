@@ -32,8 +32,11 @@ const endOfContextLine = `${contextStartString}End Of The Context.${contextEndSt
 const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
 
+const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
+const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
+
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -44,7 +47,7 @@ const tokenEngine = new LanguageModelEngine();
 /**
  * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
  */
-function isChatMessage(msg: ChatMessage): msg is ChatMessage {
+function isChatMessage(msg: ChatMessage | InteractionMessage): msg is ChatMessage {
     return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
 }
 
@@ -166,7 +169,7 @@ function filterArrayBasedOnTarget(
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
-function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier: number = 1): boolean {
+function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier = 1): boolean {
     const regexTrigger = context.regularExpressionActivationTrigger;
     if (!regexTrigger) return true;
     try {
@@ -382,6 +385,7 @@ interface BuildResult {
     prompt: string;
     activeStopPatterns: StopPattern[];
     activeContextsForImages: Context[];
+    activeLocationImages: string[];
     fetchErrors: string[];
 }
 
@@ -792,6 +796,51 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     metaThinkLines.push(constructedMetaThinkLines);
 
+    // LOCATION BLOCK
+    const locationLines: string[] = [];
+    const activeLocationImages: string[] = [];
+
+    if (interactionData.locations && interactionData.locations.length > 0) {
+        // Find the character's current location from their last interaction entry
+        let currentLocationIndex: number | undefined;
+        for (let i = interactionHistory.length - 1; i >= 0; i--) {
+            if (interactionHistory[i].character.id === characterId && interactionHistory[i].locationIndex !== undefined) {
+                currentLocationIndex = interactionHistory[i].locationIndex;
+                break;
+            }
+        }
+
+        if (currentLocationIndex !== undefined) {
+            const location = interactionData.locations[currentLocationIndex];
+            if (location) {
+                locationLines.push(startOfLocationLine);
+
+                // Location name and description
+                const locationName = location.name || 'Unknown Location';
+                const locationDescription = location.description?.trim();
+                const locationText = location.text?.trim();
+
+                let locationContent = `${contextStartString}Current Location: ${locationName}`;
+                if (locationDescription) {
+                    locationContent += `\n${locationDescription}`;
+                }
+                if (locationText) {
+                    locationContent += `\n\n${locationText}`;
+                }
+                locationContent += `${contextEndString}`;
+
+                locationLines.push(locationContent);
+
+                // Collect location images for injection
+                if (location.images && location.images.length > 0) {
+                    activeLocationImages.push(...location.images);
+                }
+
+                locationLines.push(endOfLocationLine);
+            }
+        }
+    }
+
     // FATIGUE BLOCK
     const fatigueLines: string[] = [];
 
@@ -864,6 +913,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         'Memory': memoryLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
+        'Location': locationLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
         'Text Injection': textInjectionLines,
@@ -912,7 +962,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     const prompt = promptLines.join('\n');
 
-    return { prompt, activeStopPatterns, activeContextsForImages, fetchErrors };
+    return { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors };
 }
 
 export async function prepareRequestBody(
@@ -924,7 +974,7 @@ export async function prepareRequestBody(
 ): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -989,6 +1039,30 @@ export async function prepareRequestBody(
         });
         const resolvedImages = (await Promise.all(imagePromises)).filter(img => img !== null);
         allImageData.push(...resolvedImages);
+    }
+
+    // Location images
+    if (!profile?.forceNoContextImageInjection && activeLocationImages.length > 0) {
+        const locationImagePromises = activeLocationImages.map(async (filename) => {
+            try {
+                const imageUrl = `/user_data/location_data/${filename}`;
+                const response = await fetch(imageUrl);
+                if (!response.ok) return null;
+                const blob = await response.blob();
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                });
+                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                return { data: rawData, id: imageIdCounter++ };
+            } catch (e) {
+                console.warn(`Failed to load location image ${filename}`, e);
+                return null;
+            }
+        });
+        const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
+        allImageData.push(...resolvedLocationImages);
     }
 
     if (protagonistImageBase64s && protagonistImageBase64s.length > 0) {

@@ -386,6 +386,7 @@ export type PromptBlockType =
   | 'Memory'
   | 'Chat History'         // Conversation history messages
   | 'Context'
+  | 'Location'
   | 'Fatigue Information' 
   | 'Date And Time'
   | 'Text Injection'

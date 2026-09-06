@@ -112,7 +112,7 @@ const PATHS = {
   models: "/user_data/model_data",
   stopPatterns: "/user_data/stop_pattern_data", 
   interactionMessages: "/user_data/interaction_messages", 
-  interactionData: "/user_data/chat_data", 
+  interactionData: "/user_data/interaction_data", 
   kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
   profiles: "/user_data/profile_data",
