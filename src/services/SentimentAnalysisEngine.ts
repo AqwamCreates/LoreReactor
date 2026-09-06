@@ -22,14 +22,15 @@ const HF_MODEL_ID = 'Cohee/distilbert-base-uncased-go-emotions-onnx';
 
 type TextClassificationPipeline = (text: string | string[]) => Promise<Array<{ label: string; score: number }>>;
 
-export class SentimentAnalysisEngine {
+class SentimentAnalysisEngine {
     private classifier: TextClassificationPipeline | null = null;
     private loading: Promise<void> | null = null;
     private loadError: string | null = null;
 
     /**
      * Initialize the sentiment engine. Downloads and loads the model via
-     * @huggingface/transformers pipeline. Safe to call multiple times.
+     * @huggingface/transformers pipeline. Safe to call multiple times —
+     * subsequent calls are no-ops if already loaded or currently loading.
      */
     async initialize(): Promise<void> {
         if (this.classifier) return;
@@ -47,10 +48,33 @@ export class SentimentAnalysisEngine {
                 console.error('[SentimentEngine] Initialization failed:', msg);
                 this.loadError = msg;
                 this.classifier = null;
+            } finally {
+                this.loading = null;
             }
         })();
 
         return this.loading;
+    }
+
+    /**
+     * Unload the model and free memory. Safe to call when already unloaded.
+     */
+    async unload(): Promise<void> {
+        // Wait for any in-progress initialization to finish before unloading
+        if (this.loading) {
+            try { await this.loading; } catch { /* ignore init errors during unload */ }
+        }
+
+        if (this.classifier) {
+            // @huggingface/transformers pipelines don't expose a dispose method,
+            // but nullifying the reference allows GC to reclaim the ONNX session
+            // and tokenizer memory.
+            this.classifier = null;
+        }
+
+        this.loading = null;
+        this.loadError = null;
+        console.log('[SentimentEngine] Unloaded.');
     }
 
     /**
@@ -61,14 +85,12 @@ export class SentimentAnalysisEngine {
         if (!this.classifier) return null;
 
         try {
-            // Pipeline returns [{ label, score }] for single text input
-            // For multi-label models like go_emotions, we need topk=null to get all labels
             const results = await this.classifier(text);
 
             // Build full emotion map from pipeline output
             const emotions = {} as Record<EmotionLabel, number>;
             let topEmotion: EmotionLabel = 'neutral';
-            let topScore = Number.NEGATIVE_INFINITY;
+            let topScore = -Infinity;
 
             // Initialize all labels to 0
             for (const label of EMOTION_LABELS) {
@@ -76,7 +98,6 @@ export class SentimentAnalysisEngine {
             }
 
             // Fill in scores from pipeline output
-            // The pipeline may return one result (top-1) or multiple depending on model config
             const resultList = Array.isArray(results) ? results : [results];
             for (const item of resultList) {
                 const label = item.label.toLowerCase() as EmotionLabel;
@@ -89,8 +110,6 @@ export class SentimentAnalysisEngine {
                 }
             }
 
-            // If pipeline only returned top-1, topEmotion is already set correctly
-            // Remaining labels stay at 0
             return { emotions, topEmotion, topScore };
         } catch (e) {
             console.warn('[SentimentEngine] Analysis failed:', e);
@@ -112,3 +131,6 @@ export class SentimentAnalysisEngine {
         return this.loadError;
     }
 }
+
+// Shared singleton — import this everywhere instead of creating new instances
+export const sentimentEngine = new SentimentAnalysisEngine();

@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory, InteractionMessage } from '../types';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory, InteractionMessage, ChatMessage } from '../types';
 import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, prepareRequestBody, editInteractionMessageInInteractionData, findPreviousInteractionMessage } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
@@ -10,6 +10,7 @@ import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThre
 import { editMessage, clearPartialFlag } from './messageLogic';
 import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
+import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
@@ -133,6 +134,7 @@ export function useChatSession() {
     const [isLoading, setIsLoading] = useState(false);
     const [streamingText, setStreamingText] = useState('');
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
+    const [currentCharacterExpression, setCurrentCharacterExpression] = useState<string>('neutral');
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     const [generationSpeed, setGenerationSpeed] = useState(0);
     const [timeToFirstToken, setTimeToFirstToken] = useState(0);
@@ -157,6 +159,7 @@ export function useChatSession() {
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
     const isAtBottomRef = useRef(true);
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
+    const previousExpressionRef = useRef<string>('neutral');
 
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
@@ -231,6 +234,7 @@ export function useChatSession() {
         streamingTextRef.current = ''; streamingCharacterRef.current = null;
         pendingStreamingTextRef.current = ''; lastFlushRef.current = 0;
         resumingMessageIdRef.current = null; resumingExistingTextRef.current = '';
+        previousExpressionRef.current = 'neutral'; setCurrentCharacterExpression('neutral');
         if (pendingFlushRef.current) { clearTimeout(pendingFlushRef.current); pendingFlushRef.current = null; }
     }, []);
 
@@ -421,7 +425,22 @@ export function useChatSession() {
             if (strat) {
                 const previousCost = budgetCumulativeCostRef.current;
                 const engine = new BudgetStrategyEngine(strat, previousCost);
-                const cb: StreamCallbacks | undefined = onToken ? { onToken: (s) => { setGenerationSpeed(s.msPerToken); if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken); streamingTextRef.current = s.fullText; onToken(s.fullText); } } : undefined;
+                const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
+                    setGenerationSpeed(s.msPerToken);
+                    if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
+                    streamingTextRef.current = s.fullText;
+                    onToken(s.fullText);
+
+                    // ✅ Real-time sentiment during budget strategy streaming
+                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                    if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
+                        const sentiment = await sentimentEngine.analyze(s.fullText);
+                        if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
+                            previousExpressionRef.current = sentiment.topEmotion;
+                            setCurrentCharacterExpression(sentiment.topEmotion);
+                        }
+                    }
+                }} : undefined;
                 rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64);
                 budgetCumulativeCostRef.current = engine.currentCost;
                 const requestCost = engine.currentCost - previousCost;
@@ -437,7 +456,22 @@ export function useChatSession() {
 
                 const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
                     const result = await languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
-                        onToken: (s) => { setGenerationSpeed(s.msPerToken); if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken); throttledSetStreamingText(s.fullText); onToken?.(s.fullText); },
+                        onToken: async (s) => {
+                            setGenerationSpeed(s.msPerToken);
+                            if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
+                            throttledSetStreamingText(s.fullText);
+                            onToken?.(s.fullText);
+
+                            // ✅ Real-time sentiment during standard streaming
+                            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                            if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
+                                const sentiment = await sentimentEngine.analyze(s.fullText);
+                                if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
+                                    previousExpressionRef.current = sentiment.topEmotion;
+                                    setCurrentCharacterExpression(sentiment.topEmotion);
+                                }
+                            }
+                        },
                         onFinish: (rs) => {
                             const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
                             setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
@@ -466,6 +500,16 @@ export function useChatSession() {
             const aiMessage = createChatMessage(dataWithRegen, character, displayText);
             const paragraphs = countParagraphs(displayText);
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
+
+            // ✅ Stamp character expression from final generated text
+            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+            if (enableExpression && sentimentEngine.isReady()) {
+                const sentiment = await sentimentEngine.analyze(rawText);
+                if (sentiment) {
+                    aiMessage.characterExpression = sentiment.topEmotion;
+                }
+            }
+
             return addMessageToInteractionData(dataWithRegen, aiMessage);
         } catch (err) {
             const e = err as Error;
@@ -686,12 +730,22 @@ export function useChatSession() {
             const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
 
             const result = await languageModelEngine.generateStream(body, ctrl, {
-                onToken: (s) => {
+                onToken: async (s) => {
                     setGenerationSpeed(s.msPerToken);
                     if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
                     const displayText = existingText + s.fullText;
                     streamingTextRef.current = displayText;
                     throttledSetStreamingText(displayText);
+
+                    // ✅ Real-time sentiment during resume streaming
+                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+                    if (enableExpression && sentimentEngine.isReady() && displayText.length > 20) {
+                        const sentiment = await sentimentEngine.analyze(displayText);
+                        if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
+                            previousExpressionRef.current = sentiment.topEmotion;
+                            setCurrentCharacterExpression(sentiment.topEmotion);
+                        }
+                    }
                 },
             }, lmCtx, getDynamicParagraphLimit(char, dataWithRegen));
 
@@ -712,6 +766,18 @@ export function useChatSession() {
             if (newParagraphs > 0) {
                 const editedIdx = edited.interactionHistory.findIndex(m => m.id === messageId);
                 if (editedIdx !== -1) consumeChatStamina(edited.interactionHistory[editedIdx], newParagraphs);
+            }
+
+            // ✅ Stamp expression on resumed message
+            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? true;
+            if (enableExpression && sentimentEngine.isReady()) {
+                const sentiment = await sentimentEngine.analyze(rawOutput);
+                if (sentiment) {
+                    const editedIdx = edited.interactionHistory.findIndex(m => m.id === messageId);
+                    if (editedIdx !== -1) {
+                        (edited.interactionHistory[editedIdx] as ChatMessage).characterExpression = sentiment.topEmotion;
+                    }
+                }
             }
 
             if (result.isCompleted) {
@@ -780,7 +846,7 @@ export function useChatSession() {
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
                 runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast);
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1] as ChatMessage;
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
@@ -793,7 +859,7 @@ export function useChatSession() {
     // ─── Silent Image Processing ─────────────────────────────────────
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
-        if (!data?.Profile?.forceNoCharacterImageInjection && !char.image) { setIsInitialImageProcessed(true); return; }
+        if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) { setIsInitialImageProcessed(true); return; }
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
@@ -823,7 +889,7 @@ export function useChatSession() {
 
     return {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
-        isLoading, streamingText, streamingCharacter,
+        isLoading, streamingText, streamingCharacter, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef, parentInteractionMessageIds,
         generationSpeed, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,

@@ -17,6 +17,7 @@ import { loadInteractionMessages, loadInterjectableActions, saveInterjectableAct
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
+import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
@@ -53,9 +54,6 @@ interface LoadStep { id: string; label: string; icon: string; done: boolean }
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/**
- * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
- */
 function isChatMessage(msg: ChatMessage): msg is ChatMessage {
     return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
 }
@@ -104,6 +102,7 @@ function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
 function renderProfileSubtext(profile: Profile) {
   const flags: string[] = [];
   if (profile.forceNameReveal) flags.push('Force Names');
+  if (profile.enableCharacterExpression) flags.push('Expressions');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
   if (profile.enableMemoryReading) flags.push('Memory Read');
@@ -229,7 +228,7 @@ function App() {
   // Session Hook
   const {
     interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
-    isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
+    isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
     resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
     generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
@@ -240,7 +239,7 @@ function App() {
   // Toast Hook
   const { addToast } = useToast();
 
-  // Manager Hooks — destructure isLoading from ALL
+  // Manager Hooks
   const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
@@ -334,7 +333,7 @@ function App() {
     if (actions.length > 0) saveInterjectableActions(actions); 
   }, [actions]);
 
-  // ✅ Loading state hooks — uses !isLoading instead of .length > 0
+  // ✅ Loading state hooks
   const loadSteps = useMemo<LoadStep[]>(() => [
     { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
     { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
@@ -382,8 +381,34 @@ function App() {
 
   const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
   const branchOffIndex = interactionData?.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1;
-  const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
+
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
+
+  // ✅ Unified portrait URL cache — computes once per message list or center avatar change
+  const portraitUrlCache = useMemo(() => {
+    const cache = new Map<string, string | null>();
+
+    for (const msg of InteractionMessages) {
+      if (!cache.has(msg.id)) {
+        cache.set(msg.id, getCharacterImageUrl(msg.character.id, msg.characterExpression));
+      }
+    }
+
+    if (centerAvatar) {
+      const key = `cinematic:${centerAvatar.id}`;
+      if (!cache.has(key)) {
+        cache.set(key, getCharacterImageUrl(centerAvatar.id, 'neutral'));
+      }
+    }
+
+    return cache;
+  }, [InteractionMessages, centerAvatar?.id]);
+
+  // ✅ Streaming portrait — only recomputes when expression or character changes
+  const streamingPortraitUrl = useMemo(() => {
+    if (!streamingCharacter) return null;
+    return getCharacterImageUrl(streamingCharacter.id, currentCharacterExpression);
+  }, [streamingCharacter?.id, currentCharacterExpression]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!interactionData?.contexts?.length) return 0;
@@ -395,6 +420,16 @@ function App() {
   }, [interactionData]);
 
   // ✅ 3. EFFECTS
+
+  // ✅ Sync sentiment engine with active profile — single source of truth
+  useEffect(() => {
+    const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
+    if (enabled) {
+      sentimentEngine.initialize();
+    } else {
+      sentimentEngine.unload();
+    }
+  }, [interactionData?.Profile?.id, interactionData?.Profile?.enableCharacterExpression]);
 
   // ✅ Active chat restoration — runs exactly once via ref guard
   useEffect(() => {
@@ -425,7 +460,16 @@ function App() {
           const fullChar = await loadFullCharacter(protagonist.id);
           if (fullChar) protagonist = fullChar;
         }
-        setInteractionData({ ...fullChat, protagonist });
+
+        const hydratedParticipants = await Promise.all(
+          fullChat.participants.map(async (p) => {
+            if (p.systemPrompt) return p;
+            const fullChar = await loadFullCharacter(p.id);
+            return fullChar || p;
+          })
+        );
+
+        setInteractionData({ ...fullChat, protagonist, participants: hydratedParticipants });
         setCurrentCharacter(protagonist);
       } else {
         setInteractionData(fullChat);
@@ -479,7 +523,15 @@ function App() {
             if (fullChar) protagonist = fullChar;
           }
 
-          setInteractionData({ ...cd, protagonist });
+          const hydratedParticipants = await Promise.all(
+            cd.participants.map(async (p) => {
+              if (p.systemPrompt) return p;
+              const fullChar = await loadFullCharacter(p.id);
+              return fullChar || p;
+            })
+          );
+
+          setInteractionData({ ...cd, protagonist, participants: hydratedParticipants });
           if (protagonist) setCurrentCharacter(protagonist);
         } else {
           console.warn('Active chat not found, falling back.');
@@ -1169,13 +1221,13 @@ function App() {
   if (isInitializing) return <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />;
 
   // ✅ 6. RENDER RETURN
-  
+
   const streamingIndicators = (
     <>
       {isLoading && streamingCharacter && !streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{streamingPortraitUrl ? <img src={streamingPortraitUrl} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
             {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>}
@@ -1186,7 +1238,7 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name">{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{streamingPortraitUrl ? <img src={streamingPortraitUrl} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name">{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
             {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>}
@@ -1212,7 +1264,7 @@ function App() {
         )}
 
         {interactionData && <>
-          {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
+          {viewMode === 'cinematic' && centerAvatar && portraitUrlCache.get(`cinematic:${centerAvatar.id}`) && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={portraitUrlCache.get(`cinematic:${centerAvatar.id}`)!} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
 
           <header className="app-header"><div className="header-content"><div className="header-top">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -1260,10 +1312,13 @@ function App() {
 
               if (isResumingThisMessage) return null;
 
+              // ✅ Expression-aware portrait from pre-computed cache
+              const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
+
               return (
                 <React.Fragment key={message.id}>
                   <div className={`message-row ${viewMode === 'cinematic' ? '' : isProtag ? 'message-right' : 'message-left'} ${inDelRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
-                    {showAvatar && <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(message.character.image) ? <img src={getCharacterImageUrl(message.character.image)!} alt={dn} className="character-avatar" onClick={e => handleAvatarClick(e, message.id, message.character)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{dn}</span></div>}
+                    {showAvatar && <div className="avatar-column"><div style={{ position: 'relative' }}>{messagePortraitUrl ? <img src={messagePortraitUrl} alt={dn} className="character-avatar" onClick={e => handleAvatarClick(e, message.id, message.character)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{dn}</span></div>}
                     <div
                       className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtag ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${inDelRange ? 'bubble-marked-for-delete' : ''} ${stem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`}
                       onTouchStart={e => handleBubbleTouchStart(e, message.id)}
@@ -1342,7 +1397,7 @@ function App() {
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
 
         {isLocationListOpen && <ManagerModal title="Locations" items={allLocations} isOpen={isLocationListOpen} onClose={() => setIsLocationListOpen(false)} onSelect={l => locationModal.open(l)} onDelete={locationModal.handleDelete} onCreateNew={() => locationModal.open()} renderSubtext={renderLocationSubtext} emptyMessage="No locations found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.locations?.map(l => l.id) || []} onToggleOrder={handleToggleLocation} />}
-        {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} />}
+        {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} allLocations={allLocations} />}
 
         {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
         {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
