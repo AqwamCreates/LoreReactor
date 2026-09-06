@@ -238,7 +238,7 @@ export function getNameSensitivityValueFromText(text: string) {
     return detectValue(text, NAME_SENSITIVITY_RULES, DEFAULT_NAME_SENSITIVITY_VALUE, false);
 }
 
-export function getResponseDelayWeightValueFromText(text: string) {
+export function getSkipProbabilityValueFromText(text: string) {
     return detectValue(text, RESPONSE_DELAY_WEIGHT_RULES, DEFAULT_RESPONSE_DELAY_WEIGHT_VALUE, false);
 }
 

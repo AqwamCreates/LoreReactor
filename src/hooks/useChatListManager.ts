@@ -1,16 +1,16 @@
 // src/hooks/useChatListManager.ts
 import { useState, useEffect, useCallback } from 'react';
-import type { ChatData } from '../types';
-import { loadAllRawChatDataShells, deleteRawChatData } from './storage';
+import type { InteractionData } from '../types';
+import { loadAllRawInteractionDataShells, deleteRawInteractionData } from './storage';
 
 export function useChatListManager() {
-    const [chats, setChats] = useState<ChatData[]>([]);
+    const [chats, setChats] = useState<InteractionData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     const loadChats = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await loadAllRawChatDataShells();
+            const data = await loadAllRawInteractionDataShells();
             // Sort by newest first
             const sorted = data.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
             setChats(sorted);
@@ -23,7 +23,7 @@ export function useChatListManager() {
 
     const deleteChat = async (id: string) => {
         try {
-            await deleteRawChatData(id);
+            await deleteRawInteractionData(id);
             await loadChats(); // Refresh list after deletion
             return true;
         } catch (err) {

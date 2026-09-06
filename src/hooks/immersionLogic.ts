@@ -1,40 +1,59 @@
 // src/hooks/immersionLogic.ts
-import type { ChatData } from "../types";
+import type { ChatMessage, InteractionData, InteractionMessage } from "../types";
 
-export function getDelayedDisplayName(chatData: ChatData, chatMessageHistoryIndex: number, characterId: string): string {
+/**
+ * Type guard for filtering.
+ */
+function isChatMessage(msg: InteractionMessage | ChatMessage): msg is ChatMessage {
+    return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
+}
 
-    const participants = chatData.participants;
+/**
+ * Get the display name for a character at a given point in the chat message history.
+ * 
+ * @param interactionData - The full chat data
+ * @param interactionMessageIndex - Index into the FILTERED chat messages array (not interactionHistory)
+ * @param characterId - The character whose name to resolve
+ */
+export function getDelayedDisplayName(interactionData: InteractionData, interactionMessageIndex: number, characterId: string): string {
 
-    const chatMessageHistory = chatData.chatMessageHistory;
-
-    const chatMessageHistoryLength = chatMessageHistory.length;
+    const participants = interactionData.participants;
 
     // ✅ forceNameReveal is DISPLAY-ONLY: always show name in UI regardless of reveal state
-    const forceNameReveal = chatData.Profile?.forceNameReveal ?? false;
+    const forceNameReveal = interactionData.Profile?.forceNameReveal ?? false;
     if (forceNameReveal) {
         const character = participants.find(p => p.id === characterId);
         return character ? character.name : 'Unknown';
     }
 
-    if (!chatData || !chatMessageHistory || chatMessageHistoryLength === 0 || chatMessageHistoryIndex < 0 || chatMessageHistoryIndex >= chatMessageHistoryLength) {
+    // Build filtered chat messages list to map the display index to the actual message
+    const interactionMessages = interactionData.interactionHistory.filter(isChatMessage);
+
+    if (!interactionData || interactionMessages.length === 0 || interactionMessageIndex < 0 || interactionMessageIndex >= interactionMessages.length) {
         const index = participants.findIndex(p => p.id === characterId);
         return index !== -1 ? `Character ${index + 1}` : 'Unknown';
     }
 
-    // Scan backwards from the current index to find the immediate predecessor.
-    // We start at currentIndex - 1 because we want to look at PREVIOUS messages.
+    const targetMessage = interactionMessages[interactionMessageIndex];
 
-    const targetChatMessage = chatMessageHistory[chatMessageHistoryIndex];
+    // Find this message's position in the FULL interactionHistory
+    const fullIndex = interactionData.interactionHistory.indexOf(targetMessage);
+    if (fullIndex === -1) {
+        const index = participants.findIndex(p => p.id === characterId);
+        return index !== -1 ? `Character ${index + 1}` : 'Unknown';
+    }
 
-    for (let i = chatMessageHistoryIndex - 1; i >= 0; i--) {
-
-        const chatMessage = chatMessageHistory[i];
-
-        const character = chatMessage.character;
+    // Scan backwards through the FULL interactionHistory from this message's position
+    // to find if this character had their name revealed in a prior entry
+    for (let i = fullIndex - 1; i >= 0; i--) {
+        const interactionMessage = interactionData.interactionHistory[i];
+        const character = interactionMessage.character;
 
         if (character.id === characterId) {
-            // Be careful! This function are used by streaming LLMs, it will get the wrong message to get the names for if you choose the streaming message.
-            if (chatMessage.isNameRevealed && targetChatMessage) { return character.name; }
+            // Found a previous entry by this character — check if name was revealed
+            if (interactionMessage.isNameRevealed) {
+                return character.name;
+            }
             break;
         }
     }

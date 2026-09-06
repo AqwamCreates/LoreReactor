@@ -1,9 +1,9 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, ChatData, BudgetStrategy, LanguageModel, Memory } from '../types';
-import { saveRawChatData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
-import { createChatMessage, addMessageToChatData, convertIdsToDisplayNames, createNewChatData, prepareRequestBody, editChatMessageInChatData, findPreviousChatMessage } from './chatLogic';
-import { runTurnSequence } from '../services/ChatOrchestrator';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory } from '../types';
+import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
+import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, prepareRequestBody, editInteractionMessageInInteractionData, findPreviousInteractionMessage } from './chatLogic';
+import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
@@ -38,7 +38,7 @@ const AMBIENT_NARRATOR: Character = {
     numberOfMessagesToDisableMetaThinkInstructions: 0,
     numberOfMessagesToDisableDialoguePrompt: 0,
     firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-};
+} as Character;
 
 const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
     { keywords: ['hello', 'hi', 'hey', 'greet', 'good morning', 'good evening', 'good night', 'howdy', 'yo', '?'], lines: ["A tentative quiet hangs in the air, waiting to be shaped.", "The space between them hums with the possibility of conversation.", "Words hover at the edge of silence, not yet committed.", "The air shifts subtly, acknowledging a presence.", "Something stirs in the stillness — an opening.", "The moment balances on the edge of beginning."] },
@@ -67,8 +67,8 @@ const AMBIENT_FALLBACK = [
 // ─── Background Summarization ────────────────────────────────────────
 
 async function runBackgroundSummarization(
-    data: ChatData, setData: (d: ChatData) => void,
-    dataRef: React.MutableRefObject<ChatData | null>,
+    data: InteractionData, setData: (d: InteractionData) => void,
+    dataRef: React.MutableRefObject<InteractionData | null>,
     modelRef: React.MutableRefObject<LanguageModel | null>,
     runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
@@ -76,7 +76,7 @@ async function runBackgroundSummarization(
     try {
         const ctxLen = modelRef.current?.contextLength || 8192;
         let tokens = 0;
-        for (const m of data.chatMessageHistory) {
+        for (const m of data.interactionHistory) {
             tokens += await languageModelEngine.countTokens(m.textContent);
         }
 
@@ -93,7 +93,7 @@ async function runBackgroundSummarization(
         if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Sliding Window Replace' && s.enabled)?.summaryTokenBudget ?? 256;
             const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, lmCtx, budget);
-            if (summaries.size > 0) updated = { ...updated, chatMessageHistory: updated.chatMessageHistory.map(m => { const s = summaries.get(m.id); return s ? { ...m, textContentSummary: s } : m; }) };
+            if (summaries.size > 0) updated = { ...updated, interactionHistory: updated.interactionHistory.map(m => { const s = summaries.get(m.id); return s ? { ...m, textContentSummary: s } : m; }) };
         }
         if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Periodic Compression' && s.enabled)?.summaryTokenBudget ?? 512;
@@ -108,11 +108,11 @@ async function runBackgroundSummarization(
 
         if (updated !== data) {
             // Note: App.tsx or caller should handle saving if needed, but for background tasks we save here
-            await saveRawChatData(updated); 
+            await saveRawInteractionData(updated); 
             setData(updated); 
             dataRef.current = updated;
             
-            const ns = triggered.strategyType === 'Sliding Window Replace' ? updated.chatMessageHistory.filter(m => m.textContentSummary).length - data.chatMessageHistory.filter(m => m.textContentSummary).length : 0;
+            const ns = triggered.strategyType === 'Sliding Window Replace' ? updated.interactionHistory.filter(m => m.textContentSummary).length - data.interactionHistory.filter(m => m.textContentSummary).length : 0;
             const nc = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary') ? (updated.contexts?.length ?? 0) - (data.contexts?.length ?? 0) : 0;
             if (ns > 0) addToast(`Summarized ${ns} message${ns !== 1 ? 's' : ''}`, 'success');
             else if (nc > 0) addToast(`Generated ${nc} context${nc !== 1 ? 's' : ''} (${triggered.strategyType})`, 'success');
@@ -124,7 +124,7 @@ async function runBackgroundSummarization(
 // ─── Hook ───────────────────────────────────────────────────────────
 
 export function useChatSession() {
-    const [chatData, setChatData] = useState<ChatData | null>(null);
+    const [interactionData, setInteractionData] = useState<InteractionData | null>(null);
     const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [streamingText, setStreamingText] = useState('');
@@ -132,7 +132,7 @@ export function useChatSession() {
     const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     const [generationSpeed, setGenerationSpeed] = useState(0);
     const [timeToFirstToken, setTimeToFirstToken] = useState(0);
-    const [parentChatMessageIds, setParentChatMessageIds] = useState<Set<string>>(new Set());
+    const [parentInteractionMessageIds, setParentInteractionMessageIds] = useState<Set<string>>(new Set());
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
     const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
     const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
@@ -149,7 +149,7 @@ export function useChatSession() {
     const isProcessingSilentlyRef = useRef(false);
     const streamingTextRef = useRef('');
     const streamingCharacterRef = useRef<Character | null>(null);
-    const chatDataRef = useRef<ChatData | null>(null);
+    const interactionDataRef = useRef<InteractionData | null>(null);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
     const isAtBottomRef = useRef(true);
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
@@ -171,7 +171,7 @@ export function useChatSession() {
     useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
     useEffect(() => { streamingTextRef.current = streamingText; }, [streamingText]);
     useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
-    useEffect(() => { chatDataRef.current = chatData; }, [chatData]);
+    useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
 
     const { addToast } = useToast();
     const [ttsServerUrl] = useState(`${localAddress}:7860`);
@@ -190,7 +190,7 @@ export function useChatSession() {
     }, []);
 
     useEffect(() => {
-        if (!chatData) { setnumberOfTokens(0); return; }
+        if (!interactionData) { setnumberOfTokens(0); return; }
         let cancelled = false;
         (async () => {
             const model = selectedModelRef.current;
@@ -199,13 +199,13 @@ export function useChatSession() {
             const lmCtx = ep ? { runtimePort: ep } : undefined;
 
             let total = 0;
-            for (const m of chatData.chatMessageHistory) {
+            for (const m of interactionData.interactionHistory) {
                 total += await languageModelEngine.countTokens(m.textContent, lmCtx);
             }
             if (!cancelled) setnumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [chatData?.chatMessageHistory]);
+    }, [interactionData?.interactionHistory]);
 
     // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -244,24 +244,24 @@ export function useChatSession() {
         return (text.match(/\n\n/g) || []).length + 1;
     }, []);
 
-    const regenerateStaminaForTurn = useCallback((data: ChatData, character: Character): ChatData => {
+    const regenerateStaminaForTurn = useCallback((data: InteractionData, character: Character): InteractionData => {
         const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
         if (maxStamina === Number.POSITIVE_INFINITY) return data;
 
-        const prevMsg = findPreviousChatMessage(data, character.id);
+        const prevMsg = findPreviousInteractionMessage(data, character.id);
         if (!prevMsg) return data;
         if (prevMsg.remainingChatStamina >= maxStamina) return data;
 
-        const idx = data.chatMessageHistory.findIndex(m => m.id === prevMsg.id);
+        const idx = data.interactionHistory.findIndex(m => m.id === prevMsg.id);
         if (idx === -1) return data;
 
-        generateChatStamina(character, data.chatMessageHistory[idx]);
+        generateChatStamina(character, data.interactionHistory[idx]);
         return data;
     }, []);
 
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
-        const profile = chatDataRef.current?.Profile;
+        const profile = interactionDataRef.current?.Profile;
         if (profile) {
             const parts: string[] = [];
             if (profile.narrateNormalText !== false) { let n = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/\*[^*]+\*/g, '').trim(); if (n) parts.push(n); }
@@ -289,27 +289,27 @@ export function useChatSession() {
         })();
     }, [ttsServerUrl]);
 
-    const getDynamicParagraphLimit = useCallback((char: Character, data: ChatData): number => {
+    const getDynamicParagraphLimit = useCallback((char: Character, data: InteractionData): number => {
         const max = char.maximumChatStamina ?? 4;
         if (data.participants.filter(p => p.id !== data.protagonist.id).length > 1) return max;
-        const prev = [...data.chatMessageHistory].reverse().find(m => m.character.id === char.id);
+        const prev = [...data.interactionHistory].reverse().find(m => m.character.id === char.id);
         const ratio = Math.max(0, Math.min(1, (prev?.remainingChatStamina ?? max) / max));
         return Math.max(1, Math.round(max * ratio));
     }, []);
 
-    const generateAmbientNarration = useCallback(async (data: ChatData, _signal: AbortSignal): Promise<ChatData | null> => {
-        const recent = data.chatMessageHistory.filter(m => m.character.id !== '__ambient_narrator__').slice(-8).map(m => m.textContent.toLowerCase()).join(' ');
+    const generateAmbientNarration = useCallback(async (data: InteractionData, _signal: AbortSignal): Promise<InteractionData | null> => {
+        const recent = data.interactionHistory.filter(m => m.character.id !== '__ambient_narrator__').slice(-8).map(m => m.textContent.toLowerCase()).join(' ');
         let best: typeof AMBIENT_POOL[0] | null = null, bestScore = 0;
         for (const cat of AMBIENT_POOL) { let s = 0; for (const kw of cat.keywords) if (recent.includes(kw)) s++; if (s > bestScore) { bestScore = s; best = cat; } }
         const pool = best ? best.lines : AMBIENT_FALLBACK;
-        const recentAmbient = data.chatMessageHistory.filter(m => m.character.id === '__ambient_narrator__').slice(-3).map(m => m.textContent);
+        const recentAmbient = data.interactionHistory.filter(m => m.character.id === '__ambient_narrator__').slice(-3).map(m => m.textContent);
         const avail = pool.filter(l => !recentAmbient.includes(l));
         const final = avail.length > 0 ? avail : pool;
         const selected = final[Math.floor(Math.random() * final.length)];
         setStreamingCharacter(AMBIENT_NARRATOR); streamingCharacterRef.current = AMBIENT_NARRATOR;
         setStreamingText(''); streamingTextRef.current = '';
         for (let i = 0; i < selected.length; i++) { const p = selected.substring(0, i + 1); streamingTextRef.current = p; setStreamingText(p); await new Promise(r => setTimeout(r, 20)); }
-        return addMessageToChatData(data, createChatMessage(data, AMBIENT_NARRATOR, selected));
+        return addMessageToInteractionData(data, createChatMessage(data, AMBIENT_NARRATOR, selected));
     }, []);
 
     // ─── Memory Trigger Processing ──────────────────────────────────
@@ -317,7 +317,7 @@ export function useChatSession() {
     const processMemoryTrigger = useCallback(async (
         rawText: string,
         character: Character,
-        data: ChatData,
+        data: InteractionData,
     ): Promise<void> => {
         const profile = data.Profile;
 
@@ -346,7 +346,7 @@ export function useChatSession() {
         const ts = Date.now();
 
         for (const other of otherParticipants) {
-            const allRelevant = data.chatMessageHistory.filter(
+            const allRelevant = data.interactionHistory.filter(
                 m => m.character.id === character.id || m.character.id === other.id
             );
 
@@ -369,7 +369,7 @@ export function useChatSession() {
                 id: uuidv4(),
                 name: `Memory with ${other.name}`,
                 content: summaryContext.text,
-                chatData: data,
+                interactionData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,
             };
@@ -384,7 +384,7 @@ export function useChatSession() {
                 id: uuidv4(),
                 name: 'Global Memory',
                 content: globalSummaryContext.text,
-                chatData: data,
+                interactionData: data,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts,
             };
@@ -398,11 +398,11 @@ export function useChatSession() {
     // ─── Core Generation ─────────────────────────────────────────────
 
     const handleServerResponse = useCallback(async (
-        data: ChatData, character: Character, signal: AbortSignal,
+        data: InteractionData, character: Character, signal: AbortSignal,
         onToken?: (text: string) => void, userImagesBase64?: string[],
         strategy?: BudgetStrategy | null,
         existingCharacterText?: string,
-    ): Promise<ChatData | null> => {
+    ): Promise<InteractionData | null> => {
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
         const model = selectedModelRef.current;
         const running = runningModelsMapRef.current;
@@ -462,7 +462,7 @@ export function useChatSession() {
             const aiMessage = createChatMessage(dataWithRegen, character, displayText);
             const paragraphs = countParagraphs(displayText);
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
-            return addMessageToChatData(dataWithRegen, aiMessage);
+            return addMessageToInteractionData(dataWithRegen, aiMessage);
         } catch (err) {
             const e = err as Error;
             const pt = streamingTextRef.current;
@@ -479,16 +479,16 @@ export function useChatSession() {
 
     // ─── Pending Partial Helper ──────────────────────────────────────
 
-    const applyPendingPartial = useCallback(async (base: ChatData, protagonistId: string): Promise<ChatData> => {
+    const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
         const p = pendingPartialRef.current; if (!p) return base;
         pendingPartialRef.current = null;
         const dt = convertIdsToDisplayNames(p.text, base);
-        const h = base.chatMessageHistory;
+        const h = base.interactionHistory;
         if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
             const ph = [...h]; ph[ph.length - 1] = { ...ph[ph.length - 1], textContent: dt, isPartial: true };
-            return { ...base, chatMessageHistory: ph, lastUpdatedTimestamp: Date.now() };
+            return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
         }
-        return addMessageToChatData(base, createChatMessage(base, p.character, dt, { isPartial: true }));
+        return addMessageToInteractionData(base, createChatMessage(base, p.character, dt, { isPartial: true }));
     }, []);
 
     // ─── Public Actions ──────────────────────────────────────────────
@@ -508,9 +508,9 @@ export function useChatSession() {
 
     // Simplified startNewChat - just creates state, App.tsx handles saving/list updates
     const startNewChat = useCallback((char: Character) => {
-        const c = createNewChatData(char); 
+        const c = createNewInteractionData(char); 
         c.name = 'Untitled Chat';
-        setChatData(c); 
+        setInteractionData(c); 
         setCurrentCharacter(char); 
         setIsInitialImageProcessed(false); 
         isAtBottomRef.current = true;
@@ -520,17 +520,17 @@ export function useChatSession() {
         const t = streamingTextRef.current, c = streamingCharacterRef.current;
         const resumeId = resumingMessageIdRef.current;
 
-        if (resumeId && t && t.trim().length > 0 && chatDataRef.current) {
-            const updated = editChatMessageInChatData(chatDataRef.current, resumeId, t);
-            const idx = updated.chatMessageHistory.findIndex(m => m.id === resumeId);
+        if (resumeId && t && t.trim().length > 0 && interactionDataRef.current) {
+            const updated = editInteractionMessageInInteractionData(interactionDataRef.current, resumeId, t);
+            const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
                 const paragraphs = countParagraphs(t);
-                if (paragraphs > 0) consumeChatStamina(updated.chatMessageHistory[idx], paragraphs);
-                const withPartial = [...updated.chatMessageHistory];
+                if (paragraphs > 0) consumeChatStamina(updated.interactionHistory[idx], paragraphs);
+                const withPartial = [...updated.interactionHistory];
                 withPartial[idx] = { ...withPartial[idx], isPartial: true, lastUpdatedTimestamp: Date.now() };
-                const final: ChatData = { ...updated, chatMessageHistory: withPartial, lastUpdatedTimestamp: Date.now() };
-                setChatData(final);
-                chatDataRef.current = final;
+                const final: InteractionData = { ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() };
+                setInteractionData(final);
+                interactionDataRef.current = final;
             }
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
@@ -544,16 +544,16 @@ export function useChatSession() {
     }, [releaseLock, countParagraphs]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
-        if (!chatData || !currentCharacter) return;
+        if (!interactionData || !currentCharacter) return;
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 300)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-        const d = chatDataRef.current; if (!d) { releaseLock(); return; }
-        const ud = addMessageToChatData(d, createChatMessage(d, currentCharacter, actionText));
+        const d = interactionDataRef.current; if (!d) { releaseLock(); return; }
+        const ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
         // App.tsx should handle saving after this returns if needed, or we save here for simplicity
-        await saveRawChatData(ud); 
-        setChatData(ud); 
-        chatDataRef.current = ud;
+        await saveRawInteractionData(ud); 
+        setInteractionData(ud); 
+        interactionDataRef.current = ud;
         
         await new Promise(r => setTimeout(r, 50));
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
@@ -562,20 +562,20 @@ export function useChatSession() {
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, '');
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (result) { 
-                await saveRawChatData(result); 
-                setChatData(result); 
-                chatDataRef.current = result; 
-                const lm = result.chatMessageHistory[result.chatMessageHistory.length - 1]; 
+                await saveRawInteractionData(result); 
+                setInteractionData(result); 
+                interactionDataRef.current = result; 
+                const lm = result.interactionHistory[result.interactionHistory.length - 1]; 
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character); 
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
-        if (!chatData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
+        if (!interactionData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
@@ -584,37 +584,37 @@ export function useChatSession() {
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-            const td = addMessageToChatData(chatData, createChatMessage(chatData, currentCharacter, text));
-            setChatData(td); chatDataRef.current = td; 
-            await saveRawChatData(td);
+            const td = addMessageToInteractionData(interactionData, createChatMessage(interactionData, currentCharacter, text));
+            setInteractionData(td); interactionDataRef.current = td; 
+            await saveRawInteractionData(td);
             
-            const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
+            const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
                 return handleServerResponse(d, c, s, ot, imgs, undefined, '');
             };
-            const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
-            if (ud.chatMessageHistory.length > td.chatMessageHistory.length) {
-                await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
-                runBackgroundSummarization(ud, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
-                const lm = ud.chatMessageHistory[ud.chatMessageHistory.length - 1];
+            const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
+            if (ud.interactionHistory.length > td.interactionHistory.length) {
+                await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
+                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast);
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud; await saveRawChatData(sd); setChatData(sd); chatDataRef.current = sd;
+                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Send failed:', e); addToast(`Send failed: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
     // ─── Resume Generation ───────────────────────────────────────────
 
     const resumeGeneration = useCallback(async (messageId: string) => {
-        if (!chatData) return;
-        const msgIndex = chatData.chatMessageHistory.findIndex(m => m.id === messageId);
+        if (!interactionData) return;
+        const msgIndex = interactionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
-        const msg = chatData.chatMessageHistory[msgIndex];
+        const msg = interactionData.interactionHistory[msgIndex];
         if (!msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
         if (isLoadingRef.current) {
             abortControllerRef.current?.abort();
@@ -631,7 +631,7 @@ export function useChatSession() {
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
 
-        const dataWithRegen = regenerateStaminaForTurn(chatData, char);
+        const dataWithRegen = regenerateStaminaForTurn(interactionData, char);
 
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
@@ -672,20 +672,20 @@ export function useChatSession() {
             const totalParagraphs = countParagraphs(combined);
             const newParagraphs = Math.max(0, totalParagraphs - existingParagraphs);
             if (newParagraphs > 0) {
-                const editedIdx = edited.chatMessageHistory.findIndex(m => m.id === messageId);
-                if (editedIdx !== -1) consumeChatStamina(edited.chatMessageHistory[editedIdx], newParagraphs);
+                const editedIdx = edited.interactionHistory.findIndex(m => m.id === messageId);
+                if (editedIdx !== -1) consumeChatStamina(edited.interactionHistory[editedIdx], newParagraphs);
             }
 
             if (result.isCompleted) {
                 const finalData = await clearPartialFlag(edited, messageId);
-                setChatData(finalData); chatDataRef.current = finalData;
-                await saveRawChatData(finalData);
+                setInteractionData(finalData); interactionDataRef.current = finalData;
+                await saveRawInteractionData(finalData);
             } else {
-                setChatData(edited); chatDataRef.current = edited;
-                await saveRawChatData(edited);
+                setInteractionData(edited); interactionDataRef.current = edited;
+                await saveRawInteractionData(edited);
             }
 
-            if (char.id !== chatData.protagonist.id) speakMessage(combined, char);
+            if (char.id !== interactionData.protagonist.id) speakMessage(combined, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
                 console.error('Resume failed:', e);
@@ -693,9 +693,9 @@ export function useChatSession() {
                 const currentStreamedText = streamingTextRef.current;
                 if (currentStreamedText && currentStreamedText.trim().length > 0 && currentStreamedText !== existingText) {
                     try {
-                        const currentData = chatDataRef.current || dataWithRegen;
+                        const currentData = interactionDataRef.current || dataWithRegen;
                         await editMessage(currentData, messageId, currentStreamedText);
-                        await saveRawChatData(currentData);
+                        await saveRawInteractionData(currentData);
                     } catch { }
                 }
             }
@@ -704,57 +704,57 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [chatData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, getDynamicParagraphLimit, throttledSetStreamingText, speakMessage, countParagraphs, regenerateStaminaForTurn]);
+    }, [interactionData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, getDynamicParagraphLimit, throttledSetStreamingText, speakMessage, countParagraphs, regenerateStaminaForTurn]);
 
     // ─── Regenerate ──────────────────────────────────────────────────
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
-        if (!chatData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
+        if (!interactionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-        const history = chatData.chatMessageHistory;
+        const history = interactionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
         const tm = history[ti];
-        const isAI = tm.character.id !== chatData.protagonist.id;
+        const isAI = tm.character.id !== interactionData.protagonist.id;
         let trimIdx: number;
         if (type === 'ai' && isAI) trimIdx = ti;
         else if (type === 'user' && !isAI) trimIdx = ti + 1;
         else { addToast('Mismatched regeneration type.', 'error'); releaseLock(); return; }
         const toDelete = history.slice(trimIdx);
-        if (toDelete.length) try { await Promise.all(toDelete.map(m => deleteRawChatMessage(m.id))); } catch (e) { console.error('Delete failed:', e); }
-        const td: ChatData = { ...chatData, chatMessageHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
-        setChatData(td); chatDataRef.current = td;
-        await saveRawChatData(td);
+        if (toDelete.length) try { await Promise.all(toDelete.map(m => deleteRawInteractionMessage(m.id))); } catch (e) { console.error('Delete failed:', e); }
+        const td: InteractionData = { ...interactionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
+        setInteractionData(td); interactionDataRef.current = td;
+        await saveRawInteractionData(td);
         
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
         setStreamingCharacter(null); streamingCharacterRef.current = null;
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
-        const preCount = td.chatMessageHistory.length;
+        const preCount = td.interactionHistory.length;
         try {
-            const executor = async (d: ChatData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
+            const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
                 return handleServerResponse(d, c, s, ot, undefined, undefined, '');
             };
-            const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setChatData);
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, chatData.protagonist.id); await saveRawChatData(fd); setChatData(fd); chatDataRef.current = fd; return; }
-            if (ud.chatMessageHistory.length > preCount) {
-                await saveRawChatData(ud); setChatData(ud); chatDataRef.current = ud;
-                runBackgroundSummarization(ud, setChatData, chatDataRef, selectedModelRef, runningModelsMapRef, addToast);
-                const lm = ud.chatMessageHistory[ud.chatMessageHistory.length - 1];
+            const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
+            if (ud.interactionHistory.length > preCount) {
+                await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
+                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast);
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud; await saveRawChatData(sd); setChatData(sd); chatDataRef.current = sd;
+                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [chatData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText]);
 
     // ─── Silent Image Processing ─────────────────────────────────────
 
-    const processProtagonistImageSilently = useCallback(async (data: ChatData, char: Character) => {
+    const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && !char.image) { setIsInitialImageProcessed(true); return; }
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
         isProcessingSilentlyRef.current = true;
@@ -776,19 +776,19 @@ export function useChatSession() {
     useEffect(() => {
         if (!isAtBottomRef.current) return;
         if (isLoading && streamingText && messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        else if (!isLoading && messageEndRef.current && chatData?.chatMessageHistory.length) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }, [streamingText, isLoading, chatData?.chatMessageHistory.length]);
+        else if (!isLoading && messageEndRef.current && interactionData?.interactionHistory.length) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }, [streamingText, isLoading, interactionData?.interactionHistory.length]);
 
     // ─── Return ──────────────────────────────────────────────────────
 
     const maxCtx = selectedModel?.contextLength || 8192;
 
     return {
-        chatData, setChatData, currentCharacter, setCurrentCharacter,
+        interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
-        messageEndRef, chatHistoryRef, parentChatMessageIds,
-        generationSpeed, timeToFirstToken, numberOfMessages: chatData?.chatMessageHistory.length || 0,
+        messageEndRef, chatHistoryRef, parentInteractionMessageIds,
+        generationSpeed, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
         numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy,

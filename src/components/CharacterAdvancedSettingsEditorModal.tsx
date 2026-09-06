@@ -9,7 +9,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     chatProbabilityStr: string;
     maximumChatStaminaStr: string;
     nameSensitivityStr: string;
-    responseDelayWeightStr: string;
+    skipProbabilityStr: string;
     memoryRetentionWeightStr: string;
     contextSensitivityStr: string;
     numberOfMessagesToDisableThinkPromptStr: string;
@@ -24,7 +24,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onChatProbabilityChange: (val: string) => void;
     onMaximumChatStaminaChange: (val: string) => void;
     onNameSensitivityChange: (val: string) => void;
-    onResponseDelayWeightChange: (val: string) => void;
+    onSkipProbabilityChange: (val: string) => void;
     onMemoryRetentionWeightChange: (val: string) => void;
     onContextSensitivityChange: (val: string) => void;
     onDisableThinkChange: (val: string) => void;
@@ -42,7 +42,7 @@ export function CharacterAdvancedSettingsEditorModal({
     chatProbabilityStr,
     maximumChatStaminaStr,
     nameSensitivityStr,
-    responseDelayWeightStr,
+    skipProbabilityStr,
     memoryRetentionWeightStr,
     contextSensitivityStr,
     numberOfMessagesToDisableThinkPromptStr,
@@ -57,7 +57,7 @@ export function CharacterAdvancedSettingsEditorModal({
     onChatProbabilityChange,
     onMaximumChatStaminaChange,
     onNameSensitivityChange,
-    onResponseDelayWeightChange,
+    onSkipProbabilityChange,
     onMemoryRetentionWeightChange,
     onContextSensitivityChange,
     onDisableThinkChange,
@@ -104,7 +104,7 @@ export function CharacterAdvancedSettingsEditorModal({
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Max Chat Stamina</label>
+                                <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
                                 <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => onMaximumChatStaminaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
                             </div>
@@ -116,8 +116,8 @@ export function CharacterAdvancedSettingsEditorModal({
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Response Delay Weight</label>
-                                <input type="number" step="0.05" min="0" max="1" value={responseDelayWeightStr} onChange={(e) => onResponseDelayWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <label className="editor-label editor-label-small">Skip Probability</label>
+                                <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => onSkipProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls when the character responds to a message based on the duration from the character's last message. Range: 0 - 1.</div>
                             </div>
                             <div>

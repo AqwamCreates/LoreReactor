@@ -79,7 +79,7 @@ user_data/
 # These contain personal chats, custom characters, images, and cache files
 # They will remain ignored because of the 'user_data/' rule at the top
 # user_data/chat_data/
-# user_data/chat_messages/
+# user_data/interaction_messages/
 # user_data/character_data/
 # user_data/character_images/
 # user_data/character_voices/

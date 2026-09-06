@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types'; 
+import type { InteractionMessage } from '../types'; 
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
 const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
@@ -105,19 +105,19 @@ function detectNameQuestion(text: string): boolean {
 }
 
 function detectNamePermissionSequence(
-  chatMessageHistory: ChatMessage[], 
+  interactionHistory: InteractionMessage[], 
   characterId: string, 
   characterName: string, 
   text: string
 ): boolean {
   
   // 1. Find the previous message sent by THIS specific character.
-  let previousMessageBySameCharacter: ChatMessage | null = null;
+  let previousMessageBySameCharacter: InteractionMessage | null = null;
 
   // Iterate backwards from the end of history.
-  for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
-    if (chatMessageHistory[i].character.id === characterId) {
-      previousMessageBySameCharacter = chatMessageHistory[i];
+  for (let i = interactionHistory.length - 1; i >= 0; i--) {
+    if (interactionHistory[i].character.id === characterId) {
+      previousMessageBySameCharacter = interactionHistory[i];
       break; // Stop at the first match (the most recent one).
     }
   }
@@ -144,8 +144,8 @@ function detectNamePermissionSequence(
   return isLikelyJustAName || isDirectReveal;
 }
 
-export function detectName(chatMessageHistory: ChatMessage[], characterId: string, characterName: string, text: string) {
-  const nameQuestionRecentlyAsked = chatMessageHistory.some(msg => detectNameQuestion(msg.textContent));
+export function detectName(interactionHistory: InteractionMessage[], characterId: string, characterName: string, text: string) {
+  const nameQuestionRecentlyAsked = interactionHistory.some(msg => detectNameQuestion(msg.textContent));
 
   if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
 
@@ -154,5 +154,5 @@ export function detectName(chatMessageHistory: ChatMessage[], characterId: strin
     if (isLikelyJustAName) return true;
   }
 
-  return detectNamePermissionSequence(chatMessageHistory, characterId, characterName, text);
+  return detectNamePermissionSequence(interactionHistory, characterId, characterName, text);
 }

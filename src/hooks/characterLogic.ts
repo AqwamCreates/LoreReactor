@@ -1,4 +1,4 @@
-import type { Character, ChatData, ChatMessage, Profile } from "../types";
+import type { Character, InteractionData, InteractionMessage, Profile } from "../types";
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
     const profileValue = profile?.chatProbability;
@@ -23,17 +23,17 @@ export function getEffectiveNameSensitivity(character: Character, profile?: Prof
     return profileValue;
 }
 
-export function getEffectiveResponseDelayWeight(character: Character, profile?: Profile): number {
-    const profileValue = profile?.responseDelayWeight;
-    if (profileValue === undefined || profileValue === -1) return character.responseDelayWeight ?? 0;
+export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
+    const profileValue = profile?.skipProbability;
+    if (profileValue === undefined || profileValue === -1) return character.skipProbability ?? 0;
     return profileValue;
 }
 
-export function getNameSensitivityMultiplier(character: Character, chatData: ChatData): number {
-    const sensitivity = getEffectiveNameSensitivity(character, chatData.Profile);
+export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {
+    const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
     if (sensitivity === 0) return 1;
 
-    const history = chatData.chatMessageHistory;
+    const history = interactionData.interactionHistory;
     if (history.length === 0) return 1;
 
     const latestMessage = history[history.length - 1];
@@ -44,7 +44,7 @@ export function getNameSensitivityMultiplier(character: Character, chatData: Cha
 
     // Build ignore list: other participants' full names
     const ignoreRanges: { start: number; end: number }[] = [];
-    for (const participant of chatData.participants) {
+    for (const participant of interactionData.participants) {
         if (participant.id === character.id) continue;
         const otherNameLower = participant.name.toLowerCase().trim();
         if (otherNameLower === fullNameLower) continue;
@@ -103,13 +103,13 @@ export function getNameSensitivityMultiplier(character: Character, chatData: Cha
     return multiplier;
 }
 
-export function consumeChatStamina(chatMessage: ChatMessage, amountOfChatStaminaConsumed: number) {
-    chatMessage.remainingChatStamina = Math.max(0, chatMessage.remainingChatStamina - amountOfChatStaminaConsumed);
+export function consumeChatStamina(interactionMessage: InteractionMessage, amountOfChatStaminaConsumed: number) {
+    interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
-export function generateChatStamina(character: Character, chatMessage: ChatMessage) {
+export function generateChatStamina(character: Character, interactionMessage: InteractionMessage) {
     const maximumChatStamina = character.maximumChatStamina;
-    const remainingChatStamina = chatMessage.remainingChatStamina
+    const remainingChatStamina = interactionMessage.remainingChatStamina
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
     if (remainingChatStamina === undefined) return; // Treat undefined as infinite stamina, so no generation needed.
@@ -144,7 +144,7 @@ export function generateChatStamina(character: Character, chatMessage: ChatMessa
 
     const amountOfChatStaminaGenerated = lo + 1; // k is 1-indexed
 
-    chatMessage.remainingChatStamina = Math.min(
+    interactionMessage.remainingChatStamina = Math.min(
         maximumChatStamina,
         remainingChatStamina + amountOfChatStaminaGenerated
     );

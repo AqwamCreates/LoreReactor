@@ -1,10 +1,10 @@
 // src/hooks/storage.ts
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
-  Character, RawCharacter, ChatMessage, RawChatMessage, ChatData, RawChatData,
+  Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
-  Memory, RawMemory
+  Memory, RawMemory, Location, RawLocation
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -108,10 +108,11 @@ const PATHS = {
   characterVoices: "/user_data/character_voices",
   samplers: "/user_data/sampler_data", 
   contexts: "/user_data/context_data",
+  locations: "/user_data/location_data",
   models: "/user_data/model_data",
   stopPatterns: "/user_data/stop_pattern_data", 
-  chatMessages: "/user_data/chat_messages", 
-  chatData: "/user_data/chat_data", 
+  interactionMessages: "/user_data/interaction_messages", 
+  interactionData: "/user_data/chat_data", 
   kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
   profiles: "/user_data/profile_data",
@@ -137,9 +138,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     }
 
     const contentType = response.headers.get("content-type");
-    // Allow JSON or plain text/array responses from directory listings
     if (!contentType || (!contentType.includes("application/json") && !contentType.includes("text/plain"))) {
-       // Some servers might return text/plain for simple arrays
        if (contentType && contentType.includes("text")) {
            // Fall through to parse
        } else {
@@ -179,37 +178,26 @@ async function deleteResource(url: string): Promise<void> {
   if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
 }
 
-/**
- * Ensures a manifest exists for the given folder.
- * If missing, it scans the folder for .json files (excluding manifest.json)
- * and creates the manifest.
- */
 async function ensureManifest(folderPath: string): Promise<string[]> {
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   
-  // 1. Try to load existing manifest
-  let currentIds = await fetchJson<string[]>(manifestUrl);
+  const  currentIds = await fetchJson<string[]>(manifestUrl);
   
-  // 2. If manifest exists and is valid, return it
   if (currentIds && Array.isArray(currentIds)) {
     return currentIds;
   }
 
-  // 3. Manifest missing or invalid -> Scan directory
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
   try {
-    // The server returns an array of filenames for GET requests to directories
     const files = await fetchJson<string[]>(folderPath);
     
     if (files && Array.isArray(files)) {
-      // Filter for .json files and exclude the manifest itself
       const ids = files
         .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
         .map(f => f.replace('.json', ''));
       
       console.log(`Found ${ids.length} items in ${folderPath}. Creating manifest.`);
       
-      // Save the newly generated manifest
       await putJson(manifestUrl, ids);
       return ids;
     }
@@ -217,12 +205,10 @@ async function ensureManifest(folderPath: string): Promise<string[]> {
     console.warn(`Failed to scan directory ${folderPath}:`, e);
   }
 
-  // 4. Fallback: Return empty array if scan failed
   return [];
 }
 
 async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
-  // Ensure manifest exists first (scans if necessary)
   const currentIds = await ensureManifest(folderPath);
   
   let newIds: string[];
@@ -278,7 +264,7 @@ export async function loadRawMemory(id: string): Promise<Memory | null> {
     name: raw.name || 'Untitled Memory',
     description: raw.description,
     content: raw.content,
-    chatData: undefined as unknown as ChatData,
+    interactionData: undefined as unknown as InteractionData,
     firstCreatedTimestamp: raw.firstCreatedTimestamp || ts,
     lastUpdatedTimestamp: raw.lastUpdatedTimestamp || ts,
   };
@@ -291,10 +277,10 @@ export async function loadAllRawMemories(): Promise<Memory[]> {
 }
 
 export async function saveRawMemory(memory: Memory): Promise<void> {
-  const { id, chatData, ...rest } = memory;
+  const { id, interactionData, ...rest } = memory;
   const payload: RawMemory = {
     ...rest,
-    chatDataId: chatData?.id ?? '',
+    interactionDataId: interactionData?.id ?? '',
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.memories}/${id}.json`, payload);
@@ -306,14 +292,14 @@ export async function deleteRawMemory(id: string): Promise<void> {
   await updateManifest(PATHS.memories, id, 'remove');
 }
 
-export function resolveMemoryChatData(character: Character, allChats: ChatData[]): Character {
+export function resolveMemoryInteractionData(character: Character, allChats: InteractionData[]): Character {
   if (!character.memories || Object.keys(character.memories).length === 0) return character;
   const chatMap = new Map(allChats.map(c => [c.id, c]));
   const resolved: Record<string, Memory[]> = {};
   for (const [key, mems] of Object.entries(character.memories)) {
     resolved[key] = mems.map(m => ({
       ...m,
-      chatData: m.chatData ?? chatMap.get((m as any)._chatDataId) ?? undefined,
+      interactionData: m.interactionData ?? chatMap.get((m as any)._interactionDataId) ?? undefined,
     }));
   }
   return { ...character, memories: resolved };
@@ -479,7 +465,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       chatProbability: rawCharacter.chatProbability, 
       maximumChatStamina: rawCharacter.maximumChatStamina,
       nameSensitivity: rawCharacter.nameSensitivity,
-      responseDelayWeight: rawCharacter.responseDelayWeight,
+      skipProbability: rawCharacter.skipProbability,
       memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
       contextSensitivity: rawCharacter.contextSensitivity,
       sampler,
@@ -523,10 +509,6 @@ export async function deleteRawCharacter(id: string): Promise<void> {
   await updateManifest(PATHS.characters, id, 'remove');
 }
 
-/**
- * ✅ Loads a lightweight character shell WITHOUT sampler hydration.
- * Used for list display — full hydration happens on demand via loadRawCharacter.
- */
 export async function loadCharacterShell(id: string): Promise<Character | null> {
     const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
     if (!rawCharacter) return null;
@@ -545,13 +527,13 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         chatProbability: rawCharacter.chatProbability,
         maximumChatStamina: rawCharacter.maximumChatStamina,
         nameSensitivity: rawCharacter.nameSensitivity,
-        responseDelayWeight: rawCharacter.responseDelayWeight,
+        skipProbability: rawCharacter.skipProbability,
         memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
         contextSensitivity: rawCharacter.contextSensitivity,
         numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
         numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
         numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
-        sampler: undefined, // ← Not hydrated — loaded on demand
+        sampler: undefined,
         enableMemoryWriting: rawCharacter.enableMemoryWriting,
         enableMemoryReading: rawCharacter.enableMemoryReading,
         memories,
@@ -560,10 +542,6 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     };
 }
 
-/**
- * ✅ Loads all characters as lightweight shells (no sampler hydration).
- * Fast enough for mobile — full hydration deferred to editor/chat selection.
- */
 export async function loadAllCharacterShells(): Promise<Character[]> {
     const ids = await loadRawCharacterManifest();
     const results = await loadInBatches(ids, loadCharacterShell);
@@ -627,6 +605,53 @@ export async function saveRawContext(context: Context): Promise<void> {
 export async function deleteRawContext(id: string): Promise<void> {
     await deleteResource(`${PATHS.contexts}/${id}.json`);
     await updateManifest(PATHS.contexts, id, 'remove');
+}
+
+// --- Location Repository ---
+export async function loadRawLocationManifest(): Promise<string[]> {
+    return await ensureManifest(PATHS.locations);
+}
+
+export async function loadRawLocation(id: string): Promise<Location | null> {
+    const rawLocation = await fetchJson<RawLocation>(`${PATHS.locations}/${id}.json`);
+    if (!rawLocation) return null;
+
+    const now = Date.now()
+
+    return {
+        id,
+        name: rawLocation.name || 'Unknown Location',
+        description: rawLocation.description,
+        text: rawLocation.text,
+        images: rawLocation.images,
+        regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
+        characterBindings: rawLocation.characterBindings,
+        globalWeight: rawLocation.globalWeight ?? 1,
+        characterWeights: rawLocation.characterWeights ?? {},
+        firstCreatedTimestamp: rawLocation.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: rawLocation.lastUpdatedTimestamp || now,
+    };
+}
+
+export async function loadAllRawLocations(): Promise<Location[]> {
+    const ids = await loadRawLocationManifest();
+    const results = await loadInBatches(ids, loadRawLocation);
+    return results.filter((l): l is Location => l !== null);
+}
+
+export async function saveRawLocation(location: Location): Promise<void> {
+    const { id, ...rawLocation } = location;
+    const payload: RawLocation = {
+        ...rawLocation,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.locations}/${id}.json`, payload);
+    await updateManifest(PATHS.locations, id, 'add');
+}
+
+export async function deleteRawLocation(id: string): Promise<void> {
+    await deleteResource(`${PATHS.locations}/${id}.json`);
+    await updateManifest(PATHS.locations, id, 'remove');
 }
 
 // --- Language Model Repository ---
@@ -791,7 +816,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         chatProbability: rawProfile.chatProbability ?? -1,
         maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
         nameSensitivity: rawProfile.nameSensitivity ?? -1,
-        responseDelayWeight: rawProfile.responseDelayWeight ?? -1,
+        skipProbability: rawProfile.skipProbability ?? -1,
         memoryRetentionWeight: rawProfile.memoryRetentionWeight ?? -1,
         contextSensitivity: rawProfile.contextSensitivity ?? -1,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
@@ -875,46 +900,43 @@ export async function deleteRawWebpage(id: string): Promise<void> {
     await updateManifest(PATHS.webpages, id, 'remove');
 }
 
-/**
- * Looks up a cached webpage by URL. Returns null if not found.
- * Used by linkFetcher to check persistent cache before fetching.
- */
 export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
     const all = await loadAllRawWebpages();
     return all.find(w => w.url === url) || null;
 }
 
 // --- Chat Message Repository ---
-export async function deleteRawChatMessage(id: string): Promise<void> { 
-    await deleteResource(`${PATHS.chatMessages}/${id}.json`); 
+export async function deleteRawInteractionMessage(id: string): Promise<void> { 
+    await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
 }
 
 // --- Chat Data Repository ---
 export async function loadRawChatManifest(): Promise<string[]> { 
-    return await ensureManifest(PATHS.chatData); 
+    return await ensureManifest(PATHS.interactionData); 
 }
 
-async function buildChatDataShell(
+async function buildInteractionDataShell(
   id: string, 
-  rawChatData: RawChatData, 
+  rawInteractionData: RawInteractionData, 
   charMap: Map<string, Character>, 
   contextMap: Map<string, Context>,
+  locationMap: Map<string, Location>,
   profileMap: Map<string, Profile>
-): Promise<ChatData | null> {
+): Promise<InteractionData | null> {
 
   const now = Date.now();
   
-  let protagonist = charMap.get(rawChatData.protagonistId);
+  let protagonist = charMap.get(rawInteractionData.protagonistId);
   if (!protagonist) {
     protagonist = {
-      id: rawChatData.protagonistId,
+      id: rawInteractionData.protagonistId,
       name: '[Deleted Character]',
       description: 'This character has been deleted.',
       initiativeWeight: 1,
       chatProbability: 0.5,
       maximumChatStamina: 4,
       nameSensitivity: 1,
-      responseDelayWeight: 1,
+      skipProbability: 1,
       memoryRetentionWeight: 1,
       contextSensitivity: 1,
       numberOfMessagesToDisableThinkPrompt: 0,
@@ -928,7 +950,7 @@ async function buildChatDataShell(
     };
   }
 
-  const participants = rawChatData.participantIds
+  const participants = rawInteractionData.participantIds
     .map(pid => {
       const found = charMap.get(pid);
       if (found) return found;
@@ -940,7 +962,7 @@ async function buildChatDataShell(
         chatProbability: 0.5,
         maximumChatStamina: 4,
         nameSensitivity: 1,
-        responseDelayWeight: 1,
+        skipProbability: 1,
         memoryRetentionWeight: 1,
         contextSensitivity: 1,
         numberOfMessagesToDisableThinkPrompt: 0,
@@ -958,45 +980,49 @@ async function buildChatDataShell(
     participants.unshift(protagonist);
   }
 
-  const contexts = (rawChatData.contextIds || [])
+  const contexts = (rawInteractionData.contextIds || [])
     .map(iid => contextMap.get(iid))
     .filter((i): i is Context => i !== undefined);
 
-  const profile = rawChatData.ProfileId ? profileMap.get(rawChatData.ProfileId) : undefined;
+  const locations = (rawInteractionData.locationIds || [])
+    .map(lid => locationMap.get(lid))
+    .filter((l): l is Location => l !== undefined);
+
+  const profile = rawInteractionData.ProfileId ? profileMap.get(rawInteractionData.ProfileId) : undefined;
 
   return {
     id, 
-    name: rawChatData.name || "Untitled Chat", 
+    name: rawInteractionData.name || "Untitled Chat", 
     protagonist, 
     participants, 
-    contexts, 
-    chatMessageHistory: [],
-    numberOfMessages: rawChatData.chatMessageIdHistory?.length ?? 0,
-    firstCreatedTimestamp: rawChatData.firstCreatedTimestamp || Date.now(), 
-    lastUpdatedTimestamp: rawChatData.lastUpdatedTimestamp || Date.now(),
-    parentChatDataId: rawChatData.parentChatDataId || null, 
-    parentChatMessageId: rawChatData.parentChatMessageId || null,
+    contexts,
+    locations,
+    interactionHistory: [],
+    numberOfMessages: rawInteractionData.interactionMessageIdHistory?.length ?? 0,
+    firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
+    lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
+    parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
+    parentInteractionMessageId: rawInteractionData.parentInteractionMessageId || null,
     Profile: profile,
   };
 }
 
-export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
-    if (chatData.chatMessageHistory.length > 0) return chatData;
+export async function loadInteractionMessages(interactionData: InteractionData): Promise<InteractionData> {
+    if (interactionData.interactionHistory.length > 0) return interactionData;
 
-    const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${chatData.id}.json`);
-    // ✅ Guard: if raw data is missing or has no message IDs, return shell as-is
-    if (!rawChatData || !rawChatData.chatMessageIdHistory || rawChatData.chatMessageIdHistory.length === 0) {
-        return chatData;
+    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
+    if (!rawInteractionData || !rawInteractionData.interactionMessageIdHistory || rawInteractionData.interactionMessageIdHistory.length === 0) {
+        return interactionData;
     }
 
     const charMap = new Map<string, Character>();
-    if (chatData.protagonist) charMap.set(chatData.protagonist.id, chatData.protagonist);
-    for (const p of chatData.participants) {
+    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
+    for (const p of interactionData.participants) {
         charMap.set(p.id, p);
     }
 
-    const messagePromises = rawChatData.chatMessageIdHistory.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawChatMessage>(`${PATHS.chatMessages}/${messageId}.json`);
+    const messagePromises = rawInteractionData.interactionMessageIdHistory.map(async (messageId) => {
+        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
         if (!rawMessage) return null;
         
         const character = charMap.get(rawMessage.characterId);
@@ -1014,66 +1040,74 @@ export async function loadChatMessages(chatData: ChatData): Promise<ChatData> {
         };
     });
 
-    const chatMessageHistory = (await Promise.all(messagePromises)).filter((m): m is ChatMessage => m !== null);
+    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is InteractionMessage => m !== null);
 
-    return { ...chatData, chatMessageHistory, numberOfMessages: chatMessageHistory.length };
+    return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
 }
 
-/**
- * ✅ Loads a single chat using pre-loaded shell maps when available.
- * Falls back to targeted individual loads (not full dataset scans).
- */
-export async function loadRawChatData(
+export async function loadRawInteractionData(
   id: string,
   existingCharShells?: Character[]
-): Promise<ChatData | null> {
-  const rawChatData = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
-  if (!rawChatData) return null;
+): Promise<InteractionData | null> {
+  const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
+  if (!rawInteractionData) return null;
 
   // Build character map from pre-loaded shells or load only needed shells
   const charMap = new Map<string, Character>();
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
   } else {
-    const neededIds = [...new Set([rawChatData.protagonistId, ...(rawChatData.participantIds || [])])];
+    const neededIds = [...new Set([rawInteractionData.protagonistId, ...(rawInteractionData.participantIds || [])])];
     const shells = await Promise.all(neededIds.map(loadCharacterShell));
     for (const s of shells) { if (s) charMap.set(s.id, s); }
   }
 
   // Load only this chat's contexts individually
   const contextMap = new Map<string, Context>();
-if (rawChatData.contextIds?.length) {
-  const ctxResults = await Promise.all(
-    rawChatData.contextIds.map(async (cid) => {
-      try {
-        return await loadRawContext(cid);
-      } catch {
-        console.warn(`Context ${cid} not found, skipping.`);
-        return null;
-      }
-    })
-  );
-  for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
-}
+  if (rawInteractionData.contextIds?.length) {
+    const ctxResults = await Promise.all(
+      rawInteractionData.contextIds.map(async (cid) => {
+        try {
+          return await loadRawContext(cid);
+        } catch {
+          console.warn(`Context ${cid} not found, skipping.`);
+          return null;
+        }
+      })
+    );
+    for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
+  }
+
+  // Load only this chat's locations individually
+  const locationMap = new Map<string, Location>();
+  if (rawInteractionData.locationIds?.length) {
+    const locResults = await Promise.all(
+      rawInteractionData.locationIds.map(async (lid) => {
+        try {
+          return await loadRawLocation(lid);
+        } catch {
+          console.warn(`Location ${lid} not found, skipping.`);
+          return null;
+        }
+      })
+    );
+    for (const l of locResults) { if (l) locationMap.set(l.id, l); }
+  }
 
   // Load only this chat's profile individually
   const profileMap = new Map<string, Profile>();
-  if (rawChatData.ProfileId) {
-    const p = await loadRawProfile(rawChatData.ProfileId);
+  if (rawInteractionData.ProfileId) {
+    const p = await loadRawProfile(rawInteractionData.ProfileId);
     if (p) profileMap.set(p.id, p);
   }
 
-  const shell = await buildChatDataShell(id, rawChatData, charMap, contextMap, profileMap);
+  const shell = await buildInteractionDataShell(id, rawInteractionData, charMap, contextMap, locationMap, profileMap);
   if (!shell) return null;
 
-  return loadChatMessages(shell);
+  return loadInteractionMessages(shell);
 }
 
-/**
- * ✅ Loads all chat shells for list display using character shells only.
- * No full character/context/profile hydration — deferred to when chat is opened.
- */
-export async function loadAllRawChatDataShells(): Promise<ChatData[]> {
+export async function loadAllRawInteractionDataShells(): Promise<InteractionData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
@@ -1081,18 +1115,19 @@ export async function loadAllRawChatDataShells(): Promise<ChatData[]> {
   const allCharShells = await loadAllCharacterShells();
   const charMap = new Map(allCharShells.map(c => [c.id, c]));
 
-  const results: (ChatData | null)[] = [];
+  const results: (InteractionData | null)[] = [];
   
   for (let i = 0; i < ids.length; i += 5) {
     const batchIds = ids.slice(i, i + 5);
     const batchPromises = batchIds.map(async (id) => {
-      const raw = await fetchJson<RawChatData>(`${PATHS.chatData}/${id}.json`);
+      const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
       if (!raw) return null;
 
-      // Build minimal shell — no contexts, no profile hydration
+      // Build minimal shell — no contexts, locations, or profile hydration
       const emptyContextMap = new Map<string, Context>();
+      const emptyLocationMap = new Map<string, Location>();
       const emptyProfileMap = new Map<string, Profile>();
-      return buildChatDataShell(id, raw, charMap, emptyContextMap, emptyProfileMap);
+      return buildInteractionDataShell(id, raw, charMap, emptyContextMap, emptyLocationMap, emptyProfileMap);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -1103,70 +1138,71 @@ export async function loadAllRawChatDataShells(): Promise<ChatData[]> {
     }
   }
 
-  return results.filter((c): c is ChatData => c !== null);
+  return results.filter((c): c is InteractionData => c !== null);
 }
 
-export async function saveRawChatData(chatData: ChatData): Promise<void> {
-  // Don't save sessions without a valid protagonist
-  if (!chatData.protagonist?.id) return;
+export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {
+  if (!interactionData.protagonist?.id) return;
 
-  const saveMessagePromises = chatData.chatMessageHistory.map(message => {
+  const saveMessagePromises = interactionData.interactionHistory.map(message => {
     const { id, character, ...rawMsg } = message;
     const payload = {
       ...rawMsg,
       characterId: character.id,
       lastUpdatedTimestamp: Date.now(),
     };
-    return putJson(`${PATHS.chatMessages}/${id}.json`, payload);
+    return putJson(`${PATHS.interactionMessages}/${id}.json`, payload);
   });
   
   for (let i = 0; i < saveMessagePromises.length; i += 10) {
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, chatMessageHistory, parentChatDataId, parentChatMessageId, Profile, ...rawChatData } = chatData;
-  const payload: RawChatData = {
-    ...rawChatData, 
+  const { id, protagonist, participants, contexts, locations, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
+  const payload: RawInteractionData = {
+    ...rawInteractionData, 
     protagonistId: protagonist.id, 
     participantIds: participants.map(p => p.id),
-    contextIds: contexts?.map(i => i.id) || [], 
-    chatMessageIdHistory: chatMessageHistory.map(m => m.id),
-    parentChatDataId: parentChatDataId || null, 
-    parentChatMessageId: parentChatMessageId || null,
+    contextIds: contexts?.map(i => i.id) || [],
+    locationIds: locations?.map(l => l.id) || [],
+    interactionMessageIdHistory: interactionHistory.map(m => m.id),
+    parentInteractionDataId: parentInteractionDataId || null, 
+    parentInteractionMessageId: parentInteractionMessageId || null,
     ProfileId: Profile?.id,
     lastUpdatedTimestamp: Date.now(),
   };
-  await putJson(`${PATHS.chatData}/${id}.json`, payload);
-  await updateManifest(PATHS.chatData, id, 'add');
+  await putJson(`${PATHS.interactionData}/${id}.json`, payload);
+  await updateManifest(PATHS.interactionData, id, 'add');
 }
 
-export async function branchRawChatData(parentChatDataId: string, parentChatMessageId: string): Promise<string> {
-  const sourceChat = await loadRawChatData(parentChatDataId);
+export async function branchRawInteractionData(parentInteractionDataId: string, parentInteractionMessageId: string): Promise<string> {
+  const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
-  const branchIndex = sourceChat.chatMessageHistory.findIndex(m => m.id === parentChatMessageId);
+  const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentInteractionMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
   const newChatId = uuidv4();
-  const newPayload: RawChatData = {
+  const newPayload: RawInteractionData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistId: sourceChat.protagonist.id,
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
-    chatMessageIdHistory: sourceChat.chatMessageHistory.slice(0, branchIndex + 1).map(m => m.id),
+    locationIds: sourceChat.locations?.map(l => l.id) || [],
+    interactionMessageIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
-    parentChatDataId, 
-    parentChatMessageId,
+    parentInteractionDataId, 
+    parentInteractionMessageId,
     ProfileId: sourceChat.Profile?.id,
   };
-  await putJson(`${PATHS.chatData}/${newChatId}.json`, newPayload);
-  await updateManifest(PATHS.chatData, newChatId, 'add');
+  await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
+  await updateManifest(PATHS.interactionData, newChatId, 'add');
   return newChatId;
 }
 
-export async function deleteRawChatData(id: string): Promise<void> {
+export async function deleteRawInteractionData(id: string): Promise<void> {
   try { await deleteResource(`${PATHS.kvCaches}/${id}`); } catch (e) { console.warn("KV cache cleanup failed", e); }
-  await deleteResource(`${PATHS.chatData}/${id}.json`);
-  await updateManifest(PATHS.chatData, id, 'remove');
+  await deleteResource(`${PATHS.interactionData}/${id}.json`);
+  await updateManifest(PATHS.interactionData, id, 'remove');
 }
 
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
@@ -1217,6 +1253,20 @@ export async function uploadContextImage(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
   const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const imagePath = `${PATHS.contexts}/${filename}`;
+  await putJson(imagePath, { base64 });
+  return filename;
+}
+
+export function getLocationImageUrl(imageFilename: string | undefined): string | null {
+  if (!imageFilename) return null;
+  const cleanPath = PATHS.locations.startsWith('/') ? PATHS.locations : `/${PATHS.locations}`;
+  return `${localURL}${cleanPath}/${imageFilename}`;
+}
+
+export async function uploadLocationImage(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const imagePath = `${PATHS.locations}/${filename}`;
   await putJson(imagePath, { base64 });
   return filename;
 }

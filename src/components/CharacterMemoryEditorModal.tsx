@@ -1,7 +1,7 @@
 // src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, Memory } from '../types';
-import { loadAllRawChatDataShells } from '../hooks/storage';
+import { loadAllRawInteractionDataShells } from '../hooks/storage';
 import './main.css';
 
 interface CharacterMemoryEditorModalProps {
@@ -41,7 +41,7 @@ export function CharacterMemoryEditorModal({
 
             (async () => {
                 try {
-                    const chats = await loadAllRawChatDataShells();
+                    const chats = await loadAllRawInteractionDataShells();
                     const map = new Map<string, string>();
                     for (const c of chats) {
                         if (c) map.set(c.id, c.name || 'Untitled Chat');
@@ -185,7 +185,7 @@ export function CharacterMemoryEditorModal({
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {mems.map(mem => {
                                             const isEditing = editingId === mem.id;
-                                            const chatId = mem.chatData?.id ?? 'Unknown ID';
+                                            const chatId = mem.interactionData?.id ?? 'Unknown ID';
                                             const chatName = chatNameMap.get(chatId) || 'Unknown Chat';
 
                                             return (

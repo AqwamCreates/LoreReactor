@@ -1,5 +1,5 @@
 // src/services/BudgetStrategyEngine.ts
-import type { BudgetStrategy, Character, ChatData } from '../types';
+import type { BudgetStrategy, Character, InteractionData } from '../types';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
@@ -15,8 +15,8 @@ function buildModelContext(model: any): LanguageModelContext {
     };
 }
 
-function computeComplexityScore(chatData: ChatData): number {
-    const history = chatData.chatMessageHistory;
+function computeComplexityScore(interactionData: InteractionData): number {
+    const history = interactionData.interactionHistory;
     if (history.length === 0) return 0;
 
     const recentMessages = history.slice(-20);
@@ -58,7 +58,7 @@ export class BudgetStrategyEngine {
     }
 
     async generateStream(
-        chatData: ChatData,
+        interactionData: InteractionData,
         character: Character,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
@@ -67,15 +67,15 @@ export class BudgetStrategyEngine {
         const onlineCtx = buildModelContext(this.strategy.onlineModel);
         const localCtx = buildModelContext(this.strategy.localModel);
 
-        const complexityScore = computeComplexityScore(chatData);
+        const complexityScore = computeComplexityScore(interactionData);
 
-        const useOnline = await this.shouldUseOnline(chatData, complexityScore);
+        const useOnline = await this.shouldUseOnline(interactionData, complexityScore);
         const primaryCtx = useOnline ? onlineCtx : localCtx;
         const fallbackCtx = useOnline ? localCtx : onlineCtx;
         const primaryModel = useOnline ? this.strategy.onlineModel : this.strategy.localModel;
 
         const runtimePort = primaryCtx.runtimePort;
-        const { body } = await prepareRequestBody(chatData, character, '', userImagesBase64, runtimePort);
+        const { body } = await prepareRequestBody(interactionData, character, '', userImagesBase64, runtimePort);
 
         // Build pricing from the selected model's cost fields
         const pricing: ModelPricing = {
@@ -114,7 +114,7 @@ export class BudgetStrategyEngine {
                     outputPerMillion: fallbackModel.outputGenerationCostPerOneMillionOfTokens ?? 0,
                 };
 
-                const { body: fallbackBody } = await prepareRequestBody(chatData, character, '', userImagesBase64, fallbackPort);
+                const { body: fallbackBody } = await prepareRequestBody(interactionData, character, '', userImagesBase64, fallbackPort);
                 const result = await engine.generateStream(
                     fallbackBody,
                     abortController,
@@ -133,13 +133,13 @@ export class BudgetStrategyEngine {
         }
     }
 
-    private async shouldUseOnline(chatData: ChatData, complexityScore?: number): Promise<boolean> {
+    private async shouldUseOnline(interactionData: InteractionData, complexityScore?: number): Promise<boolean> {
         // Budget exceeded → force local
         if (this.currentCost >= this.strategy.maximumBudget) return false;
 
         // ✅ Fixed: use for loop instead of await inside reduce
         let numberOfTokens = 0;
-        for (const m of chatData.chatMessageHistory) {
+        for (const m of interactionData.interactionHistory) {
             numberOfTokens += await engine.countTokens(m.textContent);
         }
 

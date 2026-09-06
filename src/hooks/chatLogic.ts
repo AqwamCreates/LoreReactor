@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, ChatData, ChatMessage, Context, StopPattern, PromptBlockType } from '../types';
+import type { Character, InteractionData, InteractionMessage, Context, StopPattern, PromptBlockType, ChatMessage } from '../types';
 import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -41,6 +41,13 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
 
+/**
+ * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
+ */
+function isChatMessage(msg: ChatMessage): msg is ChatMessage {
+    return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
+}
+
 function getCurrentDateAndTimeString(): string {
     return new Date().toLocaleString('en-US', {
         weekday: 'long',
@@ -58,7 +65,7 @@ export function replacePlaceholders(text: string, characterParticipantTag: strin
     const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    result = result.replace(/\{\{user\}\}/g, protagonistString);       // <--- ADD THIS
+    result = result.replace(/\{\{user\}\}/g, protagonistString);
     return result;
 }
 
@@ -84,10 +91,10 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     return `${initialString} have no energy left to speak.${thinkEndString}${contextEndString}`;
 }
 
-export function findPreviousChatMessage(chatData: ChatData, characterId: string): ChatMessage | null {
-    const chatMessageHistory = chatData.chatMessageHistory;
-    for (let i = chatMessageHistory.length - 1; i >= 0; i--) {
-        if (chatMessageHistory[i].character.id === characterId) return chatMessageHistory[i];
+export function findPreviousInteractionMessage(interactionData: InteractionData, characterId: string): InteractionMessage | null {
+    const interactionHistory = interactionData.interactionHistory;
+    for (let i = interactionHistory.length - 1; i >= 0; i--) {
+        if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
     }
     return null;
 }
@@ -161,13 +168,11 @@ function filterArrayBasedOnTarget(
 
 function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier: number = 1): boolean {
     const regexTrigger = context.regularExpressionActivationTrigger;
-    if (!regexTrigger) return true; // No activation trigger = always active
+    if (!regexTrigger) return true;
     try {
         const regex = new RegExp(regexTrigger);
         const matched = regex.test(searchSpace);
         if (!matched) return false;
-        // If sensitivity < 1, randomly reject matches (less observant characters miss context cues)
-        // If sensitivity >= 1, always accept (more observant characters never miss)
         if (sensitivityMultiplier >= 1) return true;
         return Math.random() < sensitivityMultiplier;
     } catch (e) {
@@ -177,13 +182,9 @@ function doesContextMatch(context: Context, searchSpace: string, sensitivityMult
 }
 
 function doesContextDeactivate(context: Context, searchSpace: string): boolean {
-    // Only deactivate if there IS an activation trigger
-    // Without activation trigger, entry is always active — deactivation is meaningless
     if (!context.regularExpressionActivationTrigger) return false;
-
     const deactivationTrigger = context.regularExpressionDeactivationTrigger;
     if (!deactivationTrigger) return false;
-
     try {
         const regex = new RegExp(deactivationTrigger);
         return regex.test(searchSpace);
@@ -195,7 +196,7 @@ function doesContextDeactivate(context: Context, searchSpace: string): boolean {
 
 function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): boolean {
     const regexTrigger = stopPattern.regularExpressionActivationTrigger;
-    if (!regexTrigger) return true; // No activation trigger = always active
+    if (!regexTrigger) return true;
     try {
         const regex = new RegExp(regexTrigger);
         return regex.test(searchSpace);
@@ -206,12 +207,9 @@ function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): bo
 }
 
 function doesStopPatternDeactivate(stopPattern: StopPattern, searchSpace: string): boolean {
-    // Only deactivate if there IS an activation trigger
     if (!stopPattern.regularExpressionActivationTrigger) return false;
-
     const deactivationTrigger = stopPattern.regularExpressionDeactivationTrigger;
     if (!deactivationTrigger) return false;
-
     try {
         const regex = new RegExp(deactivationTrigger);
         return regex.test(searchSpace);
@@ -387,12 +385,11 @@ interface BuildResult {
     fetchErrors: string[];
 }
 
-export function getRevealIndexByCharacterId(chatData: ChatData): Map<string, number> {
+export function getRevealIndexByCharacterId(interactionData: InteractionData): Map<string, number> {
     const revealIndexByCharacterId = new Map<string, number>();
-    const chatMessageHistory = chatData.chatMessageHistory;
-    for (let i = 0; i < chatMessageHistory.length; i++) {
-        const msg = chatMessageHistory[i];
-        // If a message is marked as revealed, store the first index it appeared
+    const interactionHistory = interactionData.interactionHistory;
+    for (let i = 0; i < interactionHistory.length; i++) {
+        const msg = interactionHistory[i];
         if (msg.isNameRevealed && !revealIndexByCharacterId.has(msg.character.id)) {
             revealIndexByCharacterId.set(msg.character.id, i);
         }
@@ -401,37 +398,39 @@ export function getRevealIndexByCharacterId(chatData: ChatData): Map<string, num
 }
 
 export function createChatHistoryPrompt(
-    chatData: ChatData, 
+    interactionData: InteractionData, 
     character: Character, 
     revealIndexByCharacterId: Map<string, number>,
 ): { chatHistoryPrompt: string; hasBeenSummarized: boolean } {
-    const chatMessageHistory = chatData.chatMessageHistory;
-    const participants = chatData.participants;
-    const protagonist = chatData.protagonist;
-    const profile = chatData.Profile;
+    const interactionHistory = interactionData.interactionHistory;
+    const participants = interactionData.participants;
+    const protagonist = interactionData.protagonist;
+    const profile = interactionData.Profile;
     
-    if (chatMessageHistory.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
+    // ✅ Only include chat messages (with text) in the prompt history
+    const interactionMessagesOnly = interactionHistory.filter(isChatMessage);
+
+    if (interactionMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
 
     const characterParticipantTag = getParticipantTag(character, participants);
     const protagonistParticipantTag = getParticipantTag(protagonist, participants);
     const protagonistName = protagonist.name;
     
-    // Check if protagonist name should be used in history based on reveal status
     const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
     const activeSteps = [...(profile?.summarizationSteps || [])]
         .sort((a, b) => a.order - b.order);
 
-    let processedMessages = chatMessageHistory.map((msg, idx) => ({
+    // Map to original indices in full interactionHistory for reveal tracking
+    let processedMessages = interactionMessagesOnly.map((msg) => ({
         msg,
-        idx,
+        idx: interactionHistory.indexOf(msg),
         text: msg.textContent,
     }));
 
     let hasBeenSummarized = false;
 
-    // Apply summarization strategies to history
     for (const step of activeSteps) {
         if (step.strategyType === 'Sliding Window Replace') {
             const windowSize = step.slidingWindowSize ?? 10;
@@ -489,12 +488,10 @@ export function createChatHistoryPrompt(
 
         let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`;
 
-        // Inject name if revealed or if it's the current character generating the prompt
         if (otherCharacter.id === character.id || isRevealedAtThisMessage) {
             chatHistoryText = `${chatHistoryText} (${otherCharacterName})`;
         }
 
-        // Replace placeholders in the message text
         const replacedText = replacePlaceholders(
             p.text, 
             characterParticipantTag, 
@@ -509,33 +506,33 @@ export function createChatHistoryPrompt(
 
     chatHistoryLines.push(endOfChatHistoryLine);
 
-    const chatHistoryPrompt = chatHistoryLines.join('\n')
+    const chatHistoryPrompt = chatHistoryLines.join('\n');
 
-    return {chatHistoryPrompt, hasBeenSummarized};
+    return { chatHistoryPrompt, hasBeenSummarized };
 }
 
-export async function buildPromptAndStopPatterns(chatData: ChatData, character: Character, existingCharacterText: string, runtimePort?: number): Promise<BuildResult> {
-    const chatMessageHistory = chatData.chatMessageHistory;
-    const contexts = chatData.contexts || [];
+export async function buildPromptAndStopPatterns(interactionData: InteractionData, character: Character, existingCharacterText: string, runtimePort?: number): Promise<BuildResult> {
+    const interactionHistory = interactionData.interactionHistory;
+    const contexts = interactionData.contexts || [];
     const sampler = character.sampler;
 
     const samplerStopPatterns = sampler?.stopPatterns || [];
     const characterStopPatterns = character.stopPatterns || [];
     const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
 
-    const participants = chatData.participants;
+    const participants = interactionData.participants;
 
     const characterId = character.id;
     const characterParticipantId = getParticipantId(character, participants);
     const characterParticipantTag = getParticipantTag(character, participants);
     const characterName = character.name;
-    const protagonist = chatData.protagonist;
+    const protagonist = interactionData.protagonist;
     const protagonistParticipantTag = getParticipantTag(protagonist, participants);
     const protagonistName = protagonist.name;
     let systemPrompt = character.systemPrompt;
     let thinkPrompt = character.thinkPrompt;
 
-    const profile = chatData.Profile;
+    const profile = interactionData.Profile;
     const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
@@ -554,18 +551,22 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         return profileValue;
     })();
 
+    // ✅ Only include chat messages (with text) in prompt search space
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
 
-    for (const msg of chatMessageHistory) {
-        characterIdArray.push(msg.character.id);
-        textContentArray.push(msg.textContent);
+    for (const msg of interactionHistory) {
+        if (isChatMessage(msg)) {
+            characterIdArray.push(msg.character.id);
+            textContentArray.push(msg.textContent);
+        }
     }
 
-    const revealIndexByCharacterId = getRevealIndexByCharacterId(chatData);
+    const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    const numberOfMessagesByParticipant = chatMessageHistory.filter(
-        msg => msg.character.id === characterId
+    // ✅ Count only chat messages for prompt disable thresholds
+    const numberOfMessagesByParticipant = interactionHistory.filter(
+        msg => msg.character.id === characterId && isChatMessage(msg)
     ).length;
 
     const isCacheMoreThanLevelZero = (cacheLevel > 0);
@@ -712,7 +713,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
 
         if (!stopPattern.regularExpressionActivationTrigger) {
-            // No activation trigger = always active, deactivation is meaningless
             activeStopPatterns.push(stopPattern);
             continue;
         }
@@ -744,7 +744,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
     // THINK PROMPT BLOCK
     const thinkPromptLines: string[] = [];
     if (cacheLevel >= 3) {
-        for (const p of chatData.participants) {
+        for (const p of interactionData.participants) {
             if (p.thinkPrompt) {
                 thinkPromptLines.push(`${contextStartString}${thinkStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${thinkEndString}${contextEndString}`);
             }
@@ -756,7 +756,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     // META THINK BLOCK
     const metaThinkLines: string[] = [];
-    const previousMessage = findPreviousChatMessage(chatData, character.id);
+    const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
     const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, profile);
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
@@ -772,18 +772,16 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 
     const chatHistoryLines: string[] = [];
 
-    if (chatMessageHistory.length > 0) {
-
+    if (interactionHistory.length > 0) {
         chatHistoryLines.push(startOfChatHistoryLine);
 
-        const chatHistoryPrompt = createChatHistoryPrompt(chatData, character, revealIndexByCharacterId);
+        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
 
         chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
 
         hasBeenSummarized = chatHistoryPrompt.hasBeenSummarized;
 
         chatHistoryLines.push(endOfChatHistoryLine);
-
     }
 
     if (hasBeenSummarized) { constructedMetaThinkLines = `${constructedMetaThinkLines} ${summarizationAwarenessInstructions}`; }
@@ -822,8 +820,6 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         dialoguePromptLines.push(endingDialoguePromptLine);
     }
 
-    const chatDataId = chatData.id;
-
     // MEMORY BLOCK
     const memoryLines: string[] = [];
     const characterMemories = character.memories;
@@ -833,13 +829,9 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
         for (const [key, memories] of Object.entries(characterMemories)) {
             if (key === 'global' || participantIds.has(key)) {
                 for (const memory of memories) {
-
-                    const memoryChatDataId = memory.chatData?.id;
-
-                    if (memoryChatDataId === chatDataId) continue;
-
+                    const memoryInteractionDataId = memory.interactionData?.id;
+                    if (memoryInteractionDataId === interactionData.id) continue;
                     const memoryContent = memory.content;
-                    // Safely check if content exists and is a string before trimming
                     if (memoryContent && typeof memoryContent === 'string' && memoryContent.trim()) {
                         relevantMemories.push(memoryContent.trim());
                     }
@@ -924,7 +916,7 @@ export async function buildPromptAndStopPatterns(chatData: ChatData, character: 
 }
 
 export async function prepareRequestBody(
-    chatData: ChatData,
+    interactionData: InteractionData,
     character: Character,
     existingCharacterText: string,
     protagonistImageBase64s?: string[],
@@ -932,7 +924,7 @@ export async function prepareRequestBody(
 ): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(chatData, character, existingCharacterText, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -949,7 +941,7 @@ export async function prepareRequestBody(
         ...activeStopPatterns.map(sp => sp.pattern),
     ];
 
-    const profile = chatData.Profile;
+    const profile = interactionData.Profile;
 
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
@@ -1021,8 +1013,8 @@ export async function prepareRequestBody(
 
 export { clearFetchCache };
 
-export function convertIdsToDisplayNames(text: string, chatData: ChatData): string {
-    const profile = chatData.Profile;
+export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
+    const profile = interactionData.Profile;
     const stripThinkTokens = profile?.stripThinkTokens ?? false;
 
     let result = text;
@@ -1033,19 +1025,18 @@ export function convertIdsToDisplayNames(text: string, chatData: ChatData): stri
         result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
     }
 
-    // Strip memory trigger from displayed output
     result = result.replace(/<memory>\}/g, '');
     result = result.replace(/<memory>[\s\S]*?\}/g, '');
 
-    chatData.participants.forEach((p, i) => {
+    interactionData.participants.forEach((p, i) => {
         const id = `Character ${i + 1}`;
-        const isRevealed = chatData.chatMessageHistory.some(m => m.character.id === p.id && m.isNameRevealed);
+        const isRevealed = interactionData.interactionHistory.some(m => m.character.id === p.id && m.isNameRevealed);
         if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
     });
     return result;
 }
 
-export function createNewChatData(character: Character): ChatData {
+export function createNewInteractionData(character: Character): InteractionData {
     const now = Date.now();
     return {
         id: uuidv4(),
@@ -1053,22 +1044,45 @@ export function createNewChatData(character: Character): ChatData {
         protagonist: character,
         participants: [character],
         contexts: [],
-        chatMessageHistory: [],
+        locations: [],
+        interactionHistory: [],
         numberOfMessages: 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentChatDataId: null,
-        parentChatMessageId: null,
+        parentInteractionDataId: null,
+        parentInteractionMessageId: null,
     };
 }
 
-export function createChatMessage(chatData: ChatData, character: Character, textContent: string, options?: { isPartial?: boolean }): ChatMessage {
-    const previousMessage = findPreviousChatMessage(chatData, character.id);
+/**
+ * Create a silent InteractionMessage (no text) for location/state tracking.
+ */
+export function createInteractionMessage(
+    character: Character,
+    options?: { locationIndex?: number; remainingChatStamina?: number; parentId?: string | null }
+): InteractionMessage {
+    const now = Date.now();
+    return {
+        id: uuidv4(),
+        character: { ...character },
+        remainingChatStamina: options?.remainingChatStamina,
+        locationIndex: options?.locationIndex,
+        parentInteractionMessageId: options?.parentId ?? null,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+/**
+ * Create a full InteractionMessage with text content.
+ */
+export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number }): ChatMessage {
+    const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(chatData.chatMessageHistory, character.id, character.name, textContent);
-    const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, chatData.Profile);
+    const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
+    const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
-    const lastMessageId = chatData.chatMessageHistory.length > 0 ? chatData.chatMessageHistory[chatData.chatMessageHistory.length - 1].id : null;
+    const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
     const now = Date.now();
 
     return {
@@ -1077,64 +1091,67 @@ export function createChatMessage(chatData: ChatData, character: Character, text
         textContent,
         remainingChatStamina,
         isNameRevealed,
+        locationIndex: options?.locationIndex,
         isPartial: options?.isPartial || undefined,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentChatMessageId: lastMessageId,
+        parentInteractionMessageId: lastMessageId,
     };
 }
 
-export function addMessageToChatData(chatData: ChatData, newChatMessage: ChatMessage): ChatData {
+export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: InteractionMessage): InteractionData {
     return {
-        ...chatData,
-        chatMessageHistory: [...chatData.chatMessageHistory, newChatMessage],
-        numberOfMessages: (chatData.numberOfMessages ?? chatData.chatMessageHistory.length) + 1,
+        ...interactionData,
+        interactionHistory: [...interactionData.interactionHistory, newInteractionMessage],
+        numberOfMessages: (interactionData.numberOfMessages ?? interactionData.interactionHistory.length) + 1,
         lastUpdatedTimestamp: Date.now()
     };
 }
 
-export function editChatMessageInChatData(chatData: ChatData, messageId: string, newText: string): ChatData {
-    const { chatMessageHistory } = chatData;
-    const index = chatMessageHistory.findIndex(m => m.id === messageId);
-    if (index === -1) return chatData;
+export function editInteractionMessageInInteractionData(interactionData: InteractionData, messageId: string, newText: string): InteractionData {
+    const { interactionHistory } = interactionData;
+    const index = interactionHistory.findIndex(m => m.id === messageId);
+    if (index === -1) return interactionData;
     return {
-        ...chatData,
-        chatMessageHistory: chatMessageHistory.map((message, idx) => {
-            if (idx === index) return { ...message, textContent: newText, kvCachePath: undefined };
-            if (idx > index) return { ...message, kvCachePath: undefined };
+        ...interactionData,
+        interactionHistory: interactionHistory.map((message, idx) => {
+            if (idx === index) return { ...message, textContent: newText, kvCachePath: undefined } as ChatMessage;
+            if (idx > index) return { ...message, kvCachePath: undefined } as ChatMessage;
             return message;
         })
     };
 }
 
-export function deleteChatMessage(chatData: ChatData, messageId: string): { newHistory: ChatMessage[], invalidatedIds: string[] } {
-    const chatMessageHistory = chatData.chatMessageHistory;
-    const targetIndex = chatMessageHistory.findIndex(m => m.id === messageId);
-    if (targetIndex === -1) return { newHistory: chatMessageHistory, invalidatedIds: [] };
-    const newHistory = chatMessageHistory.filter(m => m.id !== messageId);
+export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: InteractionMessage[]; invalidatedIds: string[] } {
+    const interactionHistory = interactionData.interactionHistory;
+    const targetIndex = interactionHistory.findIndex(m => m.id === messageId);
+    if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
+    const newHistory = interactionHistory.filter(m => m.id !== messageId);
     const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex) return { ...message, kvCachePath: undefined };
+        if (idx >= targetIndex) return { ...message, kvCachePath: undefined } as ChatMessage;
         return message;
     });
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
 }
 
-export function branchChatMessage(chatData: ChatData, branchPointMessageId: string): ChatData {
-    const branchIndex = chatData.chatMessageHistory.findIndex(m => m.id === branchPointMessageId);
+export function branchInteractionMessage(interactionData: InteractionData, branchPointMessageId: string): InteractionData {
+    const branchIndex = interactionData.interactionHistory.findIndex(m => m.id === branchPointMessageId);
     if (branchIndex === -1) throw new Error('Branch point message not found');
     const currentTimestamp = Date.now();
-    const branchedHistory = chatData.chatMessageHistory.slice(0, branchIndex + 1);
+    const branchedHistory = interactionData.interactionHistory.slice(0, branchIndex + 1);
     return {
         id: uuidv4(),
-        name: `${chatData.name} [#${branchIndex + 1}]`,
-        protagonist: chatData.protagonist,
-        participants: chatData.participants,
-        chatMessageHistory: branchedHistory,
+        name: `${interactionData.name} [#${branchIndex + 1}]`,
+        protagonist: interactionData.protagonist,
+        participants: interactionData.participants,
+        contexts: interactionData.contexts,
+        locations: interactionData.locations,
+        interactionHistory: branchedHistory,
         numberOfMessages: branchedHistory.length,
         firstCreatedTimestamp: currentTimestamp,
         lastUpdatedTimestamp: currentTimestamp,
-        Profile: chatData.Profile,
-        parentChatDataId: chatData.id,
-        parentChatMessageId: branchPointMessageId,
+        Profile: interactionData.Profile,
+        parentInteractionDataId: interactionData.id,
+        parentInteractionMessageId: branchPointMessageId,
     };
 }

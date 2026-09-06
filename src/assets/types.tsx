@@ -28,7 +28,7 @@ export interface Character {
   samplerId?: string;
 }
 
-export interface ChatMessage {
+export interface InteractionMessage {
   characterId: string;
   textContent: string;
   isAppearanceRevealed?: boolean;
@@ -38,12 +38,12 @@ export interface ChatMessage {
   parentMessageId?: string | null;
 }
 
-export interface ChatData {
+export interface InteractionData {
   title: string;
   protagonistId: string;
   participantIds: string[];
   instructionIds?: string[];
-  chatMessageIdHistory: string[];
+  interactionMessageIdHistory: string[];
   first_created_timestamp: number;
   last_updated_timestamp: number;
 }

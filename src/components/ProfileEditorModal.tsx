@@ -125,7 +125,7 @@ export function ProfileEditorModal({
     const [chatProbability, setChatProbability] = useState<number>(0);
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
-    const [responseDelayWeight, setResponseDelayWeight] = useState<number>(-1);
+    const [skipProbability, setSkipProbability] = useState<number>(-1);
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
@@ -160,7 +160,7 @@ export function ProfileEditorModal({
                 setChatProbability(existingProfile.chatProbability ?? -1);
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
                 setNameSensitivity(existingProfile.nameSensitivity ?? -1);
-                setResponseDelayWeight(existingProfile.responseDelayWeight ?? -1);
+                setSkipProbability(existingProfile.skipProbability ?? -1);
                 setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
                 setContextSensitivity(existingProfile.contextSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
@@ -194,7 +194,7 @@ export function ProfileEditorModal({
                 setChatProbability(0);
                 setMaximumChatStamina(0);
                 setNameSensitivity(-1);
-                setResponseDelayWeight(-1);
+                setSkipProbability(-1);
                 setMemoryRetentionWeight(-1);
                 setContextSensitivity(-1);
                 setCacheLevel(0);
@@ -241,7 +241,7 @@ export function ProfileEditorModal({
             chatProbability,
             maximumChatStamina,
             nameSensitivity,
-            responseDelayWeight,
+            skipProbability,
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
@@ -281,7 +281,7 @@ export function ProfileEditorModal({
             chatProbability,
             maximumChatStamina,
             nameSensitivity,
-            responseDelayWeight,
+            skipProbability,
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
@@ -642,19 +642,19 @@ export function ProfileEditorModal({
 
                         <div style={{ marginBottom: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Response Delay Override</label>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Skip Probability Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {responseDelayWeight === -1 ? '(Character default)' : responseDelayWeight === 0 ? '(Disabled)' : ''}
+                                    {skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : ''}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
-                                value={responseDelayWeight}
+                                value={skipProbability}
                                 minimumValue={-1}
                                 maximumValue={1}
                                 stepValue={0.05}
                                 decimals={2}
-                                onChange={setResponseDelayWeight}
+                                onChange={setSkipProbability}
                                 description="-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected."
                             />
                         </div>

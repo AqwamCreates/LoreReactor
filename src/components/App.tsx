@@ -4,6 +4,7 @@ import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useContextManager } from '../hooks/useContextManager';
+import { useLocationManager } from '../hooks/useLocationManager';
 import { useSamplerManager } from '../hooks/useSamplerManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
 import { useModelManager } from '../hooks/useModelManager';
@@ -12,7 +13,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadChatMessages, loadInterjectableActions, saveInterjectableActions, saveRawChatData, loadRawChatData, getCharacterImageUrl, loadRawContext } from '../hooks/storage';
+import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -22,6 +23,7 @@ import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
+import { LocationEditorModal } from './LocationEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
@@ -31,8 +33,9 @@ import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Character, Context, Sampler, StopPattern, LanguageModel, BudgetStrategy,
-  ChatData, Extension, InterjectableAction, Profile
+  Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy,
+  InteractionData, Extension, InterjectableAction, Profile, InteractionMessage,
+  ChatMessage
 } from '../types';
 
 // ─── Constants & Types ──────────────────────────────────────────────
@@ -47,6 +50,15 @@ const tokenEngine = new LanguageModelEngine();
 
 interface NavButtonProps { icon: string; label: string; onClick: () => void }
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
+ */
+function isChatMessage(msg: ChatMessage): msg is ChatMessage {
+    return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
+}
 
 // ─── Sub-components ─────────────────────────────────────────────────
 
@@ -96,7 +108,7 @@ function renderProfileSubtext(profile: Profile) {
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
   if (profile.enableMemoryReading) flags.push('Memory Read');
   if (profile.enableMemoryWriting) flags.push('Memory Write');
-  if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.responseDelayWeight !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Character Stats Override');
+  if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Character Stats Override');
 
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
@@ -108,15 +120,15 @@ function renderProfileSubtext(profile: Profile) {
 }
 
 function renderChatSubtext(c: {
-  parentChatDataId?: string;
+  parentInteractionDataId?: string;
   numberOfMessages?: number;
-  chatMessageHistory: unknown[];
+  interactionHistory: unknown[];
   participants?: unknown[];
   contexts?: unknown[];
 }) {
   const parts: string[] = [];
-  if (c.parentChatDataId) parts.push(`Branch of ${c.parentChatDataId.substring(0, 8)}...`);
-  parts.push(`${c.numberOfMessages ?? c.chatMessageHistory.length} message${(c.numberOfMessages ?? c.chatMessageHistory.length) > 1 ? 's' : ''}`);
+  if (c.parentInteractionDataId) parts.push(`Branch of ${c.parentInteractionDataId.substring(0, 8)}...`);
+  parts.push(`${c.numberOfMessages ?? c.interactionHistory.length} message${(c.numberOfMessages ?? c.interactionHistory.length) > 1 ? 's' : ''}`);
   parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`);
   if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`);
   return parts.join(' • ');
@@ -138,6 +150,23 @@ function renderContextSubtext(i: {
   if (searchTermCount > 0) parts.push(`🔎${searchTermCount}`);
   if (urlCount > 0) parts.push(`🔗${urlCount}`);
   parts.push(`${i.text?.substring(0, 50) || ''}...`);
+  return parts.join(' ');
+}
+
+function renderLocationSubtext(loc: {
+  regularExpressionActivationTrigger?: string;
+  images?: unknown[];
+  text?: string;
+  characterBindings?: string[];
+}) {
+  const parts: string[] = [];
+  if (loc.regularExpressionActivationTrigger) parts.push('⚡');
+  else parts.push('📍');
+  const imageCount = loc.images?.length ?? 0;
+  if (imageCount > 0) parts.push(`🖼️${imageCount}`);
+  const bindingCount = loc.characterBindings?.length ?? 0;
+  if (bindingCount > 0) parts.push(`👤${bindingCount}`);
+  parts.push(`${loc.text?.substring(0, 50) || ''}...`);
   return parts.join(' ');
 }
 
@@ -199,7 +228,7 @@ function App() {
   
   // Session Hook
   const {
-    chatData, setChatData, currentCharacter, setCurrentCharacter,
+    interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
     isLoading, streamingText, streamingCharacter, sendMessage, stopGeneration,
     resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
     generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
@@ -215,6 +244,7 @@ function App() {
   const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
   const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
   const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
+  const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
   const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
   const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
   const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
@@ -225,6 +255,7 @@ function App() {
   // Entity modals
   const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
   const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
+  const locationModal = useEntityModal<Location>(saveLocation, deleteLocation, 'Location');
   const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
   const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
   const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
@@ -258,6 +289,7 @@ function App() {
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
   const [isContextListOpen, setIsContextListOpen] = useState(false);
+  const [isLocationListOpen, setIsLocationListOpen] = useState(false);
   const [isSamplerListOpen, setIsSamplerListOpen] = useState(false);
   const [isExtListOpen, setIsExtListOpen] = useState(false);
   const [isModelListOpen, setIsModelListOpen] = useState(false);
@@ -284,11 +316,23 @@ function App() {
   const isLongPressingRef = useRef(false);
   const suppressNextClickRef = useRef(false);
   const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
-  const chatDataRef = useRef<ChatData | null>(null);
+  const interactionDataRef = useRef<InteractionData | null>(null);
 
   useEffect(() => {
-    chatDataRef.current = chatData;
-  }, [chatData]);
+    interactionDataRef.current = interactionData;
+  }, [interactionData]);
+
+  // ✅ Load interjectable actions as part of loading screen
+  useEffect(() => {
+    loadInterjectableActions()
+      .then(setActions)
+      .finally(() => setActionsLoading(false));
+  }, []);
+
+  // ✅ Save actions when they change
+  useEffect(() => { 
+    if (actions.length > 0) saveInterjectableActions(actions); 
+  }, [actions]);
 
   // ✅ Loading state hooks — uses !isLoading instead of .length > 0
   const loadSteps = useMemo<LoadStep[]>(() => [
@@ -296,12 +340,13 @@ function App() {
     { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
     { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
     { id: 'contexts', label: 'Contexts', icon: '🌍', done: !contextsLoading },
+    { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
     { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
     { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
     { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
     { id: 'profiles', label: 'Profiles', icon: '⚙️', done: !profilesLoading },
     { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-  ], [charsLoading, modelsLoading, contextsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading, actionsLoading]);
+  ], [charsLoading, actionsLoading, modelsLoading, contextsLoading, locationsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
   
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFadeOut, setIsFadeOut] = useState(false);
@@ -328,35 +373,28 @@ function App() {
 
   const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
   const isMassActive = massDeleteId !== null;
-  const massStartIndex = isMassActive && chatData ? chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId) : -1;
-  const branchOffIndex = chatData?.parentChatMessageId ? chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId) : -1;
+
+  // ✅ Filtered chat messages for display (excludes silent interactions)
+  const InteractionMessages = useMemo(() => {
+    if (!interactionData) return [];
+    return interactionData.interactionHistory.filter(isChatMessage);
+  }, [interactionData]);
+
+  const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
+  const branchOffIndex = interactionData?.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1;
   const cinematicAvatarUrl = centerAvatar ? getCharacterImageUrl(centerAvatar.image) : null;
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
-    if (!chatData?.contexts?.length) return 0;
+    if (!interactionData?.contexts?.length) return 0;
     let total = 0;
-    for (const ctx of chatData.contexts) {
+    for (const ctx of interactionData.contexts) {
       if (ctx.text) total += Math.ceil(ctx.text.length / 4);
     }
     return total;
-  }, [chatData]);
+  }, [interactionData]);
 
   // ✅ 3. EFFECTS
-
-  // ✅ Load interjectable actions
-  useEffect(() => { 
-    loadInterjectableActions().then((loaded) => {
-      setActions(loaded);
-      setActionsLoading(false);
-    }).catch(() => {
-      setActionsLoading(false);
-    });
-  }, []);
-
-  useEffect(() => { 
-    if (actions.length > 0 && !actionsLoading) saveInterjectableActions(actions); 
-  }, [actions, actionsLoading]);
 
   // ✅ Active chat restoration — runs exactly once via ref guard
   useEffect(() => {
@@ -372,11 +410,11 @@ function App() {
       setTimeout(() => setSelectedModelId(savedModelId), 0);
     }
 
-    const activateChat = async (chat: ChatData) => {
+    const activateChat = async (chat: InteractionData) => {
       let fullChat = chat;
-      if (!chat.chatMessageHistory.length && (chat.numberOfMessages ?? 0) > 0) {
+      if (!chat.interactionHistory.length && (chat.numberOfMessages ?? 0) > 0) {
         try {
-          fullChat = await loadChatMessages(chat);
+          fullChat = await loadInteractionMessages(chat);
         } catch (e) {
           console.warn('Failed to load chat messages for fallback:', e);
         }
@@ -387,10 +425,10 @@ function App() {
           const fullChar = await loadFullCharacter(protagonist.id);
           if (fullChar) protagonist = fullChar;
         }
-        setChatData({ ...fullChat, protagonist });
+        setInteractionData({ ...fullChat, protagonist });
         setCurrentCharacter(protagonist);
       } else {
-        setChatData(fullChat);
+        setInteractionData(fullChat);
       }
     };
 
@@ -401,18 +439,19 @@ function App() {
         startNewChat(allCharacters[0]);
       } else {
         setCurrentCharacter(null);
-        setChatData({
+        setInteractionData({
           id: uuidv4(),
           name: 'Untitled Chat',
           protagonist: null as unknown as Character,
           participants: [],
           contexts: [],
-          chatMessageHistory: [],
+          locations: [],
+          interactionHistory: [],
           numberOfMessages: 0,
           firstCreatedTimestamp: Date.now(),
           lastUpdatedTimestamp: Date.now(),
-          parentChatDataId: null,
-          parentChatMessageId: null,
+          parentInteractionDataId: null,
+          parentInteractionMessageId: null,
         });
       }
       setTimeout(() => setActiveChatRestored(true), 0);
@@ -421,26 +460,26 @@ function App() {
 
     (async () => {
       try {
-        const chatDataResult = await loadRawChatData(savedChatId, allCharacters);
+        const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
 
-        if (chatDataResult) {
-          let fullChat = chatDataResult;
-          if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.chatMessageHistory.length === 0) {
+        if (interactionDataResult) {
+          let fullChat = interactionDataResult;
+          if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.interactionHistory.length === 0) {
             try {
-              fullChat = await loadChatMessages(chatDataResult);
+              fullChat = await loadInteractionMessages(interactionDataResult);
             } catch (e) {
               console.warn('Failed to load chat messages, using shell:', e);
             }
           }
 
-          const cd = fullChat as ChatData;
+          const cd = fullChat as InteractionData;
           let protagonist = cd.protagonist;
           if (protagonist && !protagonist.systemPrompt) {
             const fullChar = await loadFullCharacter(protagonist.id);
             if (fullChar) protagonist = fullChar;
           }
 
-          setChatData({ ...cd, protagonist });
+          setInteractionData({ ...cd, protagonist });
           if (protagonist) setCurrentCharacter(protagonist);
         } else {
           console.warn('Active chat not found, falling back.');
@@ -463,15 +502,15 @@ function App() {
         setActiveChatRestored(true);
       }
     })();
-  }, [charsLoading, chatsLoading, allCharacters, allChats, loadFullCharacter, setChatData, setCurrentCharacter, setSelectedModelId, startNewChat]);
+  }, [charsLoading, chatsLoading, allCharacters, allChats, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
 
   useEffect(() => {
-    if (chatData?.id) {
-      localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, chatData.id);
+    if (interactionData?.id) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id);
     } else {
       localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
     }
-  }, [chatData?.id]);
+  }, [interactionData?.id]);
 
   useEffect(() => {
     if (selectedBudgetStrategyId) {
@@ -499,13 +538,6 @@ function App() {
     }
   }, [defaultCharacterId]);
 
-  // ✅ Persist current protagonist as default character for new chats
-  useEffect(() => {
-    if (currentCharacter?.id && activeChatRestored) {
-      setDefaultCharacterId(currentCharacter.id);
-    }
-  }, [currentCharacter?.id, activeChatRestored]);
-
   useEffect(() => {
     if (selectedModelId) {
       localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId);
@@ -530,19 +562,19 @@ function App() {
   }, [selectedModelId, allModels, runningModels]);
 
   useEffect(() => {
-    const parentChatDataId = chatData?.parentChatDataId;
-    if (!parentChatDataId) return;
+    const parentInteractionDataId = interactionData?.parentInteractionDataId;
+    if (!parentInteractionDataId) return;
     let cancelled = false;
     (async () => {
       try {
-        const s = await loadRawChatData(parentChatDataId, allCharacters);
+        const s = await loadRawInteractionData(parentInteractionDataId, allCharacters);
         if (!cancelled) setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null);
       } catch {
         if (!cancelled) setBranchSourceTitle(null);
       }
     })();
     return () => { cancelled = true; };
-  }, [chatData?.parentChatDataId, allCharacters]);
+  }, [interactionData?.parentInteractionDataId, allCharacters]);
 
   useEffect(() => {
     if (defaultCharacterId && allCharacters.length > 0) {
@@ -571,7 +603,7 @@ function App() {
       return;
     }
 
-    const currentChat = chatDataRef.current;
+    const currentChat = interactionDataRef.current;
     if (!currentChat) return;
 
     let changed = false;
@@ -653,8 +685,8 @@ function App() {
       }
     }
 
-    if (changed) setChatData(updated);
-  }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setChatData, setCurrentCharacter]);
+    if (changed) setInteractionData(updated);
+  }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setCurrentCharacter]);
 
   useEffect(() => {
     if (!activeStrategy) return;
@@ -693,30 +725,30 @@ function App() {
 
   // ✅ Mark chat as modified when meaningful content is added
   useEffect(() => {
-    if (!chatData || !chatData.id) return;
+    if (!interactionData || !interactionData.id) return;
     if (chatModifiedRef.current) return;
 
     const wasModified = 
-      chatData.chatMessageHistory.length > 0 ||
-      chatData.participants.length > 1 ||
-      (chatData.contexts?.length ?? 0) > 0 ||
-      !!chatData.Profile;
+      InteractionMessages.length > 0 ||
+      interactionData.participants.length > 1 ||
+      (interactionData.contexts?.length ?? 0) > 0 ||
+      !!interactionData.Profile;
 
     if (wasModified) {
       chatModifiedRef.current = true;
     }
-  }, [chatData]);
+  }, [interactionData, InteractionMessages]);
 
   // ✅ Save new chat to disk when it becomes modified for the first time
   useEffect(() => {
-    if (!chatData || !chatData.id || !chatModifiedRef.current) return;
+    if (!interactionData || !interactionData.id || !chatModifiedRef.current) return;
 
-    const existsOnDisk = allChats.some(c => c.id === chatData.id);
+    const existsOnDisk = allChats.some(c => c.id === interactionData.id);
     if (!existsOnDisk) {
-      saveRawChatData(chatData).catch(e => console.error('Failed to save new chat:', e));
+      saveRawInteractionData(interactionData).catch(e => console.error('Failed to save new chat:', e));
       refreshChatList();
     }
-  }, [chatData, allChats, refreshChatList]);
+  }, [interactionData, allChats, refreshChatList]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -730,9 +762,10 @@ function App() {
     editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
   });
 
+  // ✅ Cinematic avatar observer — only observes chat message elements
   useEffect(() => {
     const chatHistoryElement = chatHistoryRef.current;
-    if (viewMode !== 'cinematic' || !chatHistoryElement || !chatData || !chatData.chatMessageHistory.length) {
+    if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || InteractionMessages.length === 0) {
       const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
       return () => window.clearTimeout(resetAvatar);
     }
@@ -741,12 +774,12 @@ function App() {
       const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
       if (best.intersectionRatio <= 0.5) return;
       const mid = best.target.getAttribute('data-message-id'); if (!mid) return;
-      const msg = chatData.chatMessageHistory.find(m => m.id === mid);
+      const msg = InteractionMessages.find(m => m.id === mid);
       if (!msg?.character || msg.character.id === AMBIENT_NARRATOR_ID) return;
       let avatar: Character | null = msg.character;
       if (msg.character.id === currentCharacter?.id) {
-        const ci = chatData.chatMessageHistory.indexOf(msg);
-        const prev = ci > 0 ? chatData.chatMessageHistory[ci - 1] : null;
+        const ci = InteractionMessages.indexOf(msg);
+        const prev = ci > 0 ? InteractionMessages[ci - 1] : null;
         avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
       }
       setCenterAvatar(avatar);
@@ -762,8 +795,8 @@ function App() {
     let fallbackTimer: number | undefined;
     if (!centerAvatar) {
       fallbackTimer = window.setTimeout(() => {
-        for (let i = chatData.chatMessageHistory.length - 1; i >= 0; i--) {
-          const m = chatData.chatMessageHistory[i];
+        for (let i = InteractionMessages.length - 1; i >= 0; i--) {
+          const m = InteractionMessages[i];
           if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
             setCenterAvatar(m.character);
             break;
@@ -775,7 +808,7 @@ function App() {
       obs.disconnect();
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [viewMode, currentCharacter?.id, centerAvatar, chatData, chatHistoryRef]);
+  }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, InteractionMessages, chatHistoryRef]);
 
   useEffect(() => {
     const chatHistoryElement = chatHistoryRef.current;
@@ -783,16 +816,17 @@ function App() {
     chatHistoryElement.scrollTop = 0;
   }, [viewMode, chatHistoryRef]);
 
+  // ✅ Token counting — only counts chat messages, not silent interactions
   useEffect(() => {
-    if (!chatData?.chatMessageHistory || !chatData.participants) return;
+    if (InteractionMessages.length === 0 || !interactionData?.participants) return;
     let isCancelled = false;
     const calculateMaxTokens = async () => {
       const participantCounts: Record<string, number> = {};
-      for (const p of chatData.participants) {
+      for (const p of interactionData.participants) {
         participantCounts[p.id] = 0;
       }
-      if (chatData.protagonist && participantCounts[chatData.protagonist.id] === undefined) {
-        participantCounts[chatData.protagonist.id] = 0;
+      if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) {
+        participantCounts[interactionData.protagonist.id] = 0;
       }
       const selectedModel = allModels.find(m => m.id === selectedModelId);
       const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
@@ -804,7 +838,7 @@ function App() {
           : undefined,
         runtimePort,
       } : undefined;
-      for (const msg of chatData.chatMessageHistory) {
+      for (const msg of InteractionMessages) {
         if (msg.character && msg.textContent) {
           const charId = msg.character.id;
           if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
@@ -821,7 +855,7 @@ function App() {
     };
     calculateMaxTokens();
     return () => { isCancelled = true; };
-  }, [chatData?.chatMessageHistory, chatData?.participants, chatData?.protagonist, selectedModelId, allModels, runningModels]);
+  }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels]);
 
 
   // ✅ 4. CALLBACKS
@@ -867,23 +901,24 @@ function App() {
     if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
   }, []);
 
-  const safeAutoSave = useCallback(async (data: ChatData | null) => {
+  const safeAutoSave = useCallback(async (data: InteractionData | null) => {
     if (!data) return;
-    if (data.chatMessageHistory.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
-    try { await saveRawChatData(data); } catch (e) { console.error('Auto-save failed:', e); }
+    const msgs = data.interactionHistory.filter(isChatMessage);
+    if (msgs.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
+    try { await saveRawInteractionData(data); } catch (e) { console.error('Auto-save failed:', e); }
   }, []);
 
   const handleSwitchChat = useCallback(async (id: string) => {
     const sel = allChats.find(c => c.id === id); if (!sel) return;
-    await safeAutoSave(chatData); clearFetchCache();
+    await safeAutoSave(interactionData); clearFetchCache();
     let chat = sel;
-    if (!sel.chatMessageHistory.length) try { chat = await loadChatMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
-    setChatData(chat); if (chat.protagonist) setCurrentCharacter(chat.protagonist);
+    if (!sel.interactionHistory.length) try { chat = await loadInteractionMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
+    setInteractionData(chat); if (chat.protagonist) setCurrentCharacter(chat.protagonist);
     refreshChatList(); setIsChatListOpen(false); lastViewedMessageIdRef.current = null;
-  }, [allChats, chatData, setChatData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
+  }, [allChats, interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
   const handleNewChat = useCallback(async () => {
-    await safeAutoSave(chatData); 
+    await safeAutoSave(interactionData); 
     clearFetchCache();
     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
 
@@ -894,54 +929,67 @@ function App() {
     if (c) { 
       startNewChat(c); 
     }
-  }, [chatData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
+  }, [interactionData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); await safeAutoSave(chatData);
-    if (await deleteChatFromList(id)) { addToast('Chat session deleted.', 'info'); if (chatData?.id === id && currentCharacter) startNewChat(currentCharacter); }
+    e.stopPropagation(); await safeAutoSave(interactionData);
+    if (await deleteChatFromList(id)) { addToast('Chat session deleted.', 'info'); if (interactionData?.id === id && currentCharacter) startNewChat(currentCharacter); }
     else addToast('Failed to delete chat.', 'error');
   };
 
   const handleToggleParticipant = async (charId: string) => {
-    if (!chatData) return;
-    if (charId === chatData.protagonist?.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
-    const ids = chatData.participants.map(p => p.id);
+    if (!interactionData) return;
+    if (charId === interactionData.protagonist?.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
+    const ids = interactionData.participants.map(p => p.id);
     let np: Character[];
-    if (ids.includes(charId)) { np = chatData.participants.filter(p => p.id !== charId); }
+    if (ids.includes(charId)) { np = interactionData.participants.filter(p => p.id !== charId); }
     else {
       const sh = allCharacters.find(c => c.id === charId); if (!sh) return;
       const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
-      np = [...chatData.participants, ch];
+      np = [...interactionData.participants, ch];
     }
-    if (!np.find(p => p.id === chatData.protagonist?.id)) np.unshift(chatData.protagonist);
-    const uc = { ...chatData, participants: np };
-    setChatData(uc);
+    if (!np.find(p => p.id === interactionData.protagonist?.id)) np.unshift(interactionData.protagonist);
+    const uc = { ...interactionData, participants: np };
+    setInteractionData(uc);
     if (!np.find(p => p.id === currentCharacter?.id)) setCurrentCharacter(uc.protagonist);
     addToast('Participants updated.', 'info');
   };
 
   const handleToggleContext = async (contextId: string) => {
-    if (!chatData?.contexts) return;
-    const ids = chatData.contexts.map(c => c.id);
+    if (!interactionData?.contexts) return;
+    const ids = interactionData.contexts.map(c => c.id);
     const nc = ids.includes(contextId)
-      ? chatData.contexts.filter(c => c.id !== contextId)
-      : [...chatData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
-    setChatData({ ...chatData, contexts: nc });
+      ? interactionData.contexts.filter(c => c.id !== contextId)
+      : [...interactionData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
+    setInteractionData({ ...interactionData, contexts: nc });
     addToast('Contexts updated.', 'info');
   };
 
+  const handleToggleLocation = async (locationId: string) => {
+    if (!interactionData) return;
+    const currentLocations = interactionData.locations || [];
+    const ids = currentLocations.map(l => l.id);
+    const nl = ids.includes(locationId)
+      ? currentLocations.filter(l => l.id !== locationId)
+      : [...currentLocations, await loadRawLocation(locationId)].filter(Boolean) as Location[];
+    setInteractionData({ ...interactionData, locations: nl });
+    addToast('Locations updated.', 'info');
+  };
+
   const handleSetChatProtagonist = async (charId: string) => {
-    if (!chatData) return;
+    if (!interactionData) return;
     const sh = allCharacters.find(c => c.id === charId); if (!sh) return;
     const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
-    const uc = { ...chatData, protagonist: ch };
+    const uc = { ...interactionData, protagonist: ch };
     if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
-    setChatData(uc); setCurrentCharacter(ch); addToast('Protagonist switched.', 'info');
+    setInteractionData(uc); setCurrentCharacter(ch);
+    setDefaultCharacterId(charId);
+    addToast('Protagonist switched.', 'info');
   };
 
   const handleToggleExtension = async (extId: string) => {
-    if (!chatData) return;
-    const extensionValue = Object.getOwnPropertyDescriptor(chatData, 'extensions')?.value;
+    if (!interactionData) return;
+    const extensionValue = Object.getOwnPropertyDescriptor(interactionData, 'extensions')?.value;
     const currentExtensions = Array.isArray(extensionValue)
       ? extensionValue.filter((extension): extension is Extension => {
           if (typeof extension !== 'object' || extension === null || !('id' in extension)) return false;
@@ -952,8 +1000,8 @@ function App() {
     const nextExtensionIds = currentExtensionIds.includes(extId)
       ? currentExtensionIds.filter(id => id !== extId)
       : [...currentExtensionIds, extId];
-    const uc = { ...chatData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) };
-    setChatData(uc); addToast('Extensions updated.', 'info');
+    const uc = { ...interactionData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) };
+    setInteractionData(uc); addToast('Extensions updated.', 'info');
   };
 
   const handleActivateBudgetStrategy = (sid: string) => {
@@ -962,22 +1010,22 @@ function App() {
   };
 
   const handleActivateProfile = async (pid: string) => {
-    if (!chatData) return;
-    if (chatData.Profile?.id === pid) {
-      const uc = { ...chatData, Profile: undefined }; setChatData(uc); await saveRawChatData(uc); addToast('Profile deactivated.', 'info');
+    if (!interactionData) return;
+    if (interactionData.Profile?.id === pid) {
+      const uc = { ...interactionData, Profile: undefined }; setInteractionData(uc); await saveRawInteractionData(uc); addToast('Profile deactivated.', 'info');
     } else {
       const p = allProfiles.find(x => x.id === pid); if (!p) return;
-      const uc = { ...chatData, Profile: p }; setChatData(uc); await saveRawChatData(uc); addToast(`Profile "${p.name}" activated!`, 'success');
+      const uc = { ...interactionData, Profile: p }; setInteractionData(uc); await saveRawInteractionData(uc); addToast(`Profile "${p.name}" activated!`, 'success');
     }
   };
 
-  const handleStartEditTitle = (e: React.MouseEvent) => { e.stopPropagation(); setEditTitleValue(chatData?.name || ''); setIsEditingTitle(true); };
+  const handleStartEditTitle = (e: React.MouseEvent) => { e.stopPropagation(); setEditTitleValue(interactionData?.name || ''); setIsEditingTitle(true); };
   const handleSaveTitle = () => {
-    if (!chatData) return;
+    if (!interactionData) return;
     const t = editTitleValue.trim() || 'Untitled Chat';
     chatModifiedRef.current = true;
-    setChatData({ ...chatData, name: t } as ChatData);
-    saveRawChatData({ ...chatData, name: t });
+    setInteractionData({ ...interactionData, name: t } as InteractionData);
+    saveRawInteractionData({ ...interactionData, name: t });
     refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
   };
 
@@ -988,42 +1036,42 @@ function App() {
   };
 
   const handleSaveEdit = async () => {
-    if (!chatData || !editingId) return;
-    try { setChatData(await editMessage(chatData, editingId, editDraft)); setEditingId(null); setEditDraft(''); addToast('Message edited.', 'success'); }
+    if (!interactionData || !editingId) return;
+    try { setInteractionData(await editMessage(interactionData, editingId, editDraft)); setEditingId(null); setEditDraft(''); addToast('Message edited.', 'success'); }
     catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!chatData) return;
-    try { setChatData(await deleteMessage(chatData, id)); addToast('Message deleted.', 'info'); }
+    if (!interactionData) return;
+    try { setInteractionData(await deleteMessage(interactionData, id)); addToast('Message deleted.', 'info'); }
     catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleMassDeleteConfirm = async () => {
-    if (!chatData || !massDeleteId) return;
-    const idx = chatData.chatMessageHistory.findIndex(m => m.id === massDeleteId);
+    if (!interactionData || !massDeleteId) return;
+    const idx = InteractionMessages.findIndex(m => m.id === massDeleteId);
     if (idx === -1) return;
-    try { setChatData(await massDeleteMessages(chatData, idx)); setMassDeleteId(null); addToast('Messages deleted.', 'info'); }
+    try { setInteractionData(await massDeleteMessages(interactionData, idx)); setMassDeleteId(null); addToast('Messages deleted.', 'info'); }
     catch (e) { addToast((e as Error).message, 'error'); }
   };
 
   const handleBranch = async (id: string) => {
-    if (!chatData) return;
-    try { const b = await branchMessage(chatData, id); setChatData(b); if (b.protagonist) setCurrentCharacter(b.protagonist); refreshChatList(); addToast(`Branched to "${b.name}"`, 'success'); }
+    if (!interactionData) return;
+    try { const b = await branchMessage(interactionData, id); setInteractionData(b); if (b.protagonist) setCurrentCharacter(b.protagonist); refreshChatList(); addToast(`Branched to "${b.name}"`, 'success'); }
     catch { addToast('Failed to branch chat.', 'error'); }
   };
 
   const handleClone = async (id: string) => {
-    if (!chatData) return;
-    try { const c = await cloneChatUpToMessage(chatData, id); setChatData(c); if (c.protagonist) setCurrentCharacter(c.protagonist); refreshChatList(); addToast(`Cloned to "${c.name}"`, 'success'); }
+    if (!interactionData) return;
+    try { const c = await cloneChatUpToMessage(interactionData, id); setInteractionData(c); if (c.protagonist) setCurrentCharacter(c.protagonist); refreshChatList(); addToast(`Cloned to "${c.name}"`, 'success'); }
     catch { addToast('Failed to clone chat.', 'error'); }
   };
 
   const handleNavigateToSource = async () => {
-    if (!chatData?.parentChatDataId) return;
+    if (!interactionData?.parentInteractionDataId) return;
     try {
-      const s = await loadRawChatData(chatData.parentChatDataId, allCharacters);
-      if (s) { const f = s as unknown as ChatData; setChatData(f); if (f.protagonist) setCurrentCharacter(f.protagonist); refreshChatList(); addToast(`Navigated back to "${f.name || 'Untitled Chat'}"`, 'info'); }
+      const s = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
+      if (s) { const f = s as unknown as InteractionData; setInteractionData(f); if (f.protagonist) setCurrentCharacter(f.protagonist); refreshChatList(); addToast(`Navigated back to "${f.name || 'Untitled Chat'}"`, 'info'); }
       else addToast('Source chat not found.', 'error');
     } catch { addToast('Failed to navigate to source chat.', 'error'); }
   };
@@ -1065,7 +1113,7 @@ function App() {
 
   const handleActionInterject = async (label: string, targetChar: Character) => {
     setActionMenuTarget(null); setMenuSearchQuery('');
-    if (!chatData || !currentCharacter) return;
+    if (!interactionData || !currentCharacter) return;
     await incrementActionCount(label);
     if (isLoading) { stopGeneration(); await new Promise(r => setTimeout(r, 200)); }
     try { await sendActionAndGetResponse(`*${label} ${targetChar.name}.*`, targetChar); }
@@ -1076,34 +1124,36 @@ function App() {
     .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
     .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
 
+  // ✅ Stem detection uses filtered chat messages
   const isStemMessage = (mid: string): boolean => {
-    if (!chatData?.parentChatMessageId) return false;
-    const bi = chatData.chatMessageHistory.findIndex(m => m.id === chatData.parentChatMessageId);
+    if (!interactionData?.parentInteractionMessageId) return false;
+    const bi = InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId);
     if (bi === -1) return false;
-    const ci = chatData.chatMessageHistory.findIndex(m => m.id === mid);
+    const ci = InteractionMessages.findIndex(m => m.id === mid);
     return ci !== -1 && ci <= bi;
   };
 
+  // ✅ View mode toggle uses filtered chat message IDs
   const toggleViewMode = () => {
     const container = chatHistoryRef.current;
     let targetIdx = -1;
-    if (container && chatData) {
+    if (container && interactionData) {
       const cr = container.getBoundingClientRect();
-      const ids = new Set(chatData.chatMessageHistory.map(m => m.id));
+      const ids = new Set(InteractionMessages.map(m => m.id));
       let bestTop = Number.POSITIVE_INFINITY;
       for (const el of container.querySelectorAll('[data-message-id]')) {
         const id = el.getAttribute('data-message-id'); if (!id || !ids.has(id)) continue;
         const r = el.getBoundingClientRect();
-        if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === id); }
+        if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = InteractionMessages.findIndex(m => m.id === id); }
       }
     }
-    if (targetIdx === -1 && lastViewedMessageIdRef.current && chatData) targetIdx = chatData.chatMessageHistory.findIndex(m => m.id === lastViewedMessageIdRef.current);
-    if (targetIdx >= 0 && chatData) lastViewedMessageIdRef.current = chatData.chatMessageHistory[targetIdx].id;
+    if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) targetIdx = InteractionMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
+    if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = InteractionMessages[targetIdx].id;
     suppressAutoScrollRef.current = true;
     setViewMode(p => p === 'ladder' ? 'cinematic' : 'ladder');
     setTimeout(() => {
-      if (targetIdx >= 0 && chatData && chatHistoryRef.current) {
-        const el = chatHistoryRef.current.querySelector(`[data-message-id="${chatData.chatMessageHistory[targetIdx].id}"]`) as HTMLElement | null;
+      if (targetIdx >= 0 && interactionData && chatHistoryRef.current) {
+        const el = chatHistoryRef.current.querySelector(`[data-message-id="${InteractionMessages[targetIdx].id}"]`) as HTMLElement | null;
         if (el) { el.scrollIntoView({ block: 'start' }); setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); return; }
       }
       messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1125,10 +1175,10 @@ function App() {
       {isLoading && streamingCharacter && !streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'thinking-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name" style={{ opacity: 0.5 }}>{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} bubble-ai thinking-bubble`}>
-            {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
+            {viewMode === 'cinematic' && <div className="cinematic-bubble-header"><span>{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>}
             <span className="thinking-indicator"><span className="thinking-text">Thinking</span><span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span></span>
           </div>
         </div>
@@ -1136,10 +1186,10 @@ function App() {
       {isLoading && streamingCharacter && streamingText && (
         <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="streaming-message">
           {viewMode === 'ladder' && streamingCharacter.id !== currentCharacter?.id && streamingCharacter.id !== AMBIENT_NARRATOR_ID && (
-            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name">{getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>
+            <div className="avatar-column"><div style={{ position: 'relative' }}>{getCharacterImageUrl(streamingCharacter.image) ? <img src={getCharacterImageUrl(streamingCharacter.image)!} alt={streamingCharacter.name} className="character-avatar" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}</div><span className="avatar-name">{getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>
           )}
           <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'bubble-ambient' : 'bubble-ai'}`}>
-            {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(chatData, Math.max(0, chatData.chatMessageHistory.length - 1), streamingCharacter.id)}</span></div>}
+            {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'cinematic-bubble-header-ambient' : ''}`}><span>{streamingCharacter.id === AMBIENT_NARRATOR_ID ? '✦' : getDelayedDisplayName(interactionData, Math.max(0, InteractionMessages.length - 1), streamingCharacter.id)}</span></div>}
             <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}><span className="message-text" style={{ display: 'inline' }}>{formattedStreamingText}</span><span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span></div>
           </div>
         </div>
@@ -1147,10 +1197,13 @@ function App() {
     </>
   );
 
+  // ✅ Pre-compute display list — only chat messages, reversed for cinematic
+  const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
+
   return (
     <>
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
-        {!chatData && (
+        {!interactionData && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
             <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
             <div style={{ fontSize: '0.85rem' }}>Create a character to begin.</div>
@@ -1158,17 +1211,17 @@ function App() {
           </div>
         )}
 
-        {chatData && <>
+        {interactionData && <>
           {viewMode === 'cinematic' && centerAvatar && cinematicAvatarUrl && <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action"><img src={cinematicAvatarUrl} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
 
           <header className="app-header"><div className="header-content"><div className="header-top">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
               {isEditingTitle
                 ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
-                : <><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{chatData?.name || 'Untitled Chat'}</div><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span></>}
+                : <><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span></>}
             </div>
             <div className="header-controls-group">
-              <button type="button" className="view-mode-toggle" onClick={() => chatData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+              <button type="button" className="view-mode-toggle" onClick={() => interactionData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
               <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
               <ChatStatisticsBar
                 generationSpeed={generationSpeed}
@@ -1188,17 +1241,17 @@ function App() {
 
           <div className="chat-history" ref={chatHistoryRef}>
             {viewMode === 'cinematic' && streamingIndicators}
-            {(viewMode === 'cinematic' ? [...chatData.chatMessageHistory].reverse() : chatData.chatMessageHistory).map((message, renderIndex) => {
-              const index = viewMode === 'cinematic' ? chatData.chatMessageHistory.length - 1 - renderIndex : renderIndex;
+            {displayMessages.map((message, renderIndex) => {
+              const index = viewMode === 'cinematic' ? InteractionMessages.length - 1 - renderIndex : renderIndex;
               if (!message.character) return null;
               const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
               const isProtag = message.character.id === currentCharacter?.id;
-              const dn = getDelayedDisplayName(chatData, index, message.character.id);
+              const dn = getDelayedDisplayName(interactionData, index, message.character.id);
               const isEditing = editingId === message.id;
               const isMassStart = message.id === massDeleteId;
               const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
               const stem = isStemMessage(message.id);
-              const beforeBranch = chatData.parentChatMessageId && index === branchOffIndex;
+              const beforeBranch = interactionData.parentInteractionMessageId && index === branchOffIndex;
               const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
               const isResumingThisMessage = isLoading && streamingCharacter && message.isPartial
@@ -1250,7 +1303,7 @@ function App() {
               );
             })}
             {viewMode === 'ladder' && streamingIndicators}
-            {chatData && !chatData.chatMessageHistory.length && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
+            {interactionData && InteractionMessages.length === 0 && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
             <div ref={messageEndRef} style={{ height: '1px' }} />
           </div>
 
@@ -1258,6 +1311,7 @@ function App() {
             <NavButton icon="💬" label="Chat List" onClick={() => setIsChatListOpen(true)} />
             <NavButton icon="🎭" label="Characters" onClick={() => setIsCharListOpen(true)} />
             <NavButton icon="🌍" label="Contexts" onClick={() => setIsContextListOpen(true)} />
+            <NavButton icon="📍" label="Locations" onClick={() => setIsLocationListOpen(true)} />
             <NavButton icon="🤖" label="Models" onClick={() => setIsModelListOpen(true)} />
             <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSamplerListOpen(true)} />
             <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
@@ -1271,7 +1325,7 @@ function App() {
             <div className="input-area">
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
               <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !chatData || !isModelReady} />
+              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !interactionData || !isModelReady} />
               <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
             </div>
           </div>
@@ -1281,11 +1335,14 @@ function App() {
 
         {isChatListOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={c => handleSwitchChat(c.id)} onDelete={id => handleDeleteChat({ stopPropagation: () => {} } as any, id)} onCreateNew={handleNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
 
-        {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!chatData} currentOrderIds={chatData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={chatData?.protagonist?.id} />}
+        {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!interactionData} currentOrderIds={interactionData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={interactionData?.protagonist?.id} />}
         {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
 
-        {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={chatData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
+        {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
+
+        {isLocationListOpen && <ManagerModal title="Locations" items={allLocations} isOpen={isLocationListOpen} onClose={() => setIsLocationListOpen(false)} onSelect={l => locationModal.open(l)} onDelete={locationModal.handleDelete} onCreateNew={() => locationModal.open()} renderSubtext={renderLocationSubtext} emptyMessage="No locations found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.locations?.map(l => l.id) || []} onToggleOrder={handleToggleLocation} />}
+        {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} />}
 
         {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
         {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
@@ -1299,13 +1356,13 @@ function App() {
         {isBudgetStrategyListOpen && <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={s => budgetModal.open(s)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={s => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />}
         {budgetModal.isOpen && <BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />}
 
-        {isProfileListOpen && <ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={p => profileModal.open(p)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={chatData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={p => chatData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />}
+        {isProfileListOpen && <ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={p => profileModal.open(p)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={interactionData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={p => interactionData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />}
         {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
 
-        {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(chatData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
+        {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
       </div>
 
-      {actionMenuTarget && chatData && (
+      {actionMenuTarget && interactionData && (
         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={e => e.stopPropagation()}>
           <div className="action-menu-header"><span>Interject Action</span></div>
           <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={e => setMenuSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={e => e.stopPropagation()} />

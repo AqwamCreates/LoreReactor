@@ -1,5 +1,5 @@
-// src/services/ChatMessageSummarizationEngine.ts
-import type { ChatData, ChatMessage, Context, Character } from '../types';
+// src/services/InteractionMessageSummarizationEngine.ts
+import type { InteractionData, InteractionMessage, Context, Character } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
@@ -20,7 +20,7 @@ const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat his
  * Generates a summary for a single chat message using the LLM.
  */
 export async function generateMessageSummary(
-    message: ChatMessage,
+    message: InteractionMessage,
     languageModelContext: LanguageModelContext,
     maxTokens = 256
 ): Promise<string | null> {
@@ -40,13 +40,13 @@ export async function generateMessageSummary(
  * that don't already have a summary.
  */
 export async function generateMissingSummaries(
-    chatData: ChatData,
+    interactionData: InteractionData,
     windowSize: number,
     languageModelContext: LanguageModelContext,
     maxTokens = 256
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    const history = chatData.chatMessageHistory;
+    const history = interactionData.interactionHistory;
     const cutoff = Math.max(0, history.length - windowSize);
     const toSummarize = history.slice(0, cutoff).filter(m => !m.textContentSummary);
     if (toSummarize.length === 0) return results;
@@ -63,7 +63,7 @@ export async function generateMissingSummaries(
  * Compresses a chunk of messages into a single narrative paragraph.
  */
 async function compressChunk(
-    messages: ChatMessage[],
+    messages: InteractionMessage[],
     languageModelContext: LanguageModelContext,
     maxTokens = 512
 ): Promise<string | null> {
@@ -86,23 +86,23 @@ async function compressChunk(
  * Uses participant tags for identity safety and injects system/think prompts for personality.
  */
 export async function makeCharacterMemory(
-    chatData: ChatData, 
+    interactionData: InteractionData, 
     character: Character,
     languageModelContext: LanguageModelContext, 
     maxTokens = 512
 ): Promise<Context | null> {
-    const history = chatData.chatMessageHistory;
+    const history = interactionData.interactionHistory;
     if (history.length === 0) return null;
 
-    const participants = chatData.participants;
+    const participants = interactionData.participants;
     const participantTag = getParticipantTag(character, participants);
-    const protagonistTag = getParticipantTag(chatData.protagonist, participants);
-    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, chatData.protagonist?.name || null)}${contextEndString}` : '';
-    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, chatData.protagonist?.name || null)}${contextEndString}` : '';
+    const protagonistTag = getParticipantTag(interactionData.protagonist, participants);
+    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
 
-    const revealIndexByCharacterId = getRevealIndexByCharacterId(chatData);
+    const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    const {chatHistoryPrompt} = createChatHistoryPrompt(chatData, character, revealIndexByCharacterId);
+    const {chatHistoryPrompt} = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
 
     const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
 
@@ -142,14 +142,14 @@ export async function makeCharacterMemory(
  * compressed yet and produces auto-generated Context entries.
  */
 export async function generatePeriodicCompression(
-    chatData: ChatData,
+    interactionData: InteractionData,
     compressionInterval: number,
     compressionChunkSize: number,
     languageModelContext: LanguageModelContext,
     maxTokens: number = 512
 ): Promise<Context[]> {
-    const history = chatData.chatMessageHistory;
-    const existingContexts = chatData.contexts || [];
+    const history = interactionData.interactionHistory;
+    const existingContexts = interactionData.contexts || [];
     const compressedRanges = new Set<string>();
     for (const ctx of existingContexts) {
         if (ctx.isAutoGenerated && ctx.description) {
@@ -212,14 +212,14 @@ async function mergeSummaries(
  * Recursive Summary: builds hierarchical summaries across multiple layers.
  */
 export async function generateRecursiveSummary(
-    chatData: ChatData,
+    interactionData: InteractionData,
     chunkSize: number,
     maxDepth: number,
     languageModelContext: LanguageModelContext,
     maxTokens = 1024
 ): Promise<Context[]> {
-    const history = chatData.chatMessageHistory;
-    const existingContexts = chatData.contexts || [];
+    const history = interactionData.interactionHistory;
+    const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
     const fullRangeKey = `recursive-global:0-${history.length}`;
@@ -319,7 +319,7 @@ export async function generateRecursiveSummary(
  * Checks whether any summarization step should trigger based on token count.
  */
 export function checkTriggerThreshold(
-    chatData: ChatData,
+    interactionData: InteractionData,
     currentnumberOfTokens: number,
     languageModelContextLength: number
 ): {
@@ -330,7 +330,7 @@ export function checkTriggerThreshold(
     recursiveChunkSize?: number;
     recursiveMaxDepth?: number;
 } | null {
-    const profile = chatData.Profile;
+    const profile = interactionData.Profile;
     if (!profile?.summarizationSteps) return null;
 
     const activeSteps = [...profile.summarizationSteps]
