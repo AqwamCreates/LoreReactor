@@ -5,6 +5,7 @@ import type { Context, Character, searchEngine } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import './main.css';
 
 const tokenEngine = new LanguageModelEngine();
@@ -50,6 +51,7 @@ export function ContextEditorModal({
 
     const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; deactivationRegex?: string; images?: string; urls?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cardImportRef = useRef<HTMLInputElement>(null);
 
     // ✅ Token count for the text field — uses countTokens with runtime port, falls back to estimate
     const [textnumberOfTokens, setTextnumberOfTokens] = useState(0);
@@ -290,6 +292,41 @@ export function ContextEditorModal({
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
+    // ✅ Import lorebook entries from character card PNG
+    const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        const card = await parseCharacterCard(file);
+        if (!card) {
+            setErrors(prev => ({ ...prev, text: 'Not a valid character card PNG.' }));
+            return;
+        }
+
+        const extended = card as ParsedCharacterCardExtended;
+        if (!extended.lorebookContexts || extended.lorebookContexts.length === 0) {
+            setErrors(prev => ({ ...prev, text: 'No lorebook entries found in this character card.' }));
+            return;
+        }
+
+        // Pre-fill from the first lorebook entry as a starting point
+        const firstEntry = extended.lorebookContexts[0];
+        if (firstEntry.name && !name) setName(firstEntry.name);
+        if (firstEntry.text && !text) setText(firstEntry.text);
+        if (firstEntry.regularExpressionActivationTrigger && !regexActivationTrigger) {
+            setRegexActivationTrigger(firstEntry.regularExpressionActivationTrigger);
+        }
+        if (firstEntry.insertionDepth !== undefined && insertionDepth === 0) {
+            setInsertionDepth(firstEntry.insertionDepth);
+        }
+        if (firstEntry.tokenBudget !== undefined && tokenBudget === 0) {
+            setTokenBudget(firstEntry.tokenBudget);
+        }
+
+        setErrors({});
+    };
+
     const buildContextFromForm = async (isNewClone: boolean): Promise<Context | null> => {
         if (!validate()) return null;
 
@@ -380,6 +417,10 @@ export function ContextEditorModal({
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
                         {existingContext && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        {!existingContext && (
+                            <button type="button" className="editor-btn editor-btn-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import Card</button>
+                        )}
+                        <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
                     </div>
                 </div>
