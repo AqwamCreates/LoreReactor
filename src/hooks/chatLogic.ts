@@ -4,7 +4,7 @@ import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetch
 import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrl } from './storage';
+import { getCharacterImageUrlWithFallBack } from './storage';
 import { getEffectiveMaximumChatStamina } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 
@@ -998,7 +998,7 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
 
     if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-        const characterImagePath = getCharacterImageUrl(character.image);
+        const characterImagePath = getCharacterImageUrlWithFallBack(character.image);
 
         if (characterImagePath) {
             const characterImageBase64 = await getImageBase64(characterImagePath);

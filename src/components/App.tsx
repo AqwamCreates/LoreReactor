@@ -13,7 +13,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
+import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrlWithFallBack, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -390,14 +390,14 @@ function App() {
 
     for (const msg of InteractionMessages) {
       if (!cache.has(msg.id)) {
-        cache.set(msg.id, getCharacterImageUrl(msg.character.id, msg.characterExpression));
+        cache.set(msg.id, getCharacterImageUrlWithFallBack(msg.character.id, msg.characterExpression));
       }
     }
 
     if (centerAvatar) {
       const key = `cinematic:${centerAvatar.id}`;
       if (!cache.has(key)) {
-        cache.set(key, getCharacterImageUrl(centerAvatar.id, 'neutral'));
+        cache.set(key, getCharacterImageUrlWithFallBack(centerAvatar.id, 'neutral'));
       }
     }
 
@@ -407,7 +407,7 @@ function App() {
   // ✅ Streaming portrait — only recomputes when expression or character changes
   const streamingPortraitUrl = useMemo(() => {
     if (!streamingCharacter) return null;
-    return getCharacterImageUrl(streamingCharacter.id, currentCharacterExpression);
+    return getCharacterImageUrlWithFallBack(streamingCharacter.id, currentCharacterExpression);
   }, [streamingCharacter?.id, currentCharacterExpression]);
 
   const maximumNumberOfContextTokens = useMemo(() => {

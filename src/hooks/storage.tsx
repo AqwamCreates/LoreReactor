@@ -181,7 +181,7 @@ async function deleteResource(url: string): Promise<void> {
 async function ensureManifest(folderPath: string): Promise<string[]> {
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   
-  const  currentIds = await fetchJson<string[]>(manifestUrl);
+  const currentIds = await fetchJson<string[]>(manifestUrl);
   
   if (currentIds && Array.isArray(currentIds)) {
     return currentIds;
@@ -451,10 +451,16 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
 
     const memories = await hydrateMemories(rawCharacter.memories);
 
+    // ✅ Migrate legacy single image field to new folder-based images record
+    const images: Record<string, string> = rawCharacter.images ?? {};
+    if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
+      images['neutral'] = (rawCharacter as any).image;
+    }
+
     return { 
       id, 
       name: rawCharacter.name || 'Unknown Character', 
-      image: rawCharacter.image,
+      images,
       voice: rawCharacter.voice,
       description: rawCharacter.description, 
       systemPrompt: rawCharacter.systemPrompt,
@@ -515,10 +521,16 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
 
     const memories = await hydrateMemories(rawCharacter.memories);
 
+    // ✅ Migrate legacy single image field to new folder-based images record
+    const images: Record<string, string> = rawCharacter.images ?? {};
+    if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
+      images['neutral'] = (rawCharacter as any).image;
+    }
+
     return {
         id,
         name: rawCharacter.name || 'Unknown Character',
-        image: rawCharacter.image,
+        images,
         voice: rawCharacter.voice,
         description: rawCharacter.description,
         systemPrompt: rawCharacter.systemPrompt,
@@ -616,7 +628,7 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
     const rawLocation = await fetchJson<RawLocation>(`${PATHS.locations}/${id}.json`);
     if (!rawLocation) return null;
 
-    const now = Date.now()
+    const now = Date.now();
 
     return {
         id,
@@ -626,8 +638,10 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         images: rawLocation.images,
         regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
         characterBindings: rawLocation.characterBindings,
+        locationBindings: rawLocation.locationBindings ?? [],
         globalWeight: rawLocation.globalWeight ?? 1,
         characterWeights: rawLocation.characterWeights ?? {},
+        useBase64Encoding: rawLocation.useBase64Encoding ?? false,
         firstCreatedTimestamp: rawLocation.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawLocation.lastUpdatedTimestamp || now,
     };
@@ -806,8 +820,9 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
+        enableCharacterExpression: rawProfile.enableCharacterExpression ?? true,
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
-        forceNoContextImageInjection:rawProfile.forceNoContextImageInjection,
+        forceNoContextImageInjection: rawProfile.forceNoContextImageInjection,
         useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,
         numberOfMessagesToDisableThinkPrompt: rawProfile.numberOfMessagesToDisableThinkPrompt ?? 1,
         numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1,
@@ -825,8 +840,8 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         narrateBoldedText: rawProfile.narrateBoldedText,
         narrateItalicizedText: rawProfile.narrateItalicizedText,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
-        enableMemoryWriting: rawProfile.enableMemoryWriting ?? false,
-        enableMemoryReading: rawProfile.enableMemoryReading ?? false,
+        enableMemoryWriting: rawProfile.enableMemoryWriting ?? 0,
+        enableMemoryReading: rawProfile.enableMemoryReading ?? 0,
         inputStrategy: rawProfile.inputStrategy?.length
             ? rawProfile.inputStrategy
             : ['Context', 'System Prompt', 'Think Prompt', 'Chat History'],
@@ -932,6 +947,7 @@ async function buildInteractionDataShell(
       id: rawInteractionData.protagonistId,
       name: '[Deleted Character]',
       description: 'This character has been deleted.',
+      images: {},
       initiativeWeight: 1,
       chatProbability: 0.5,
       maximumChatStamina: 4,
@@ -958,6 +974,7 @@ async function buildInteractionDataShell(
         id: pid,
         name: '[Deleted Character]',
         description: 'This character has been deleted.',
+        images: {},
         initiativeWeight: 1,
         chatProbability: 0.5,
         maximumChatStamina: 4,
@@ -1036,6 +1053,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
             character: character || {
                 id: characterId,
                 name: '[Unknown]',
+                images: {},
                 firstCreatedTimestamp: Date.now(),
                 lastUpdatedTimestamp: Date.now()
             } as Character
@@ -1216,19 +1234,28 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
   await putJson(PATHS.actions, actions);
 }
 
-// --- helpers ---
-export function getCharacterImageUrl(imageFilename: string | undefined): string | null {
-  if (!imageFilename) return null;
-  const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
-  return `${localURL}${cleanPath}/${imageFilename}`;
+// --- Image & Voice Helpers ---
+
+export function getCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
+    const effectiveCharacterExpression = characterExpression || "neutral";
+    const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
+    return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
 }
 
-export async function uploadCharacterImage(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const imagePath = `${PATHS.characterImages}/${filename}`;
-  await putJson(imagePath, { base64 });
-  return filename;
+export function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): string | null {
+    const imageUrl = getCharacterImageUrl(characterId, characterExpression)
+
+    const effectiveCharacterExpression = characterExpression || "neutral";
+    const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
+    return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
+}
+
+export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
+    const base64 = await fileToBase64(file);
+    const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const imagePath = `${PATHS.characterImages}/${characterId}/${filename}`;
+    await putJson(imagePath, { base64 });
+    return filename;
 }
 
 export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
