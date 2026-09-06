@@ -26,7 +26,6 @@ export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [runningModels, setRunningModels] = useState<Record<string, ModelState>>({});
-    // selectedModelId is now controlled externally via setSelectedModelId prop or return value
     const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
     
     const { addToast } = useToast();
@@ -182,6 +181,67 @@ export function useModelManager() {
         }
     };
 
+    const buildLoadArgs = (model: LanguageModel): string[] => {
+        const params = model.parameters || {};
+        const args: string[] = ['-c', model.contextLength.toString()];
+
+        // GPU layers
+        const ngl = params.gpu_layers !== undefined ? Number(params.gpu_layers) : 99;
+        args.push('-ngl', String(ngl));
+
+        // Multi-modal projector
+        if (model.mmproj?.trim()) args.push('--mmproj', model.mmproj.trim());
+
+        // LoRA adapter
+        if (model.lora?.trim()) args.push('--lora', model.lora.trim());
+
+        // KV cache quantization
+        if (params.cache_type_k) args.push('-ctk', String(params.cache_type_k));
+        if (params.cache_type_v) args.push('-ctv', String(params.cache_type_v));
+
+        // Split mode
+        if (params.split_mode && params.split_mode !== 'layer') args.push('-sm', String(params.split_mode));
+
+        // IK (in-context key caching)
+        if (params.ik === true) args.push('-ik');
+
+        // Speculative decoding
+        if (params.spec_type && params.spec_type !== 'none') args.push('-st', String(params.spec_type));
+        if (params.draft_max) args.push('-dm', String(params.draft_max));
+        if (params.draft_model?.trim()) args.push('-md', String(params.draft_model).trim());
+        if (params.gpu_layers_draft !== undefined) args.push('-ngld', String(params.gpu_layers_draft));
+        if (params.device_draft?.trim()) args.push('-devd', String(params.device_draft).trim());
+
+        // Parallelism & threading
+        if (params.parallel && Number(params.parallel) > 1) args.push('-np', String(params.parallel));
+        if (params.threads && Number(params.threads) > 0) args.push('-t', String(params.threads));
+        if (params.threads_batch && Number(params.threads_batch) > 0) args.push('-tb', String(params.threads_batch));
+
+        // Batch sizes
+        if (params.batch_size && Number(params.batch_size) !== 1024) args.push('-b', String(params.batch_size));
+        if (params.ubatch_size && Number(params.ubatch_size) !== 1024) args.push('-ub', String(params.ubatch_size));
+
+        // Fit target
+        if (params.fit_target?.trim()) args.push('-fit', String(params.fit_target).trim());
+
+        // Tensor split
+        if (params.tensor_split?.trim()) args.push('-ts', String(params.tensor_split).trim());
+
+        // Boolean flags
+        if (params.cpu_moe === true) args.push('-cmoe');
+        if (params.no_kv_offload === true) args.push('-nkvo');
+        if (params.no_mmap === true) args.push('--no-mmap');
+        if (params.mlock === true) args.push('--mlock');
+        if (params.numa === true) args.push('--numa');
+
+        // Extra flags (always appended last so they can override anything above)
+        if (params.extra_flags && String(params.extra_flags).trim()) {
+            args.push(...String(params.extra_flags).trim().split(/\s+/));
+        }
+
+        return args;
+    };
+
     const toggleModelLoad = async (id: string, forceUnload = false) => {
         const model = models.find(m => m.id === id);
         if (!model) return;
@@ -218,18 +278,7 @@ export function useModelManager() {
         else if (!isCurrentlyRunning) {
             await unloadOtherRunningModels(id);
             const modelPath = model.model || '';
-            const args: string[] = ['-c', model.contextLength.toString(), '-ngl', '99'];
-            if (model.mmproj?.trim()) args.push('--mmproj', model.mmproj.trim());
-            if (model.lora?.trim()) args.push('--lora', model.lora.trim());
-            
-            const params = model.parameters || {};
-            if (params.gpu_layers !== undefined) {
-                const nglIndex = args.indexOf('-ngl');
-                if (nglIndex !== -1) args[nglIndex + 1] = String(params.gpu_layers);
-            }
-            if (params.extra_flags && String(params.extra_flags).trim()) {
-                args.push(...String(params.extra_flags).trim().split(/\s+/));
-            }
+            const args = buildLoadArgs(model);
             
             try {
                 addToast(`Starting model ${model.name}...`, "info");
