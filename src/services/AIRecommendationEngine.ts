@@ -1,5 +1,7 @@
 // src/services/AIRecommendationEngine.ts
+import type { BudgetStrategy } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { resolveModelContext } from '../utilities/modelContextResolver';
 
 export interface RecommendationRequest {
     prompt: string;
@@ -33,7 +35,7 @@ const FIELD_PATTERNS: { key: string; regex: RegExp }[] = [
 const engine = new LanguageModelEngine();
 
 /**
- * Parses structured {Field Name: content} blocks from raw AI output.
+ * Parses structured <<<Field Name: content>>> blocks from raw AI output.
  */
 function parseRecommendationFields(rawText: string): Record<string, string> {
     const parsed: Record<string, string> = {};
@@ -50,14 +52,16 @@ function parseRecommendationFields(rawText: string): Record<string, string> {
 }
 
 /**
- * Calls the language model using streaming (same path as roleplay)
- * and parses structured field output from the accumulated response.
+ * Calls the language model using streaming and parses structured field output.
  */
 export async function generateAIRecommendation(
     request: RecommendationRequest,
     abortSignal: AbortSignal,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<RecommendationResult> {
-    // Build a request body compatible with generateStream's extractFromRequestBody
+    const ctx = resolveModelContext(request.modelContext, strategy, runningModels);
+
     const requestBody = {
         prompt: request.prompt,
         n_predict: 4096,
@@ -67,8 +71,6 @@ export async function generateAIRecommendation(
     };
 
     const abortController = new AbortController();
-
-    // Link external signal to our internal controller
     const onAbort = () => abortController.abort();
     abortSignal.addEventListener('abort', onAbort);
 
@@ -76,10 +78,10 @@ export async function generateAIRecommendation(
         const result = await engine.generateStream(
             requestBody,
             abortController,
-            undefined, // no per-token callbacks needed
-            request.modelContext,
-            0, // no paragraph limit
-            undefined, // no existing text
+            undefined,
+            ctx,
+            0,
+            undefined,
         );
 
         const rawText = result.text || '';

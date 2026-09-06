@@ -1,9 +1,10 @@
-// src/services/InteractionMessageSummarizationEngine.ts
-import type { InteractionData, InteractionMessage, Context, Character } from '../types';
+// src/services/ChatMessageSummarizationEngine.ts
+import type { InteractionData, InteractionMessage, Context, Character, BudgetStrategy, LanguageModel } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
+import { resolveModelContext } from '../utilities/modelContextResolver';
 
 const engine = new LanguageModelEngine();
 
@@ -22,8 +23,11 @@ const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat his
 export async function generateMessageSummary(
     message: InteractionMessage,
     languageModelContext: LanguageModelContext,
-    maxTokens = 256
+    maxTokens = 256,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
+    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${message.textContent}\n\nSummary:`;
     const requestBody: any = {
         prompt,
@@ -31,7 +35,7 @@ export async function generateMessageSummary(
         temperature: 1,
         stop: ['\n\n', '\nMessage from'],
     };
-    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     return result.text || null;
 }
 
@@ -43,7 +47,9 @@ export async function generateMissingSummaries(
     interactionData: InteractionData,
     windowSize: number,
     languageModelContext: LanguageModelContext,
-    maxTokens = 256
+    maxTokens = 256,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
@@ -51,7 +57,7 @@ export async function generateMissingSummaries(
     const toSummarize = history.slice(0, cutoff).filter(m => !m.textContentSummary);
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, languageModelContext, maxTokens);
+        const summary = await generateMessageSummary(msg, languageModelContext, maxTokens, strategy, runningModels);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -65,8 +71,11 @@ export async function generateMissingSummaries(
 async function compressChunk(
     messages: InteractionMessage[],
     languageModelContext: LanguageModelContext,
-    maxTokens = 512
+    maxTokens = 512,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
+    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const formattedMessages = messages.map(m =>
         `${m.character.name}: ${m.textContent}`
     ).join('\n\n');
@@ -77,20 +86,22 @@ async function compressChunk(
         temperature: 1,
         stop: ['\n\n\n'],
     };
-    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     return result.text || null;
 }
 
 /**
  * Creates a character-specific memory entry.
- * Uses participant tags for identity safety and injects system/think prompts for personality.
  */
 export async function makeCharacterMemory(
     interactionData: InteractionData, 
     character: Character,
     languageModelContext: LanguageModelContext, 
-    maxTokens = 512
+    maxTokens = 512,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context | null> {
+    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const history = interactionData.interactionHistory;
     if (history.length === 0) return null;
 
@@ -119,7 +130,7 @@ export async function makeCharacterMemory(
         stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
     };
 
-    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     if (!result.text) return null;
 
     const now = Date.now();
@@ -146,7 +157,9 @@ export async function generatePeriodicCompression(
     compressionInterval: number,
     compressionChunkSize: number,
     languageModelContext: LanguageModelContext,
-    maxTokens: number = 512
+    maxTokens: number = 512,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
@@ -168,7 +181,7 @@ export async function generatePeriodicCompression(
         if (compressedRanges.has(rangeKey)) continue;
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
+        const compressed = await compressChunk(chunk, languageModelContext, maxTokens, strategy, runningModels);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -192,8 +205,11 @@ export async function generatePeriodicCompression(
 async function mergeSummaries(
     summaries: string[],
     languageModelContext: LanguageModelContext,
-    maxTokens = 512
+    maxTokens = 512,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
+    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0];
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
@@ -204,7 +220,7 @@ async function mergeSummaries(
         temperature: 1,
         stop: ['\n\n\n'],
     };
-    const result = await engine.generateCompletion(requestBody, languageModelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     return result.text || null;
 }
 
@@ -216,7 +232,9 @@ export async function generateRecursiveSummary(
     chunkSize: number,
     maxDepth: number,
     languageModelContext: LanguageModelContext,
-    maxTokens = 1024
+    maxTokens = 1024,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
@@ -234,7 +252,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, history.length);
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, languageModelContext, maxTokens);
+        const compressed = await compressChunk(chunk, languageModelContext, maxTokens, strategy, runningModels);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
@@ -261,7 +279,7 @@ export async function generateRecursiveSummary(
         const nextLayerSummaries: string[] = [];
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, languageModelContext, maxTokens);
+            const merged = await mergeSummaries(batch, languageModelContext, maxTokens, strategy, runningModels);
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
@@ -282,7 +300,7 @@ export async function generateRecursiveSummary(
     }
 
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens, strategy, runningModels);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,

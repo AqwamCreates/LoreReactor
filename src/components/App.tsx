@@ -372,8 +372,8 @@ function App() {
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isCardImportOpen, setIsCardImportOpen] = useState(false);
   const [isAIRecommendationOpen, setIsAIRecommendationOpen] = useState(false);
+  const [isCardImportOpen, setIsCardImportOpen] = useState(false);
   const [isExportDataOpen, setIsExportDataOpen] = useState(false);
   const [isImportDataOpen, setIsImportDataOpen] = useState(false);
 
@@ -382,7 +382,7 @@ function App() {
   const restorationDoneRef = useRef(false);
   const initialSyncSkippedRef = useRef(false);
   const chatModifiedRef = useRef(false);
-  const loadingStartedAtRef = useRef(Date.now());
+  const loadingStartedAtRef = useRef<number | null>(null);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -823,7 +823,9 @@ function App() {
     const allDone = loadSteps.every(s => s.done);
     const hasData = !!interactionData && (!!interactionData.protagonist || interactionData.interactionHistory.length > 0 || allChats.length === 0);
     if (!allDone || !activeChatRestored || !hasData) return;
-    const elapsed = Date.now() - loadingStartedAtRef.current;
+    const loadingStartedAt = loadingStartedAtRef.current ?? Date.now();
+    loadingStartedAtRef.current = loadingStartedAt;
+    const elapsed = Date.now() - loadingStartedAt;
     const remaining = Math.max(0, MIN_LOADING_SCREEN_MS - elapsed);
     const hold = setTimeout(() => {
       setIsFadeOut(true);
@@ -1392,9 +1394,9 @@ function App() {
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
 
         {/* Settings Modal */}
+        {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} activeStrategy={activeStrategy} />}
         {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenImportCharacterCard={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} />}
         {isCardImportOpen && <CharacterCardImportModal isOpen={isCardImportOpen} onClose={() => setIsCardImportOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} allSamplers={allSamplers} />}
-        {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
         {isExportDataOpen && <DataExportModal isOpen={isExportDataOpen} onClose={() => setIsExportDataOpen(false)} />}
         {isImportDataOpen && <DataImportModal isOpen={isImportDataOpen} onClose={() => setIsImportDataOpen(false)} onImportComplete={handleImportComplete} />}
       </div>

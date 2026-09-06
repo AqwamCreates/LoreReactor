@@ -78,6 +78,7 @@ async function runBackgroundSummarization(
     modelRef: React.MutableRefObject<LanguageModel | null>,
     runningModelsRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
+    activeStrategy?: BudgetStrategy | null,
 ): Promise<void> {
     try {
         const ctxLen = modelRef.current?.contextLength || 8192;
@@ -95,20 +96,23 @@ async function runBackgroundSummarization(
         const lmCtx: LanguageModelContext = { apiKey: modelRef.current?.apiKey, backend: modelRef.current?.backend, modelPath: modelRef.current?.model, runtimePort: effectivePort };
         if (!effectivePort && !modelRef.current?.apiKey) return;
 
+        const running = runningModelsRef.current;
+        const strat = activeStrategy ?? null;
+
         let updated = data;
         if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Sliding Window Replace' && s.enabled)?.summaryTokenBudget ?? 256;
-            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, lmCtx, budget);
+            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, lmCtx, budget, strat, running);
             if (summaries.size > 0) updated = { ...updated, interactionHistory: updated.interactionHistory.map(m => { const s = summaries.get(m.id); return s ? { ...m, textContentSummary: s } : m; }) };
         }
         if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Periodic Compression' && s.enabled)?.summaryTokenBudget ?? 512;
-            const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, lmCtx, budget);
+            const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, lmCtx, budget, strat, running);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
         if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Recursive Summary' && s.enabled)?.summaryTokenBudget ?? 1024;
-            const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, lmCtx, budget);
+            const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, lmCtx, budget, strat, running);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
 
@@ -352,6 +356,8 @@ export function useChatSession() {
         })();
 
         const ts = Date.now();
+        const strat = activeStrategyRef.current;
+        const running = runningModelsMapRef.current;
 
         for (const other of otherParticipants) {
             const allRelevant = data.interactionHistory.filter(
@@ -370,7 +376,7 @@ export function useChatSession() {
 
             if (relevantMessages.length === 0) continue;
 
-            const summaryContext = await makeCharacterMemory(data, character, lmCtx);
+            const summaryContext = await makeCharacterMemory(data, character, lmCtx, 512, strat, running);
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
@@ -386,7 +392,7 @@ export function useChatSession() {
             character.memories[other.id] = [newMemory];
         }
 
-        const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx);
+        const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx, 512, strat, running);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),
@@ -425,17 +431,13 @@ export function useChatSession() {
             if (strat) {
                 const previousCost = budgetCumulativeCostRef.current;
 
-                // Callback that triggers model loading via the backend API
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
-                    // Check if already running
                     const existing = running[modelId];
                     if (existing?.port) return existing.port;
 
-                    // Find model definition for load parameters
                     const targetModel = strat.localModels.find(m => m.id === modelId) || strat.onlineModels.find(m => m.id === modelId);
                     if (!targetModel) return null;
 
-                    // Cloud models don't need loading
                     if (targetModel.apiKey && targetModel.backend) return null;
 
                     try {
@@ -477,7 +479,6 @@ export function useChatSession() {
                     streamingTextRef.current = s.fullText;
                     onToken(s.fullText);
 
-                    // ✅ Real-time sentiment during budget strategy streaming
                     const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
@@ -508,7 +509,6 @@ export function useChatSession() {
                             throttledSetStreamingText(s.fullText);
                             onToken?.(s.fullText);
 
-                            // ✅ Real-time sentiment during standard streaming
                             const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                             if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                                 const sentiment = await sentimentEngine.analyze(s.fullText);
@@ -547,7 +547,6 @@ export function useChatSession() {
             const paragraphs = countParagraphs(displayText);
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
 
-            // ✅ Stamp character expression from final generated text
             const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawText);
@@ -644,7 +643,6 @@ export function useChatSession() {
         const d = interactionDataRef.current; if (!d) { releaseLock(); return; }
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
 
-        // ✅ Resolve protagonist location via regex for actions
         const hasLocations = ud.locations && ud.locations.length > 0;
         if (hasLocations) {
             const protagonistMsg = ud.interactionHistory[ud.interactionHistory.length - 1];
@@ -697,7 +695,6 @@ export function useChatSession() {
             const chatMessage = createChatMessage(interactionData, currentCharacter, text, { files: encodedFiles });
             let td = addMessageToInteractionData(interactionData, chatMessage);
 
-            // ✅ Resolve protagonist location via regex before AI turn sequence
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
@@ -726,7 +723,7 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
-                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast);
+                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
@@ -784,7 +781,6 @@ export function useChatSession() {
                     streamingTextRef.current = displayText;
                     throttledSetStreamingText(displayText);
 
-                    // ✅ Real-time sentiment during resume streaming
                     const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && displayText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(displayText);
@@ -815,7 +811,6 @@ export function useChatSession() {
                 if (editedIdx !== -1) consumeChatStamina(edited.interactionHistory[editedIdx], newParagraphs);
             }
 
-            // ✅ Stamp expression on resumed message
             const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawOutput);
@@ -892,7 +887,7 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
-                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast);
+                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1] as ChatMessage;
                 if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {

@@ -1,4 +1,6 @@
 // src/services/WebpageSummarizationEngine.ts
+import type { BudgetStrategy } from '../types';
+import { resolveModelContext } from '../utilities/modelContextResolver';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 
 const engine = new LanguageModelEngine();
@@ -17,25 +19,25 @@ export interface WebpageImageInfo {
 
 /**
  * Summarizes a single webpage's extracted text content using the LLM.
- * When images are provided with base64 data, they are passed via the
- * same image_data format used by chatLogic.ts (llama.cpp native format).
  */
 export async function summarizeWebpageContent(
     content: string,
     sourceUrl: string,
     modelContext: LanguageModelContext,
-    images?: WebpageImageInfo[]
+    images?: WebpageImageInfo[],
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
+    const ctx = resolveModelContext(modelContext, strategy, runningModels);
     const hasImages = images && images.length > 0;
     const basePrompt = hasImages ? WEBPAGE_SUMMARIZE_PROMPT : WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT;
 
     const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}\n\nSummary:`;
 
-    // Build image_data array in the same format as chatLogic.ts prepareRequestBody
     let imageData: { data: string; id: number }[] | undefined;
     if (hasImages) {
         imageData = [];
-        let imageIdCounter = 100; // Start high to avoid collisions with chat images
+        let imageIdCounter = 100;
         for (const img of images) {
             if (img.base64) {
                 imageData.push({ data: img.base64, id: imageIdCounter++ });
@@ -44,7 +46,6 @@ export async function summarizeWebpageContent(
         if (imageData.length === 0) imageData = undefined;
     }
 
-    // ✅ Build requestBody in the same format as prepareRequestBody produces
     const requestBody: any = {
         prompt,
         temperature: 1,
@@ -55,18 +56,20 @@ export async function summarizeWebpageContent(
         requestBody.image_data = imageData;
     }
 
-    const result = await engine.generateCompletion(requestBody, modelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     return result.text || null;
 }
 
 /**
  * Merges multiple webpage summaries into a single coherent reference.
- * Used when a context entry has multiple URLs or search results.
  */
 export async function mergeWebpageSummaries(
     summaries: { url: string; summary: string }[],
     modelContext: LanguageModelContext,
+    strategy?: BudgetStrategy | null,
+    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
+    const ctx = resolveModelContext(modelContext, strategy, runningModels);
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0].summary;
 
@@ -76,13 +79,12 @@ export async function mergeWebpageSummaries(
 
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
-    // ✅ Build requestBody in the same format as prepareRequestBody produces
     const requestBody: any = {
         prompt,
         temperature: 1,
         stop: ['\n\n\n\n', '```'],
     };
 
-    const result = await engine.generateCompletion(requestBody, modelContext);
+    const result = await engine.generateCompletion(requestBody, ctx);
     return result.text || null;
 }
