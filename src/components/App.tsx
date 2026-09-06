@@ -388,27 +388,39 @@ function App() {
   const portraitUrlCache = useMemo(() => {
     const cache = new Map<string, string | null>();
 
+    const resolvePortrait = (characterId: string, images: Record<string, string> | undefined, expression?: string): string | null => {
+      const expr = expression || 'neutral';
+      const filename = images?.[expr] || images?.neutral;
+      if (!filename) return null;
+      return getCharacterImageUrl(characterId, filename);
+    };
+
+    // Message avatars
     for (const msg of InteractionMessages) {
       if (!cache.has(msg.id)) {
-        cache.set(msg.id, getCharacterImageUrl(msg.character.id, msg.characterExpression));
+        cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
       }
     }
 
+    // Cinematic avatar
     if (centerAvatar) {
       const key = `cinematic:${centerAvatar.id}`;
       if (!cache.has(key)) {
-        cache.set(key, getCharacterImageUrl(centerAvatar.id, 'neutral'));
+        cache.set(key, resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral'));
       }
     }
 
     return cache;
-  }, [InteractionMessages, centerAvatar?.id]);
+  }, [InteractionMessages, centerAvatar]);
 
   // ✅ Streaming portrait — synchronous only
   const streamingPortraitUrl = useMemo(() => {
     if (!streamingCharacter) return null;
-    return getCharacterImageUrl(streamingCharacter.id, currentCharacterExpression);
-  }, [streamingCharacter?.id, currentCharacterExpression]);
+    const expr = currentCharacterExpression || 'neutral';
+    const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.neutral;
+    if (!filename) return null;
+    return getCharacterImageUrl(streamingCharacter.id, filename);
+  }, [streamingCharacter, currentCharacterExpression]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!interactionData?.contexts?.length) return 0;
