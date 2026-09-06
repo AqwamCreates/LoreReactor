@@ -107,6 +107,7 @@ export interface Location extends ObjectData { // Characters can go to a locatio
     images?: string[];
     regularExpressionActivationTrigger?: string;
     characterBindings: string[];
+    locationBindings: string[]; // Which other locations can allow characters to reach this location?
     globalWeight: number // Influence on how likely that everyone is entering this location, provided that there is not character-specific weight set.
     characterWeights: Record<string, number> // Influences on how likely that a character enters this location.
 
@@ -118,6 +119,7 @@ export interface RawLocation extends RawData {
     images?: string[];
     regularExpressionActivationTrigger?: string;
     characterBindings: string[];
+    locationBindings: string[]; // Which other locations can allow characters to reach this location?
     globalWeight: number // Influence on how likely that everyone is entering this location, provided that there is not character-specific weight set.
     characterWeights: Record<string, number> // Influences on how likely that a character enters this location.
 

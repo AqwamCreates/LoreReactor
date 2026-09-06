@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory } from '../types';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory, InteractionMessage } from '../types';
 import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, prepareRequestBody, editInteractionMessageInInteractionData, findPreviousInteractionMessage } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
@@ -9,6 +9,7 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
 import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from './characterLogic';
+import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
@@ -27,6 +28,10 @@ const convertFileToBase64 = (file: File): Promise<string> =>
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = error => reject(error);
     });
+
+function hasTextContent(msg: InteractionMessage): boolean {
+    return 'textContent' in msg && typeof (msg as any).textContent === 'string';
+}
 
 // ─── Ambient Narration ───────────────────────────────────────────────
 
@@ -107,7 +112,6 @@ async function runBackgroundSummarization(
         }
 
         if (updated !== data) {
-            // Note: App.tsx or caller should handle saving if needed, but for background tasks we save here
             await saveRawInteractionData(updated); 
             setData(updated); 
             dataRef.current = updated;
@@ -506,7 +510,6 @@ export function useChatSession() {
 
     const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
 
-    // Simplified startNewChat - just creates state, App.tsx handles saving/list updates
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char); 
         c.name = 'Untitled Chat';
@@ -549,8 +552,25 @@ export function useChatSession() {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const d = interactionDataRef.current; if (!d) { releaseLock(); return; }
-        const ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
-        // App.tsx should handle saving after this returns if needed, or we save here for simplicity
+        let ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
+
+        // ✅ Resolve protagonist location via regex for actions
+        const hasLocations = ud.locations && ud.locations.length > 0;
+        if (hasLocations) {
+            const protagonistMsg = ud.interactionHistory[ud.interactionHistory.length - 1];
+            if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && hasTextContent(protagonistMsg)) {
+                const currentLoc = getCurrentLocationIndex(ud, currentCharacter);
+                const regexLoc = findLocationByRegex(ud.locations, (protagonistMsg as any).textContent, currentCharacter);
+                const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                ud = {
+                    ...ud,
+                    interactionHistory: ud.interactionHistory.map((m, i) =>
+                        i === ud.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m
+                    ),
+                };
+            }
+        }
+
         await saveRawInteractionData(ud); 
         setInteractionData(ud); 
         interactionDataRef.current = ud;
@@ -584,7 +604,25 @@ export function useChatSession() {
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-            const td = addMessageToInteractionData(interactionData, createChatMessage(interactionData, currentCharacter, text));
+            let td = addMessageToInteractionData(interactionData, createChatMessage(interactionData, currentCharacter, text));
+
+            // ✅ Resolve protagonist location via regex before AI turn sequence
+            const hasLocations = td.locations && td.locations.length > 0;
+            if (hasLocations) {
+                const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
+                if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && hasTextContent(protagonistMsg)) {
+                    const currentLoc = getCurrentLocationIndex(td, currentCharacter);
+                    const regexLoc = findLocationByRegex(td.locations, (protagonistMsg as any).textContent, currentCharacter);
+                    const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                    td = {
+                        ...td,
+                        interactionHistory: td.interactionHistory.map((m, i) =>
+                            i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m
+                        ),
+                    };
+                }
+            }
+
             setInteractionData(td); interactionDataRef.current = td; 
             await saveRawInteractionData(td);
             

@@ -1,7 +1,7 @@
 // src/services/InteractionOrchestrator.ts
-import type { Character, InteractionData, Location, InteractionMessage } from '../types';
+import type { Character, InteractionData, InteractionMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
-import { sampleLocationByWeight, getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
+import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -36,7 +36,7 @@ function countParagraphs(text: string): number {
  * Regenerate stamina for a character based on their previous interaction.
  * Mutates the interactionHistory in place by updating the character's last entry.
  */
-function regenerateStaminaForCharacter(data: InteractionData, character: Character): void {
+function regenerateChatStaminaForCharacter(data: InteractionData, character: Character): void {
     const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
     if (maxStamina === Number.POSITIVE_INFINITY) return;
 
@@ -147,14 +147,17 @@ export async function runTurnSequence(
                     continue;
                 }
 
-                // ✅ Regenerate stamina before recording movement
-                regenerateStaminaForCharacter(workingData, picked);
+                // ✅ Capture stamina BEFORE regeneration so silent interaction records pre-regen state
+                const prevStamina = getLastInteractionForCharacter(workingData.interactionHistory, picked.id)?.remainingChatStamina;
 
-                // Roll their location
+                // ✅ Regenerate stamina before recording movement
+                regenerateChatStaminaForCharacter(workingData, picked);
+
+                // ✅ Filter by reachability first, then sample from reachable locations only
                 const pLoc = getCurrentLocationIndex(workingData, picked);
-                const newLoc = sampleLocationByWeight(workingData.locations, picked);
+                const reachable = getReachableLocations(workingData.locations, pLoc);
+                const newLoc = sampleReachableLocationByWeight(reachable, picked);
                 if (newLoc !== undefined && newLoc !== pLoc) {
-                    const prevStamina = getLastInteractionForCharacter(workingData.interactionHistory, picked.id)?.remainingChatStamina;
                     const silent = createSilentInteraction(picked, newLoc, prevStamina, lastParentId);
                     workingData.interactionHistory.push(silent);
                 }
@@ -211,7 +214,7 @@ export async function runTurnSequence(
 
         if (!selectedSpeaker) break;
 
-        regenerateStaminaForCharacter(workingData, selectedSpeaker);
+        regenerateChatStaminaForCharacter(workingData, selectedSpeaker);
 
         // ✅ Chat probability gate — does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
@@ -248,10 +251,10 @@ export async function runTurnSequence(
                 consumeChatStamina(newLastEntry, paragraphs);
             }
 
-            // ✅ Resolve location: regex match moves character, otherwise stay at current location
+            // ✅ Resolve location using resultData (not stale workingData)
             if (hasLocations) {
-                const currentLoc = getCurrentLocationIndex(workingData, selectedSpeaker);
-                const regexLoc = findLocationByRegex(workingData.locations, (newLastEntry as any).textContent, selectedSpeaker);
+                const currentLoc = getCurrentLocationIndex(resultData, selectedSpeaker);
+                const regexLoc = findLocationByRegex(resultData.locations, (newLastEntry as any).textContent, selectedSpeaker);
                 const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
                 resultData.interactionHistory[resultData.interactionHistory.length - 1] = {
                     ...newLastEntry,
