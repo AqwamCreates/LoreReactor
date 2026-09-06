@@ -13,7 +13,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrlWithFallBack, loadRawContext, loadRawLocation } from '../hooks/storage';
+import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -102,12 +102,12 @@ function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
 function renderProfileSubtext(profile: Profile) {
   const flags: string[] = [];
   if (profile.forceNameReveal) flags.push('Force Names');
-  if (profile.enableCharacterExpression) flags.push('Character Expressions');
+  if (profile.enableCharacterExpression) flags.push('Expressions');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
   if (profile.enableMemoryReading) flags.push('Memory Read');
   if (profile.enableMemoryWriting) flags.push('Memory Write');
-  if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Character Stats Override');
+  if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Stats Override');
 
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
@@ -384,30 +384,30 @@ function App() {
 
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
-  // ✅ Unified portrait URL cache — computes once per message list or center avatar change
+  // ✅ Unified portrait URL cache — synchronous only
   const portraitUrlCache = useMemo(() => {
     const cache = new Map<string, string | null>();
 
     for (const msg of InteractionMessages) {
       if (!cache.has(msg.id)) {
-        cache.set(msg.id, getCharacterImageUrlWithFallBack(msg.character.id, msg.characterExpression));
+        cache.set(msg.id, getCharacterImageUrl(msg.character.id, msg.characterExpression));
       }
     }
 
     if (centerAvatar) {
       const key = `cinematic:${centerAvatar.id}`;
       if (!cache.has(key)) {
-        cache.set(key, getCharacterImageUrlWithFallBack(centerAvatar.id, 'neutral'));
+        cache.set(key, getCharacterImageUrl(centerAvatar.id, 'neutral'));
       }
     }
 
     return cache;
   }, [InteractionMessages, centerAvatar?.id]);
 
-  // ✅ Streaming portrait — only recomputes when expression or character changes
+  // ✅ Streaming portrait — synchronous only
   const streamingPortraitUrl = useMemo(() => {
     if (!streamingCharacter) return null;
-    return getCharacterImageUrlWithFallBack(streamingCharacter.id, currentCharacterExpression);
+    return getCharacterImageUrl(streamingCharacter.id, currentCharacterExpression);
   }, [streamingCharacter?.id, currentCharacterExpression]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
