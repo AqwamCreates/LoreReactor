@@ -187,7 +187,7 @@ export function ProfileEditorModal({
                 setName('');
                 setDescription('');
                 setForceNameReveal(false);
-                setEnableCharacterExpression(true);
+                setEnableCharacterExpression(false);
                 setForceNoCharacterImageInjection(false);
                 setNumberOfMessagesToDisableThinkPrompt(-1);
                 setNumberOfMessagesToDisableMetaThinkInstructions(-1);
