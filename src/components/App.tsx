@@ -1176,10 +1176,28 @@ function App() {
     refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
   };
 
+  // ✅ FIXED: File selection handler with deferred input reset and stable array capture
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) setPendingFiles(p => [...p, ...Array.from(files)]);
-    e.target.value = '';
+    const fileList = e.target.files;
+    
+    // Immediately extract files into a stable array reference
+    // This prevents browser garbage collection or input resets from 
+    // invalidating the FileList before React processes the state update.
+    const newFiles = fileList ? Array.from(fileList) : [];
+    
+    if (newFiles.length > 0) {
+      setPendingFiles(prev => [...prev, ...newFiles]);
+      addToast(`${newFiles.length} file${newFiles.length !== 1 ? 's' : ''} attached.`);
+    }
+
+    // Defer the input reset to avoid interrupting file processing
+    // Using requestAnimationFrame ensures the browser has completed 
+    // its internal file handling cycle before we clear the DOM element.
+    requestAnimationFrame(() => {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    });
   };
 
   const handleSaveEdit = async () => {
