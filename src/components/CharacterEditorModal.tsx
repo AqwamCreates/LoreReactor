@@ -1,12 +1,12 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Context } from '../types';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
-import { parseCharacterCard, mapCardToEditorFields } from '../services/characterCardParser';
+import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
@@ -88,6 +88,10 @@ export function CharacterEditorModal({
     const [showImageEditor, setShowImageEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>({});
 
+    // ✅ Pending lorebook contexts extracted from character card import
+    const [pendingLorebookContexts, setPendingLorebookContexts] = useState<Partial<Context>[]>([]);
+    const [showLorebookImportDialog, setShowLorebookImportDialog] = useState(false);
+
     // For new characters without UUID yet, assign a temporary ID for image uploads
     const [pendingCharacterId, setPendingCharacterId] = useState<string | null>(null);
 
@@ -132,6 +136,8 @@ export function CharacterEditorModal({
             setShowAdvancedSettings(false);
             setShowMemoryManager(false);
             setShowImageEditor(false);
+            setPendingLorebookContexts([]);
+            setShowLorebookImportDialog(false);
 
             if (existingCharacter) {
                 setName(existingCharacter.name || '');
@@ -236,15 +242,17 @@ export function CharacterEditorModal({
             const value = getNameSensitivityValueFromText(combinedText);
             setNameSensitivityStr(String(value));
         }
-        if (spIsAuto) {
-            const value = getSkipProbabilityValueFromText(combinedText);
-            setSkipProbabilityStr(String(value));
-        }
 
         if (cisIsAuto) {
             const value = getChatImpatienceSensitivityValueFromText(combinedText);
             setChatImpatienceSensitivityStr(String(value));
         }
+
+        if (spIsAuto) {
+            const value = getSkipProbabilityValueFromText(combinedText);
+            setSkipProbabilityStr(String(value));
+        }
+
         if (mrwIsAuto) {
             const value = getMemoryRetentionWeightValueFromText(combinedText);
             setMemoryRetentionWeightStr(String(value));
@@ -288,13 +296,25 @@ export function CharacterEditorModal({
         setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
         setAutoDetected({ iw: null, cp: null, ms: null }); setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
-        setSkipProbabilityStr('-1'); setChatImpatienceSensitivityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
+        setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
         setEnableMemoryWriting(false); setEnableMemoryReading(false); setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
         setSubmitError(null);
+
+        // ✅ Extract emotion images from V3 assets or extensions
+        const extended = card as ParsedCharacterCardExtended;
+        if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
+            setEmotionImages(prev => ({ ...prev, ...extended.emotionImages! }));
+        }
+
+        // ✅ Queue lorebook contexts for user confirmation
+        if (extended.lorebookContexts && extended.lorebookContexts.length > 0) {
+            setPendingLorebookContexts(extended.lorebookContexts);
+            setShowLorebookImportDialog(true);
+        }
     };
 
     const handleStopPatternToggle = (id: string) => {
@@ -336,8 +356,8 @@ export function CharacterEditorModal({
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
         const rawNS = Number.parseFloat(nameSensitivityStr);
-        const rawSP = Number.parseFloat(skipProbabilityStr);
         const rawCIS = Number.parseFloat(chatImpatienceSensitivityStr);
+        const rawSP = Number.parseFloat(skipProbabilityStr);
         const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
         const rawCRS = Number.parseFloat(contextSensitivityStr);
         const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
@@ -452,6 +472,63 @@ export function CharacterEditorModal({
                     <div className="modal-body editor-modal-body">
                         {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
 
+                        {/* ✅ Lorebook Import Confirmation Dialog */}
+                        {showLorebookImportDialog && pendingLorebookContexts.length > 0 && (
+                            <div style={{
+                                marginBottom: '16px',
+                                padding: '12px',
+                                background: 'var(--social-bg)',
+                                border: '1px solid var(--accent)',
+                                borderRadius: '8px',
+                            }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                                    📚 Import {pendingLorebookContexts.length} Lorebook Entries as Contexts?
+                                </div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.7, marginBottom: '10px' }}>
+                                    These entries were found in the character card's embedded lorebook. They will be added to this chat's context list with regex triggers pre-configured from their keywords.
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        className="editor-btn editor-btn-save"
+                                        onClick={() => {
+                                            // Assign IDs and timestamps to pending contexts
+                                            const now = Date.now();
+                                            const finalizedContexts: Context[] = pendingLorebookContexts.map(ctx => ({
+                                                id: uuidv4(),
+                                                name: ctx.name || 'Lorebook Entry',
+                                                text: ctx.text || '',
+                                                regularExpressionActivationTrigger: ctx.regularExpressionActivationTrigger,
+                                                insertionDepth: ctx.insertionDepth ?? 0,
+                                                tokenBudget: ctx.tokenBudget,
+                                                firstCreatedTimestamp: now,
+                                                lastUpdatedTimestamp: now,
+                                            } as Context));
+                                            // Store for parent component to pick up via onSave callback or separate mechanism
+                                            // For now, attach to window so App.tsx can retrieve them after save
+                                            (window as any).__pendingLorebookContexts = finalizedContexts;
+                                            setShowLorebookImportDialog(false);
+                                            setPendingLorebookContexts([]);
+                                        }}
+                                        style={{ flex: 1, fontSize: '0.75rem' }}
+                                    >
+                                        Import All ({pendingLorebookContexts.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="editor-btn editor-btn-cancel"
+                                        onClick={() => {
+                                            setShowLorebookImportDialog(false);
+                                            setPendingLorebookContexts([]);
+                                        }}
+                                        style={{ flex: 1, fontSize: '0.75rem' }}
+                                    >
+                                        Skip
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="editor-modal-columns">
                             {/* LEFT COLUMN */}
                             <div className="editor-left-column">
@@ -539,8 +616,8 @@ export function CharacterEditorModal({
                 chatProbabilityStr={chatProbabilityStr}
                 maximumChatStaminaStr={maximumChatStaminaStr}
                 nameSensitivityStr={nameSensitivityStr}
-                skipProbabilityStr={skipProbabilityStr}
                 chatImpatienceSensitivityStr={chatImpatienceSensitivityStr}
+                skipProbabilityStr={skipProbabilityStr}
                 memoryRetentionWeightStr={memoryRetentionWeightStr}
                 contextSensitivityStr={contextSensitivityStr}
                 numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
@@ -555,8 +632,8 @@ export function CharacterEditorModal({
                 onChatProbabilityChange={setChatProbabilityStr}
                 onMaximumChatStaminaChange={setMaximumChatStaminaStr}
                 onNameSensitivityChange={setNameSensitivityStr}
-                onSkipProbabilityChange={setSkipProbabilityStr}
                 onChatImpatienceSensitivityChange={setChatImpatienceSensitivityStr}
+                onSkipProbabilityChange={setSkipProbabilityStr}
                 onMemoryRetentionWeightChange={setMemoryRetentionWeightStr}
                 onContextSensitivityChange={setContextSensitivityStr}
                 onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}

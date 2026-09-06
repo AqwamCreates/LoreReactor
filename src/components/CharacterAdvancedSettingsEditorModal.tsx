@@ -9,8 +9,8 @@ interface CharacterAdvancedSettingsEditorModalProps {
     chatProbabilityStr: string;
     maximumChatStaminaStr: string;
     nameSensitivityStr: string;
-    skipProbabilityStr: string;
     chatImpatienceSensitivityStr: string;
+    skipProbabilityStr: string;
     memoryRetentionWeightStr: string;
     contextSensitivityStr: string;
     numberOfMessagesToDisableThinkPromptStr: string;
@@ -44,8 +44,8 @@ export function CharacterAdvancedSettingsEditorModal({
     chatProbabilityStr,
     maximumChatStaminaStr,
     nameSensitivityStr,
-    skipProbabilityStr,
     chatImpatienceSensitivityStr,
+    skipProbabilityStr,
     memoryRetentionWeightStr,
     contextSensitivityStr,
     numberOfMessagesToDisableThinkPromptStr,
@@ -120,14 +120,14 @@ export function CharacterAdvancedSettingsEditorModal({
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
                             </div>
                             <div>
-                                <label className="editor-label editor-label-small">Skip Probability</label>
-                                <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => onSkipProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
-                            </div>
-                            <div>
                                 <label className="editor-label editor-label-small">Chat Impatience</label>
                                 <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Skip Probability</label>
+                                <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => onSkipProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
                             </div>
                         </div>
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
