@@ -34,7 +34,7 @@ import { cloudBackends } from '../languageModelInformation';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy,
-  InteractionData, Extension, InterjectableAction, Profile, InteractionMessage,
+  InteractionData, Extension, InterjectableAction, Profile,
   ChatMessage
 } from '../types';
 

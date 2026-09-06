@@ -211,6 +211,8 @@ export async function runTurnSequence(
 
         if (!selectedSpeaker) break;
 
+        regenerateStaminaForCharacter(workingData, selectedSpeaker);
+
         // ✅ Chat probability gate — does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
         if (Math.random() >= effectiveProb) {
@@ -224,9 +226,6 @@ export async function runTurnSequence(
             spokenThisSequence.add(selectedSpeaker.id);
             continue;
         }
-
-        // ✅ Regenerate stamina before the character speaks
-        regenerateStaminaForCharacter(workingData, selectedSpeaker);
 
         // ✅ Character speaks — co-located
         if (onSpeakerChange) onSpeakerChange(selectedSpeaker);
