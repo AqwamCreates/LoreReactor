@@ -46,6 +46,7 @@ const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
 const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
+const MIN_LOADING_SCREEN_MS = 900;
 
 const tokenEngine = new LanguageModelEngine();
 
@@ -303,6 +304,7 @@ function App() {
   const restorationDoneRef = useRef(false);
   const initialSyncSkippedRef = useRef(false);
   const chatModifiedRef = useRef(false);
+  const loadingStartedAtRef = useRef(Date.now());
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -384,13 +386,13 @@ function App() {
 
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
-  // ✅ Unified portrait URL cache — synchronous only
+  // ✅ Unified portrait URL cache — single lookup logic for all avatars
   const portraitUrlCache = useMemo(() => {
     const cache = new Map<string, string | null>();
 
     const resolvePortrait = (characterId: string, images: Record<string, string> | undefined, expression?: string): string | null => {
       const expr = expression || 'neutral';
-      const filename = images?.[expr] || images?.neutral;
+      const filename = images?.[expr] || images?.['neutral'];
       if (!filename) return null;
       return getCharacterImageUrl(characterId, filename);
     };
@@ -411,16 +413,16 @@ function App() {
     }
 
     return cache;
-  }, [InteractionMessages, centerAvatar]);
+  }, [InteractionMessages, centerAvatar?.id]);
 
-  // ✅ Streaming portrait — synchronous only
+  // ✅ Streaming portrait — same lookup logic
   const streamingPortraitUrl = useMemo(() => {
     if (!streamingCharacter) return null;
     const expr = currentCharacterExpression || 'neutral';
-    const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.neutral;
+    const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.['neutral'];
     if (!filename) return null;
     return getCharacterImageUrl(streamingCharacter.id, filename);
-  }, [streamingCharacter, currentCharacterExpression]);
+  }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!interactionData?.contexts?.length) return 0;
@@ -444,6 +446,7 @@ function App() {
   }, [interactionData?.Profile?.id, interactionData?.Profile?.enableCharacterExpression]);
 
   // ✅ Active chat restoration — runs exactly once via ref guard
+  // ✅ Important: always await chat activation before marking restored
   useEffect(() => {
     if (restorationDoneRef.current) return;
     if (charsLoading || chatsLoading) return;
@@ -459,6 +462,7 @@ function App() {
 
     const activateChat = async (chat: InteractionData) => {
       let fullChat = chat;
+
       if (!chat.interactionHistory.length && (chat.numberOfMessages ?? 0) > 0) {
         try {
           fullChat = await loadInteractionMessages(chat);
@@ -466,8 +470,10 @@ function App() {
           console.warn('Failed to load chat messages for fallback:', e);
         }
       }
+
       if (fullChat.protagonist) {
         let protagonist = fullChat.protagonist;
+
         if (!protagonist.systemPrompt) {
           const fullChar = await loadFullCharacter(protagonist.id);
           if (fullChar) protagonist = fullChar;
@@ -481,46 +487,56 @@ function App() {
           })
         );
 
-        setInteractionData({ ...fullChat, protagonist, participants: hydratedParticipants });
+        setInteractionData({
+          ...fullChat,
+          protagonist,
+          participants: hydratedParticipants,
+        });
+
         setCurrentCharacter(protagonist);
       } else {
         setInteractionData(fullChat);
       }
     };
 
-    if (!savedChatId) {
-      if (allChats.length > 0) {
-        activateChat(allChats[0]);
-      } else if (allCharacters.length > 0) {
-        startNewChat(allCharacters[0]);
-      } else {
-        setCurrentCharacter(null);
-        setInteractionData({
-          id: uuidv4(),
-          name: 'Untitled Chat',
-          protagonist: null as unknown as Character,
-          participants: [],
-          contexts: [],
-          locations: [],
-          interactionHistory: [],
-          numberOfMessages: 0,
-          firstCreatedTimestamp: Date.now(),
-          lastUpdatedTimestamp: Date.now(),
-          parentInteractionDataId: null,
-          parentInteractionMessageId: null,
-        });
-      }
-      setTimeout(() => setActiveChatRestored(true), 0);
-      return;
-    }
-
-    (async () => {
+    const restore = async () => {
       try {
+        if (!savedChatId) {
+          if (allChats.length > 0) {
+            await activateChat(allChats[0]);
+          } else if (allCharacters.length > 0) {
+            startNewChat(allCharacters[0]);
+          } else {
+            setCurrentCharacter(null);
+            setInteractionData({
+              id: uuidv4(),
+              name: 'Untitled Chat',
+              protagonist: null as unknown as Character,
+              participants: [],
+              contexts: [],
+              locations: [],
+              interactionHistory: [],
+              numberOfMessages: 0,
+              firstCreatedTimestamp: Date.now(),
+              lastUpdatedTimestamp: Date.now(),
+              parentInteractionDataId: null,
+              parentInteractionMessageId: null,
+            });
+          }
+
+          return;
+        }
+
         const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
 
         if (interactionDataResult) {
           let fullChat = interactionDataResult;
-          if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.interactionHistory.length === 0) {
+
+          if (
+            fullChat.numberOfMessages &&
+            fullChat.numberOfMessages > 0 &&
+            fullChat.interactionHistory.length === 0
+          ) {
             try {
               fullChat = await loadInteractionMessages(interactionDataResult);
             } catch (e) {
@@ -528,45 +544,75 @@ function App() {
             }
           }
 
-          const cd = fullChat as InteractionData;
-          let protagonist = cd.protagonist;
-          if (protagonist && !protagonist.systemPrompt) {
-            const fullChar = await loadFullCharacter(protagonist.id);
-            if (fullChar) protagonist = fullChar;
-          }
-
-          const hydratedParticipants = await Promise.all(
-            cd.participants.map(async (p) => {
-              if (p.systemPrompt) return p;
-              const fullChar = await loadFullCharacter(p.id);
-              return fullChar || p;
-            })
-          );
-
-          setInteractionData({ ...cd, protagonist, participants: hydratedParticipants });
-          if (protagonist) setCurrentCharacter(protagonist);
+          await activateChat(fullChat as InteractionData);
         } else {
           console.warn('Active chat not found, falling back.');
           localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+
           if (allChats.length > 0) {
             await activateChat(allChats[0]);
           } else if (allCharacters.length > 0) {
             startNewChat(allCharacters[0]);
+          } else {
+            setCurrentCharacter(null);
+            setInteractionData({
+              id: uuidv4(),
+              name: 'Untitled Chat',
+              protagonist: null as unknown as Character,
+              participants: [],
+              contexts: [],
+              locations: [],
+              interactionHistory: [],
+              numberOfMessages: 0,
+              firstCreatedTimestamp: Date.now(),
+              lastUpdatedTimestamp: Date.now(),
+              parentInteractionDataId: null,
+              parentInteractionMessageId: null,
+            });
           }
         }
       } catch (e) {
         console.error('Failed to restore active chat:', e);
         localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+
         if (allChats.length > 0) {
           await activateChat(allChats[0]);
         } else if (allCharacters.length > 0) {
           startNewChat(allCharacters[0]);
+        } else {
+          setCurrentCharacter(null);
+          setInteractionData({
+            id: uuidv4(),
+            name: 'Untitled Chat',
+            protagonist: null as unknown as Character,
+            participants: [],
+            contexts: [],
+            locations: [],
+            interactionHistory: [],
+            numberOfMessages: 0,
+            firstCreatedTimestamp: Date.now(),
+            lastUpdatedTimestamp: Date.now(),
+            parentInteractionDataId: null,
+            parentInteractionMessageId: null,
+          });
         }
       } finally {
         setActiveChatRestored(true);
       }
-    })();
-  }, [charsLoading, chatsLoading, allCharacters, allChats, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
+    };
+
+    restore();
+  }, [
+    charsLoading,
+    chatsLoading,
+    allCharacters,
+    allChats,
+    loadFullCharacter,
+    setInteractionData,
+    setCurrentCharacter,
+    setSelectedModelId,
+    startNewChat,
+  ]);
 
   useEffect(() => {
     if (interactionData?.id) {
@@ -769,18 +815,36 @@ function App() {
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
-  // ✅ Delay fadeout after all steps complete and chat is restored
+  // ✅ Delay fadeout after all steps complete, chat is restored, AND data is hydrated
+  // ✅ Enforce minimum visible duration so it doesn't flash or reveal an empty workspace
   useEffect(() => {
     if (!isInitializing) return;
-    if (loadSteps.every(s => s.done) && activeChatRestored) {
-      const hold = setTimeout(() => {
-        setIsFadeOut(true);
-        const fade = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
-        return () => clearTimeout(fade);
-      }, 600);
-      return () => clearTimeout(hold);
-    }
-  }, [loadSteps, isInitializing, activeChatRestored]);
+
+    const allDone = loadSteps.every(s => s.done);
+    const hasData = !!interactionData && (
+      !!interactionData.protagonist ||
+      interactionData.interactionHistory.length > 0 ||
+      allChats.length === 0
+    );
+
+    if (!allDone || !activeChatRestored || !hasData) return;
+
+    const elapsed = Date.now() - loadingStartedAtRef.current;
+    const remaining = Math.max(0, MIN_LOADING_SCREEN_MS - elapsed);
+
+    const hold = setTimeout(() => {
+      setIsFadeOut(true);
+
+      const fade = setTimeout(() => {
+        setIsInitializing(false);
+        setIsFadeOut(false);
+      }, 300);
+
+      return () => clearTimeout(fade);
+    }, remaining);
+
+    return () => clearTimeout(hold);
+  }, [loadSteps, isInitializing, activeChatRestored, interactionData, allChats.length]);
 
   // ✅ Reset modified flag when switching to a different chat
   useEffect(() => {
