@@ -116,7 +116,7 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [forceNameReveal, setForceNameReveal] = useState(false);
-    const [enableCharacterExpression, setEnableCharacterExpression] = useState(true);
+    const [enableCharacterExpression, setEnableCharacterExpression] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
     const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(-1);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
