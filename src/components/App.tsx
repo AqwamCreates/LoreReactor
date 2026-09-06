@@ -13,7 +13,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
+import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, getLocationImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
 import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
@@ -423,6 +423,25 @@ function App() {
     if (!filename) return null;
     return getCharacterImageUrl(streamingCharacter.id, filename);
   }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
+
+  // ✅ Location background image — resolved from protagonist's current location
+  const locationBackgroundUrl = useMemo(() => {
+    if (!interactionData?.locations?.length) return null;
+
+    // Find the latest message with a locationIndex
+    for (let i = InteractionMessages.length - 1; i >= 0; i--) {
+      const msg = InteractionMessages[i];
+      if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
+        const loc = interactionData.locations[msg.locationIndex];
+        if (loc?.images?.length && loc.images[0]) {
+          return getLocationImageUrl(loc.images[0]);
+        }
+        return null;
+      }
+    }
+
+    return null;
+  }, [InteractionMessages, interactionData?.locations]);
 
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!interactionData?.contexts?.length) return 0;
@@ -1329,7 +1348,11 @@ function App() {
   return (
     <>
       {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-      <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
+      <div
+        className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`}
+        style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined}
+        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}
+      >
         {!interactionData && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
             <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>

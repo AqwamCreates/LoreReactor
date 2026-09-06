@@ -62,6 +62,7 @@ font-family: monospace;
 overflow: hidden;
 transition: all 0.5s ease;
 }
+
 .app-header {
 background: var(--bg);
 border-bottom: 1px solid var(--border);
@@ -2621,4 +2622,44 @@ max-width: 50%;
     .editor-stats-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* =============================================================================
+LOCATION BACKGROUND IMAGE
+============================================================================= */
+.chat-container.has-location-bg {
+    position: relative;
+}
+.chat-container.has-location-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--location-bg);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    z-index: 0;
+    pointer-events: none;
+}
+.chat-container.has-location-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+    pointer-events: none;
+}
+.chat-container.has-location-bg > * {
+    position: relative;
+    z-index: 1;
+}
+.mode-cinematic.has-location-bg::after {
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.3) 0%,
+        rgba(0, 0, 0, 0.5) 40%,
+        rgba(0, 0, 0, 0.75) 70%,
+        rgba(0, 0, 0, 0.85) 100%
+    );
 }
