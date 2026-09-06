@@ -1242,12 +1242,32 @@ export function getCharacterImageUrl(characterId: string, characterExpression?: 
     return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
 }
 
-export function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): string | null {
-    const imageUrl = getCharacterImageUrl(characterId, characterExpression)
+export async function getCharacterImageUrlWithFallback(characterId: string, characterExpression?: string): Promise<string | null> {
+    const characterImageUrl = getCharacterImageUrl(characterId, characterExpression);
+    if (!characterImageUrl) return null;
 
-    const effectiveCharacterExpression = characterExpression || "neutral";
-    const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
-    return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
+    try {
+        const response = await fetch(characterImageUrl, { method: 'HEAD' });
+        if (response.ok) return characterImageUrl;
+    } catch {
+        // File doesn't exist or network error — fall through to neutral
+    }
+
+    // Fall back to neutral if the requested expression doesn't exist
+    const effectiveExpression = characterExpression || "neutral";
+    if (effectiveExpression !== 'neutral') {
+        const neutralUrl = getCharacterImageUrl(characterId, 'neutral');
+        if (neutralUrl) {
+            try {
+                const response = await fetch(neutralUrl, { method: 'HEAD' });
+                if (response.ok) return neutralUrl;
+            } catch {
+                // Neutral doesn't exist either
+            }
+        }
+    }
+
+    return null;
 }
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
