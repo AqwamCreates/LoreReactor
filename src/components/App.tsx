@@ -27,6 +27,8 @@ import { LocationEditorModal } from './LocationEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
+import { SettingsModal } from './SettingsModal';
+import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
@@ -298,6 +300,8 @@ function App() {
   const [isProfileListOpen, setIsProfileListOpen] = useState(false);
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCardImportOpen, setIsCardImportOpen] = useState(false);
 
   // ✅ Active chat restoration guard
   const [activeChatRestored, setActiveChatRestored] = useState(false);
@@ -345,7 +349,7 @@ function App() {
     { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
     { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
     { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
-    { id: 'profiles', label: 'Profiles', icon: '⚙️', done: !profilesLoading },
+    { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
     { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
   ], [charsLoading, actionsLoading, modelsLoading, contextsLoading, locationsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
   
@@ -1389,6 +1393,7 @@ function App() {
                 : <><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span></>}
             </div>
             <div className="header-controls-group">
+              <button type="button" className="view-mode-toggle" onClick={() => setIsSettingsOpen(true)} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
               <button type="button" className="view-mode-toggle" onClick={() => interactionData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
               <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
               <ChatStatisticsBar
@@ -1492,7 +1497,7 @@ function App() {
             <NavButton icon="🎚️" label="Samplers" onClick={() => setIsSamplerListOpen(true)} />
             <NavButton icon="🛑" label="Stop Patterns" onClick={() => setIsStopListOpen(true)} />
             <NavButton icon="💰" label="Budgets" onClick={() => setIsBudgetStrategyListOpen(true)} />
-            <NavButton icon="⚙️" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
+            <NavButton icon="👤" label="Profiles" onClick={() => setIsProfileListOpen(true)} />
           </div>
 
           <div className="input-wrapper">
@@ -1536,6 +1541,26 @@ function App() {
         {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
 
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
+
+        {/* Settings Modal */}
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            onOpenCharacterCardImport={() => { setIsSettingsOpen(false); setIsCardImportOpen(true); }}
+          />
+        )}
+
+        {/* Character Card Import Modal */}
+        {isCardImportOpen && (
+          <CharacterCardImportModal
+            isOpen={isCardImportOpen}
+            onClose={() => setIsCardImportOpen(false)}
+            onSaveCharacter={saveCharacter}
+            onSaveContext={saveContext}
+            allSamplers={allSamplers}
+          />
+        )}
       </div>
 
       {actionMenuTarget && interactionData && (
