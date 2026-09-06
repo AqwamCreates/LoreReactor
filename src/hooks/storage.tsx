@@ -1242,7 +1242,7 @@ export function getCharacterImageUrl(characterId: string, characterExpression?: 
     return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
 }
 
-export async function getCharacterImageUrlWithFallback(characterId: string, characterExpression?: string): Promise<string | null> {
+export async function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): Promise<string | null> {
     const characterImageUrl = getCharacterImageUrl(characterId, characterExpression);
     if (!characterImageUrl) return null;
 
