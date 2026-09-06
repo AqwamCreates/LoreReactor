@@ -264,7 +264,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
         const isConstant = entry.constant === true;
 
         const ctx: Partial<Context> = {
-            name: entry.name || entry.comment || `Lorebook Entry`,
+            name: entry.name || entry.comment || "Lorebook Entry",
             text: entry.content,
             regularExpressionActivationTrigger: isConstant ? undefined : regexTrigger,
             insertionDepth: entry.insertion_order ?? 0,
