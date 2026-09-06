@@ -647,8 +647,9 @@ export function useChatSession() {
         setStreamingCharacter(null); streamingCharacterRef.current = null;
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
-            const imgs = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-            let td = addMessageToInteractionData(interactionData, createChatMessage(interactionData, currentCharacter, text));
+            const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
+            const chatMessage = createChatMessage(interactionData, currentCharacter, text, { files: encodedFiles })
+            let td = addMessageToInteractionData(interactionData, chatMessage);
 
             // ✅ Resolve protagonist location via regex before AI turn sequence
             const hasLocations = td.locations && td.locations.length > 0;
@@ -673,7 +674,7 @@ export function useChatSession() {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
-                return handleServerResponse(d, c, s, ot, imgs, undefined, '');
+                return handleServerResponse(d, c, s, ot, undefined, undefined, '');
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }

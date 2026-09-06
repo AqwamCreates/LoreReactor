@@ -15,7 +15,6 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, getLocationImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
-import { clearFetchCache } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -38,6 +37,7 @@ import type {
   InteractionData, Extension, InterjectableAction, Profile,
   ChatMessage
 } from '../types';
+import { clearFetchCache } from '../services/linkFetcher';
 
 // ─── Constants & Types ──────────────────────────────────────────────
 
@@ -1435,6 +1435,11 @@ function App() {
                         </div>
                       ) : <>
                         <MemoizedMessageText text={message.textContent} />
+                        {(message as ChatMessage).files?.length > 0 && (
+                          <div className="message-attachment-indicator" title={`${(message as ChatMessage).files.length} attached file${(message as ChatMessage).files.length !== 1 ? 's' : ''}`}>
+                            📎 {(message as ChatMessage).files.length}
+                          </div>
+                        )}
                         <div className="message-toolbar">
                           {stem ? <span className="toolbar-lock">🔒 Locked</span> : !isMassActive ? <>
                             {!isProtag && message.isPartial && <button type="button" onClick={() => resumeGeneration(message.id)} disabled={!isModelReady} className="toolbar-btn" title="Resume interrupted generation" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>▶</button>}

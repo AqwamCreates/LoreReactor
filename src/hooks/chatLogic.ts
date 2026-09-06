@@ -1,6 +1,6 @@
 // src/hooks/chatLogic.ts
 import type { Character, InteractionData, InteractionMessage, Context, StopPattern, PromptBlockType, ChatMessage } from '../types';
-import { fetchMultipleContextUrls, clearFetchCache } from '../services/linkFetcher';
+import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -1061,6 +1061,19 @@ export async function prepareRequestBody(
         allImageData.push(...resolvedLocationImages);
     }
 
+    // ✅ Protagonist attached files from the latest user message
+    const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
+        m => m.character.id === interactionData.protagonist.id && isChatMessage(m)
+    ) as ChatMessage | undefined;
+
+    if (lastUserMsg?.files?.length) {
+        for (const fileBase64 of lastUserMsg.files) {
+            const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+            allImageData.push({ data: rawData, id: imageIdCounter++ });
+        }
+    }
+
+    // Legacy direct base64 pass-through (from sendMessage file uploads in current turn)
     if (protagonistImageBase64s && protagonistImageBase64s.length > 0) {
         for (const base64 of protagonistImageBase64s) {
             const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
@@ -1080,8 +1093,6 @@ export async function prepareRequestBody(
 
     return { body, fetchErrors };
 }
-
-export { clearFetchCache };
 
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
     const profile = interactionData.Profile;
@@ -1146,7 +1157,7 @@ export function createInteractionMessage(
 /**
  * Create a full InteractionMessage with text content.
  */
-export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number }): ChatMessage {
+export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
     const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
@@ -1159,6 +1170,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
         id: uuidv4(),
         character: { ...character },
         textContent,
+        files: options?.files ?? [],
         remainingChatStamina,
         isNameRevealed,
         locationIndex: options?.locationIndex,

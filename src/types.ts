@@ -215,6 +215,7 @@ export interface InteractionMessage {
 
 export interface ChatMessage extends InteractionMessage {
   textContent: string;
+  files: string[] // Base-64 encoding due to files can move around and it might not get detected. Generally for the protagonist to attach their files.
   isPartial?: boolean;
   textContentSummary?: string;
   kvCachePath?: string;
@@ -233,6 +234,7 @@ export interface RawInteractionMessage {
 
 export interface RawChatMessage extends RawInteractionMessage {
   textContent: string;
+  files: string[] // Base-64 encoding due to files can move around and it might not get detected. Generally for the protagonist to attach their files.
   isPartial?: boolean;
   textContentSummary?: string;
   kvCachePath?: string;
