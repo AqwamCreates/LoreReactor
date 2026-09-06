@@ -15,24 +15,51 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         label: 'Character Card Import',
         description: 'Import characters with lorebook entries from TavernAI V1/V2/V3 PNG cards.',
     },
+    {
+        id: 'ai-recommendation',
+        icon: '✨',
+        label: 'Get AI Recommendation',
+        description: 'Generate new characters, contexts, and locations using your loaded model.',
+    },
+    {
+        id: 'import-data',
+        icon: '📥',
+        label: 'Import All Data',
+        description: 'Restore from a previously exported JSON file. Overwrites matching IDs.',
+    },
+    {
+        id: 'export-data',
+        icon: '📦',
+        label: 'Export All Data',
+        description: 'Download everything as a single JSON backup file.',
+    },
 ];
 
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenCharacterCardImport: () => void;
+    onOpenAIRecommendation: () => void;
+    onOpenExportData: () => void;
+    onOpenImportData: () => void;
 }
 
 export function SettingsModal({
     isOpen,
     onClose,
     onOpenCharacterCardImport,
+    onOpenAIRecommendation,
+    onOpenExportData,
+    onOpenImportData,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
-        if (id === 'character-card-import') {
-            onOpenCharacterCardImport();
+        switch (id) {
+            case 'character-card-import': onOpenCharacterCardImport(); break;
+            case 'ai-recommendation': onOpenAIRecommendation(); break;
+            case 'import-data': onOpenImportData(); break;
+            case 'export-data': onOpenExportData(); break;
         }
     };
 
@@ -47,19 +74,17 @@ export function SettingsModal({
                 </div>
 
                 <div className="modal-body">
-                    <ul className="manager-list">
+                    <ul className="manager-list settings-list">
                         {SETTINGS_ITEMS.map(item => (
-                            <li key={item.id} className="manager-item">
+                            <li key={item.id} className="manager-item settings-item">
                                 <div
-                                    className="manager-item-main manager-item-main-clickable" style={{alignItems: 'center'}}
+                                    className="manager-item-main manager-item-main-clickable settings-item-main"
                                     onClick={() => handleItemClick(item.id)}
                                 >
-                                    <div className="manager-item-info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{item.icon}</span>
-                                        <div>
-                                            <div className="manager-item-title">{item.label}</div>
-                                            <div className="manager-item-sub" style={{ fontSize: '0.7rem', opacity: 0.6 }}>{item.description}</div>
-                                        </div>
+                                    <div className="settings-item-info">
+                                        <span className="settings-item-icon">{item.icon}</span>
+                                        <div className="settings-item-title">{item.label}</div>
+                                        <div className="settings-item-desc">{item.description}</div>
                                     </div>
                                 </div>
                             </li>

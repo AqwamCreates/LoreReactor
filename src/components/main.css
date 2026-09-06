@@ -2682,3 +2682,311 @@ MESSAGE ATTACHMENT INDICATOR
     letter-spacing: 0.3px;
     width: fit-content;
 }
+
+/* =============================================================================
+SETTINGS MODAL — CENTERED LIST ITEMS
+============================================================================= */
+.settings-list {
+    gap: 12px;
+}
+.settings-item {
+    justify-content: center;
+    padding: 20px 16px;
+}
+.settings-item-main {
+    justify-content: center;
+}
+.settings-item-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center !important;
+    gap: 6px;
+    width: 100%;
+}
+.settings-item-icon {
+    font-size: 1.8rem;
+    line-height: 1;
+}
+.settings-item-title {
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: var(--text-h);
+    text-align: center !important;
+    white-space: normal;
+    word-break: break-word;
+}
+.settings-item-desc {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    color: var(--text-h);
+    text-align: center !important;
+    white-space: normal;
+    word-break: break-word;
+    max-width: 320px;
+    line-height: 1.4;
+}
+
+/* =============================================================================
+SHARED ENTITY SELECT LIST (used by AIRecommendation, Export, Import modals)
+============================================================================= */
+.entity-select-list {
+    margin-bottom: 8px;
+}
+.entity-select-search {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    min-height: 32px;
+}
+.entity-select-scroll {
+    max-height: 140px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+}
+.entity-select-empty {
+    font-size: 0.65rem;
+    opacity: 0.4;
+    font-style: italic;
+    padding: 4px;
+    text-align: left;
+}
+.entity-select-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    transition: background 0.15s;
+    text-align: left;
+}
+.entity-select-row:hover {
+    background: var(--social-bg);
+}
+.entity-select-row-selected {
+    background: var(--accent-bg);
+}
+.entity-select-row-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+.entity-select-row-disabled:hover {
+    background: transparent;
+}
+.entity-select-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+}
+.entity-select-name {
+    font-size: 0.7rem;
+    font-weight: normal;
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+    text-align: left;
+}
+.entity-select-name-selected {
+    font-weight: bold;
+    opacity: 1;
+}
+.entity-select-desc {
+    font-size: 0.55rem;
+    opacity: 0.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+    text-align: left;
+}
+.entity-select-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 0.6rem;
+    font-weight: bold;
+    flex-shrink: 0;
+    background: var(--border);
+    color: var(--text-muted, #888);
+}
+.entity-select-badge-active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* =============================================================================
+SHARED ENTITY MODAL UTILITIES (used by AIRecommendation, Export, Import)
+============================================================================= */
+.entity-type-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.entity-type-btn {
+    flex: 1 1 auto;
+    min-width: 100px;
+}
+.entity-type-hint {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    margin-top: 6px;
+}
+.entity-ref-hint {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    margin-bottom: 8px;
+}
+.entity-ref-empty {
+    font-size: 0.65rem;
+    opacity: 0.4;
+    font-style: italic;
+}
+.optional-label {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    font-weight: normal;
+}
+.entity-generate-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.9rem;
+}
+.entity-error-below {
+    margin-top: 8px;
+}
+.entity-error-above {
+    margin-bottom: 12px;
+}
+.entity-preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 0.75rem;
+}
+.entity-code {
+    font-size: 0.65rem;
+}
+.entity-action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+.entity-action-buttons .editor-btn {
+    flex: 1;
+}
+.entity-loading-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+.entity-loading-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+}
+.entity-loading-text {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+.entity-upload-state {
+    text-align: center;
+    padding: 30px 20px;
+}
+.entity-upload-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+}
+.entity-upload-title {
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.entity-upload-hint {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+.entity-upload-btn {
+    padding: 12px 40px;
+    font-size: 0.9rem;
+}
+.entity-export-done-hint {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+.entity-import-done-hint {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.7rem;
+    opacity: 0.6;
+}
+.entity-error-list {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+}
+.entity-error-item {
+    font-size: 0.65rem;
+    color: #ff4444;
+    margin-bottom: 4px;
+}
+
+/* =============================================================================
+SETTINGS MODAL — CENTERED LIST ITEMS
+============================================================================= */
+.settings-list {
+    gap: 12px;
+}
+.settings-item {
+    justify-content: center;
+    padding: 20px 16px;
+}
+.settings-item-main {
+    justify-content: center;
+}
+.settings-item-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center !important;
+    gap: 6px;
+    width: 100%;
+}
+.settings-item-icon {
+    font-size: 1.8rem;
+    line-height: 1;
+}
+.settings-item-title {
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: var(--text-h);
+    text-align: center !important;
+    white-space: normal;
+    word-break: break-word;
+}
+.settings-item-desc {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    color: var(--text-h);
+    text-align: center !important;
+    white-space: normal;
+    word-break: break-word;
+    max-width: 320px;
+    line-height: 1.4;
+}

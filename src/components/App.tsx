@@ -29,6 +29,9 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
+import { AIRecommendationModal } from './AIRecommendationModal';
+import { ExportDataModal } from './ExportDataModal';
+import { ImportDataModal } from './ImportDataModal';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
@@ -302,6 +305,9 @@ function App() {
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCardImportOpen, setIsCardImportOpen] = useState(false);
+  const [isAIRecommendationOpen, setIsAIRecommendationOpen] = useState(false);
+  const [isExportDataOpen, setIsExportDataOpen] = useState(false);
+  const [isImportDataOpen, setIsImportDataOpen] = useState(false);
 
   // ✅ Active chat restoration guard
   const [activeChatRestored, setActiveChatRestored] = useState(false);
@@ -429,14 +435,15 @@ function App() {
   }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
 
   // ✅ Location background image — resolved from protagonist's current location
-  const locationBackgroundUrl = useMemo(() => {
-    if (!interactionData?.locations?.length) return null;
+  const locations = interactionData?.locations;
+  const locationBackgroundUrl = (() => {
+    if (!locations?.length) return null;
 
     // Find the latest message with a locationIndex
     for (let i = InteractionMessages.length - 1; i >= 0; i--) {
       const msg = InteractionMessages[i];
       if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
-        const loc = interactionData.locations[msg.locationIndex];
+        const loc = locations[msg.locationIndex];
         if (loc?.images?.length && loc.images[0]) {
           return getLocationImageUrl(loc.images[0]);
         }
@@ -445,7 +452,7 @@ function App() {
     }
 
     return null;
-  }, [InteractionMessages, interactionData?.locations]);
+  })();
 
   const maximumNumberOfContextTokens = useMemo(() => {
     if (!interactionData?.contexts?.length) return 0;
@@ -1333,6 +1340,11 @@ function App() {
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
+  // ✅ Refresh all managers after data import
+  const handleImportComplete = useCallback(() => {
+    refreshChatList();
+  }, [refreshChatList]);
+
   // ✅ 5. RENDER RETURN
   // ✅ Always render the full app shell. Loading screen overlays on top during init.
   // ✅ This prevents the empty-workspace flash when the loading screen fades out.
@@ -1547,7 +1559,10 @@ function App() {
           <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
-            onOpenCharacterCardImport={() => { setIsSettingsOpen(false); setIsCardImportOpen(true); }}
+            onOpenCharacterCardImport={() => setIsCardImportOpen(true)}
+            onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)}
+            onOpenExportData={() => setIsExportDataOpen(true)}
+            onOpenImportData={() => setIsImportDataOpen(true)}
           />
         )}
 
@@ -1559,6 +1574,40 @@ function App() {
             onSaveCharacter={saveCharacter}
             onSaveContext={saveContext}
             allSamplers={allSamplers}
+          />
+        )}
+
+        {/* AI Recommendation Modal */}
+        {isAIRecommendationOpen && (
+          <AIRecommendationModal
+            isOpen={isAIRecommendationOpen}
+            onClose={() => setIsAIRecommendationOpen(false)}
+            onSaveCharacter={saveCharacter}
+            onSaveContext={saveContext}
+            onSaveLocation={saveLocation}
+            allSamplers={allSamplers}
+            allCharacters={allCharacters}
+            allContexts={allContexts}
+            allLocations={allLocations}
+            selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+            runningModels={runningModels}
+          />
+        )}
+
+        {/* Export Data Modal */}
+        {isExportDataOpen && (
+          <ExportDataModal
+            isOpen={isExportDataOpen}
+            onClose={() => setIsExportDataOpen(false)}
+          />
+        )}
+
+        {/* Import Data Modal */}
+        {isImportDataOpen && (
+          <ImportDataModal
+            isOpen={isImportDataOpen}
+            onClose={() => setIsImportDataOpen(false)}
+            onImportComplete={handleImportComplete}
           />
         )}
       </div>
