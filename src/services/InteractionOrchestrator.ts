@@ -1,6 +1,6 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, InteractionMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -71,6 +71,22 @@ function createSilentInteraction(
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };
+}
+
+/**
+ * Count the number of spoken turns since a character last spoke.
+ * Only counts messages with text content — silent movement records are ignored.
+ */
+function getTurnsSinceLastSpoken(history: InteractionMessage[], characterId: string): number {
+    let turns = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (!hasTextContent(msg)) continue;
+        if (msg.character.id === characterId) return turns;
+        turns++;
+    }
+    // Character has never spoken — treat entire history as silence
+    return turns;
 }
 
 export async function runTurnSequence(
@@ -179,7 +195,7 @@ export async function runTurnSequence(
 
         if (eligible.length === 0) break;
 
-        // ✅ Pick speaker by initiative weight × name sensitivity
+        // ✅ Pick speaker by initiative weight × name sensitivity × response delay
         let selectedSpeaker: Character | null;
 
         if (eligible.length === 1) {
@@ -190,7 +206,17 @@ export async function runTurnSequence(
             for (const p of eligible) {
                 const baseWeight = getEffectiveInitiativeWeight(p, profile);
                 const nameMultiplier = getNameSensitivityMultiplier(p, workingData);
-                const w = baseWeight * nameMultiplier;
+
+                // ✅ Response delay: longer silence = higher selection weight
+                const delayWeight = getEffectiveChatImpatienceSensitivity(p, profile);
+                let delayMultiplier = 1;
+                if (delayWeight > 0) {
+                    const turnsSinceLastSpoken = getTurnsSinceLastSpoken(workingData.interactionHistory, p.id);
+                    // Linear ramp capped at 5× to prevent runaway dominance after long silences
+                    delayMultiplier = 1 + Math.min(turnsSinceLastSpoken * delayWeight, 4);
+                }
+
+                const w = baseWeight * nameMultiplier * delayMultiplier;
                 if (w > 0) {
                     initPool.push({ char: p, weight: w });
                     totalWeight += w;

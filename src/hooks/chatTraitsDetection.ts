@@ -6,7 +6,8 @@ const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
 const DEFAULT_NAME_SENSITIVITY_VALUE = 1;
-const DEFAULT_RESPONSE_DELAY_WEIGHT_VALUE = 0;
+const DEFAULT_SKIP_PROBABILITY_VALUE = 0;
+const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1;
 const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1;
 
@@ -71,7 +72,7 @@ const NAME_SENSITIVITY_RULES: TraitRule[] = [
     { keywords: ['unreachable', 'detached', 'isolated', 'unaware', 'oblivious to surroundings'], value: 0 },
 ];
 
-const RESPONSE_DELAY_WEIGHT_RULES: TraitRule[] = [
+const CHAT_IMPATIENCE_SENSITIVITY_RULES: TraitRule[] = [
     { keywords: ['hesitant', 'slow to respond', 'deliberate', 'thoughtful', 'pausing', 'reflective', 'contemplative', 'measured'], value: 0.6 },
     { keywords: ['cautious', 'careful', 'guarded', 'wary', 'tentative', 'unsure', 'uncertain', 'reluctant'], value: 0.45 },
     { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful'], value: 0.35 },
@@ -79,6 +80,17 @@ const RESPONSE_DELAY_WEIGHT_RULES: TraitRule[] = [
     { keywords: ['eager', 'quick', 'impulsive', 'immediate', 'instant', 'rapid', 'hasty'], value: 0 },
     { keywords: ['slow', 'sluggish', 'lethargic', 'drowsy', 'fatigued', 'exhausted', 'weary'], value: 0.5 },
     { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'shocked', 'speechless'], value: 0.9 },
+];
+
+const SKIP_PROBABILITY_RULES: TraitRule[] = [
+    { keywords: ['evasive', 'elusive', 'avoidant', 'dodgy', 'slippery', 'noncommittal', 'evasive', 'deflective'], value: 0.7 },
+    { keywords: ['secretive', 'guarded', 'private', 'closed-off', 'withholding', 'tight-lipped', 'circumspect'], value: 0.55 },
+    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful', 'diffident'], value: 0.4 },
+    { keywords: ['stoic', 'reserved', 'restrained', 'controlled', 'disciplined', 'measured', 'deliberate'], value: 0.3 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0 },
+    { keywords: ['eager', 'impulsive', 'forthcoming', 'candid', 'open', 'transparent', 'direct', 'straightforward'], value: 0 },
+    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'voluble', 'expressive'], value: 0 },
+    { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless', 'mute'], value: 0.95 },
 ];
 
 const MEMORY_RETENTION_WEIGHT_RULES: TraitRule[] = [
@@ -238,8 +250,12 @@ export function getNameSensitivityValueFromText(text: string) {
     return detectValue(text, NAME_SENSITIVITY_RULES, DEFAULT_NAME_SENSITIVITY_VALUE, false);
 }
 
+export function getChatImpatienceSensitivityValueFromText(text: string) {
+    return detectValue(text, CHAT_IMPATIENCE_SENSITIVITY_RULES, DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE, false);
+}
+
 export function getSkipProbabilityValueFromText(text: string) {
-    return detectValue(text, RESPONSE_DELAY_WEIGHT_RULES, DEFAULT_RESPONSE_DELAY_WEIGHT_VALUE, false);
+    return detectValue(text, SKIP_PROBABILITY_RULES, DEFAULT_SKIP_PROBABILITY_VALUE, true);
 }
 
 export function getMemoryRetentionWeightValueFromText(text: string) {

@@ -162,6 +162,7 @@ export interface Character extends ObjectData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
+  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -187,6 +188,7 @@ export interface RawCharacter extends RawData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
+  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -358,6 +360,7 @@ export interface Profile extends ObjectData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
+  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -386,6 +389,7 @@ export interface RawProfile extends RawData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
+  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;

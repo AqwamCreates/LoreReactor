@@ -23,6 +23,12 @@ export function getEffectiveNameSensitivity(character: Character, profile?: Prof
     return profileValue;
 }
 
+export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: Profile): number {
+    const profileValue = profile?.chatImpatienceSensitivity;
+    if (profileValue !== undefined && profileValue !== -1) return profileValue;
+    return character.chatImpatienceSensitivity ?? 0;
+}
+
 export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
     const profileValue = profile?.skipProbability;
     if (profileValue === undefined || profileValue === -1) return character.skipProbability ?? 0;

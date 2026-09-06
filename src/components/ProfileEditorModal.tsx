@@ -128,6 +128,7 @@ export function ProfileEditorModal({
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
     const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
     const [skipProbability, setSkipProbability] = useState<number>(-1);
+    const [chatImpatienceSensitivity, setChatImpatienceSensitivity] = useState<number>(-1);
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
@@ -164,6 +165,7 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
                 setNameSensitivity(existingProfile.nameSensitivity ?? -1);
                 setSkipProbability(existingProfile.skipProbability ?? -1);
+                setChatImpatienceSensitivity(existingProfile.chatImpatienceSensitivity ?? -1);
                 setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
                 setContextSensitivity(existingProfile.contextSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
@@ -199,6 +201,7 @@ export function ProfileEditorModal({
                 setMaximumChatStamina(0);
                 setNameSensitivity(-1);
                 setSkipProbability(-1);
+                setChatImpatienceSensitivity(-1);
                 setMemoryRetentionWeight(-1);
                 setContextSensitivity(-1);
                 setCacheLevel(0);
@@ -247,6 +250,7 @@ export function ProfileEditorModal({
             maximumChatStamina,
             nameSensitivity,
             skipProbability,
+            chatImpatienceSensitivity,
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
@@ -288,6 +292,7 @@ export function ProfileEditorModal({
             maximumChatStamina,
             nameSensitivity,
             skipProbability,
+            chatImpatienceSensitivity,
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
@@ -675,6 +680,25 @@ export function ProfileEditorModal({
                                 decimals={2}
                                 onChange={setSkipProbability}
                                 description="-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected."
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Impatience Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : ''}
+                                </span>
+                            </div>
+                            <SliderInput
+                                label=""
+                                value={chatImpatienceSensitivity}
+                                minimumValue={-1}
+                                maximumValue={5}
+                                stepValue={0.1}
+                                decimals={1}
+                                onChange={setChatImpatienceSensitivity}
+                                description="-1 = defer to character. 0 = disabled. Higher values make quiet characters speak sooner."
                             />
                         </div>
 

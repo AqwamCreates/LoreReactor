@@ -10,6 +10,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     maximumChatStaminaStr: string;
     nameSensitivityStr: string;
     skipProbabilityStr: string;
+    chatImpatienceSensitivityStr: string;
     memoryRetentionWeightStr: string;
     contextSensitivityStr: string;
     numberOfMessagesToDisableThinkPromptStr: string;
@@ -25,6 +26,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onMaximumChatStaminaChange: (val: string) => void;
     onNameSensitivityChange: (val: string) => void;
     onSkipProbabilityChange: (val: string) => void;
+    onChatImpatienceSensitivityChange: (val: string) => void;
     onMemoryRetentionWeightChange: (val: string) => void;
     onContextSensitivityChange: (val: string) => void;
     onDisableThinkChange: (val: string) => void;
@@ -43,6 +45,7 @@ export function CharacterAdvancedSettingsEditorModal({
     maximumChatStaminaStr,
     nameSensitivityStr,
     skipProbabilityStr,
+    chatImpatienceSensitivityStr,
     memoryRetentionWeightStr,
     contextSensitivityStr,
     numberOfMessagesToDisableThinkPromptStr,
@@ -58,6 +61,7 @@ export function CharacterAdvancedSettingsEditorModal({
     onMaximumChatStaminaChange,
     onNameSensitivityChange,
     onSkipProbabilityChange,
+    onChatImpatienceSensitivityChange,
     onMemoryRetentionWeightChange,
     onContextSensitivityChange,
     onDisableThinkChange,
@@ -118,15 +122,20 @@ export function CharacterAdvancedSettingsEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Skip Probability</label>
                                 <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => onSkipProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls when the character responds to a message based on the duration from the character's last message. Range: 0 - 1.</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
                             </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Chat Impatience</label>
+                                <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                            </div>
+                        </div>
+                        <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Memory Retention</label>
                                 <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => onMemoryRetentionWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
                             </div>
-                        </div>
-                        <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context Sensitivity</label>
                                 <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => onContextSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
