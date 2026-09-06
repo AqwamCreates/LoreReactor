@@ -1,16 +1,16 @@
-// src/components/ImportDataModal.tsx
+// src/components/DataImportModal.tsx
 import { useState, useRef } from 'react';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import './main.css';
 
-interface ImportDataModalProps {
+interface DataImportModalProps {
     isOpen: boolean;
     onClose: () => void;
     onImportComplete: () => void;
 }
 
-export function ImportDataModal({ isOpen, onClose, onImportComplete }: ImportDataModalProps) {
+export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImportModalProps) {
     const [parsedData, setParsedData] = useState<LoreReactorExport | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -140,7 +140,7 @@ export function ImportDataModal({ isOpen, onClose, onImportComplete }: ImportDat
                             </div>
                             <button type="button" className="editor-btn editor-btn-save entity-upload-btn"
                                 onClick={() => fileInputRef.current?.click()}>
-                                📂 Choose File
+                                Choose File
                             </button>
                             <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={handleFileSelected} />
                         </div>
@@ -202,7 +202,7 @@ export function ImportDataModal({ isOpen, onClose, onImportComplete }: ImportDat
                             <div className="entity-action-buttons">
                                 <button type="button" className="editor-btn editor-btn-cancel" onClick={reset}>Choose Different File</button>
                                 <button type="button" className="editor-btn editor-btn-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
-                                    ⚠️ Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
+                                    Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
                                 </button>
                             </div>
                         </>

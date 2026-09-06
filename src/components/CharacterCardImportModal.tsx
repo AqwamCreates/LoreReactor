@@ -229,9 +229,8 @@ export function CharacterCardImportModal({
                             </div>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-save"
+                                    className="editor-btn editor-btn-save entity-upload-btn"
                                     onClick={() => fileInputRef.current?.click()}
-                                    style={{ padding: '10px 32px', fontSize: '0.85rem', margin: '0 auto', display: 'block' }}
                                 >
                                     Choose File
                                 </button>

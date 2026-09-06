@@ -1,11 +1,11 @@
-// src/components/ExportDataModal.tsx
+// src/components/DataExportModal.tsx
 import { useState } from 'react';
 import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import './main.css';
 
-interface ExportDataModalProps {
+interface DataExportModalProps {
     isOpen: boolean;
     onClose: () => void;
     allCharacters: Character[];
@@ -19,11 +19,11 @@ interface ExportDataModalProps {
     allChats: { id: string; name?: string; lastUpdatedTimestamp?: number }[];
 }
 
-export function ExportDataModal({
+export function DataExportModal({
     isOpen, onClose,
     allCharacters, allContexts, allLocations, allSamplers, allStopPatterns,
     allModels, allBudgetStrategies, allProfiles, allChats,
-}: ExportDataModalProps) {
+}: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [summary, setSummary] = useState<LoreReactorExport | null>(null);

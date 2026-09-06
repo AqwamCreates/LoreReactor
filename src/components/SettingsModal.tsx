@@ -10,27 +10,27 @@ interface SettingsItem {
 
 const SETTINGS_ITEMS: SettingsItem[] = [
     {
-        id: 'character-card-import',
-        icon: '🎴',
-        label: 'Character Card Import',
-        description: 'Import characters with lorebook entries from TavernAI V1/V2/V3 PNG cards.',
-    },
-    {
         id: 'ai-recommendation',
         icon: '✨',
         label: 'Get AI Recommendation',
         description: 'Generate new characters, contexts, and locations using your loaded model.',
     },
     {
+        id: 'import-character-card',
+        icon: '🎴',
+        label: 'Import Character Card',
+        description: 'Import characters with lorebook entries from TavernAI V1/V2/V3 PNG cards.',
+    },
+    {
         id: 'import-data',
         icon: '📥',
-        label: 'Import All Data',
+        label: 'Import Data',
         description: 'Restore from a previously exported JSON file. Overwrites matching IDs.',
     },
     {
         id: 'export-data',
         icon: '📦',
-        label: 'Export All Data',
+        label: 'Export Data',
         description: 'Download everything as a single JSON backup file.',
     },
 ];
@@ -38,7 +38,7 @@ const SETTINGS_ITEMS: SettingsItem[] = [
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onOpenCharacterCardImport: () => void;
+    onOpenImportCharacterCard: () => void;
     onOpenAIRecommendation: () => void;
     onOpenExportData: () => void;
     onOpenImportData: () => void;
@@ -47,8 +47,8 @@ interface SettingsModalProps {
 export function SettingsModal({
     isOpen,
     onClose,
-    onOpenCharacterCardImport,
     onOpenAIRecommendation,
+    onOpenImportCharacterCard,
     onOpenExportData,
     onOpenImportData,
 }: SettingsModalProps) {
@@ -56,8 +56,8 @@ export function SettingsModal({
 
     const handleItemClick = (id: string) => {
         switch (id) {
-            case 'character-card-import': onOpenCharacterCardImport(); break;
             case 'ai-recommendation': onOpenAIRecommendation(); break;
+            case 'import-character-card': onOpenImportCharacterCard(); break;
             case 'import-data': onOpenImportData(); break;
             case 'export-data': onOpenExportData(); break;
         }

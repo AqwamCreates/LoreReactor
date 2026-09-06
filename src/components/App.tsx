@@ -30,8 +30,8 @@ import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
-import { ExportDataModal } from './ExportDataModal';
-import { ImportDataModal } from './ImportDataModal';
+import { DataExportModal } from './DataExportModal';
+import { DataImportModal } from './DataImportModal';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
@@ -1392,11 +1392,11 @@ function App() {
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
 
         {/* Settings Modal */}
-        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenCharacterCardImport={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} />}
+        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenImportCharacterCard={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} />}
         {isCardImportOpen && <CharacterCardImportModal isOpen={isCardImportOpen} onClose={() => setIsCardImportOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} allSamplers={allSamplers} />}
         {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
-        {isExportDataOpen && <ExportDataModal isOpen={isExportDataOpen} onClose={() => setIsExportDataOpen(false)} />}
-        {isImportDataOpen && <ImportDataModal isOpen={isImportDataOpen} onClose={() => setIsImportDataOpen(false)} onImportComplete={handleImportComplete} />}
+        {isExportDataOpen && <DataExportModal isOpen={isExportDataOpen} onClose={() => setIsExportDataOpen(false)} />}
+        {isImportDataOpen && <DataImportModal isOpen={isImportDataOpen} onClose={() => setIsImportDataOpen(false)} onImportComplete={handleImportComplete} />}
       </div>
 
       {/* ─── Action Menu with Format Panel ─── */}

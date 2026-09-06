@@ -2798,6 +2798,7 @@ SETTINGS MODAL — CENTERED LIST ITEMS
 /* =============================================================================
 SHARED ENTITY SELECT LIST (used by AIRecommendation, Export, Import modals)
 ============================================================================= */
+
 .entity-select-list {
     margin-bottom: 8px;
 }
@@ -2991,6 +2992,8 @@ SHARED ENTITY MODAL UTILITIES (used by AIRecommendation, Export, Import)
 .entity-upload-btn {
     padding: 12px 40px;
     font-size: 0.9rem;
+    display: block;
+    margin: 0 auto;
 }
 .entity-export-done-hint {
     text-align: center;
