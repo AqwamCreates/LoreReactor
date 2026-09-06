@@ -272,9 +272,9 @@ export interface Extension extends ObjectData {
 }
 
 export interface BudgetStrategy extends ObjectData {
-  onlineModel: LanguageModel;
-  localModel: LanguageModel;
-  switchProbabilty: number;
+  onlineModels: LanguageModel[];
+  localModels: LanguageModel[];
+  switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
   fallbackOnLocalFailure: boolean;
@@ -284,9 +284,9 @@ export interface BudgetStrategy extends ObjectData {
 }
 
 export interface RawBudgetStrategy extends RawData {
-  onlineModelId: string;
-  localModelId: string;
-  switchProbabilty: number;
+  onlineModelIds: string[];
+  localModelIds: string[];
+  switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
   fallbackOnLocalFailure: boolean;

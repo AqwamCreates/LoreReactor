@@ -728,21 +728,23 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
     if (!rawStrategy) return null;
     
     try {
-      const [onlineModel, localModel] = await Promise.all([
-          loadRawModel(rawStrategy.onlineModelId),
-          loadRawModel(rawStrategy.localModelId)
-      ]);
+      // Load all online models in the pool
+      const onlineModelPromises = (rawStrategy.onlineModelIds || []).map(mid => loadRawModel(mid));
+      const onlineModelsResults = await Promise.all(onlineModelPromises);
+      const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
 
-      const finalOnline = onlineModel || DefaultModel;
-      const finalLocal = localModel || DefaultModel;
+      // Load all local models in the pool
+      const localModelPromises = (rawStrategy.localModelIds || []).map(mid => loadRawModel(mid));
+      const localModelsResults = await Promise.all(localModelPromises);
+      const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
 
       return {
           id,
           name: rawStrategy.name || 'Unknown Strategy',
           description: rawStrategy.description,
-          onlineModel: finalOnline,
-          localModel: finalLocal,
-          switchProbabilty: rawStrategy.switchProbabilty,
+          onlineModels,
+          localModels,
+          switchProbability: rawStrategy.switchProbability,
           switchOnContextSize: rawStrategy.switchOnContextSize,
           switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
           fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
@@ -765,11 +767,11 @@ export async function loadAllRawBudgetStrategies(): Promise<BudgetStrategy[]> {
 }
 
 export async function saveRawBudgetStrategy(strategy: BudgetStrategy): Promise<void> {
-    const { id, onlineModel, localModel, ...rawStrategy } = strategy;
+    const { id, onlineModels, localModels, ...rawStrategy } = strategy;
     const payload: RawBudgetStrategy = {
         ...rawStrategy,
-        onlineModelId: onlineModel.id,
-        localModelId: localModel.id,
+        onlineModelIds: onlineModels.map(m => m.id),
+        localModelIds: localModels.map(m => m.id),
         lastUpdatedTimestamp: Date.now(),
     };
     await putJson(`${PATHS.budgetStrategies}/${id}.json`, payload);

@@ -51,7 +51,14 @@ const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
 const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
+const STORAGE_KEY_ACTION_WRAP = 'loreReactor_actionWrap';
+const STORAGE_KEY_ACTION_CASE = 'loreReactor_actionCase';
+const STORAGE_KEY_ACTION_PUNCTUATION = 'loreReactor_actionPunctuation';
 const MIN_LOADING_SCREEN_MS = 900;
+
+type ActionWrap = '**' | '()' | 'none';
+type ActionCase = 'first' | 'pascal' | 'lower';
+type ActionPunctuation = '.' | '-' | 'none';
 
 const tokenEngine = new LanguageModelEngine();
 
@@ -62,6 +69,47 @@ interface LoadStep { id: string; label: string; icon: string; done: boolean }
 
 function isChatMessage(msg: ChatMessage): msg is ChatMessage {
     return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
+}
+
+/** Formats an interjected action string according to user preferences. */
+function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
+    let raw = `${label} ${targetName}`;
+
+    switch (casing) {
+        case 'first':
+            raw = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+            break;
+        case 'pascal':
+            raw = raw.replace(/\b\w/g, c => c.toUpperCase());
+            break;
+        case 'lower':
+            raw = raw.toLowerCase();
+            break;
+    }
+
+    switch (wrap) {
+        case '**':
+            raw = `**${raw}**`;
+            break;
+        case '()':
+            raw = `(${raw})`;
+            break;
+        case 'none':
+            break;
+    }
+
+    switch (punctuation) {
+        case '.':
+            raw += '.';
+            break;
+        case '-':
+            raw += '-';
+            break;
+        case 'none':
+            break;
+    }
+
+    return raw;
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────
@@ -100,7 +148,7 @@ function renderModelSubtext(model: LanguageModel, runningModels: Record<string, 
 function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbabilty}% • Budget: ${strategy.maximumBudget}</span>
+      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbability}% • Budget: ${strategy.maximumBudget}</span>
     </span>
   );
 }
@@ -290,6 +338,26 @@ function App() {
   
   const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
 
+  // Action formatting state — persisted to localStorage
+  const [actionWrap, setActionWrap] = useState<ActionWrap>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_ACTION_WRAP);
+    return (saved === '**' || saved === '()' || saved === 'none') ? saved : '**';
+  });
+  const [actionCase, setActionCase] = useState<ActionCase>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_ACTION_CASE);
+    return (saved === 'first' || saved === 'pascal' || saved === 'lower') ? saved : 'first';
+  });
+  const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_ACTION_PUNCTUATION);
+    return (saved === '.' || saved === '-' || saved === 'none') ? saved : '.';
+  });
+  const [showActionFormat, setShowActionFormat] = useState(false);
+
+  // Persist action formatting to localStorage on change
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_WRAP, actionWrap); }, [actionWrap]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_CASE, actionCase); }, [actionCase]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_PUNCTUATION, actionPunctuation); }, [actionPunctuation]);
+
   // Panel visibility hooks
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [isCharListOpen, setIsCharListOpen] = useState(false);
@@ -385,7 +453,6 @@ function App() {
   const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
   const isMassActive = massDeleteId !== null;
 
-  // ✅ Filtered chat messages for display (excludes silent interactions)
   const InteractionMessages = useMemo(() => {
     if (!interactionData) return [];
     return interactionData.interactionHistory.filter(isChatMessage);
@@ -396,7 +463,6 @@ function App() {
 
   const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
-  // ✅ Unified portrait URL cache — single lookup logic for all avatars
   const portraitUrlCache = useMemo(() => {
     const cache = new Map<string, string | null>();
 
@@ -407,14 +473,12 @@ function App() {
       return getCharacterImageUrl(characterId, filename);
     };
 
-    // Message avatars
     for (const msg of InteractionMessages) {
       if (!cache.has(msg.id)) {
         cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
       }
     }
 
-    // Cinematic avatar
     if (centerAvatar) {
       const key = `cinematic:${centerAvatar.id}`;
       if (!cache.has(key)) {
@@ -425,7 +489,6 @@ function App() {
     return cache;
   }, [InteractionMessages, centerAvatar?.id]);
 
-  // ✅ Streaming portrait — same lookup logic
   const streamingPortraitUrl = useMemo(() => {
     if (!streamingCharacter) return null;
     const expr = currentCharacterExpression || 'neutral';
@@ -434,12 +497,10 @@ function App() {
     return getCharacterImageUrl(streamingCharacter.id, filename);
   }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
 
-  // ✅ Location background image — resolved from protagonist's current location
   const locations = interactionData?.locations;
   const locationBackgroundUrl = (() => {
     if (!locations?.length) return null;
 
-    // Find the latest message with a locationIndex
     for (let i = InteractionMessages.length - 1; i >= 0; i--) {
       const msg = InteractionMessages[i];
       if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
@@ -465,7 +526,6 @@ function App() {
 
   // ✅ 3. EFFECTS
 
-  // ✅ Sync sentiment engine with active profile — single source of truth
   useEffect(() => {
     const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
     if (enabled) {
@@ -475,11 +535,16 @@ function App() {
     }
   }, [interactionData?.Profile?.id, interactionData?.Profile?.enableCharacterExpression]);
 
-  // ✅ Active chat restoration — runs exactly once via ref guard
-  // ✅ Important: always await chat activation before marking restored
+  useEffect(() => {
+    void selectedModelId;
+    void runningModels;
+    tokenEngine.clearTokenCache();
+  }, [selectedModelId, runningModels]);
+
+  // ✅ Active chat restoration
   useEffect(() => {
     if (restorationDoneRef.current) return;
-    if (charsLoading || chatsLoading) return;
+    if (charsLoading || chatsLoading || contextsLoading || locationsLoading || profilesLoading) return;
 
     restorationDoneRef.current = true;
 
@@ -504,13 +569,21 @@ function App() {
       if (fullChat.protagonist) {
         let protagonist = fullChat.protagonist;
 
-        if (!protagonist.systemPrompt) {
-          const fullChar = await loadFullCharacter(protagonist.id);
+        const freshProtag = allCharacters.find(c => c.id === protagonist.id);
+        if (freshProtag) {
+          const fullChar = await loadFullCharacter(freshProtag.id);
           if (fullChar) protagonist = fullChar;
+        } else {
+          console.warn(`Protagonist ${protagonist.id} not found in character list after load.`);
         }
 
         const hydratedParticipants = await Promise.all(
           fullChat.participants.map(async (p) => {
+            const exists = allCharacters.some(c => c.id === p.id);
+            if (!exists) {
+              console.warn(`Participant ${p.id} not found in character list after load. Keeping shell.`);
+              return p;
+            }
             if (p.systemPrompt) return p;
             const fullChar = await loadFullCharacter(p.id);
             return fullChar || p;
@@ -539,21 +612,12 @@ function App() {
           } else {
             setCurrentCharacter(null);
             setInteractionData({
-              id: uuidv4(),
-              name: 'Untitled Chat',
-              protagonist: null as unknown as Character,
-              participants: [],
-              contexts: [],
-              locations: [],
-              interactionHistory: [],
-              numberOfMessages: 0,
-              firstCreatedTimestamp: Date.now(),
-              lastUpdatedTimestamp: Date.now(),
-              parentInteractionDataId: null,
-              parentInteractionMessageId: null,
+              id: uuidv4(), name: 'Untitled Chat', protagonist: null as unknown as Character,
+              participants: [], contexts: [], locations: [], interactionHistory: [],
+              numberOfMessages: 0, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
+              parentInteractionDataId: null, parentInteractionMessageId: null,
             });
           }
-
           return;
         }
 
@@ -561,69 +625,37 @@ function App() {
 
         if (interactionDataResult) {
           let fullChat = interactionDataResult;
-
-          if (
-            fullChat.numberOfMessages &&
-            fullChat.numberOfMessages > 0 &&
-            fullChat.interactionHistory.length === 0
-          ) {
-            try {
-              fullChat = await loadInteractionMessages(interactionDataResult);
-            } catch (e) {
-              console.warn('Failed to load chat messages, using shell:', e);
-            }
+          if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.interactionHistory.length === 0) {
+            try { fullChat = await loadInteractionMessages(interactionDataResult); } catch (e) { console.warn('Failed to load chat messages, using shell:', e); }
           }
-
           await activateChat(fullChat as InteractionData);
         } else {
           console.warn('Active chat not found, falling back.');
           localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-
-          if (allChats.length > 0) {
-            await activateChat(allChats[0]);
-          } else if (allCharacters.length > 0) {
-            startNewChat(allCharacters[0]);
-          } else {
+          if (allChats.length > 0) { await activateChat(allChats[0]); }
+          else if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
+          else {
             setCurrentCharacter(null);
             setInteractionData({
-              id: uuidv4(),
-              name: 'Untitled Chat',
-              protagonist: null as unknown as Character,
-              participants: [],
-              contexts: [],
-              locations: [],
-              interactionHistory: [],
-              numberOfMessages: 0,
-              firstCreatedTimestamp: Date.now(),
-              lastUpdatedTimestamp: Date.now(),
-              parentInteractionDataId: null,
-              parentInteractionMessageId: null,
+              id: uuidv4(), name: 'Untitled Chat', protagonist: null as unknown as Character,
+              participants: [], contexts: [], locations: [], interactionHistory: [],
+              numberOfMessages: 0, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
+              parentInteractionDataId: null, parentInteractionMessageId: null,
             });
           }
         }
       } catch (e) {
         console.error('Failed to restore active chat:', e);
         localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-
-        if (allChats.length > 0) {
-          await activateChat(allChats[0]);
-        } else if (allCharacters.length > 0) {
-          startNewChat(allCharacters[0]);
-        } else {
+        if (allChats.length > 0) { await activateChat(allChats[0]); }
+        else if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
+        else {
           setCurrentCharacter(null);
           setInteractionData({
-            id: uuidv4(),
-            name: 'Untitled Chat',
-            protagonist: null as unknown as Character,
-            participants: [],
-            contexts: [],
-            locations: [],
-            interactionHistory: [],
-            numberOfMessages: 0,
-            firstCreatedTimestamp: Date.now(),
-            lastUpdatedTimestamp: Date.now(),
-            parentInteractionDataId: null,
-            parentInteractionMessageId: null,
+            id: uuidv4(), name: 'Untitled Chat', protagonist: null as unknown as Character,
+            participants: [], contexts: [], locations: [], interactionHistory: [],
+            numberOfMessages: 0, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
+            parentInteractionDataId: null, parentInteractionMessageId: null,
           });
         }
       } finally {
@@ -632,73 +664,43 @@ function App() {
     };
 
     restore();
-  }, [
-    charsLoading,
-    chatsLoading,
-    allCharacters,
-    allChats,
-    loadFullCharacter,
-    setInteractionData,
-    setCurrentCharacter,
-    setSelectedModelId,
-    startNewChat,
-  ]);
+  }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, allChats, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
 
   useEffect(() => {
-    if (interactionData?.id) {
-      localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id);
-    } else {
-      localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-    }
+    if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id);
+    else localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
   }, [interactionData?.id]);
 
   useEffect(() => {
-    if (selectedBudgetStrategyId) {
-      localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, selectedBudgetStrategyId);
-    } else {
-      localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
-    }
+    if (selectedBudgetStrategyId) localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, selectedBudgetStrategyId);
+    else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
   }, [selectedBudgetStrategyId]);
 
   useEffect(() => {
     if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
     const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
-    if (strategy) {
-      setActiveBudgetStrategy(strategy);
-    } else {
-      localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
-    }
+    if (strategy) setActiveBudgetStrategy(strategy);
+    else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
   }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
   useEffect(() => {
-    if (defaultCharacterId) {
-      localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, defaultCharacterId);
-    } else {
-      localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
-    }
+    if (defaultCharacterId) localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, defaultCharacterId);
+    else localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
   }, [defaultCharacterId]);
 
   useEffect(() => {
-    if (selectedModelId) {
-      localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId);
-    } else {
-      localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL);
-    }
+    if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId);
+    else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL);
   }, [selectedModelId]);
 
   useEffect(() => {
     if (!selectedModelId || allModels.length === 0) return;
     const selectedModel = allModels.find(m => m.id === selectedModelId);
-    if (!selectedModel) {
-      setSelectedModelId(null);
-      return;
-    }
+    if (!selectedModel) { setSelectedModelId(null); return; }
     const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend);
-    if (isCloudModel) return; 
+    if (isCloudModel) return;
     const isRunning = runningModels[selectedModelId]?.isRunning;
-    if (!isRunning) {
-      setSelectedModelId(null);
-    }
+    if (!isRunning) setSelectedModelId(null);
   }, [selectedModelId, allModels, runningModels]);
 
   useEffect(() => {
@@ -709,9 +711,7 @@ function App() {
       try {
         const s = await loadRawInteractionData(parentInteractionDataId, allCharacters);
         if (!cancelled) setBranchSourceTitle(s ? (s.name || 'Untitled Chat') : null);
-      } catch {
-        if (!cancelled) setBranchSourceTitle(null);
-      }
+      } catch { if (!cancelled) setBranchSourceTitle(null); }
     })();
     return () => { cancelled = true; };
   }, [interactionData?.parentInteractionDataId, allCharacters]);
@@ -735,13 +735,10 @@ function App() {
 
   useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-  // ✅ Sync effect — skips initial load, only runs on subsequent entity changes
+  // ✅ Sync effect
   useEffect(() => {
     if (!activeChatRestored) return;
-    if (!initialSyncSkippedRef.current) {
-      initialSyncSkippedRef.current = true;
-      return;
-    }
+    if (!initialSyncSkippedRef.current) { initialSyncSkippedRef.current = true; return; }
 
     const currentChat = interactionDataRef.current;
     if (!currentChat) return;
@@ -751,161 +748,107 @@ function App() {
 
     const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist?.id);
     if (!freshProtag && currentChat.protagonist) {
-      console.warn(`Protagonist ${currentChat.protagonist.id} was deleted. Resetting.`);
-      const fallback = allCharacters[0]; 
-      if (fallback) {
-        updated.protagonist = fallback;
-        changed = true;
-      }
+      const fallback = allCharacters[0];
+      if (fallback) { updated.protagonist = fallback; changed = true; }
     } else if (freshProtag && freshProtag.lastUpdatedTimestamp !== currentChat.protagonist?.lastUpdatedTimestamp) {
-      updated.protagonist = freshProtag;
-      changed = true;
+      updated.protagonist = freshProtag; changed = true;
     }
 
-    const validParticipants = currentChat.participants.filter(p => {
-      const exists = allCharacters.some(c => c.id === p.id);
-      if (!exists) {
-        console.warn(`Participant ${p.id} was deleted. Removing from chat.`);
-        changed = true;
-      }
-      return exists;
-    });
-
+    const validParticipants = currentChat.participants.filter(p => allCharacters.some(c => c.id === p.id));
     const freshParticipants = validParticipants.map(p => {
       const fresh = allCharacters.find(c => c.id === p.id);
       return (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) ? fresh : p;
     });
-
-    if (freshParticipants.length !== currentChat.participants.length || 
-        freshParticipants.some((p, i) => p !== currentChat.participants[i])) {
-      updated.participants = freshParticipants;
-      changed = true;
+    if (freshParticipants.length !== currentChat.participants.length || freshParticipants.some((p, i) => p !== currentChat.participants[i])) {
+      updated.participants = freshParticipants; changed = true;
     }
 
     if (currentChat.contexts?.length) {
-      const validContexts = currentChat.contexts.filter(ctx => {
-        const exists = allContexts.some(c => c.id === ctx.id);
-        if (!exists) {
-          console.warn(`Context ${ctx.id} was deleted. Removing from chat.`);
-          changed = true;
-        }
-        return exists;
-      });
-
+      const validContexts = currentChat.contexts.filter(ctx => allContexts.some(c => c.id === ctx.id));
       const freshContexts = validContexts.map(ctx => {
         const fresh = allContexts.find(c => c.id === ctx.id);
         return (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) ? fresh : ctx;
       });
-
-      if (freshContexts.length !== currentChat.contexts.length ||
-          freshContexts.some((c, i) => c !== currentChat.contexts?.[i])) {
-        updated.contexts = freshContexts;
-        changed = true;
+      if (freshContexts.length !== currentChat.contexts.length || freshContexts.some((c, i) => c !== currentChat.contexts?.[i])) {
+        updated.contexts = freshContexts; changed = true;
       }
     }
 
     if (currentChat.Profile) {
       const freshProfile = allProfiles.find(p => p.id === currentChat.Profile?.id);
-      if (!freshProfile) {
-        console.warn(`Profile ${currentChat.Profile.id} was deleted. Clearing from chat.`);
-        updated.Profile = undefined;
-        changed = true;
-      } else if (freshProfile.lastUpdatedTimestamp !== currentChat.Profile.lastUpdatedTimestamp) {
-        updated.Profile = freshProfile;
-        changed = true;
-      }
+      if (!freshProfile) { updated.Profile = undefined; changed = true; }
+      else if (freshProfile.lastUpdatedTimestamp !== currentChat.Profile.lastUpdatedTimestamp) { updated.Profile = freshProfile; changed = true; }
     }
 
     if (currentCharacter) {
       const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
-      if (!freshCurrent) {
-         setCurrentCharacter(updated.protagonist);
-      } else if (freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
-        setCurrentCharacter(freshCurrent);
-      }
+      if (!freshCurrent) setCurrentCharacter(updated.protagonist);
+      else if (freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) setCurrentCharacter(freshCurrent);
     }
 
     if (changed) setInteractionData(updated);
   }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setCurrentCharacter]);
 
+  // ✅ Budget strategy sync — multi-model pool aware
   useEffect(() => {
     if (!activeStrategy) return;
     let stratChanged = false;
     const updatedStrat = { ...activeStrategy };
-    const freshOnline = allModels.find(m => m.id === activeStrategy.onlineModel.id);
-    if (freshOnline && freshOnline.lastUpdatedTimestamp !== activeStrategy.onlineModel.lastUpdatedTimestamp) {
-      updatedStrat.onlineModel = freshOnline;
+
+    // Sync online models pool
+    const freshOnlineModels = activeStrategy.onlineModels.map(m => {
+      const fresh = allModels.find(x => x.id === m.id);
+      return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
+    });
+    if (freshOnlineModels.some((m, i) => m !== activeStrategy.onlineModels[i])) {
+      updatedStrat.onlineModels = freshOnlineModels;
       stratChanged = true;
     }
-    const freshLocal = allModels.find(m => m.id === activeStrategy.localModel.id);
-    if (freshLocal && freshLocal.lastUpdatedTimestamp !== activeStrategy.localModel.lastUpdatedTimestamp) {
-      updatedStrat.localModel = freshLocal;
+
+    // Sync local models pool
+    const freshLocalModels = activeStrategy.localModels.map(m => {
+      const fresh = allModels.find(x => x.id === m.id);
+      return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
+    });
+    if (freshLocalModels.some((m, i) => m !== activeStrategy.localModels[i])) {
+      updatedStrat.localModels = freshLocalModels;
       stratChanged = true;
     }
+
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
-  // ✅ Delay fadeout after all steps complete, chat is restored, AND data is hydrated
-  // ✅ Enforce minimum visible duration so it doesn't flash or reveal an empty workspace
   useEffect(() => {
     if (!isInitializing) return;
-
     const allDone = loadSteps.every(s => s.done);
-    const hasData = !!interactionData && (
-      !!interactionData.protagonist ||
-      interactionData.interactionHistory.length > 0 ||
-      allChats.length === 0
-    );
-
+    const hasData = !!interactionData && (!!interactionData.protagonist || interactionData.interactionHistory.length > 0 || allChats.length === 0);
     if (!allDone || !activeChatRestored || !hasData) return;
-
     const elapsed = Date.now() - loadingStartedAtRef.current;
     const remaining = Math.max(0, MIN_LOADING_SCREEN_MS - elapsed);
-
     const hold = setTimeout(() => {
       setIsFadeOut(true);
-
-      const fade = setTimeout(() => {
-        setIsInitializing(false);
-        setIsFadeOut(false);
-      }, 300);
-
+      const fade = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
       return () => clearTimeout(fade);
     }, remaining);
-
     return () => clearTimeout(hold);
   }, [loadSteps, isInitializing, activeChatRestored, interactionData, allChats.length]);
 
-  // ✅ Reset modified flag when switching to a different chat
-  useEffect(() => {
-    chatModifiedRef.current = false;
-  }, []);
+  useEffect(() => { chatModifiedRef.current = false; }, []);
 
-  // ✅ Mark chat as modified when meaningful content is added
   useEffect(() => {
     if (!interactionData || !interactionData.id) return;
     if (chatModifiedRef.current) return;
-
-    const wasModified = 
-      InteractionMessages.length > 0 ||
-      interactionData.participants.length > 1 ||
-      (interactionData.contexts?.length ?? 0) > 0 ||
-      !!interactionData.Profile;
-
-    if (wasModified) {
+    const protagId = interactionData.protagonist?.id;
+    const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
+    if (nonProtagParticipants.length > 0 || InteractionMessages.length > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile) {
       chatModifiedRef.current = true;
     }
   }, [interactionData, InteractionMessages]);
 
-  // ✅ Save new chat to disk when it becomes modified for the first time
   useEffect(() => {
     if (!interactionData || !interactionData.id || !chatModifiedRef.current) return;
-
     const existsOnDisk = allChats.some(c => c.id === interactionData.id);
-    if (!existsOnDisk) {
-      saveRawInteractionData(interactionData).catch(e => console.error('Failed to save new chat:', e));
-      refreshChatList();
-    }
+    if (!existsOnDisk) { saveRawInteractionData(interactionData).catch(e => console.error('Failed to save new chat:', e)); refreshChatList(); }
   }, [interactionData, allChats, refreshChatList]);
 
   useEffect(() => {
@@ -920,7 +863,6 @@ function App() {
     editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
   });
 
-  // ✅ Cinematic avatar observer — only observes chat message elements
   useEffect(() => {
     const chatHistoryElement = chatHistoryRef.current;
     if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || InteractionMessages.length === 0) {
@@ -941,31 +883,21 @@ function App() {
         avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
       }
       setCenterAvatar(avatar);
-      for (const el of document.querySelectorAll('.message-row')) {
-        el.classList.remove('is-active');
-      }
+      for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
       (best.target as HTMLElement).classList.add('is-active');
       lastViewedMessageIdRef.current = mid;
     }, opts);
-    for (const el of chatHistoryElement.querySelectorAll('[data-message-id]')) {
-      obs.observe(el);
-    }
+    for (const el of chatHistoryElement.querySelectorAll('[data-message-id]')) obs.observe(el);
     let fallbackTimer: number | undefined;
     if (!centerAvatar) {
       fallbackTimer = window.setTimeout(() => {
         for (let i = InteractionMessages.length - 1; i >= 0; i--) {
           const m = InteractionMessages[i];
-          if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
-            setCenterAvatar(m.character);
-            break;
-          }
+          if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) { setCenterAvatar(m.character); break; }
         }
       }, 0);
     }
-    return () => {
-      obs.disconnect();
-      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
-    };
+    return () => { obs.disconnect(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer); };
   }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, InteractionMessages, chatHistoryRef]);
 
   useEffect(() => {
@@ -974,47 +906,31 @@ function App() {
     chatHistoryElement.scrollTop = 0;
   }, [viewMode, chatHistoryRef]);
 
-  // ✅ Token counting — only counts chat messages, not silent interactions
   useEffect(() => {
     if (InteractionMessages.length === 0 || !interactionData?.participants) return;
     let isCancelled = false;
     const calculateMaxTokens = async () => {
       const participantCounts: Record<string, number> = {};
-      for (const p of interactionData.participants) {
-        participantCounts[p.id] = 0;
-      }
-      if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) {
-        participantCounts[interactionData.protagonist.id] = 0;
-      }
+      for (const p of interactionData.participants) participantCounts[p.id] = 0;
+      if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) participantCounts[interactionData.protagonist.id] = 0;
       const selectedModel = allModels.find(m => m.id === selectedModelId);
       const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
-      const modelContext = selectedModel ? {
-        apiKey: selectedModel.apiKey,
-        backend: selectedModel.backend,
-        modelPath: typeof selectedModel.parameters?.modelPath === 'string'
-          ? selectedModel.parameters.modelPath
-          : undefined,
-        runtimePort,
-      } : undefined;
+      const modelContext = selectedModel ? { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: typeof selectedModel.parameters?.modelPath === 'string' ? selectedModel.parameters.modelPath : undefined, runtimePort } : undefined;
       for (const msg of InteractionMessages) {
         if (msg.character && msg.textContent) {
           const charId = msg.character.id;
           if (participantCounts[charId] !== undefined || charId === AMBIENT_NARRATOR_ID) {
-              const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
-              if (participantCounts[charId] !== undefined) {
-                participantCounts[charId] += tokens;
-              }
+            const tokens = await tokenEngine.countTokens(msg.textContent, modelContext);
+            if (participantCounts[charId] !== undefined) participantCounts[charId] += tokens;
           }
         }
       }
       if (isCancelled) return;
-      const maxTokens = Math.max(...Object.values(participantCounts), 0);
-      setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(maxTokens);
+      setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(Math.max(...Object.values(participantCounts), 0));
     };
     calculateMaxTokens();
     return () => { isCancelled = true; };
   }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels]);
-
 
   // ✅ 4. CALLBACKS
 
@@ -1068,6 +984,7 @@ function App() {
 
   const handleSwitchChat = useCallback(async (id: string) => {
     const sel = allChats.find(c => c.id === id); if (!sel) return;
+    tokenEngine.clearTokenCache();
     await safeAutoSave(interactionData); clearFetchCache();
     let chat = sel;
     if (!sel.interactionHistory.length) try { chat = await loadInteractionMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
@@ -1076,17 +993,12 @@ function App() {
   }, [allChats, interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
   const handleNewChat = useCallback(async () => {
-    await safeAutoSave(interactionData); 
-    clearFetchCache();
+    await safeAutoSave(interactionData); clearFetchCache();
     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-
     let c = currentCharacter;
     if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
     if (!c && allChats.length) c = allChats[0].protagonist;
-    
-    if (c) { 
-      startNewChat(c); 
-    }
+    if (c) startNewChat(c);
   }, [interactionData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
 
   const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
@@ -1100,7 +1012,7 @@ function App() {
     if (charId === interactionData.protagonist?.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
     const ids = interactionData.participants.map(p => p.id);
     let np: Character[];
-    if (ids.includes(charId)) { np = interactionData.participants.filter(p => p.id !== charId); }
+    if (ids.includes(charId)) np = interactionData.participants.filter(p => p.id !== charId);
     else {
       const sh = allCharacters.find(c => c.id === charId); if (!sh) return;
       const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
@@ -1116,22 +1028,16 @@ function App() {
   const handleToggleContext = async (contextId: string) => {
     if (!interactionData?.contexts) return;
     const ids = interactionData.contexts.map(c => c.id);
-    const nc = ids.includes(contextId)
-      ? interactionData.contexts.filter(c => c.id !== contextId)
-      : [...interactionData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
-    setInteractionData({ ...interactionData, contexts: nc });
-    addToast('Contexts updated.', 'info');
+    const nc = ids.includes(contextId) ? interactionData.contexts.filter(c => c.id !== contextId) : [...interactionData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
+    setInteractionData({ ...interactionData, contexts: nc }); addToast('Contexts updated.', 'info');
   };
 
   const handleToggleLocation = async (locationId: string) => {
     if (!interactionData) return;
     const currentLocations = interactionData.locations || [];
     const ids = currentLocations.map(l => l.id);
-    const nl = ids.includes(locationId)
-      ? currentLocations.filter(l => l.id !== locationId)
-      : [...currentLocations, await loadRawLocation(locationId)].filter(Boolean) as Location[];
-    setInteractionData({ ...interactionData, locations: nl });
-    addToast('Locations updated.', 'info');
+    const nl = ids.includes(locationId) ? currentLocations.filter(l => l.id !== locationId) : [...currentLocations, await loadRawLocation(locationId)].filter(Boolean) as Location[];
+    setInteractionData({ ...interactionData, locations: nl }); addToast('Locations updated.', 'info');
   };
 
   const handleSetChatProtagonist = async (charId: string) => {
@@ -1140,26 +1046,18 @@ function App() {
     const ch = sh.sampler ? sh : await loadFullCharacter(charId); if (!ch) return;
     const uc = { ...interactionData, protagonist: ch };
     if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
-    setInteractionData(uc); setCurrentCharacter(ch);
-    setDefaultCharacterId(charId);
+    setInteractionData(uc); setCurrentCharacter(ch); setDefaultCharacterId(charId);
     addToast('Protagonist switched.', 'info');
   };
 
   const handleToggleExtension = async (extId: string) => {
     if (!interactionData) return;
     const extensionValue = Object.getOwnPropertyDescriptor(interactionData, 'extensions')?.value;
-    const currentExtensions = Array.isArray(extensionValue)
-      ? extensionValue.filter((extension): extension is Extension => {
-          if (typeof extension !== 'object' || extension === null || !('id' in extension)) return false;
-          return typeof extension.id === 'string';
-        })
-      : [];
+    const currentExtensions = Array.isArray(extensionValue) ? extensionValue.filter((extension): extension is Extension => typeof extension === 'object' && extension !== null && 'id' in extension && typeof extension.id === 'string') : [];
     const currentExtensionIds = currentExtensions.map(extension => extension.id);
-    const nextExtensionIds = currentExtensionIds.includes(extId)
-      ? currentExtensionIds.filter(id => id !== extId)
-      : [...currentExtensionIds, extId];
-    const uc = { ...interactionData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) };
-    setInteractionData(uc); addToast('Extensions updated.', 'info');
+    const nextExtensionIds = currentExtensionIds.includes(extId) ? currentExtensionIds.filter(id => id !== extId) : [...currentExtensionIds, extId];
+    setInteractionData({ ...interactionData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) });
+    addToast('Extensions updated.', 'info');
   };
 
   const handleActivateBudgetStrategy = (sid: string) => {
@@ -1187,28 +1085,11 @@ function App() {
     refreshChatList(); setIsEditingTitle(false); addToast('Chat title updated', 'success');
   };
 
-  // ✅ FIXED: File selection handler with deferred input reset and stable array capture
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
-    
-    // Immediately extract files into a stable array reference
-    // This prevents browser garbage collection or input resets from 
-    // invalidating the FileList before React processes the state update.
     const newFiles = fileList ? Array.from(fileList) : [];
-    
-    if (newFiles.length > 0) {
-      setPendingFiles(prev => [...prev, ...newFiles]);
-      addToast(`${newFiles.length} file${newFiles.length !== 1 ? 's' : ''} attached.`);
-    }
-
-    // Defer the input reset to avoid interrupting file processing
-    // Using requestAnimationFrame ensures the browser has completed 
-    // its internal file handling cycle before we clear the DOM element.
-    requestAnimationFrame(() => {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    });
+    if (newFiles.length > 0) { setPendingFiles(prev => [...prev, ...newFiles]); addToast(`${newFiles.length} file${newFiles.length !== 1 ? 's' : ''} attached.`); }
+    requestAnimationFrame(() => { if (fileInputRef.current) fileInputRef.current.value = ''; });
   };
 
   const handleSaveEdit = async () => {
@@ -1288,11 +1169,12 @@ function App() {
   };
 
   const handleActionInterject = async (label: string, targetChar: Character) => {
-    setActionMenuTarget(null); setMenuSearchQuery('');
+    setActionMenuTarget(null); setMenuSearchQuery(''); setShowActionFormat(false);
     if (!interactionData || !currentCharacter) return;
     await incrementActionCount(label);
     if (isLoading) { stopGeneration(); await new Promise(r => setTimeout(r, 200)); }
-    try { await sendActionAndGetResponse(`*${label} ${targetChar.name}.*`, targetChar); }
+    const formattedAction = formatActionString(label, targetChar.name, actionWrap, actionCase, actionPunctuation);
+    try { await sendActionAndGetResponse(formattedAction, targetChar); }
     catch { addToast('Failed to interject action.', 'error'); }
   };
 
@@ -1300,7 +1182,6 @@ function App() {
     .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
     .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
 
-  // ✅ Stem detection uses filtered chat messages
   const isStemMessage = (mid: string): boolean => {
     if (!interactionData?.parentInteractionMessageId) return false;
     const bi = InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId);
@@ -1309,7 +1190,6 @@ function App() {
     return ci !== -1 && ci <= bi;
   };
 
-  // ✅ View mode toggle uses filtered chat message IDs
   const toggleViewMode = () => {
     const container = chatHistoryRef.current;
     let targetIdx = -1;
@@ -1340,14 +1220,12 @@ function App() {
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
-  // ✅ Refresh all managers after data import
   const handleImportComplete = useCallback(() => {
+    tokenEngine.clearTokenCache();
     refreshChatList();
   }, [refreshChatList]);
 
   // ✅ 5. RENDER RETURN
-  // ✅ Always render the full app shell. Loading screen overlays on top during init.
-  // ✅ This prevents the empty-workspace flash when the loading screen fades out.
 
   const streamingIndicators = (
     <>
@@ -1376,7 +1254,6 @@ function App() {
     </>
   );
 
-  // ✅ Pre-compute display list — only chat messages, reversed for cinematic
   const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
 
   return (
@@ -1385,7 +1262,7 @@ function App() {
       <div
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`}
         style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined}
-        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}
+        onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); setShowActionFormat(false); deactivateToolbar(); }}
       >
         {!interactionData && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
@@ -1408,19 +1285,7 @@ function App() {
               <button type="button" className="view-mode-toggle" onClick={() => setIsSettingsOpen(true)} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
               <button type="button" className="view-mode-toggle" onClick={() => interactionData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
               <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-              <ChatStatisticsBar
-                generationSpeed={generationSpeed}
-                timeToFirstToken={timeToFirstToken}
-                numberOfMessages={numberOfMessages}
-                numberOfTokens={numberOfTokens}
-                maximumNumberOfTokens={maximumNumberOfTokens}
-                maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
-                maximumNumberOfContextTokens={maximumNumberOfContextTokens}
-                numberOfCacheInvalidations={numberOfCacheInvalidations}
-                numberOfRequests={numberOfRequests}
-                totalCost={totalCost}
-                costWithoutCacheMisses={costWithoutCacheMisses}
-              />
+              <ChatStatisticsBar generationSpeed={generationSpeed} timeToFirstToken={timeToFirstToken} numberOfMessages={numberOfMessages} numberOfTokens={numberOfTokens} maximumNumberOfTokens={maximumNumberOfTokens} maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens} maximumNumberOfContextTokens={maximumNumberOfContextTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
             </div>
           </div></div></header>
 
@@ -1438,43 +1303,24 @@ function App() {
               const stem = isStemMessage(message.id);
               const beforeBranch = interactionData.parentInteractionMessageId && index === branchOffIndex;
               const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
-
-              const isResumingThisMessage = isLoading && streamingCharacter && message.isPartial
-                && message.character.id === streamingCharacter.id
-                && !isProtag;
-
+              const isResumingThisMessage = isLoading && streamingCharacter && message.isPartial && message.character.id === streamingCharacter.id && !isProtag;
               if (isResumingThisMessage) return null;
-
-              // ✅ Expression-aware portrait from pre-computed cache
               const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
 
               return (
                 <React.Fragment key={message.id}>
                   <div className={`message-row ${viewMode === 'cinematic' ? '' : isProtag ? 'message-right' : 'message-left'} ${inDelRange ? 'message-fading-out' : ''}`} data-message-id={message.id}>
                     {showAvatar && <div className="avatar-column"><div style={{ position: 'relative' }}>{messagePortraitUrl ? <img src={messagePortraitUrl} alt={dn} className="character-avatar" onClick={e => handleAvatarClick(e, message.id, message.character)} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} style={{ cursor: 'pointer' }} /> : <div className="character-avatar placeholder" onClick={e => handleAvatarClick(e, message.id, message.character)} style={{ cursor: 'pointer' }} />}</div><span className="avatar-name">{dn}</span></div>}
-                    <div
-                      className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtag ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${inDelRange ? 'bubble-marked-for-delete' : ''} ${stem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`}
-                      onTouchStart={e => handleBubbleTouchStart(e, message.id)}
-                      onTouchEnd={handleBubbleTouchEnd}
-                      onTouchMove={handleBubbleTouchMove}
-                      onClick={e => { if (suppressNextClickRef.current) { e.preventDefault(); e.stopPropagation(); suppressNextClickRef.current = false; } }}
-                    >
+                    <div className={`message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isProtag ? 'bubble-user' : 'bubble-ai'} ${isAmbient ? 'bubble-ambient' : ''} ${isEditing ? 'bubble-editing' : ''} ${inDelRange ? 'bubble-marked-for-delete' : ''} ${stem ? 'bubble-stem' : ''} ${activeToolbarId === message.id ? 'toolbar-active' : ''}`} onTouchStart={e => handleBubbleTouchStart(e, message.id)} onTouchEnd={handleBubbleTouchEnd} onTouchMove={handleBubbleTouchMove} onClick={e => { if (suppressNextClickRef.current) { e.preventDefault(); e.stopPropagation(); suppressNextClickRef.current = false; } }}>
                       {viewMode === 'cinematic' && <div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}><span>{isAmbient ? '✦' : dn}</span></div>}
                       {isEditing ? (
                         <div className="edit-mode">
                           <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" />
-                          <div className="edit-actions">
-                            <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                            <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
-                          </div>
+                          <div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div>
                         </div>
                       ) : <>
                         <MemoizedMessageText text={message.textContent} />
-                        {(message as ChatMessage).files?.length > 0 && (
-                          <div className="message-attachment-indicator" title={`${(message as ChatMessage).files.length} attached file${(message as ChatMessage).files.length !== 1 ? 's' : ''}`}>
-                            📎 {(message as ChatMessage).files.length}
-                          </div>
-                        )}
+                        {(message as ChatMessage).files?.length > 0 && <div className="message-attachment-indicator" title={`${(message as ChatMessage).files.length} attached file${(message as ChatMessage).files.length !== 1 ? 's' : ''}`}>📎 {(message as ChatMessage).files.length}</div>}
                         <div className="message-toolbar">
                           {stem ? <span className="toolbar-lock">🔒 Locked</span> : !isMassActive ? <>
                             {!isProtag && message.isPartial && <button type="button" onClick={() => resumeGeneration(message.id)} disabled={!isModelReady} className="toolbar-btn" title="Resume interrupted generation" style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}>▶</button>}
@@ -1527,105 +1373,79 @@ function App() {
         {/* ─── Modals ─────────────────────────────────────────────── */}
 
         {isChatListOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={isChatListOpen} onClose={() => setIsChatListOpen(false)} onSelect={c => handleSwitchChat(c.id)} onDelete={id => handleDeleteChat({ stopPropagation: () => {} } as any, id)} onCreateNew={handleNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
-
         {isCharListOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={isCharListOpen} onClose={() => setIsCharListOpen(false)} onSelect={async c => { const f = c.sampler ? c : await loadFullCharacter(c.id); charModal.open(f || c); }} onDelete={deleteCharacter} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!interactionData} currentOrderIds={interactionData?.participants.map(p => p.id) || []} onToggleOrder={handleToggleParticipant} specialActionIcon="★" onSpecialAction={handleSetChatProtagonist} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={interactionData?.protagonist?.id} />}
         {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
-
         {isContextListOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={isContextListOpen} onClose={() => setIsContextListOpen(false)} onSelect={c => contextModal.open(c)} onDelete={contextModal.handleDelete} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.contexts?.map(i => i.id) || []} onToggleOrder={handleToggleContext} />}
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
-
         {isLocationListOpen && <ManagerModal title="Locations" items={allLocations} isOpen={isLocationListOpen} onClose={() => setIsLocationListOpen(false)} onSelect={l => locationModal.open(l)} onDelete={locationModal.handleDelete} onCreateNew={() => locationModal.open()} renderSubtext={renderLocationSubtext} emptyMessage="No locations found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.locations?.map(l => l.id) || []} onToggleOrder={handleToggleLocation} />}
         {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} allLocations={allLocations} />}
-
         {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
         {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
-
         {isSamplerListOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSamplerListOpen(false)} onSelect={s => handleOpenSamplerEditor(s)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
         {isSamplerEditorOpen && <SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />}
-
         {isStopListOpen && <ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={isStopListOpen} onClose={() => setIsStopListOpen(false)} onSelect={s => stopModal.open(s)} onDelete={stopModal.handleDelete} onCreateNew={() => stopModal.open()} renderSubtext={s => <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />}
         {stopModal.isOpen && <StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} existingStopPattern={stopModal.itemToEdit} />}
-
         {isBudgetStrategyListOpen && <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={isBudgetStrategyListOpen} onClose={() => setIsBudgetStrategyListOpen(false)} onSelect={s => budgetModal.open(s)} onDelete={budgetModal.handleDelete} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={handleActivateBudgetStrategy} specialActionTooltip={s => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />}
         {budgetModal.isOpen && <BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />}
-
         {isProfileListOpen && <ManagerModal title="Profiles" items={allProfiles} isOpen={isProfileListOpen} onClose={() => setIsProfileListOpen(false)} onSelect={p => profileModal.open(p)} onDelete={deleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={interactionData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={handleActivateProfile} specialActionTooltip={p => interactionData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />}
         {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
-
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
 
         {/* Settings Modal */}
-        {isSettingsOpen && (
-          <SettingsModal
-            isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
-            onOpenCharacterCardImport={() => setIsCardImportOpen(true)}
-            onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)}
-            onOpenExportData={() => setIsExportDataOpen(true)}
-            onOpenImportData={() => setIsImportDataOpen(true)}
-          />
-        )}
-
-        {/* Character Card Import Modal */}
-        {isCardImportOpen && (
-          <CharacterCardImportModal
-            isOpen={isCardImportOpen}
-            onClose={() => setIsCardImportOpen(false)}
-            onSaveCharacter={saveCharacter}
-            onSaveContext={saveContext}
-            allSamplers={allSamplers}
-          />
-        )}
-
-        {/* AI Recommendation Modal */}
-        {isAIRecommendationOpen && (
-          <AIRecommendationModal
-            isOpen={isAIRecommendationOpen}
-            onClose={() => setIsAIRecommendationOpen(false)}
-            onSaveCharacter={saveCharacter}
-            onSaveContext={saveContext}
-            onSaveLocation={saveLocation}
-            allSamplers={allSamplers}
-            allCharacters={allCharacters}
-            allContexts={allContexts}
-            allLocations={allLocations}
-            selectedModel={allModels.find(m => m.id === selectedModelId) || null}
-            runningModels={runningModels}
-          />
-        )}
-
-        {/* Export Data Modal */}
-        {isExportDataOpen && (
-          <ExportDataModal
-            isOpen={isExportDataOpen}
-            onClose={() => setIsExportDataOpen(false)}
-          />
-        )}
-
-        {/* Import Data Modal */}
-        {isImportDataOpen && (
-          <ImportDataModal
-            isOpen={isImportDataOpen}
-            onClose={() => setIsImportDataOpen(false)}
-            onImportComplete={handleImportComplete}
-          />
-        )}
+        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenCharacterCardImport={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} />}
+        {isCardImportOpen && <CharacterCardImportModal isOpen={isCardImportOpen} onClose={() => setIsCardImportOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} allSamplers={allSamplers} />}
+        {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
+        {isExportDataOpen && <ExportDataModal isOpen={isExportDataOpen} onClose={() => setIsExportDataOpen(false)} />}
+        {isImportDataOpen && <ImportDataModal isOpen={isImportDataOpen} onClose={() => setIsImportDataOpen(false)} onImportComplete={handleImportComplete} />}
       </div>
 
+      {/* ─── Action Menu with Format Panel ─── */}
       {actionMenuTarget && interactionData && (
         <div className="action-menu-container" style={{ left: `${actionMenuTarget.x + 10}px`, top: `${actionMenuTarget.y}px`, zIndex: 9999 }} onClick={e => e.stopPropagation()}>
-          <div className="action-menu-header"><span>Interject Action</span></div>
-          <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={e => setMenuSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={e => e.stopPropagation()} />
-          <div className="action-menu-list">
-            {getFilteredActions().map(action => (
-              <div key={action.label} className={`action-menu-item ${!isModelReady ? 'action-menu-item-disabled' : ''}`} role="button" tabIndex={isModelReady ? 0 : -1}
-                onClick={e => { e.stopPropagation(); if (!isModelReady) return; const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); }}
-                onKeyDown={e => { if (!isModelReady) return; if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); } }}>
-                <span className="action-menu-item-label">{action.label}</span>
-                <div className="action-meta-container"><span className="action-count-badge" onClick={e => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Click to remove action"><span className="badge-count">{action.count || 0}</span><span className="badge-delete">×</span></span></div>
-              </div>
-            ))}
+          <div className="action-menu-header">
+            <span>Interject Action</span>
+            <button type="button" className={`action-format-toggle ${showActionFormat ? 'action-format-toggle-active' : ''}`} onClick={e => { e.stopPropagation(); setShowActionFormat(prev => !prev); }}>Format</button>
           </div>
+
+          {/* Format panel — slides in like a progress bar */}
+          {showActionFormat && (
+            <div className="action-format-panel" onClick={e => e.stopPropagation()}>
+              {/* Row 1: Wrap style */}
+              <div className="action-format-row">
+                <button type="button" className={`action-format-btn ${actionWrap === '**' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('**')}>**</button>
+                <button type="button" className={`action-format-btn ${actionWrap === '()' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
+                <button type="button" className={`action-format-btn ${actionWrap === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
+              </div>
+              {/* Row 2: Capitalization */}
+              <div className="action-format-row">
+                <button type="button" className={`action-format-btn ${actionCase === 'first' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
+                <button type="button" className={`action-format-btn ${actionCase === 'pascal' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
+                <button type="button" className={`action-format-btn ${actionCase === 'lower' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
+              </div>
+              {/* Row 3: End punctuation */}
+              <div className="action-format-row">
+                <button type="button" className={`action-format-btn ${actionPunctuation === '.' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
+                <button type="button" className={`action-format-btn ${actionPunctuation === '-' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
+                <button type="button" className={`action-format-btn ${actionPunctuation === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
+              </div>
+            </div>
+          )}
+
+          {!showActionFormat && (
+            <>
+              <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={e => setMenuSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddAction(menuSearchQuery); }} placeholder="Filter or type new & Enter..." onClick={e => e.stopPropagation()} />
+              <div className="action-menu-list">
+                {getFilteredActions().map(action => (
+                  <div key={action.label} className={`action-menu-item ${!isModelReady ? 'action-menu-item-disabled' : ''}`} role="button" tabIndex={isModelReady ? 0 : -1}
+                    onClick={e => { e.stopPropagation(); if (!isModelReady) return; const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); }}
+                    onKeyDown={e => { if (!isModelReady) return; if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); const tc = allCharacters.find(c => c.id === actionMenuTarget.charId); if (tc) handleActionInterject(action.label, tc); } }}>
+                    <span className="action-menu-item-label">{action.label}</span>
+                    <div className="action-meta-container"><span className="action-count-badge" onClick={e => { e.stopPropagation(); handleDeleteAction(action.label); }} title="Click to remove action"><span className="badge-count">{action.count || 0}</span><span className="badge-delete">×</span></span></div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </>

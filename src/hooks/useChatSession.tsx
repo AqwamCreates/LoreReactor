@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory, InteractionMessage, ChatMessage } from '../types';
-import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter } from './storage';
+import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter, deleteRawInteractionMessage } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, prepareRequestBody, editInteractionMessageInInteractionData, findPreviousInteractionMessage } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';

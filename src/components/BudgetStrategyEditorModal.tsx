@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { SliderInput } from './SliderInput';
+import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
@@ -14,49 +15,38 @@ interface BudgetStrategyEditorModalProps {
     allModels: LanguageModel[];
 }
 
-const DEFAULT_STRATEGY: Omit<BudgetStrategy, 'id' | 'firstCreatedTimestamp' | 'lastUpdatedTimestamp'> = {
-    name: '',
-    description: '',
-    onlineModel: {} as LanguageModel,
-    localModel: {} as LanguageModel,
-    switchProbabilty: 20,
-    switchOnContextSize: 8192,
-    switchOnComplexityScore: 70,
-    fallbackOnLocalFailure: true,
-    fallbackOnQualityThreshold: 30,
-    fallbackOnTimeoutInSeconds: 30,
-    maximumBudget: 10,
-};
-
 export function BudgetStrategyEditorModal({
     isOpen,
     onClose,
     onSave,
-    onDelete,
     existingStrategy,
     allModels,
 }: BudgetStrategyEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [onlineModelId, setOnlineModelId] = useState<string>('');
-    const [localModelId, setLocalModelId] = useState<string>('');
-    const [switchProbabilty, setSwitchProbabilty] = useState<number>(20);
+    const [onlineModelIds, setOnlineModelIds] = useState<string[]>([]);
+    const [localModelIds, setLocalModelIds] = useState<string[]>([]);
+    const [switchProbability, setSwitchProbability] = useState<number>(20);
     const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(8192);
     const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(70);
     const [fallbackOnLocalFailure, setFallbackOnLocalFailure] = useState<boolean>(true);
     const [fallbackOnQualityThreshold, setFallbackOnQualityThreshold] = useState<number>(30);
     const [fallbackOnTimeoutInSeconds, setFallbackOnTimeoutInSeconds] = useState<number>(30);
     const [maximumBudget, setMaximumBudget] = useState<number>(10);
-    const [errors, setErrors] = useState<{ name?: string; onlineModel?: string; localModel?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; onlineModels?: string; localModels?: string }>({});
+
+    // Search state for each EntitySelectList
+    const [onlineSearch, setOnlineSearch] = useState('');
+    const [localSearch, setLocalSearch] = useState('');
 
     useEffect(() => {
         if (isOpen) {
             if (existingStrategy) {
                 setName(existingStrategy.name || '');
                 setDescription(existingStrategy.description || '');
-                setOnlineModelId(existingStrategy.onlineModel?.id || '');
-                setLocalModelId(existingStrategy.localModel?.id || '');
-                setSwitchProbabilty(existingStrategy.switchProbabilty ?? 20);
+                setOnlineModelIds(existingStrategy.onlineModels?.map(m => m.id) || []);
+                setLocalModelIds(existingStrategy.localModels?.map(m => m.id) || []);
+                setSwitchProbability(existingStrategy.switchProbability ?? 20);
                 setSwitchOnContextSize(existingStrategy.switchOnContextSize ?? 8192);
                 setSwitchOnComplexityScore(existingStrategy.switchOnComplexityScore ?? 70);
                 setFallbackOnLocalFailure(existingStrategy.fallbackOnLocalFailure ?? true);
@@ -66,9 +56,9 @@ export function BudgetStrategyEditorModal({
             } else {
                 setName('');
                 setDescription('');
-                setOnlineModelId('');
-                setLocalModelId('');
-                setSwitchProbabilty(20);
+                setOnlineModelIds([]);
+                setLocalModelIds([]);
+                setSwitchProbability(20);
                 setSwitchOnContextSize(8192);
                 setSwitchOnComplexityScore(70);
                 setFallbackOnLocalFailure(true);
@@ -76,90 +66,81 @@ export function BudgetStrategyEditorModal({
                 setFallbackOnTimeoutInSeconds(30);
                 setMaximumBudget(10);
             }
+            setOnlineSearch('');
+            setLocalSearch('');
             setErrors({});
         }
     }, [isOpen, existingStrategy]);
 
+    const toggleOnlineModel = (id: string) => {
+        setOnlineModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        if (errors.onlineModels) setErrors(prev => ({ ...prev, onlineModels: undefined }));
+    };
+
+    const toggleLocalModel = (id: string) => {
+        setLocalModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        if (errors.localModels) setErrors(prev => ({ ...prev, localModels: undefined }));
+    };
+
     const validate = (): boolean => {
-        const newErrors: { name?: string; onlineModel?: string; localModel?: string } = {};
+        const newErrors: { name?: string; onlineModels?: string; localModels?: string } = {};
         
         if (!name.trim()) newErrors.name = 'Name is required.';
-        if (!onlineModelId) newErrors.onlineModel = 'Online model is required.';
-        if (!localModelId) newErrors.localModel = 'Local model is required.';
+        if (onlineModelIds.length === 0) newErrors.onlineModels = 'At least one online model is required.';
+        if (localModelIds.length === 0) newErrors.localModels = 'At least one local model is required.';
         
-        if (onlineModelId && localModelId && onlineModelId === localModelId) {
-            newErrors.onlineModel = 'Online and local models must be different.';
-            newErrors.localModel = 'Online and local models must be different.';
+        // Check for overlap between pools
+        const overlap = onlineModelIds.some(id => localModelIds.includes(id));
+        if (overlap) {
+            newErrors.onlineModels = 'A model cannot be in both online and local pools.';
+            newErrors.localModels = 'A model cannot be in both online and local pools.';
         }
         
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
-        if (!validate()) return;
+    const buildStrategy = (cloneNameSuffix?: string): BudgetStrategy | null => {
+        if (!validate()) return null;
 
-        const onlineModel = allModels.find(m => m.id === onlineModelId);
-        const localModel = allModels.find(m => m.id === localModelId);
+        const onlineModels = allModels.filter(m => onlineModelIds.includes(m.id));
+        const localModels = allModels.filter(m => localModelIds.includes(m.id));
 
-        if (!onlineModel || !localModel) {
+        if (onlineModels.length === 0 || localModels.length === 0) {
             alert('Selected models not found.');
-            return;
+            return null;
         }
 
         const now = Date.now();
-        const strategy: BudgetStrategy = {
-            id: existingStrategy?.id || uuidv4(),
-            name: name.trim(),
+        return {
+            id: cloneNameSuffix ? uuidv4() : (existingStrategy?.id || uuidv4()),
+            name: cloneNameSuffix ? `${name.trim()} ${cloneNameSuffix}` : name.trim(),
             description: description.trim() || '',
-            onlineModel,
-            localModel,
-            switchProbabilty,
+            onlineModels,
+            localModels,
+            switchProbability,
             switchOnContextSize,
             switchOnComplexityScore,
             fallbackOnLocalFailure,
             fallbackOnQualityThreshold,
             fallbackOnTimeoutInSeconds,
             maximumBudget,
-            firstCreatedTimestamp: existingStrategy?.firstCreatedTimestamp || now,
+            firstCreatedTimestamp: cloneNameSuffix ? now : (existingStrategy?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
+    };
 
+    const handleSubmit = () => {
+        const strategy = buildStrategy();
+        if (!strategy) return;
         onSave(strategy);
         onClose();
     };
 
-    // ✅ Clone: save as new strategy with a new ID and "(Clone)" suffix
     const handleClone = () => {
-        if (!validate()) return;
-
-        const onlineModel = allModels.find(m => m.id === onlineModelId);
-        const localModel = allModels.find(m => m.id === localModelId);
-
-        if (!onlineModel || !localModel) {
-            alert('Selected models not found.');
-            return;
-        }
-
-        const now = Date.now();
-        const clonedStrategy: BudgetStrategy = {
-            id: uuidv4(),
-            name: `${name.trim()} (Clone)`,
-            description: description.trim() || '',
-            onlineModel,
-            localModel,
-            switchProbabilty,
-            switchOnContextSize,
-            switchOnComplexityScore,
-            fallbackOnLocalFailure,
-            fallbackOnQualityThreshold,
-            fallbackOnTimeoutInSeconds,
-            maximumBudget,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        };
-
-        onSave(clonedStrategy);
+        const strategy = buildStrategy('(Clone)');
+        if (!strategy) return;
+        onSave(strategy);
         onClose();
     };
 
@@ -172,14 +153,13 @@ export function BudgetStrategyEditorModal({
                     <h2>{existingStrategy ? 'Edit Budget Strategy' : 'Create Budget Strategy'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {/* ✅ Clone button — only shown when editing an existing strategy */}
                         {existingStrategy && (
                             <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
                                 Clone
                             </button>
                         )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>
-                            {"Save"}
+                            Save
                         </button>
                     </div>
                 </div>
@@ -215,50 +195,32 @@ export function BudgetStrategyEditorModal({
                         />
                     </div>
 
-                    {/* Model Selection */}
+                    {/* Model Selection Pools */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Model Selection</span>
-                        
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">
-                                    Online Model <span style={{ color: '#ff4444' }}>*</span>
-                                </label>
-                                <select
-                                    value={onlineModelId}
-                                    onChange={(e) => {
-                                        setOnlineModelId(e.target.value);
-                                        if (errors.onlineModel) setErrors({ ...errors, onlineModel: undefined });
-                                    }}
-                                    className={`editor-select ${errors.onlineModel ? 'error' : ''}`}
-                                >
-                                    <option value="">Select online model...</option>
-                                    {allModels.map(m => (
-                                        <option key={m.id} value={m.id}>{m.name}</option>
-                                    ))}
-                                </select>
-                                {errors.onlineModel && <div className="editor-error-message">{errors.onlineModel}</div>}
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">
-                                    Local Model <span style={{ color: '#ff4444' }}>*</span>
-                                </label>
-                                <select
-                                    value={localModelId}
-                                    onChange={(e) => {
-                                        setLocalModelId(e.target.value);
-                                        if (errors.localModel) setErrors({ ...errors, localModel: undefined });
-                                    }}
-                                    className={`editor-select ${errors.localModel ? 'error' : ''}`}
-                                >
-                                    <option value="">Select local model...</option>
-                                    {allModels.map(m => (
-                                        <option key={m.id} value={m.id}>{m.name}</option>
-                                    ))}
-                                </select>
-                                {errors.localModel && <div className="editor-error-message">{errors.localModel}</div>}
-                            </div>
+                        <span className="editor-section-title">Model Pools</span>
+                        <div className="entity-ref-hint">
+                            Select models for each pool. The engine exhausts the primary pool before falling back. Order determines priority.
                         </div>
+
+                        <EntitySelectList
+                            label="Online Models"
+                            items={allModels}
+                            selectedIds={onlineModelIds}
+                            onToggle={toggleOnlineModel}
+                            searchQuery={onlineSearch}
+                            onSearchChange={setOnlineSearch}
+                        />
+                        {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
+
+                        <EntitySelectList
+                            label="Local Models"
+                            items={allModels}
+                            selectedIds={localModelIds}
+                            onToggle={toggleLocalModel}
+                            searchQuery={localSearch}
+                            onSearchChange={setLocalSearch}
+                        />
+                        {errors.localModels && <div className="editor-error-message">{errors.localModels}</div>}
                     </div>
 
                     {/* Switching Rules */}
@@ -268,13 +230,13 @@ export function BudgetStrategyEditorModal({
                         <div className="editor-row-full">
                             <SliderInput
                                 label="Online Model Probability"
-                                value={switchProbabilty}
+                                value={switchProbability}
                                 minimumValue={0}
                                 maximumValue={100}
                                 stepValue={1}
                                 decimals={0}
-                                onChange={setSwitchProbabilty}
-                                description="Percentage chance to use online model (0 = always local, 100 = always online)"
+                                onChange={setSwitchProbability}
+                                description="Percentage chance to use online pool (0 = always local, 100 = always online)"
                             />
                         </div>
 

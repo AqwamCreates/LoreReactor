@@ -49,7 +49,106 @@ interface ResolvedRequest {
 // ✅ Backends that don't support the `stop` parameter in OpenAI-compatible format
 const STOP_UNSUPPORTED_BACKENDS = new Set(['Google']);
 
+  /**
+   * Backends known to lack a tokenize endpoint. We skip network calls
+   * for these entirely and always return the char-length estimate.
+   * Add any backend here whose /tokenize returns 404 or doesn't exist.
+   */
+
+const NO_TOKENIZE_BACKENDS = new Set(['OpenRouter',]);
+
+/** Cache entry for token count results. */
+interface TokenCacheEntry {
+  count: number;
+  timestamp: number;
+}
+
+/** Maximum age of a cache entry before it's considered stale (5 minutes). */
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Maximum number of entries to prevent unbounded memory growth. */
+const TOKEN_CACHE_MAX_SIZE = 500;
+
 export class LanguageModelEngine {
+
+  // ─── Token Count Cache ────────────────────────────────────────────
+
+  /**
+   * Private cache mapping a composite key (text fingerprint + model context identifier)
+   * to the resolved token count. Prevents redundant network calls when the same
+   * text is counted repeatedly across renders.
+   */
+  private _tokenCache: Map<string, TokenCacheEntry> = new Map();
+
+  /**
+   * Tracks backends whose tokenize endpoints have returned errors.
+   * Once a backend fails, we skip network calls entirely and use estimates.
+   * Key format: "backend:modelPath" or "local:runtimePort".
+   */
+  private _failedTokenizeBackends: Set<string> = new Set();
+
+  /** Whether the cache contents have changed since last access. */
+  private _hasTokenCountChanged = false;
+
+  /**
+   * In-flight tokenize requests keyed by backend failure key.
+   * Concurrent calls for the same backend share a single promise,
+   * preventing duplicate network requests during race conditions.
+   */
+  private _inFlightTokenize: Map<string, Promise<number>> = new Map();
+
+  /** Returns true if the token cache has been modified since the last call to this getter. Resets the flag on read. */
+  get hasTokenCountChanged(): boolean {
+    const changed = this._hasTokenCountChanged;
+    this._hasTokenCountChanged = false;
+    return changed;
+  }
+
+  /** Builds a stable cache key from text and optional model context. */
+  private buildCacheKey(text: string, modelContext?: LanguageModelContext): string {
+    const ctxPart = modelContext
+      ? `${modelContext.runtimePort ?? ''}:${modelContext.backend ?? ''}:${modelContext.modelPath ?? ''}`
+      : 'estimate';
+    const textFingerprint = `${text.length}:${text.slice(0, 32)}:${text.slice(-32)}`;
+    return `${ctxPart}|${textFingerprint}`;
+  }
+
+  /** Builds a failure-tracking key from model context. */
+  private buildBackendFailureKey(modelContext?: LanguageModelContext): string | null {
+    if (!modelContext) return null;
+    if (modelContext.runtimePort) return `local:${modelContext.runtimePort}`;
+    if (modelContext.backend) return `${modelContext.backend}:${modelContext.modelPath ?? ''}`;
+    return null;
+  }
+
+  /** Retrieves a cached token count if the entry exists and is not stale. */
+  private getCachedTokenCount(key: string): number | null {
+    const entry = this._tokenCache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > TOKEN_CACHE_TTL_MS) {
+      this._tokenCache.delete(key);
+      return null;
+    }
+    return entry.count;
+  }
+
+  /** Stores a token count in the cache, evicting oldest entries if at capacity. */
+  private setCachedTokenCount(key: string, count: number): void {
+    if (this._tokenCache.size >= TOKEN_CACHE_MAX_SIZE && !this._tokenCache.has(key)) {
+      const oldestKey = this._tokenCache.keys().next().value;
+      if (oldestKey !== undefined) this._tokenCache.delete(oldestKey);
+    }
+    this._tokenCache.set(key, { count, timestamp: Date.now() });
+    this._hasTokenCountChanged = true;
+  }
+
+  /** Clears the entire token cache, failure set, and in-flight map. Call when switching models or invalidating state. */
+  clearTokenCache(): void {
+    this._tokenCache.clear();
+    this._failedTokenizeBackends.clear();
+    this._inFlightTokenize.clear();
+    this._hasTokenCountChanged = true;
+  }
 
   // ─── Request Building (split by transport type) ──────────────────
 
@@ -81,7 +180,6 @@ export class LanguageModelEngine {
 
     const payloadModelName = modelPath || 'default-model';
 
-    // ✅ Build body — omit `stop` for backends that don't support it
     const bodyObj: Record<string, unknown> = {
       model: payloadModelName,
       messages: [{ role: "user", content: prompt }],
@@ -189,148 +287,185 @@ export class LanguageModelEngine {
   async countTokens(text: string, modelContext?: LanguageModelContext): Promise<number> {
     const estimatedTokens = Math.ceil(text.length / 4);
 
-    if (!modelContext) return estimatedTokens;
+    // ✅ Check token cache first
+    const cacheKey = this.buildCacheKey(text, modelContext);
+    const cached = this.getCachedTokenCount(cacheKey);
+    if (cached !== null) return cached;
+
+    // ✅ If this backend previously failed, skip straight to estimate
+    const failureKey = this.buildBackendFailureKey(modelContext);
+    if (failureKey && this._failedTokenizeBackends.has(failureKey)) {
+      this.setCachedTokenCount(cacheKey, estimatedTokens);
+      return estimatedTokens;
+    }
+
+    // ✅ Skip network call entirely for backends known to lack a tokenize endpoint
+    if (modelContext?.backend && NO_TOKENIZE_BACKENDS.has(modelContext.backend)) {
+      this.setCachedTokenCount(cacheKey, estimatedTokens);
+      return estimatedTokens;
+    }
+
+    if (!modelContext) {
+      this.setCachedTokenCount(cacheKey, estimatedTokens);
+      return estimatedTokens;
+    }
 
     const { runtimePort, backend, apiKey, modelPath } = modelContext;
 
     // ✅ Local models: use llama.cpp /tokenize endpoint
     if (runtimePort) {
-      try {
-        const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text }),
-        });
-        if (!res.ok) return estimatedTokens;
-        const data = await res.json();
-        return data.tokens?.length ?? estimatedTokens;
-      } catch {
+      const localKey = `local:${runtimePort}`;
+
+      if (this._inFlightTokenize.has(localKey)) {
+        await this._inFlightTokenize.get(localKey);
+        const recheck = this.getCachedTokenCount(cacheKey);
+        if (recheck !== null) return recheck;
+        this.setCachedTokenCount(cacheKey, estimatedTokens);
         return estimatedTokens;
       }
+
+      const fetchPromise = (async (): Promise<number> => {
+        try {
+          const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: text }),
+          });
+          if (!res.ok) {
+            if (res.status === 404 || res.status >= 500) {
+              this._failedTokenizeBackends.add(localKey);
+            }
+            return estimatedTokens;
+          }
+          const data = await res.json();
+          return data.tokens?.length ?? estimatedTokens;
+        } catch {
+          this._failedTokenizeBackends.add(localKey);
+          return estimatedTokens;
+        } finally {
+          this._inFlightTokenize.delete(localKey);
+        }
+      })();
+
+      this._inFlightTokenize.set(localKey, fetchPromise);
+      const count = await fetchPromise;
+      this.setCachedTokenCount(cacheKey, count);
+      return count;
     }
 
     // ✅ Cloud models: try provider-specific tokenize endpoint
     if (backend && apiKey && cloudTokenizeEndpoints[backend]) {
-      try {
-        const templateUrl = cloudTokenizeEndpoints[backend];
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        let url = templateUrl;
-        let body: string;
+      const cloudKey = `${backend}:${modelPath ?? ''}`;
 
-        switch (backend) {
-          case 'Google': {
-            // Google uses query param auth and model-specific URL
-            const modelName = modelPath || 'gemini-2.5-flash';
-            url = templateUrl.replace('{model}', modelName) + `?key=${apiKey}`;
-            body = JSON.stringify({ contents: [{ parts: [{ text }] }] });
-            break;
-          }
-          case 'Anthropic': {
-            // Anthropic uses x-api-key header and messages format
-            headers['x-api-key'] = apiKey;
-            headers['anthropic-version'] = '2023-06-01';
-            body = JSON.stringify({
-              model: modelPath || 'claude-sonnet-4-20250514',
-              messages: [{ role: 'user', content: text }],
-            });
-            break;
-          }
-          case 'Minimax': {
-            // MiniMax uses Responses API format with Bearer auth
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              model: modelPath || 'MiniMax-M3',
-              input: text,
-            });
-            break;
-          }
-          case 'Kimi': {
-            // Kimi/Moonshot estimate-token-count endpoint
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              model: modelPath || 'moonshot-v1-8k',
-              messages: [{ role: 'user', content: text }],
-            });
-            break;
-          }
-          case 'GLM': {
-            // Zhipu/GLM tokenizer endpoint
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              model: modelPath || 'glm-4-flash',
-              prompt: text,
-            });
-            break;
-          }
-          case 'Cohere': {
-            // Cohere tokenize endpoint (non-OpenAI format)
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              text,
-              model: modelPath || 'command-r-plus',
-            });
-            break;
-          }
-          case 'AI21': {
-            // AI21 tokenize endpoint for Jamba models
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({ text });
-            break;
-          }
-          case 'NovelAI': {
-            // NovelAI tokenizer utilities API
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              text,
-              model: modelPath || 'clio-v1',
-            });
-            break;
-          }
-          case 'OpenRouter': {
-            // OpenRouter passthrough tokenize
-            headers.Authorization = `Bearer ${apiKey}`;
-            body = JSON.stringify({
-              text,
-              model: modelPath,
-            });
-            break;
-          }
-          default:
-            return estimatedTokens;
-        }
-
-        const res = await fetch(url, { method: 'POST', headers, body });
-        if (!res.ok) return estimatedTokens;
-        const data = await res.json();
-
-        // ✅ Extract token count from provider-specific response formats
-        switch (backend) {
-          case 'Google':
-            return data.totalTokens ?? estimatedTokens;
-          case 'Anthropic':
-            return data.input_tokens ?? estimatedTokens;
-          case 'Minimax':
-            return data.input_tokens ?? estimatedTokens;
-          case 'Kimi':
-            return data.data?.total_tokens ?? data.total_tokens ?? estimatedTokens;
-          case 'GLM':
-            return data.usage?.tokens ?? data.tokens ?? estimatedTokens;
-          case 'Cohere':
-            return data.tokens?.length ?? data.token_count ?? estimatedTokens;
-          case 'AI21':
-            return data.tokens?.length ?? data.count ?? estimatedTokens;
-          case 'NovelAI':
-            return data.tokens?.length ?? data.count ?? estimatedTokens;
-          case 'OpenRouter':
-            return data.tokens?.length ?? data.count ?? estimatedTokens;
-          default:
-            return estimatedTokens;
-        }
-      } catch {
+      if (this._inFlightTokenize.has(cloudKey)) {
+        await this._inFlightTokenize.get(cloudKey);
+        const recheck = this.getCachedTokenCount(cacheKey);
+        if (recheck !== null) return recheck;
+        this.setCachedTokenCount(cacheKey, estimatedTokens);
         return estimatedTokens;
       }
+
+      const fetchPromise = (async (): Promise<number> => {
+        try {
+          const templateUrl = cloudTokenizeEndpoints[backend];
+          const headers: HeadersInit = { 'Content-Type': 'application/json' };
+          let url = templateUrl;
+          let body: string;
+
+          switch (backend) {
+            case 'Google': {
+              const modelName = modelPath || 'gemini-2.5-flash';
+              url = templateUrl.replace('{model}', modelName) + `?key=${apiKey}`;
+              body = JSON.stringify({ contents: [{ parts: [{ text }] }] });
+              break;
+            }
+            case 'Anthropic': {
+              headers['x-api-key'] = apiKey;
+              headers['anthropic-version'] = '2023-06-01';
+              body = JSON.stringify({
+                model: modelPath || 'claude-sonnet-4-20250514',
+                messages: [{ role: 'user', content: text }],
+              });
+              break;
+            }
+            case 'Minimax': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({ model: modelPath || 'MiniMax-M3', input: text });
+              break;
+            }
+            case 'Kimi': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({
+                model: modelPath || 'moonshot-v1-8k',
+                messages: [{ role: 'user', content: text }],
+              });
+              break;
+            }
+            case 'GLM': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({ model: modelPath || 'glm-4-flash', prompt: text });
+              break;
+            }
+            case 'Cohere': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({ text, model: modelPath || 'command-r-plus' });
+              break;
+            }
+            case 'AI21': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({ text });
+              break;
+            }
+            case 'NovelAI': {
+              headers.Authorization = `Bearer ${apiKey}`;
+              body = JSON.stringify({ text, model: modelPath || 'clio-v1' });
+              break;
+            }
+            case 'OpenRouter': {
+              // OpenRouter has no tokenize endpoint — should never reach here
+              // due to NO_TOKENIZE_BACKENDS check above, but guard defensively
+              return estimatedTokens;
+            }
+            default:
+              return estimatedTokens;
+          }
+
+          const res = await fetch(url, { method: 'POST', headers, body });
+          if (!res.ok) {
+            if (res.status === 404 || res.status >= 500) {
+              this._failedTokenizeBackends.add(cloudKey);
+            }
+            return estimatedTokens;
+          }
+          const data = await res.json();
+
+          switch (backend) {
+            case 'Google': return data.totalTokens ?? estimatedTokens;
+            case 'Anthropic': return data.input_tokens ?? estimatedTokens;
+            case 'Minimax': return data.input_tokens ?? estimatedTokens;
+            case 'Kimi': return data.data?.total_tokens ?? data.total_tokens ?? estimatedTokens;
+            case 'GLM': return data.usage?.tokens ?? data.tokens ?? estimatedTokens;
+            case 'Cohere': return data.tokens?.length ?? data.token_count ?? estimatedTokens;
+            case 'AI21': return data.tokens?.length ?? data.count ?? estimatedTokens;
+            case 'NovelAI': return data.tokens?.length ?? data.count ?? estimatedTokens;
+            case 'OpenRouter': return estimatedTokens;
+            default: return estimatedTokens;
+          }
+        } catch {
+          this._failedTokenizeBackends.add(cloudKey);
+          return estimatedTokens;
+        } finally {
+          this._inFlightTokenize.delete(cloudKey);
+        }
+      })();
+
+      this._inFlightTokenize.set(cloudKey, fetchPromise);
+      const count = await fetchPromise;
+      this.setCachedTokenCount(cacheKey, count);
+      return count;
     }
 
+    this.setCachedTokenCount(cacheKey, estimatedTokens);
     return estimatedTokens;
   }
 
@@ -386,7 +521,6 @@ export class LanguageModelEngine {
       extraParams,
     }, existingText);
 
-    // ✅ Capture request start time for TTFT measurement
     const requestStartTime = performance.now();
 
     const response = await fetch(url, {
@@ -454,7 +588,6 @@ export class LanguageModelEngine {
 
             if (!token) continue;
 
-            // Strip leading whitespace from first real token
             if (!hasReceivedNonWhitespace && !existingText) {
               const trimmed = token.trimStart();
               if (trimmed.length === 0) continue;
@@ -467,7 +600,6 @@ export class LanguageModelEngine {
             newnumberOfTokens++;
             fullContent += token;
 
-            // Paragraph limit enforcement
             if (paragraphLimit > 0) {
               const prevLength = fullContent.length - token.length;
               const prevContent = fullContent.substring(0, prevLength);
@@ -484,12 +616,10 @@ export class LanguageModelEngine {
               }
             }
 
-            // Speed stats
             const totalTime = now - firstTokenTime;
             const msPerToken = newnumberOfTokens > 0 ? totalTime / newnumberOfTokens : 0;
             const tokensPerSecond = totalTime > 0 ? (newnumberOfTokens / totalTime) * 1000 : 0;
 
-            // ✅ Calculate TTFT (only once, on first visible token)
             const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
             if (!ttftReported) ttftReported = true;
 

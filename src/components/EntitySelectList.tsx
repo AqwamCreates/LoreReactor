@@ -98,7 +98,7 @@ export function EntitySelectList<T extends EntitySelectListItem>({
                                 <span className={`entity-select-name ${isSelected ? 'entity-select-name-selected' : ''}`}>
                                     {item.name || 'Untitled'}
                                 </span>
-                                {desc && <span className="entity-select-desc">{desc}</span>}
+                                <span className="entity-select-desc">{desc || '\u00A0'}</span>
                             </div>
                             <span className={`entity-select-badge ${isSelected ? 'entity-select-badge-active' : ''}`}>
                                 {selectionIndex ?? ''}

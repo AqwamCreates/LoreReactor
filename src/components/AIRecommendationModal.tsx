@@ -1,14 +1,57 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { Character, Context, Location, Sampler, LanguageModel } from '../types';
-import { generateAIRecommendation, type RecommendationResult } from '../services/AIRecommendationEngine';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
 import { EntitySelectList } from './EntitySelectList';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 type EntityType = 'Character' | 'Context' | 'Location';
+type ViewTab = 'raw' | 'Character' | 'Context' | 'Location';
+
+interface ParsedFields {
+    [key: string]: string;
+}
+
+const FIELD_PATTERNS: { key: string; regex: RegExp }[] = [
+    { key: 'Character Name', regex: /<<<Character Name:\s*([\s\S]*?)>>>/i },
+    { key: 'Character Description', regex: /<<<Character Description:\s*([\s\S]*?)>>>/i },
+    { key: 'Character First Message', regex: /<<<Character First Message:\s*([\s\S]*?)>>>/i },
+    { key: 'Character System Prompt', regex: /<<<Character System Prompt:\s*([\s\S]*?)>>>/i },
+    { key: 'Character Think Prompt', regex: /<<<Character Think Prompt:\s*([\s\S]*?)>>>/i },
+    { key: 'Character Appearance Prompt', regex: /<<<Character Appearance Prompt:\s*([\s\S]*?)>>>/i },
+    { key: 'Character Dialogue Prompt', regex: /<<<Character Dialogue Prompt:\s*([\s\S]*?)>>>/i },
+    { key: 'Context Name', regex: /<<<Context Name:\s*([\s\S]*?)>>>/i },
+    { key: 'Context Description', regex: /<<<Context Description:\s*([\s\S]*?)>>>/i },
+    { key: 'Context Text Content', regex: /<<<Context Text Content:\s*([\s\S]*?)>>>/i },
+    { key: 'Context Regular Expression Activation Trigger', regex: /<<<Context Regular Expression Activation Trigger:\s*([\s\S]*?)>>>/i },
+    { key: 'Context Regular Expression Deactivation Trigger', regex: /<<<Context Regular Expression Deactivation Trigger:\s*([\s\S]*?)>>>/i },
+    { key: 'Location Name', regex: /<<<Location Name:\s*([\s\S]*?)>>>/i },
+    { key: 'Location Description', regex: /<<<Location Description:\s*([\s\S]*?)>>>/i },
+    { key: 'Location Text Content', regex: /<<<Location Text Content:\s*([\s\S]*?)>>>/i },
+    { key: 'Location Regular Expression Activation Trigger', regex: /<<<Location Regular Expression Activation Trigger:\s*([\s\S]*?)>>>/i },
+];
+
+function parseFields(rawText: string): ParsedFields {
+    const parsed: ParsedFields = {};
+    for (const pattern of FIELD_PATTERNS) {
+        const match = rawText.match(pattern.regex);
+        if (match && match[1] && match[1].trim().length > 0) {
+            parsed[pattern.key] = match[1].trim();
+        }
+    }
+    return parsed;
+}
+
+const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
+    { type: 'Character', label: 'Character', icon: '🎭' },
+    { type: 'Context', label: 'Context', icon: '🌍' },
+    { type: 'Location', label: 'Location', icon: '📍' },
+];
+
+const recommendationEngine = new LanguageModelEngine();
 
 interface AIRecommendationModalProps {
     isOpen: boolean;
@@ -24,12 +67,6 @@ interface AIRecommendationModalProps {
     runningModels: Record<string, { isRunning?: boolean; port?: number }>;
 }
 
-const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
-    { type: 'Character', label: 'Character', icon: '🎭' },
-    { type: 'Context', label: 'Context', icon: '🌍' },
-    { type: 'Location', label: 'Location', icon: '📍' },
-];
-
 export function AIRecommendationModal({
     isOpen,
     onClose,
@@ -43,13 +80,10 @@ export function AIRecommendationModal({
     selectedModel,
     runningModels,
 }: AIRecommendationModalProps) {
+    // ─── Form state ───
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [result, setResult] = useState<RecommendationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -59,11 +93,18 @@ export function AIRecommendationModal({
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
 
-    const reset = () => {
-        setResult(null);
+    // ─── Result modal state ───
+    const [isResultOpen, setIsResultOpen] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [streamingText, setStreamingText] = useState('');
+    const [parsedFields, setParsedFields] = useState<ParsedFields>({});
+    const [activeTab, setActiveTab] = useState<ViewTab>('raw');
+    const [resultError, setResultError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    const resetForm = useCallback(() => {
         setError(null);
-        setIsGenerating(false);
-        setIsSaving(false);
         setUserPrompt('');
         setSelectedCharacterIds([]);
         setSelectedContextIds([]);
@@ -71,13 +112,39 @@ export function AIRecommendationModal({
         setCharSearch('');
         setCtxSearch('');
         setLocSearch('');
-    };
+    }, []);
 
-    const handleClose = () => {
+    const resetResult = useCallback(() => {
+        setStreamingText('');
+        setParsedFields({});
+        setResultError(null);
+        setIsGenerating(false);
+        setIsSaving(false);
+        setActiveTab('raw');
+    }, []);
+
+    const handleCloseForm = useCallback(() => {
         if (isGenerating) abortControllerRef.current?.abort();
-        reset();
+        resetForm();
+        resetResult();
+        setIsResultOpen(false);
         onClose();
-    };
+    }, [isGenerating, resetForm, resetResult, onClose]);
+
+    const handleCloseResult = useCallback(() => {
+        if (isGenerating) abortControllerRef.current?.abort();
+        resetResult();
+        setIsResultOpen(false);
+    }, [isGenerating, resetResult]);
+
+    const handleStopGeneration = useCallback(() => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+        setIsGenerating(false);
+        if (streamingText.trim()) {
+            setParsedFields(parseFields(streamingText));
+        }
+    }, [streamingText]);
 
     const toggleEntity = (type: EntityType) => {
         setSelectedEntities(prev =>
@@ -143,9 +210,10 @@ export function AIRecommendationModal({
     const buildSystemPrompt = (): string => {
         const parts: string[] = [];
         parts.push('You are a creative writing assistant for roleplay. Generate exactly ONE of each requested entity type below.');
-        parts.push('Output ONLY the requested fields using the exact format {Field Name: content}. Do not add any other text, commentary, or markdown.');
-        parts.push('Each field value should be detailed, creative, and internally consistent across all generated entities.');
-        parts.push('If existing entities are provided below, ensure the new entities are consistent with them in tone, world-building, and style. Prioritize consistency with earlier-numbered references.');
+        parts.push('Output ONLY the requested fields using the exact format <<<Field Name: content>>>. Do not add any other text, commentary, or markdown.');
+        parts.push("You must fill in the names, system prompts and text contents. The rest of the fields are dependent on the user's request and the information given to you.");
+        parts.push("References to other characters depends on the user's requests.")
+        parts.push("You can use {{user}} to refer to the user. You must use {{char}} instead of the character's name.")
         parts.push('');
 
         const existingBlock = buildExistingReferenceBlock();
@@ -153,19 +221,19 @@ export function AIRecommendationModal({
 
         if (selectedEntities.includes('Character')) {
             parts.push('CHARACTER FIELDS (generate exactly one character):');
-            parts.push('{Character Name: }', '{Character Description: }', '{Character First Message: }');
-            parts.push('{Character System Prompt: }', '{Character Think Prompt: }');
-            parts.push('{Character Appearance Prompt: }', '{Character Dialogue Prompt: }', '');
+            parts.push('<<<Character Name: >>>', '<<<Character Description: >>>', '<<<Character First Message: >>>');
+            parts.push('<<<Character System Prompt: >>>', '<<<Character Think Prompt: >>>');
+            parts.push('<<<Character Appearance Prompt: >>>', '<<<Character Dialogue Prompt: >>>', '');
         }
         if (selectedEntities.includes('Context')) {
             parts.push('CONTEXT FIELDS (generate exactly one context):');
-            parts.push('{Context Name: }', '{Context Description: }', '{Context Text Content: }');
-            parts.push('{Context Regular Expression Activation Trigger: }', '{Context Regular Expression Deactivation Trigger: }', '');
+            parts.push('<<<Context Name: >>>', '<<<Context Description: >>>', '<<<Context Text Content: >>>');
+            parts.push('<<<Context Regular Expression Activation Trigger: >>>', '<<<Context Regular Expression Deactivation Trigger: >>>', '');
         }
         if (selectedEntities.includes('Location')) {
             parts.push('LOCATION FIELDS (generate exactly one location):');
-            parts.push('{Location Name: }', '{Location Description: }', '{Location Text Content: }');
-            parts.push('{Location Regular Expression Activation Trigger: }', '');
+            parts.push('<<<Location Name: >>>', '<<<Location Description: >>>', '<<<Location Text Content: >>>');
+            parts.push('<<<Location Regular Expression Activation Trigger: >>>', '');
         }
 
         return parts.join('\n');
@@ -179,9 +247,11 @@ export function AIRecommendationModal({
         const effectivePort = port || (selectedModel.parameters as any)?._runtimePort;
         if (!effectivePort && !selectedModel.apiKey) { setError('Selected model is not loaded and has no API key.'); return; }
 
-        setIsGenerating(true);
+        // Open result modal and start generating
         setError(null);
-        setResult(null);
+        resetResult();
+        setIsResultOpen(true);
+        setIsGenerating(true);
 
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
@@ -196,20 +266,46 @@ export function AIRecommendationModal({
             const modelContext = {
                 apiKey: selectedModel.apiKey,
                 backend: selectedModel.backend,
-                modelPath: (selectedModel as any).modelPath || (selectedModel as any).parameters?.modelPath,
+                modelPath: selectedModel.model || (selectedModel as any).modelPath || (selectedModel.parameters as any)?.modelPath,
                 runtimePort: effectivePort,
             };
 
-            const rec = await generateAIRecommendation({ prompt: fullPrompt, modelContext }, ctrl.signal);
+            const requestBody = {
+                prompt: fullPrompt,
+                n_predict: 4096,
+                temperature: 0.9,
+                top_p: 0.95,
+                stream: true,
+            };
 
-            if (Object.keys(rec.parsed).length === 0) {
-                setError('AI response did not contain any recognizable fields. Try again with a more specific prompt.');
-                setResult(rec);
-            } else {
-                setResult(rec);
+            let accumulated = '';
+
+            const result = await recommendationEngine.generateStream(
+                requestBody,
+                ctrl,
+                {
+                    onToken: (stats) => {
+                        accumulated = stats.fullText;
+                        setStreamingText(stats.fullText);
+                        setParsedFields(parseFields(stats.fullText));
+                    },
+                },
+                modelContext,
+                0,
+                undefined,
+            );
+
+            const finalText = result.text || accumulated;
+            setStreamingText(finalText);
+            setParsedFields(parseFields(finalText));
+
+            if (!finalText.trim()) {
+                setResultError('AI returned empty response.');
             }
         } catch (err) {
-            if ((err as Error).name !== 'AbortError') setError(`Generation failed: ${(err as Error).message}`);
+            if ((err as Error).name !== 'AbortError') {
+                setResultError(`Generation failed: ${(err as Error).message}`);
+            }
         } finally {
             setIsGenerating(false);
             abortControllerRef.current = null;
@@ -217,20 +313,21 @@ export function AIRecommendationModal({
     };
 
     const handleSave = async () => {
-        if (!result) return;
+        const fields = parsedFields;
+        if (Object.keys(fields).length === 0) { setResultError('No parsed fields to save.'); return; }
+
         setIsSaving(true);
-        setError(null);
+        setResultError(null);
 
         const now = Date.now();
-        const p = result.parsed;
 
         try {
-            if (p['Character Name']) {
-                const traitText = `${p['Character Name'] || ''} ${p['Character Description'] || ''} ${p['Character System Prompt'] || ''}`;
+            if (fields['Character Name']) {
+                const traitText = `${fields['Character Name'] || ''} ${fields['Character Description'] || ''} ${fields['Character System Prompt'] || ''}`;
                 const char: Character = {
-                    id: uuidv4(), name: p['Character Name'], description: p['Character Description'] || '',
-                    systemPrompt: p['Character System Prompt'] || '', thinkPrompt: p['Character Think Prompt'] || undefined,
-                    appearancePrompt: p['Character Appearance Prompt'] || undefined, dialoguePrompt: p['Character Dialogue Prompt'] || undefined,
+                    id: uuidv4(), name: fields['Character Name'], description: fields['Character Description'] || '',
+                    systemPrompt: fields['Character System Prompt'] || '', thinkPrompt: fields['Character Think Prompt'] || undefined,
+                    appearancePrompt: fields['Character Appearance Prompt'] || undefined, dialoguePrompt: fields['Character Dialogue Prompt'] || undefined,
                     images: {}, sampler: allSamplers.length > 0 ? allSamplers[0] : undefined,
                     initiativeWeight: getInitiativeWeightValueFromText(traitText), chatProbability: getChatProbabilityValue(traitText),
                     maximumChatStamina: Math.round(getMaximumChatStaminaValueFromText(traitText)),
@@ -244,30 +341,31 @@ export function AIRecommendationModal({
                 };
                 if (!await onSaveCharacter(char)) throw new Error('Failed to save character.');
             }
-            if (p['Context Name']) {
+            if (fields['Context Name']) {
                 const ctx: Context = {
-                    id: uuidv4(), name: p['Context Name'], description: p['Context Description'] || undefined,
-                    text: p['Context Text Content'] || '',
-                    regularExpressionActivationTrigger: p['Context Regular Expression Activation Trigger'] || undefined,
-                    regularExpressionDeactivationTrigger: p['Context Regular Expression Deactivation Trigger'] || undefined,
+                    id: uuidv4(), name: fields['Context Name'], description: fields['Context Description'] || undefined,
+                    text: fields['Context Text Content'] || '',
+                    regularExpressionActivationTrigger: fields['Context Regular Expression Activation Trigger'] || undefined,
+                    regularExpressionDeactivationTrigger: fields['Context Regular Expression Deactivation Trigger'] || undefined,
                     useBase64Encoding: false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveContext(ctx)) throw new Error('Failed to save context.');
             }
-            if (p['Location Name']) {
+            if (fields['Location Name']) {
                 const loc: Location = {
-                    id: uuidv4(), name: p['Location Name'], description: p['Location Description'] || undefined,
-                    text: p['Location Text Content'] || '',
-                    regularExpressionActivationTrigger: p['Location Regular Expression Activation Trigger'] || undefined,
+                    id: uuidv4(), name: fields['Location Name'], description: fields['Location Description'] || undefined,
+                    text: fields['Location Text Content'] || '',
+                    regularExpressionActivationTrigger: fields['Location Regular Expression Activation Trigger'] || undefined,
                     characterBindings: [], locationBindings: [], globalWeight: 1, characterWeights: {},
                     useBase64Encoding: false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveLocation(loc)) throw new Error('Failed to save location.');
             }
-            reset();
-            onClose();
+            // Close result modal, keep form open
+            resetResult();
+            setIsResultOpen(false);
         } catch (err) {
-            setError((err as Error).message);
+            setResultError((err as Error).message);
         } finally {
             setIsSaving(false);
         }
@@ -275,132 +373,263 @@ export function AIRecommendationModal({
 
     if (!isOpen) return null;
 
-    const hasCharacterFields = result && Object.keys(result.parsed).some(k => k.startsWith('Character'));
-    const hasContextFields = result && Object.keys(result.parsed).some(k => k.startsWith('Context'));
-    const hasLocationFields = result && Object.keys(result.parsed).some(k => k.startsWith('Location'));
+    const hasCharacterFields = Object.keys(parsedFields).some(k => k.startsWith('Character'));
+    const hasContextFields = Object.keys(parsedFields).some(k => k.startsWith('Context'));
+    const hasLocationFields = Object.keys(parsedFields).some(k => k.startsWith('Location'));
+    const hasAnyParsed = hasCharacterFields || hasContextFields || hasLocationFields;
+    const hasOutput = streamingText.trim().length > 0;
+
+    const availableTabs: ViewTab[] = ['raw'];
+    if (hasCharacterFields) availableTabs.push('Character');
+    if (hasContextFields) availableTabs.push('Context');
+    if (hasLocationFields) availableTabs.push('Location');
+
+    const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
 
     return (
-        <div className="modal-overlay" onClick={handleClose}>
-            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>Get AI Recommendation</h2>
-                    <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose} disabled={isGenerating || isSaving}>
-                            {result ? 'Close' : 'Cancel'}
+        <>
+            {/* ─── FORM MODAL ─── */}
+            <div className="modal-overlay" onClick={handleCloseForm}>
+                <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-header">
+                        <h2>Get AI Recommendation</h2>
+                        <div className="editor-modal-actions">
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseForm} disabled={isGenerating}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="modal-body editor-modal-body">
+                        <div className="editor-section">
+                            <span className="editor-section-title">Generate</span>
+                            <div className="entity-type-buttons">
+                                {ENTITY_OPTIONS.map(opt => {
+                                    const isSelected = selectedEntities.includes(opt.type);
+                                    return (
+                                        <button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)}
+                                            className={`editor-btn ${isSelected ? 'editor-btn-save' : 'editor-btn-cancel'} entity-type-btn`}>
+                                            {opt.icon} {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="entity-type-hint">
+                                Select one or more entity types. The AI will generate exactly one of each selected type.
+                            </div>
+                        </div>
+
+                        <div className="editor-section">
+                            <span className="editor-section-title">Reference (Optional)</span>
+                            <div className="entity-ref-hint">
+                                Select and order existing entities so the AI generates consistent content. Click to add/remove. First selected = highest priority.
+                            </div>
+                            <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds}
+                                onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)}
+                                searchQuery={charSearch} onSearchChange={setCharSearch} />
+                            <EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds}
+                                onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)}
+                                searchQuery={ctxSearch} onSearchChange={setCtxSearch} />
+                            <EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds}
+                                onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)}
+                                searchQuery={locSearch} onSearchChange={setLocSearch} />
+                            {allCharacters.length === 0 && allContexts.length === 0 && allLocations.length === 0 && (
+                                <div className="entity-ref-empty">No existing entities available to reference.</div>
+                            )}
+                        </div>
+
+                        <div className="editor-section">
+                            <label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label>
+                            <textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea"
+                                placeholder="Leave empty to let the AI generate freely based on referenced entities..." rows={3} />
+                        </div>
+
+                        <button type="button" className="editor-btn editor-btn-save entity-generate-btn"
+                            onClick={handleGenerate} disabled={selectedEntities.length === 0}>
+                            ✨ Generate Recommendation
                         </button>
+
+                        {error && <div className="editor-error-message editor-error-centered entity-error-below">{error}</div>}
                     </div>
                 </div>
+            </div>
 
-                <div className="modal-body editor-modal-body">
-                    {!result && (
-                        <>
-                            <div className="editor-section">
-                                <span className="editor-section-title">Generate</span>
-                                <div className="entity-type-buttons">
-                                    {ENTITY_OPTIONS.map(opt => {
-                                        const isSelected = selectedEntities.includes(opt.type);
-                                        return (
-                                            <button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)}
-                                                className={`editor-btn ${isSelected ? 'editor-btn-save' : 'editor-btn-cancel'} entity-type-btn`}
-                                                disabled={isGenerating}>
-                                                {opt.icon} {opt.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <div className="entity-type-hint">
-                                    Select one or more entity types. The AI will generate exactly one of each selected type.
-                                </div>
+            {/* ─── RESULT MODAL (stacked on top of form) ─── */}
+            {isResultOpen && (
+                <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={handleCloseResult}>
+                    <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Recommendation Result</h2>
+                            <div className="editor-modal-actions">
+                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseResult} disabled={isGenerating || isSaving}>
+                                    {hasOutput ? 'Back to Form' : 'Cancel'}
+                                </button>
                             </div>
+                        </div>
 
-                            <div className="editor-section">
-                                <span className="editor-section-title">Reference Existing (Optional)</span>
-                                <div className="entity-ref-hint">
-                                    Select and order existing entities so the AI generates consistent content. Click to add/remove. First selected = highest priority.
+                        <div className="modal-body editor-modal-body">
+                            {/* Tab buttons */}
+                            {hasAnyParsed && (
+                                <div className="entity-tab-bar">
+                                    {availableTabs.map(tab => (
+                                        <button
+                                            key={tab}
+                                            type="button"
+                                            className={`entity-tab-btn ${effectiveTab === tab ? 'entity-tab-btn-active' : ''}`}
+                                            onClick={() => setActiveTab(tab)}
+                                        >
+                                            {tab === 'raw' ? '📄 Raw' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '🌍 Context' : '📍 Location'}
+                                        </button>
+                                    ))}
                                 </div>
-                                <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds}
-                                    onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)}
-                                    searchQuery={charSearch} onSearchChange={setCharSearch} disabled={isGenerating} />
-                                <EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds}
-                                    onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)}
-                                    searchQuery={ctxSearch} onSearchChange={setCtxSearch} disabled={isGenerating} />
-                                <EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds}
-                                    onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)}
-                                    searchQuery={locSearch} onSearchChange={setLocSearch} disabled={isGenerating} />
-                                {allCharacters.length === 0 && allContexts.length === 0 && allLocations.length === 0 && (
-                                    <div className="entity-ref-empty">No existing entities available to reference.</div>
+                            )}
+
+                            {/* Raw text view */}
+                            {effectiveTab === 'raw' && (
+                                <div className="entity-raw-output">
+                                    <pre className="entity-raw-pre">{streamingText || (isGenerating ? '⏳ Waiting for response...' : '')}</pre>
+                                </div>
+                            )}
+
+                            {/* Character tab */}
+                            {effectiveTab === 'Character' && hasCharacterFields && (
+                                <div className="entity-field-list">
+                                    {parsedFields['Character Name'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Name</div>
+                                            <div className="entity-field-content">{parsedFields['Character Name']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character Description'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Description</div>
+                                            <div className="entity-field-content">{parsedFields['Character Description']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character First Message'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">First Message</div>
+                                            <div className="entity-field-content">{parsedFields['Character First Message']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character System Prompt'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">System Prompt</div>
+                                            <div className="entity-field-content">{parsedFields['Character System Prompt']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character Think Prompt'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Think Prompt</div>
+                                            <div className="entity-field-content">{parsedFields['Character Think Prompt']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character Appearance Prompt'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Appearance</div>
+                                            <div className="entity-field-content">{parsedFields['Character Appearance Prompt']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Character Dialogue Prompt'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Dialogue Examples</div>
+                                            <div className="entity-field-content">{parsedFields['Character Dialogue Prompt']}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Context tab */}
+                            {effectiveTab === 'Context' && hasContextFields && (
+                                <div className="entity-field-list">
+                                    {parsedFields['Context Name'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Name</div>
+                                            <div className="entity-field-content">{parsedFields['Context Name']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Context Description'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Description</div>
+                                            <div className="entity-field-content">{parsedFields['Context Description']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Context Text Content'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Content</div>
+                                            <div className="entity-field-content">{parsedFields['Context Text Content']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Context Regular Expression Activation Trigger'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Activation Trigger</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedFields['Context Regular Expression Activation Trigger']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Context Regular Expression Deactivation Trigger'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Deactivation Trigger</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedFields['Context Regular Expression Deactivation Trigger']}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Location tab */}
+                            {effectiveTab === 'Location' && hasLocationFields && (
+                                <div className="entity-field-list">
+                                    {parsedFields['Location Name'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Name</div>
+                                            <div className="entity-field-content">{parsedFields['Location Name']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Location Description'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Description</div>
+                                            <div className="entity-field-content">{parsedFields['Location Description']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Location Text Content'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Content</div>
+                                            <div className="entity-field-content">{parsedFields['Location Text Content']}</div>
+                                        </div>
+                                    )}
+                                    {parsedFields['Location Regular Expression Activation Trigger'] && (
+                                        <div className="entity-field-block">
+                                            <div className="entity-field-title">Activation Trigger</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedFields['Location Regular Expression Activation Trigger']}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action bar */}
+                            <div className="entity-action-buttons">
+                                {isGenerating ? (
+                                    <button type="button" className="editor-btn editor-btn-cancel" onClick={handleStopGeneration} style={{ flex: 1 }}>
+                                        ⏹ Stop Generation
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={() => { resetResult(); }} disabled={isSaving} style={{ flex: 1 }}>
+                                            Regenerate
+                                        </button>
+                                        {hasAnyParsed && (
+                                            <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>
+                                                {isSaving ? 'Saving...' : '💾 Save All'}
+                                            </button>
+                                        )}
+                                    </>
                                 )}
                             </div>
 
-                            <div className="editor-section">
-                                <label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label>
-                                <textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea"
-                                    placeholder="Leave empty to let the AI generate freely based on referenced entities..." rows={3} disabled={isGenerating} />
-                            </div>
-
-                            <button type="button" className="editor-btn editor-btn-save entity-generate-btn"
-                                onClick={handleGenerate} disabled={isGenerating || selectedEntities.length === 0}>
-                                {isGenerating ? '⏳ Generating...' : '✨ Generate Recommendation'}
-                            </button>
-
-                            {error && <div className="editor-error-message editor-error-centered entity-error-below">{error}</div>}
-                        </>
-                    )}
-
-                    {result && (
-                        <>
-                            {error && <div className="editor-error-message editor-error-centered entity-error-above">{error}</div>}
-
-                            {hasCharacterFields && (
-                                <div className="editor-section">
-                                    <span className="editor-section-title">🎭 Character</span>
-                                    <div className="entity-preview-grid">
-                                        {result.parsed['Character Name'] && <div><strong>Name:</strong> {result.parsed['Character Name']}</div>}
-                                        {result.parsed['Character Description'] && <div><strong>Description:</strong> {result.parsed['Character Description'].substring(0, 150)}{result.parsed['Character Description'].length > 150 ? '...' : ''}</div>}
-                                        {result.parsed['Character First Message'] && <div><strong>First Message:</strong> {result.parsed['Character First Message'].substring(0, 100)}{result.parsed['Character First Message'].length > 100 ? '...' : ''}</div>}
-                                        {result.parsed['Character System Prompt'] && <div><strong>System Prompt:</strong> {result.parsed['Character System Prompt'].length} chars</div>}
-                                        {result.parsed['Character Think Prompt'] && <div><strong>Think Prompt:</strong> {result.parsed['Character Think Prompt'].length} chars</div>}
-                                        {result.parsed['Character Appearance Prompt'] && <div><strong>Appearance:</strong> {result.parsed['Character Appearance Prompt'].length} chars</div>}
-                                        {result.parsed['Character Dialogue Prompt'] && <div><strong>Dialogue Examples:</strong> {result.parsed['Character Dialogue Prompt'].length} chars</div>}
-                                    </div>
-                                </div>
-                            )}
-
-                            {hasContextFields && (
-                                <div className="editor-section">
-                                    <span className="editor-section-title">🌍 Context</span>
-                                    <div className="entity-preview-grid">
-                                        {result.parsed['Context Name'] && <div><strong>Name:</strong> {result.parsed['Context Name']}</div>}
-                                        {result.parsed['Context Description'] && <div><strong>Description:</strong> {result.parsed['Context Description'].substring(0, 150)}{result.parsed['Context Description'].length > 150 ? '...' : ''}</div>}
-                                        {result.parsed['Context Text Content'] && <div><strong>Content:</strong> {result.parsed['Context Text Content'].substring(0, 150)}{result.parsed['Context Text Content'].length > 150 ? '...' : ''}</div>}
-                                        {result.parsed['Context Regular Expression Activation Trigger'] && <div><strong>Activation:</strong> <code className="entity-code">{result.parsed['Context Regular Expression Activation Trigger']}</code></div>}
-                                        {result.parsed['Context Regular Expression Deactivation Trigger'] && <div><strong>Deactivation:</strong> <code className="entity-code">{result.parsed['Context Regular Expression Deactivation Trigger']}</code></div>}
-                                    </div>
-                                </div>
-                            )}
-
-                            {hasLocationFields && (
-                                <div className="editor-section">
-                                    <span className="editor-section-title">📍 Location</span>
-                                    <div className="entity-preview-grid">
-                                        {result.parsed['Location Name'] && <div><strong>Name:</strong> {result.parsed['Location Name']}</div>}
-                                        {result.parsed['Location Description'] && <div><strong>Description:</strong> {result.parsed['Location Description'].substring(0, 150)}{result.parsed['Location Description'].length > 150 ? '...' : ''}</div>}
-                                        {result.parsed['Location Text Content'] && <div><strong>Content:</strong> {result.parsed['Location Text Content'].substring(0, 150)}{result.parsed['Location Text Content'].length > 150 ? '...' : ''}</div>}
-                                        {result.parsed['Location Regular Expression Activation Trigger'] && <div><strong>Activation:</strong> <code className="entity-code">{result.parsed['Location Regular Expression Activation Trigger']}</code></div>}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="entity-action-buttons">
-                                <button type="button" className="editor-btn editor-btn-cancel" onClick={() => { setResult(null); setError(null); }} disabled={isSaving}>Regenerate</button>
-                                <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={isSaving}>
-                                    {isSaving ? 'Saving...' : '💾 Save All'}
-                                </button>
-                            </div>
-                        </>
-                    )}
+                            {resultError && <div className="editor-error-message editor-error-centered entity-error-below">{resultError}</div>}
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
+            )}
+        </>
     );
 }
