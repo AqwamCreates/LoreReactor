@@ -62,8 +62,8 @@ function isChatMessage(msg: ChatMessage): msg is ChatMessage {
 
 function NavButton({ icon, label, onClick }: NavButtonProps) {
   return (
-    <button type="button" className="nav-btn" onClick={onClick}>
-      <span style={{ marginRight: '6px' }}>{icon}</span>{label}
+    <button type="button" className="nav-btn nav-btn-icon-only" onClick={onClick} title={label}>
+      <span>{icon}</span>
     </button>
   );
 }

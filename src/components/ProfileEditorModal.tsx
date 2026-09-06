@@ -498,7 +498,7 @@ export function ProfileEditorModal({
                             <span>Enable Character Expression</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral portrait.
+                            Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images.
                         </div>
                     </div>
 
