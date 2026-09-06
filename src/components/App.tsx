@@ -185,7 +185,7 @@ function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boo
   const done = steps.filter(s => s.done).length;
   const current = steps.find(s => !s.done);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
       <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
         {steps.map(step => (
@@ -1292,11 +1292,9 @@ function App() {
   const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); setIsSamplerListOpen(false); setIsSamplerEditorOpen(true); };
   const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); setIsSamplerEditorOpen(false); setSamplerToEdit(null); };
 
-  // ✅ 5. EARLY RETURNS (Only AFTER all hooks are defined)
-  
-  if (isInitializing) return <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />;
-
-  // ✅ 6. RENDER RETURN
+  // ✅ 5. RENDER RETURN
+  // ✅ Always render the full app shell. Loading screen overlays on top during init.
+  // ✅ This prevents the empty-workspace flash when the loading screen fades out.
 
   const streamingIndicators = (
     <>
@@ -1330,6 +1328,7 @@ function App() {
 
   return (
     <>
+      {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
       <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'}`} onClick={() => { setActionMenuTarget(null); setMenuSearchQuery(''); deactivateToolbar(); }}>
         {!interactionData && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
