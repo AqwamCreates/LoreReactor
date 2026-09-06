@@ -407,7 +407,7 @@ export function useChatSession() {
 
     const handleServerResponse = useCallback(async (
         data: InteractionData, character: Character, signal: AbortSignal,
-        onToken?: (text: string) => void, userImagesBase64?: string[],
+        onToken?: (text: string) => void,
         strategy?: BudgetStrategy | null,
         existingCharacterText?: string,
     ): Promise<InteractionData | null> => {
@@ -441,7 +441,7 @@ export function useChatSession() {
                         }
                     }
                 }} : undefined;
-                rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb, userImagesBase64);
+                rawText = await engine.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
                 budgetCumulativeCostRef.current = engine.currentCost;
                 const requestCost = engine.currentCost - previousCost;
                 if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
@@ -451,7 +451,7 @@ export function useChatSession() {
                 const ep = port || (model.parameters as any)?._runtimePort;
                 if (!ep && !model.apiKey) { if (!signal.aborted) addToast('Model not ready.', 'error'); return null; }
 
-                const { body } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', userImagesBase64, ep);
+                const { body } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', ep);
                 const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
                 const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
@@ -485,7 +485,7 @@ export function useChatSession() {
                 if ((!rawText || !rawText.trim()) && !signal.aborted) {
                     const rp = model.id ? running[model.id]?.port : undefined;
                     const rep = rp || (model.parameters as any)?._runtimePort;
-                    const { body: rb } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', userImagesBase64, rep);
+                    const { body: rb } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', rep);
                     const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
                     rawText = await doStream(rb, rc);
                     if (!rawText || !rawText.trim()) return null;
@@ -625,7 +625,7 @@ export function useChatSession() {
         setStreamingCharacter(targetChar); streamingCharacterRef.current = targetChar;
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
-            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, undefined, '');
+            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (result) { 
                 await saveRawInteractionData(result); 
@@ -648,7 +648,7 @@ export function useChatSession() {
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-            const chatMessage = createChatMessage(interactionData, currentCharacter, text, { files: encodedFiles })
+            const chatMessage = createChatMessage(interactionData, currentCharacter, text, { files: encodedFiles });
             let td = addMessageToInteractionData(interactionData, chatMessage);
 
             // ✅ Resolve protagonist location via regex before AI turn sequence
@@ -674,7 +674,7 @@ export function useChatSession() {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
-                return handleServerResponse(d, c, s, ot, undefined, undefined, '');
+                return handleServerResponse(d, c, s, ot, undefined, '');
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
@@ -727,7 +727,7 @@ export function useChatSession() {
             const ep = port || (model?.parameters as any)?._runtimePort;
             if (!ep && !model?.apiKey) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
-            const { body } = await prepareRequestBody(dataWithRegen, char, existingText, undefined, ep);
+            const { body } = await prepareRequestBody(dataWithRegen, char, existingText, ep);
             const lmCtx: LanguageModelContext = { apiKey: model?.apiKey, backend: model?.backend, modelPath: model?.model, runtimePort: ep };
 
             const result = await languageModelEngine.generateStream(body, ctrl, {
@@ -840,7 +840,7 @@ export function useChatSession() {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
                 setStreamingCharacter(c); streamingCharacterRef.current = c;
-                return handleServerResponse(d, c, s, ot, undefined, undefined, '');
+                return handleServerResponse(d, c, s, ot, undefined, '');
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
@@ -865,7 +865,7 @@ export function useChatSession() {
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
         const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
-        try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, undefined, ''); }
+        try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, ''); }
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }
     }, [handleServerResponse, isModelReadyForGeneration]);
