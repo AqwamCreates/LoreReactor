@@ -223,13 +223,6 @@ export async function runTurnSequence(
             continue;
         }
 
-        // ✅ Skip probability gate — does this character skip speaking even when willing?
-        const effectiveSkip = getEffectiveSkipProbability(selectedSpeaker, profile);
-        if (effectiveSkip > 0 && Math.random() < effectiveSkip) {
-            spokenThisSequence.add(selectedSpeaker.id);
-            continue;
-        }
-
         // ✅ Character speaks — co-located
         if (onSpeakerChange) onSpeakerChange(selectedSpeaker);
 
