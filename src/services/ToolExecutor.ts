@@ -23,7 +23,7 @@ export async function executeTool(invocation: ToolInvocation): Promise<ToolResul
             return executeSearch(invocation.args);
         case 'calculator':
             return executeCalculator(invocation.args);
-        default:
+        default: {
             console.warn(`Unknown tool type: ${invocation.toolType}`);
             const errorContent = `[Error: Unknown tool "${invocation.toolType}"]`;
             return {
@@ -32,6 +32,7 @@ export async function executeTool(invocation: ToolInvocation): Promise<ToolResul
                 content: errorContent,
                 displayReplacement: errorContent,
             };
+            }
     }
 }
 

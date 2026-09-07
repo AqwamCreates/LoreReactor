@@ -924,11 +924,11 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${thinkEndString}${contextEndString}`);
 
         if (enableWebSearch) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}search: <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
+            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}search <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
         }
 
         if (enableCalculator) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator: <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`);
+            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`);
         }
     }
 
