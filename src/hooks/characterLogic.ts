@@ -11,8 +11,6 @@ function getEffectiveNumeric<K extends keyof Character>(key: K, character: Chara
 function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
     const characterValue = character[key] as boolean;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
-    console.log(characterValue)
-    console.log(profileValue)
     if (profileValue === undefined || profileValue === 0) return characterValue;
     if (profileValue < 0) return false
     return true;
