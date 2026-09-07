@@ -160,6 +160,7 @@ function renderProfileSubtext(profile: Profile) {
   if (profile.forceNameReveal) flags.push('Force Names');
   if (profile.enableCharacterExpression) flags.push('Expressions');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
+  if (profile.useTimeElapsed) flags.push('Time Elapsed');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
   if (profile.enableMemoryReading) flags.push('Memory Read');
   if (profile.enableMemoryWriting) flags.push('Memory Write');

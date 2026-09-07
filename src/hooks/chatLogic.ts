@@ -36,7 +36,7 @@ const startOfLocationLine = `${contextStartString}Start Of Current Location.${co
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Time Elapsed', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -853,29 +853,31 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
-        dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
+        dateAndTimeLines.push(`${contextStartString}${thinkStartString}Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
+    }
 
-        if (interactionHistory.length > 0) {
-            const now = Date.now();
-            const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
-            const diffMs = Math.max(0, now - lastMsgTimestamp);
+    const timeElapsedLines: string[] = []
 
-            const totalSeconds = Math.floor(diffMs / 1000);
-            const numberOfDays = Math.floor(totalSeconds / 86400);
-            const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
-            const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
-            const numberOfSeconds = totalSeconds % 60;
+    if (profile?.useTimeElapsed && interactionHistory.length > 0) {
+        const now = Date.now();
+        const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
+        const diffMs = Math.max(0, now - lastMsgTimestamp);
 
-            const parts: string[] = [];
-            if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
-            if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
-            if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
-            if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
+        const totalSeconds = Math.floor(diffMs / 1000);
+        const numberOfDays = Math.floor(totalSeconds / 86400);
+        const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
+        const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
+        const numberOfSeconds = totalSeconds % 60;
 
-            const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
+        const parts: string[] = [];
+        if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
+        if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
+        if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
+        if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
 
-            dateAndTimeLines.push(`${contextStartString}${thinkStartString} It has been ${timeSinceLastMessageString} since the last message.${thinkEndString}${contextEndString}`);
-        }
+        const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
+
+        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message. I will update relevant information according to this.${thinkEndString}${contextEndString}`);
     }
 
     const dialoguePromptLines: string[] = [];
@@ -936,6 +938,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         'Location': locationLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
+        'Time Elapsed': timeElapsedLines,
         'Text Injection': textInjectionLines,
     };
 

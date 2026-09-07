@@ -23,11 +23,12 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Location',
     'Fatigue Information',
     'Date And Time',
+    'Time Elapsed',
     'Text Injection'
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Time Elapsed', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
@@ -123,6 +124,7 @@ export function ProfileEditorModal({
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
+    const [useTimeElapsed, setUseTimeElapsed] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
     const [chatProbability, setChatProbability] = useState<number>(0);
     const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
@@ -160,6 +162,7 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
+                setUseTimeElapsed(existingProfile.useTimeElapsed ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
                 setChatProbability(existingProfile.chatProbability ?? -1);
                 setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
@@ -196,6 +199,7 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableDialoguePrompt(-1);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
+                setUseTimeElapsed(false);
                 setForceEqualInitiative(false);
                 setChatProbability(0);
                 setMaximumChatStamina(0);
@@ -245,6 +249,7 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
+            useTimeElapsed,
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
@@ -287,6 +292,7 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
+            useTimeElapsed,
             forceEqualInitiative,
             chatProbability,
             maximumChatStamina,
@@ -547,7 +553,20 @@ export function ProfileEditorModal({
                             <span>Use Current Date And Time</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Inject the current real-world date and time into the system prompt so the model is aware of when the conversation is taking place.
+                            Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place.
+                        </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={useTimeElapsed}
+                                onChange={(e) => setUseTimeElapsed(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Use Time Elapsed</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Inject how long it has been since the last message was sent. Useful for real-time pacing awareness.
                         </div>
 
                         <div style={{ marginTop: '12px' }}>
