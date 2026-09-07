@@ -262,7 +262,7 @@ function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boo
   const current = steps.find(s => !s.done);
 
   const mid = Math.ceil(steps.length / 2);
-  const renderTopRow = [...steps.slice(0, mid)].reverse();
+  const renderTopRow = [...steps.slice(0, mid)];
   const renderBottomRow = steps.slice(mid);
 
   return (
