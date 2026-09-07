@@ -3,14 +3,28 @@ import type { Character, InteractionData, Location } from '../types';
 /**
  * Get the current location index for a character from their last interaction entry.
  */
-export function getCurrentLocationIndex(data: InteractionData, character: Character): number | undefined {
-    const interactionHistory = data.interactionHistory
+export function getCurrentLocationIndex(interactionData: InteractionData, character: Character) {
+    if (interactionData.locations.length <= 0) return undefined
+    const interactionHistory = interactionData.interactionHistory
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         if (interactionHistory[i].character.id === character.id && interactionHistory[i].locationIndex !== undefined) {
             return interactionHistory[i].locationIndex;
         }
     }
     return undefined;
+}
+
+export function getCurrentLocation(interactionData: InteractionData, character: Character){
+
+    const currentLocationIndex = getCurrentLocationIndex(interactionData, character)
+
+    if (!currentLocationIndex) return undefined
+
+    const locations = interactionData.locations
+
+    const location = locations[currentLocationIndex];
+
+    return location
 }
 
 /**
