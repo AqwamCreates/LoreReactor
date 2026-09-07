@@ -9,6 +9,10 @@ import type {
 
 import { localURL } from '../configurations';
 import { v4 as uuidv4 } from 'uuid';
+import {
+    browserReadJson, browserWriteJson, browserDeleteFile,
+    browserListDirectory, browserExists, isServerAvailable,
+} from './browserStorage';
 
 const now = Date.now()
 
@@ -122,9 +126,29 @@ const PATHS = {
 };
 const MANIFEST_FILE = 'manifest.json';
 
+// ─── Server Availability Cache ──────────────────────────────────────
+
+let _serverAvailable: boolean | null = null;
+
+async function getServerAvailable(): Promise<boolean> {
+    if (_serverAvailable !== null) return _serverAvailable;
+    _serverAvailable = await isServerAvailable();
+    return _serverAvailable;
+}
+
+/** Force re-check server availability (e.g., after network change). */
+export function resetServerAvailability(): void {
+    _serverAvailable = null;
+}
+
 // --- Generic Helpers ---
 
 async function fetchJson<T>(url: string): Promise<T | null> {
+  // Browser-only mode: read from IndexedDB
+  if (!(await getServerAvailable())) {
+    return browserReadJson<T>(url);
+  }
+
   try {
     const cleanUrl = url.startsWith('/') ? url : `/${url}`;
     const targetUrl = `${localURL}${cleanUrl}`;
@@ -152,7 +176,10 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     return JSON.parse(text) as T;
   } catch (error) { 
     if ((error as Error).message.includes('Failed to fetch')) {
-      // Network error usually handled by caller or global handler
+      // Network error — might be offline, try browser storage
+      console.warn(`Network error for ${url}, falling back to browser storage`);
+      resetServerAvailability();
+      return browserReadJson<T>(url);
     } else {
       console.warn(`Failed to parse JSON from ${url}:`, error);
     }
@@ -161,21 +188,54 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
-  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  const targetUrl = `${localURL}${cleanUrl}`;
-  const response = await fetch(targetUrl, { 
-    method: 'PUT', 
-    headers: { 'Content-Type': 'application/json' }, 
-    body: JSON.stringify(data) 
-  });
-  if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
+  // Browser-only mode: write to IndexedDB
+  if (!(await getServerAvailable())) {
+    await browserWriteJson(url, data);
+    return;
+  }
+
+  try {
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
+    const response = await fetch(targetUrl, { 
+      method: 'PUT', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(data) 
+    });
+    if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
+  } catch (e) {
+    // Network failure — fall back to browser storage
+    if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
+      console.warn(`Network error saving ${url}, falling back to browser storage`);
+      resetServerAvailability();
+      await browserWriteJson(url, data);
+    } else {
+      throw e;
+    }
+  }
 }
 
 async function deleteResource(url: string): Promise<void> {
-  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-  const targetUrl = `${localURL}${cleanUrl}`;
-  const response = await fetch(targetUrl, { method: 'DELETE' });
-  if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
+  // Browser-only mode: delete from IndexedDB
+  if (!(await getServerAvailable())) {
+    await browserDeleteFile(url);
+    return;
+  }
+
+  try {
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
+    const response = await fetch(targetUrl, { method: 'DELETE' });
+    if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
+  } catch (e) {
+    if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
+      console.warn(`Network error deleting ${url}, falling back to browser storage`);
+      resetServerAvailability();
+      await browserDeleteFile(url);
+    } else {
+      throw e;
+    }
+  }
 }
 
 async function ensureManifest(folderPath: string): Promise<string[]> {
@@ -189,6 +249,20 @@ async function ensureManifest(folderPath: string): Promise<string[]> {
 
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
   try {
+    // In browser mode, list directory from IndexedDB keys
+    if (!(await getServerAvailable())) {
+      const entries = await browserListDirectory(folderPath);
+      const ids = entries
+        .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
+        .map(f => f.replace('.json', ''));
+      
+      if (ids.length > 0) {
+        console.log(`Found ${ids.length} items in ${folderPath} (browser). Creating manifest.`);
+        await putJson(manifestUrl, ids);
+      }
+      return ids;
+    }
+
     const files = await fetchJson<string[]>(folderPath);
     
     if (files && Array.isArray(files)) {
@@ -451,7 +525,6 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
 
     const memories = await hydrateMemories(rawCharacter.memories);
 
-    // ✅ Migrate legacy single image field to new folder-based images record
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
       images['neutral'] = (rawCharacter as any).image;
@@ -524,7 +597,6 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
 
     const memories = await hydrateMemories(rawCharacter.memories);
 
-    // ✅ Migrate legacy single image field to new folder-based images record
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
       images['neutral'] = (rawCharacter as any).image;
@@ -549,7 +621,7 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
         numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
         sampler: undefined,
-        enableWebSearch: rawCharacter.enableCalculator,
+        enableWebSearch: rawCharacter.enableWebSearch,
         enableCalculator: rawCharacter.enableCalculator,
         enableMemoryWriting: rawCharacter.enableMemoryWriting,
         enableMemoryReading: rawCharacter.enableMemoryReading,
@@ -732,12 +804,10 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
     if (!rawStrategy) return null;
     
     try {
-      // Load all online models in the pool
       const onlineModelPromises = (rawStrategy.onlineModelIds || []).map(mid => loadRawModel(mid));
       const onlineModelsResults = await Promise.all(onlineModelPromises);
       const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
 
-      // Load all local models in the pool
       const localModelPromises = (rawStrategy.localModelIds || []).map(mid => loadRawModel(mid));
       const localModelsResults = await Promise.all(localModelPromises);
       const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
@@ -1041,7 +1111,6 @@ async function buildInteractionDataShell(
 }
 
 export async function loadInteractionMessages(interactionData: InteractionData): Promise<InteractionData> {
-    // Already hydrated — return as-is
     if (interactionData.interactionHistory.length > 0) return interactionData;
 
     const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
@@ -1049,7 +1118,6 @@ export async function loadInteractionMessages(interactionData: InteractionData):
         return interactionData;
     }
 
-    // Build character lookup from already-hydrated shell
     const charMap = new Map<string, Character>();
     if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
     for (const p of interactionData.participants) {
@@ -1088,7 +1156,6 @@ export async function loadRawInteractionData(
   const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
   if (!rawInteractionData) return null;
 
-  // Build character map from pre-loaded shells or load only needed shells
   const charMap = new Map<string, Character>();
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
@@ -1098,7 +1165,6 @@ export async function loadRawInteractionData(
     for (const s of shells) { if (s) charMap.set(s.id, s); }
   }
 
-  // Load only this chat's contexts individually
   const contextMap = new Map<string, Context>();
   if (rawInteractionData.contextIds?.length) {
     const ctxResults = await Promise.all(
@@ -1114,7 +1180,6 @@ export async function loadRawInteractionData(
     for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
   }
 
-  // Load only this chat's locations individually
   const locationMap = new Map<string, Location>();
   if (rawInteractionData.locationIds?.length) {
     const locResults = await Promise.all(
@@ -1130,7 +1195,6 @@ export async function loadRawInteractionData(
     for (const l of locResults) { if (l) locationMap.set(l.id, l); }
   }
 
-  // Load only this chat's profile individually
   const profileMap = new Map<string, Profile>();
   if (rawInteractionData.ProfileId) {
     const p = await loadRawProfile(rawInteractionData.ProfileId);
@@ -1147,7 +1211,6 @@ export async function loadAllRawInteractionDataShells(): Promise<InteractionData
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  // Load all character shells once
   const allCharShells = await loadAllCharacterShells();
   const charMap = new Map(allCharShells.map(c => [c.id, c]));
 
@@ -1159,7 +1222,6 @@ export async function loadAllRawInteractionDataShells(): Promise<InteractionData
       const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
       if (!raw) return null;
 
-      // Build minimal shell — no contexts, locations, or profile hydration
       const emptyContextMap = new Map<string, Context>();
       const emptyLocationMap = new Map<string, Location>();
       const emptyProfileMap = new Map<string, Profile>();
@@ -1269,7 +1331,6 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
         // File doesn't exist or network error — fall through to neutral
     }
 
-    // Fall back to neutral if the requested expression doesn't exist
     const effectiveExpression = characterExpression || "neutral";
     if (effectiveExpression !== 'neutral') {
         const neutralUrl = getCharacterImageUrl(characterId, 'neutral');
