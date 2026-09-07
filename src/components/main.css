@@ -1378,8 +1378,8 @@ z-index: 3000;
 display: flex;
 flex-direction: column;
 overflow: hidden;
-min-width: 200px;
-max-width: 250px;
+min-width: 180px;
+max-width: 200px;
 max-height: 400px;
 }
 .action-menu-header {
@@ -1467,7 +1467,7 @@ background: transparent;
 border: none;
 border-bottom: 1px solid var(--border);
 padding: 10px 12px;
-font-size: 0.875rem;
+font-size: 0.6rem;
 color: var(--text-h);
 outline: none;
 width: 100%;
@@ -1488,7 +1488,7 @@ display: none;
 background: transparent;
 border: none;
 border-bottom: 1px solid var(--border);
-padding: 12px;
+padding: 8px;
 text-align: left;
 cursor: pointer;
 color: var(--text-h);
@@ -1498,7 +1498,7 @@ width: 100%;
 display: flex;
 justify-content: space-between;
 align-items: center;
-gap: 12px;
+gap: 6px;
 position: relative;
 box-sizing: border-box;
 min-height: 44px;
@@ -1515,6 +1515,7 @@ min-width: 0;
 overflow: hidden;
 text-overflow: ellipsis;
 white-space: nowrap;
+font-size: 0.85rem;
 }
 .action-meta-container {
 display: flex;
@@ -1577,6 +1578,54 @@ color: var(--text-h);
 }
 .action-menu-item-disabled:hover {
 background: transparent;
+}
+
+@media (max-width: 768px) {
+    .action-menu-container {
+        min-width: 120px;
+        max-width: 160px;
+        max-height: 50vh;
+    }
+    .action-menu-header {
+        padding: 4px 10px;
+        font-size: 0.6rem;
+    }
+    .action-menu-search {
+        padding: 6px 10px;
+        font-size: 0.6rem;
+        min-height: 36px;
+    }
+    .action-menu-item {
+        padding: 6px 8px;
+        min-height: 32px;
+        gap: 4px;
+    }
+    .action-menu-item-label {
+        font-size: 0.6rem;
+    }
+    .action-count-badge {
+        font-size: 0.55rem;
+        padding: 2px 6px;
+        min-width: 20px;
+        height: 20px;
+    }
+    .action-format-panel {
+        padding: 6px;
+        gap: 3px;
+    }
+    .action-format-row {
+        gap: 3px;
+    }
+    .action-format-btn {
+        font-size: 0.6rem;
+        padding: 3px 0;
+        min-height: 24px;
+    }
+    .action-format-toggle {
+        font-size: 0.55rem;
+        padding: 2px 6px;
+        min-height: 20px;
+    }
 }
 
 /* =============================================================================
