@@ -53,7 +53,7 @@ function isQuotaError(e: unknown): boolean {
     const message = ((e as Error)?.message || '').toLowerCase();
     return status === 429 || status === 403 || status === 503 ||
         message.includes('rate limit') || message.includes('usage limit') ||
-        message.includes('quota') || message.includes('credit') || 
+        message.includes('quota') || message.includes('credit') ||
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
         message.includes('subscribe') || message.includes('too many requests');
@@ -128,7 +128,6 @@ export class BudgetStrategyEngine {
         try {
             const port = await this.loadLocalModel(model.id);
             if (port) {
-                // Update our local snapshot so subsequent calls see the new port
                 this.runningModels = {
                     ...this.runningModels,
                     [model.id]: { isRunning: true, port },
@@ -153,13 +152,11 @@ export class BudgetStrategyEngine {
     ): { model: LanguageModel; index: number } | null {
         if (pool.length === 0) return null;
 
-        // If current index hasn't failed, use it
         if (!failedIndices.has(currentIndex % pool.length)) {
             const idx = currentIndex % pool.length;
             return { model: pool[idx], index: idx };
         }
 
-        // Current index failed — find next non-failed model
         for (let attempt = 1; attempt < pool.length; attempt++) {
             const idx = (currentIndex + attempt) % pool.length;
             if (!failedIndices.has(idx)) {
@@ -167,7 +164,6 @@ export class BudgetStrategyEngine {
             }
         }
 
-        // All models in pool have been exhausted
         return null;
     }
 
@@ -180,7 +176,6 @@ export class BudgetStrategyEngine {
     ): Promise<string> {
         const useOnline = await this.shouldUseOnline(interactionData);
 
-        // Reset per-attempt failure tracking
         this.failedOnlineIndices.clear();
         this.failedLocalIndices.clear();
 
@@ -190,16 +185,24 @@ export class BudgetStrategyEngine {
         const primaryFailedSet = useOnline ? this.failedOnlineIndices : this.failedLocalIndices;
         const fallbackFailedSet = useOnline ? this.failedLocalIndices : this.failedOnlineIndices;
 
-        const wrappedCallbacks: StreamCallbacks | undefined = callbacks ? {
-            onToken: callbacks.onToken,
-        } : undefined;
+        // Accumulates partial text across model rotations for seamless continuation
+        let accumulatedPartialText = '';
+
+        // Wrap callbacks to track partial output locally AND forward to UI
+        const wrappedCallbacks: StreamCallbacks = {
+            onToken: async (stats) => {
+                accumulatedPartialText = stats.fullText;
+                if (callbacks?.onToken) {
+                    await callbacks.onToken(stats);
+                }
+            },
+        };
 
         // ─── Try primary pool (exhaust-first) ───
         while (true) {
             const selection = this.selectFromPool(primaryPool, primaryIndex, primaryFailedSet);
             if (!selection) break;
 
-            // Auto-load local model if not already running
             const loaded = await this.ensureModelLoaded(selection.model);
             if (!loaded) {
                 primaryFailedSet.add(selection.index);
@@ -212,7 +215,8 @@ export class BudgetStrategyEngine {
             const runtimePort = primaryCtx.runtimePort;
 
             try {
-                const { body } = await prepareRequestBody(interactionData, character, '', userImagesBase64, runtimePort);
+                // Pass accumulated partial text so the model continues from where the last one left off
+                const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
 
                 const result = await engine.generateStream(
                     body,
@@ -221,31 +225,30 @@ export class BudgetStrategyEngine {
                     primaryCtx,
                 );
 
-                // Success — update persistent index to this model for next request
                 if (useOnline) {
                     this.onlineIndex = selection.index;
                 } else {
                     this.localIndex = selection.index;
                 }
 
-                // Track cost
                 const promptTokens = await engine.countTokens(body.prompt || '');
                 const completionTokens = await engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.currentCost += cost.totalCost;
 
-                return result.text;
+                // Combine accumulated partial with this model's output
+                return accumulatedPartialText + result.text;
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
 
-                // Only rotate on quota/rate-limit errors
                 if (!isQuotaError(e)) {
                     throw e;
                 }
 
-                // Mark this model as exhausted and try next in pool
+                // accumulatedPartialText already contains everything streamed before the error
+                // thanks to the wrapped onToken callback. Next model will continue from here.
                 primaryFailedSet.add(selection.index);
-                console.warn(`Model ${selection.model.name} hit quota/rate limit, rotating to next in pool.`);
+                console.warn(`Model ${selection.model.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating to next model for continuation.`);
             }
         }
 
@@ -257,7 +260,6 @@ export class BudgetStrategyEngine {
                 const selection = this.selectFromPool(fallbackPool, fallbackIndex, fallbackFailedSet);
                 if (!selection) break;
 
-                // Auto-load fallback model if not already running
                 const loaded = await this.ensureModelLoaded(selection.model);
                 if (!loaded) {
                     fallbackFailedSet.add(selection.index);
@@ -270,7 +272,7 @@ export class BudgetStrategyEngine {
                 const fallbackPort = fallbackCtx.runtimePort;
 
                 try {
-                    const { body: fallbackBody } = await prepareRequestBody(interactionData, character, '', userImagesBase64, fallbackPort);
+                    const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, fallbackPort);
 
                     const result = await engine.generateStream(
                         fallbackBody,
@@ -279,7 +281,6 @@ export class BudgetStrategyEngine {
                         fallbackCtx,
                     );
 
-                    // Update persistent fallback index
                     if (useOnline) {
                         this.localIndex = selection.index;
                     } else {
@@ -291,7 +292,7 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.currentCost += cost.totalCost;
 
-                    return result.text;
+                    return accumulatedPartialText + result.text;
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -303,34 +304,30 @@ export class BudgetStrategyEngine {
             }
         }
 
+        // If we have partial text but all models exhausted, return what we got
+        if (accumulatedPartialText.trim()) {
+            return accumulatedPartialText;
+        }
+
         throw new Error('All models in both primary and fallback pools have been exhausted.');
     }
 
     private async shouldUseOnline(interactionData: InteractionData): Promise<boolean> {
-        // No online models available → force local
         if (this.strategy.onlineModels.length === 0) return false;
-
-        // No local models available → force online
         if (this.strategy.localModels.length === 0) return true;
-
-        // Budget exceeded → force local
         if (this.currentCost >= this.strategy.maximumBudget) return false;
 
-        // Count tokens in history
         let numberOfTokens = 0;
         for (const m of interactionData.interactionHistory) {
             numberOfTokens += await engine.countTokens(m.textContent);
         }
 
-        // Context size threshold
         if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
 
         const complexityScore = computeComplexityScore(interactionData);
 
-        // Complexity score threshold
         if (complexityScore !== undefined && complexityScore >= this.strategy.switchOnComplexityScore) return true;
 
-        // Probability-based switching
         const roll = Math.random() * 100;
         return roll < this.strategy.switchProbability;
     }

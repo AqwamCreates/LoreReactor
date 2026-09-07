@@ -86,16 +86,7 @@ export function BudgetStrategyEditorModal({
         const newErrors: { name?: string; onlineModels?: string; localModels?: string } = {};
         
         if (!name.trim()) newErrors.name = 'Name is required.';
-        if (onlineModelIds.length === 0) newErrors.onlineModels = 'At least one online model is required.';
-        if (localModelIds.length === 0) newErrors.localModels = 'At least one local model is required.';
-        
-        // Check for overlap between pools
-        const overlap = onlineModelIds.some(id => localModelIds.includes(id));
-        if (overlap) {
-            newErrors.onlineModels = 'A model cannot be in both online and local pools.';
-            newErrors.localModels = 'A model cannot be in both online and local pools.';
-        }
-        
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -106,8 +97,7 @@ export function BudgetStrategyEditorModal({
         const onlineModels = allModels.filter(m => onlineModelIds.includes(m.id));
         const localModels = allModels.filter(m => localModelIds.includes(m.id));
 
-        if (onlineModels.length === 0 || localModels.length === 0) {
-            alert('Selected models not found.');
+        if ((onlineModels.length + localModels.length) === 0) {
             return null;
         }
 
