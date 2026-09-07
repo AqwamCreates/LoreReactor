@@ -29,6 +29,7 @@ import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
+import { BudgetControlModal } from './BudgetControlModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
@@ -395,6 +396,7 @@ function App() {
   const [isSamplerEditorOpen, setIsSamplerEditorOpen] = useState(false);
   const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isBudgetControlOpen, setIsBudgetControlOpen] = useState(false);
   const [isAIRecommendationOpen, setIsAIRecommendationOpen] = useState(false);
   const [isCardImportOpen, setIsCardImportOpen] = useState(false);
   const [isExportDataOpen, setIsExportDataOpen] = useState(false);
@@ -1477,7 +1479,7 @@ function App() {
                 timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0
                     ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp))
                     : undefined}
-            />
+              />
             </div>
           </div></div></header>
 
@@ -1599,7 +1601,26 @@ function App() {
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
 
         {/* Settings & Tool Modals */}
-        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenImportCharacterCard={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} onOpenParticipantControl={() => setIsParticipantControlOpen(true)} />}
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            onOpenImportCharacterCard={() => setIsCardImportOpen(true)}
+            onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)}
+            onOpenExportData={() => setIsExportDataOpen(true)}
+            onOpenImportData={() => setIsImportDataOpen(true)}
+            onOpenParticipantControl={() => setIsParticipantControlOpen(true)}
+            onOpenBudgetControl={() => setIsBudgetControlOpen(true)}
+          />
+        )}
+        {isBudgetControlOpen && (
+          <BudgetControlModal
+            isOpen={isBudgetControlOpen}
+            onClose={() => setIsBudgetControlOpen(false)}
+            allBudgetStrategies={allBudgetStrategies}
+            activeStrategy={activeStrategy}
+          />
+        )}
         {isParticipantControlOpen && <ParticipantControlModal isOpen={isParticipantControlOpen} onClose={() => setIsParticipantControlOpen(false)} interactionData={interactionData} onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }} onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage} onInjectCustomMessage={handleInjectCustomMessage} onInjectFirstMessage={handleInjectFirstMessage} />}
         {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} activeStrategy={activeStrategy} />}
         {isCardImportOpen && <CharacterCardImportModal isOpen={isCardImportOpen} onClose={() => setIsCardImportOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} allSamplers={allSamplers} />}

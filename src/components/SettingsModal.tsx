@@ -39,6 +39,12 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         label: 'Export Data',
         description: 'Download everything as a single JSON backup file.',
     },
+    {
+        id: 'budget-control',
+        icon: '💰',
+        label: 'Budget Control',
+        description: 'View, edit, reset, and manage persistent budget runtime data.',
+    },
 ];
 
 interface SettingsModalProps {
@@ -49,6 +55,7 @@ interface SettingsModalProps {
     onOpenExportData: () => void;
     onOpenImportData: () => void;
     onOpenParticipantControl: () => void;
+    onOpenBudgetControl: () => void;
 }
 
 export function SettingsModal({
@@ -59,16 +66,30 @@ export function SettingsModal({
     onOpenExportData,
     onOpenImportData,
     onOpenParticipantControl,
+    onOpenBudgetControl,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
         switch (id) {
-            case 'participant-control': onOpenParticipantControl(); break;
-            case 'ai-recommendation': onOpenAIRecommendation(); break;
-            case 'import-character-card': onOpenImportCharacterCard(); break;
-            case 'import-data': onOpenImportData(); break;
-            case 'export-data': onOpenExportData(); break;
+            case 'participant-control':
+                onOpenParticipantControl();
+                break;
+            case 'ai-recommendation':
+                onOpenAIRecommendation();
+                break;
+            case 'import-character-card':
+                onOpenImportCharacterCard();
+                break;
+            case 'import-data':
+                onOpenImportData();
+                break;
+            case 'export-data':
+                onOpenExportData();
+                break;
+            case 'budget-control':
+                onOpenBudgetControl();
+                break;
         }
     };
 
