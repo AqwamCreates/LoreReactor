@@ -1327,17 +1327,21 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
         const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
         if (!strategy) return null;
 
+        const now = Date.now()
+
         return {
             id: raw.id || 'global-budget-data',
             name: 'Global Budget Data',
             description: 'Persistent runtime budget tracking',
             budgetSpent: raw.budgetSpent ?? 0,
+            resetDuration: raw.resetDuration,
             modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
             modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
             modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
+            lastResetTimestamp: raw.lastResetTimestamp,
             budgetStrategy: strategy,
-            firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
-            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+            firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
         };
     } catch (e) {
         console.warn('Failed to load budget data:', e);
@@ -1351,32 +1355,16 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         name: data.name,
         description: data.description,
         budgetSpent: data.budgetSpent,
+        resetDuration: data.resetDuration,
         modelLastUsedTimestamps: data.modelLastUsedTimestamps,
         modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
         modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
+        lastResetTimestamp: data.lastResetTimestamp,
         budgetStrategyId: data.budgetStrategy.id,
         firstCreatedTimestamp: data.firstCreatedTimestamp,
         lastUpdatedTimestamp: Date.now(),
     };
     await putJson(PATHS.budgetData, payload);
-}
-
-export async function createDefaultBudgetData(strategy: BudgetStrategy): Promise<BudgetData> {
-    const now = Date.now();
-    const data: BudgetData = {
-        id: 'global-budget-data',
-        name: 'Global Budget Data',
-        description: 'Persistent runtime budget tracking',
-        budgetSpent: 0,
-        modelLastUsedTimestamps: {},
-        modelLastQuotaHitTimeStamps: {},
-        modelLastErrorHitTimeStamps: {},
-        budgetStrategy: strategy,
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-    };
-    await saveRawBudgetData(data);
-    return data;
 }
 
 // --- Image & Voice Helpers ---

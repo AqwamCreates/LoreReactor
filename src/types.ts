@@ -306,9 +306,11 @@ export interface RawBudgetStrategy extends RawData {
 export interface BudgetData extends ObjectData{
 
   budgetSpent: number
+  resetDuration: number // User defined duration. It could be hourly, daily, weekly or monthly. The user can also add custom durations.
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
+  lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
 
 }
@@ -316,9 +318,11 @@ export interface BudgetData extends ObjectData{
 export interface RawBudgetData extends RawData{
 
   budgetSpent: number
+  resetDuration: number // User defined duration. It could be hourly, daily, weekly or monthly. The user can also add custom durations.
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
+  lastResetTimestamp: number
   budgetStrategyId: string
 
 }
