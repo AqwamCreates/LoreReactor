@@ -130,6 +130,8 @@ export function CharacterCardImportModal({
                 chatImpatienceSensitivity,
                 memoryRetentionWeight,
                 contextSensitivity,
+                enableWebSearch: false,
+                enableCalculator: false,
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
                 memories: {},

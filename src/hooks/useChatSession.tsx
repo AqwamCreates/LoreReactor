@@ -146,8 +146,8 @@ async function processToolInvocations(
     character: Character,
     profile: InteractionData['Profile'],
 ): Promise<{ resumeText: string; displayText: string } | null> {
-    const webSearchEnabled = getEffectiveEnableWebSearch(character, profile) === 1;
-    const calculatorEnabled = getEffectiveEnableCalculator(character, profile) === 1;
+    const webSearchEnabled = getEffectiveEnableWebSearch(character, profile);
+    const calculatorEnabled = getEffectiveEnableCalculator(character, profile);
 
     if (!webSearchEnabled && !calculatorEnabled) return null;
 
