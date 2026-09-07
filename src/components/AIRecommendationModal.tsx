@@ -93,6 +93,12 @@ export function AIRecommendationModal({
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
 
+    // ─── Reference images ───
+    const [referenceImages, setReferenceImages] = useState<File[]>([]);
+    const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
+    const [isUploadingImages, setIsUploadingImages] = useState(false);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+
     // ─── Result modal state ───
     const [isResultOpen, setIsResultOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -112,6 +118,11 @@ export function AIRecommendationModal({
         setCharSearch('');
         setCtxSearch('');
         setLocSearch('');
+        setReferenceImages([]);
+        setReferenceImagePreviews(prev => {
+            prev.forEach(p => { if (!p.startsWith('data:image')) URL.revokeObjectURL(p); });
+            return [];
+        });
     }, []);
 
     const resetResult = useCallback(() => {
@@ -162,6 +173,24 @@ export function AIRecommendationModal({
         } else {
             setIds(prev => [...prev, id]);
         }
+    };
+
+    const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.length) {
+            const files = Array.from(e.target.files);
+            setReferenceImages(prev => [...prev, ...files]);
+            const newPreviews = files.map(file => URL.createObjectURL(file));
+            setReferenceImagePreviews(prev => [...prev, ...newPreviews]);
+        }
+        e.target.value = '';
+    };
+
+    const handleRemoveReferenceImage = (index: number) => {
+        setReferenceImages(prev => prev.filter((_, i) => i !== index));
+        if (!referenceImagePreviews[index].startsWith('data:image')) {
+            URL.revokeObjectURL(referenceImagePreviews[index]);
+        }
+        setReferenceImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
     const buildExistingReferenceBlock = (): string => {
@@ -248,6 +277,25 @@ export function AIRecommendationModal({
         const effectivePort = port || (selectedModel.parameters as any)?._runtimePort;
         if (!effectivePort && !selectedModel.apiKey) { setError('Selected model is not loaded and has no API key.'); return; }
 
+        // Process reference images into prompt descriptions
+        let imageDescriptions = '';
+        if (referenceImages.length > 0) {
+            setIsUploadingImages(true);
+            try {
+                const descriptions: string[] = [];
+                for (let i = 0; i < referenceImages.length; i++) {
+                    const file = referenceImages[i];
+                    descriptions.push(`[Reference Image ${i + 1}: ${file.name} — use as visual reference when generating content]`);
+                }
+                imageDescriptions = '\nREFERENCE IMAGES:\n' + descriptions.join('\n') + '\nUse these images as visual reference when generating content.\n';
+            } catch (e) {
+                setError('Failed to process reference images.');
+                setIsUploadingImages(false);
+                return;
+            }
+            setIsUploadingImages(false);
+        }
+
         // Open result modal and start generating
         setError(null);
         resetResult();
@@ -262,7 +310,7 @@ export function AIRecommendationModal({
             const userRequestPart = userPrompt.trim()
                 ? `\n\nUser Request: ${userPrompt.trim()}`
                 : '\n\nUser Request: Generate freely based on the existing entities and field templates provided above.';
-            const fullPrompt = `${systemPrompt}${userRequestPart}`;
+            const fullPrompt = `${systemPrompt}${userRequestPart}${imageDescriptions}`;
 
             const modelContext = {
                 apiKey: selectedModel.apiKey,
@@ -336,6 +384,7 @@ export function AIRecommendationModal({
                     chatImpatienceSensitivity: getChatImpatienceSensitivityValueFromText(traitText),
                     memoryRetentionWeight: getMemoryRetentionWeightValueFromText(traitText),
                     contextSensitivity: getContextSensitivityValueFromText(traitText),
+                    enableWebSearch: false, enableCalculator: false,
                     enableMemoryWriting: false, enableMemoryReading: false, memories: {},
                     numberOfMessagesToDisableThinkPrompt: 0, numberOfMessagesToDisableMetaThinkInstructions: 0,
                     numberOfMessagesToDisableDialoguePrompt: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
@@ -395,7 +444,7 @@ export function AIRecommendationModal({
                     <div className="modal-header">
                         <h2>Get AI Recommendation</h2>
                         <div className="editor-modal-actions">
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseForm} disabled={isGenerating}>
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseForm} disabled={isGenerating || isUploadingImages}>
                                 Cancel
                             </button>
                         </div>
@@ -445,8 +494,30 @@ export function AIRecommendationModal({
                                 placeholder="Leave empty to let the AI generate freely based on referenced entities..." rows={3} />
                         </div>
 
+                        <div className="editor-section">
+                            <span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span>
+                            <div className="entity-ref-hint">
+                                Upload images for the AI to use as visual reference when generating entities.
+                            </div>
+                            <div className="editor-image-grid">
+                                {referenceImagePreviews.map((preview, index) => (
+                                    <div key={index} className="editor-image-square active">
+                                        <img src={preview} alt={`Reference ${index + 1}`} />
+                                        <button type="button" onClick={() => handleRemoveReferenceImage(index)} className="editor-image-remove-btn">×</button>
+                                    </div>
+                                ))}
+                                <div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}>
+                                    <div className="context-image-placeholder">
+                                        <div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div>
+                                        <div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} />
+                        </div>
+
                         <button type="button" className="editor-btn editor-btn-save entity-generate-btn"
-                            onClick={handleGenerate} disabled={selectedEntities.length === 0}>
+                            onClick={handleGenerate} disabled={selectedEntities.length === 0 || isUploadingImages}>
                             ✨ Generate Recommendation
                         </button>
 
