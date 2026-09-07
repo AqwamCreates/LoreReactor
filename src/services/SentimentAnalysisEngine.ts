@@ -121,7 +121,7 @@ class SentimentAnalysisEngine {
 
             const emotions = {} as Record<EmotionLabel, number>;
             let topEmotion: EmotionLabel = 'neutral';
-            let topScore = -Infinity;
+            let topScore = Number.NEGATIVE_INFINITY;
 
             for (const label of EMOTION_LABELS) {
                 emotions[label] = 0;
