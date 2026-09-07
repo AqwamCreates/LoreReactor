@@ -3225,3 +3225,96 @@ PARTICIPANT CONTROL MODAL
     margin-top: 12px;
     width: 100%;
 }
+
+/* ─── Loading Screen ─────────────────────────────────────────────── */
+
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100dvh;
+    width: 100vw;
+    background: var(--bg);
+    color: var(--text-h);
+    font-family: monospace;
+    z-index: 9999;
+    transition: opacity 0.3s ease-out;
+}
+
+.loading-screen.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-screen-title {
+    font-size: 2rem;
+    margin-bottom: 32px;
+    font-weight: bold;
+    color: var(--accent);
+}
+
+.loading-screen-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.loading-screen-row-top {
+    margin-bottom: 8px;
+}
+
+.loading-screen-row-bottom {
+    margin-bottom: 24px;
+}
+
+.loading-step-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    border: 1px solid var(--border);
+    opacity: 0.25;
+    transition: all 0.4s ease;
+}
+
+.loading-step-icon.done {
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent), 0 0 4px var(--accent);
+    opacity: 1;
+}
+
+.loading-screen-status {
+    font-size: 0.8rem;
+    opacity: 0.6;
+    margin-bottom: 8px;
+}
+
+.loading-screen-progress-track {
+    width: 280px;
+    max-width: 80vw;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.loading-screen-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.3s ease-out;
+    box-shadow: 0 0 8px var(--accent);
+}
+
+.loading-screen-counter {
+    margin-top: 10px;
+    font-size: 0.7rem;
+    opacity: 0.4;
+}

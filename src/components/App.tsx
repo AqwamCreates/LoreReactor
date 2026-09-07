@@ -259,39 +259,38 @@ function renderExtensionSubtext(ext: { extensionType: string; description: strin
 function LoadingScreen({ steps, isFadeOut }: { steps: LoadStep[]; isFadeOut: boolean }) {
   const done = steps.filter(s => s.done).length;
   const current = steps.find(s => !s.done);
+
+  const mid = Math.ceil(steps.length / 2);
+  const renderTopRow = [...steps.slice(0, mid)].reverse();
+  const renderBottomRow = steps.slice(mid);
+
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', width: '100vw', background: 'var(--bg)', color: 'var(--text-h)', fontFamily: 'monospace', zIndex: 9999, opacity: isFadeOut ? 0 : 1, transition: 'opacity 0.3s ease-out', pointerEvents: isFadeOut ? 'none' : 'auto' }}>
-      <div style={{ fontSize: '2rem', marginBottom: '32px', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '24px' }}>
-        {steps.map(step => (
-          <div
-            key={step.id}
-            title={step.label}
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.1rem',
-              border: step.done ? '1px solid var(--accent)' : '1px solid var(--border)',
-              boxShadow: step.done ? '0 0 10px var(--accent), 0 0 4px var(--accent)' : 'none',
-              opacity: step.done ? 1 : 0.25,
-              transition: 'all 0.4s ease',
-            }}
-          >
+    <div className={`loading-screen ${isFadeOut ? 'fade-out' : ''}`}>
+      <div className="loading-screen-title">⚛️ LoreReactor</div>
+
+      <div className="loading-screen-row loading-screen-row-top">
+        {renderTopRow.map(step => (
+          <div key={step.id} title={step.label} className={`loading-step-icon ${step.done ? 'done' : ''}`}>
             {step.icon}
           </div>
         ))}
       </div>
-      <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '8px' }}>
+
+      <div className="loading-screen-row loading-screen-row-bottom">
+        {renderBottomRow.map(step => (
+          <div key={step.id} title={step.label} className={`loading-step-icon ${step.done ? 'done' : ''}`}>
+            {step.icon}
+          </div>
+        ))}
+      </div>
+
+      <div className="loading-screen-status">
         {current ? `Loading ${current.label.toLowerCase()}...` : 'Finalizing...'}
       </div>
-      <div style={{ width: '280px', maxWidth: '80vw', height: '3px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
-        <div style={{ width: `${(done / steps.length) * 100}%`, height: '100%', borderRadius: '2px', background: 'var(--accent)', transition: 'width 0.3s ease-out', boxShadow: '0 0 8px var(--accent)' }} />
+      <div className="loading-screen-progress-track">
+        <div className="loading-screen-progress-fill" style={{ width: `${(done / steps.length) * 100}%` }} />
       </div>
-      <div style={{ marginTop: '10px', fontSize: '0.7rem', opacity: 0.4 }}>{done}/{steps.length}</div>
+      <div className="loading-screen-counter">{done}/{steps.length}</div>
     </div>
   );
 }
