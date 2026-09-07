@@ -340,7 +340,7 @@ export interface RawSummarizationStep extends RawData {
 export type PromptBlockType =
   | 'System Prompt'
   | 'Think Prompt'
-  | 'Meta Think Instruction'
+  | 'Meta Think Instructions'
   | 'Appearance Prompt'
   | 'Dialogue Prompt'
   | 'Memory'
@@ -351,6 +351,7 @@ export type PromptBlockType =
   | 'Date And Time'
   | 'Weather'
   | 'Time Elapsed'
+  | 'Tool Instructions'
   | 'Text Injection';
 
 export interface Profile extends ObjectData {

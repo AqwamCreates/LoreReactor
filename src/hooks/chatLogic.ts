@@ -39,7 +39,7 @@ const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at 
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Text Injection'
 ];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -924,7 +924,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const blockMap: Record<string, (string[] | undefined)> = {
         'System Prompt': systemPromptLines,
         'Think Prompt': thinkPromptLines,
-        'Meta Think Instruction': metaThinkLines,
+        'Meta Think Instructions': metaThinkLines,
         'Appearance Prompt': appearancePromptLines,
         'Dialogue Prompt': dialoguePromptLines,
         'Memory': memoryLines,
@@ -952,7 +952,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     }
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
-        blockMap['Meta Think Instruction'] = undefined;
+        blockMap['Meta Think Instructions'] = undefined;
     }
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableDialoguePrompt) {

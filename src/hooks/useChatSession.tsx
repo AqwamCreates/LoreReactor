@@ -8,7 +8,7 @@ import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
-import { consumeChatStamina, generateChatStamina, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina } from './characterLogic';
+import { consumeChatStamina, generateChatStamina, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { v4 as uuidv4 } from 'uuid';

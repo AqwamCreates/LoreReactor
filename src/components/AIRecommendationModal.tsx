@@ -214,6 +214,7 @@ export function AIRecommendationModal({
         parts.push("You must fill in the names, system prompts and text contents. The rest of the fields are dependent on the user's request and the information given to you.");
         parts.push("References to other characters depends on the user's requests.")
         parts.push("You can use {{user}} to refer to the user. You must use {{char}} instead of the character's name.")
+        parts.push("You can use <<< and >>> to enforce strong boundaries.")
         parts.push('');
 
         const existingBlock = buildExistingReferenceBlock();

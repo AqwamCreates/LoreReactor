@@ -14,7 +14,7 @@ interface ProfileEditorModalProps {
 const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'System Prompt',
     'Think Prompt',
-    'Meta Think Instruction',
+    'Meta Think Instructions',
     'Appearance Prompt',
     'Dialogue Prompt',
     'Memory',
@@ -25,11 +25,12 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Date And Time',
     'Weather',
     'Time Elapsed',
+    'Tool Instructions',
     'Text Injection'
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [

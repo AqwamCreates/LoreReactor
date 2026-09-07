@@ -109,7 +109,7 @@ function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolea
 /**
  * Constructs a search engine URL from search terms.
  */
-export function buildSearchUrl(terms: string[], engine: searchEngine): string {
+export function buildSearchUrl(terms: string[], engine?: searchEngine): string {
     const query = encodeURIComponent(terms.join(' '));
     switch (engine) {
         case 'Google':
@@ -165,7 +165,8 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
     const linkRegex = /href=["']([^"']+)["']/gi;
     const links: string[] = [];
     let match: RegExpExecArray | null;
-    while ((match = linkRegex.exec(html)) !== null) {
+    match = linkRegex.exec(html);
+    while (match !== null) {
         let href = match[1];
 
         // Skip anchors, javascript:, mailto:, data:
@@ -188,6 +189,8 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
         if (!links.includes(href)) {
             links.push(href);
         }
+
+        match = linkRegex.exec(html);
     }
 
     const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
