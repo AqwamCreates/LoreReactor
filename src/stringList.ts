@@ -3,6 +3,9 @@ export const contextEndString = "}";
 export const turnStartString = "{";
 export const turnEndString = "}";
 
+export const toolStartSring = ":|tool:"
+export const toolEndString = ":tool|:"
+
 export const memoryWriteTrigger = "<memory>";
 
 export const commonThinkStartString = "<think>";
