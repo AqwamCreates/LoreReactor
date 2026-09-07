@@ -4,7 +4,9 @@ import type {
   Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
-  Memory, RawMemory, Location, RawLocation
+  Memory, RawMemory, Location, RawLocation,
+  BudgetData,
+  RawBudgetData
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -13,6 +15,7 @@ import {
     browserReadJson, browserWriteJson, browserDeleteFile,
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
+import path from 'path';
 
 const now = Date.now()
 
@@ -123,6 +126,7 @@ const PATHS = {
   webpages: "/user_data/webpage_data",
   memories: "/user_data/memory_data",
   actions: "/user_data/actions.json",
+  budgetData: "/user_data/budget_data.json"
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -1311,6 +1315,68 @@ export async function loadInterjectableActions(): Promise<InterjectableAction[]>
 
 export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {
   await putJson(PATHS.actions, actions);
+}
+
+// --- Budget Data Repository (Global Singleton) ---
+
+export async function loadRawBudgetData(): Promise<BudgetData | null> {
+    const raw = await fetchJson<RawBudgetData>(PATHS.budgetData);
+    if (!raw) return null;
+
+    try {
+        const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
+        if (!strategy) return null;
+
+        return {
+            id: raw.id || 'global-budget-data',
+            name: 'Global Budget Data',
+            description: 'Persistent runtime budget tracking',
+            budgetSpent: raw.budgetSpent ?? 0,
+            modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
+            budgetStrategy: strategy,
+            firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
+            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+        };
+    } catch (e) {
+        console.warn('Failed to load budget data:', e);
+        return null;
+    }
+}
+
+export async function saveRawBudgetData(data: BudgetData): Promise<void> {
+    const payload: RawBudgetData = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        budgetSpent: data.budgetSpent,
+        modelLastUsedTimestamps: data.modelLastUsedTimestamps,
+        modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
+        modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
+        budgetStrategyId: data.budgetStrategy.id,
+        firstCreatedTimestamp: data.firstCreatedTimestamp,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(PATHS.budgetData, payload);
+}
+
+export async function createDefaultBudgetData(strategy: BudgetStrategy): Promise<BudgetData> {
+    const now = Date.now();
+    const data: BudgetData = {
+        id: 'global-budget-data',
+        name: 'Global Budget Data',
+        description: 'Persistent runtime budget tracking',
+        budgetSpent: 0,
+        modelLastUsedTimestamps: {},
+        modelLastQuotaHitTimeStamps: {},
+        modelLastErrorHitTimeStamps: {},
+        budgetStrategy: strategy,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+    await saveRawBudgetData(data);
+    return data;
 }
 
 // --- Image & Voice Helpers ---
