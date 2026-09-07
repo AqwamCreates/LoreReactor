@@ -921,7 +921,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     if (enableTools) {
         toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
-        toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user. I use tools silently and present results as natural knowledge.${thinkEndString}${contextEndString}`);
+        toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${thinkEndString}${contextEndString}`);
 
 
         if (enableWebSearch) {
