@@ -224,7 +224,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
-                            <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(1) : '0'} tokens</span>
+                            <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(2) : '00'} tokens</span>
                         </div>
                     </div>
 
