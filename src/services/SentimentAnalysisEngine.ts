@@ -41,6 +41,7 @@ class SentimentAnalysisEngine {
                 console.log('[SentimentEngine] Loading pipeline from HuggingFace...');
                 this.classifier = await pipeline('text-classification', HF_MODEL_ID, {
                     dtype: 'fp32',
+                    device: "webgpu"
                 }) as TextClassificationPipeline;
                 console.log('[SentimentEngine] Ready.');
             } catch (e) {
