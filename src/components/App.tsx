@@ -408,6 +408,9 @@ function App() {
   const chatModifiedRef = useRef(false);
   const loadingStartedAtRef = useRef<number | null>(null);
 
+  // ✅ NEW: Pending regeneration ref for Option A fix
+  const pendingRegenRef = useRef<{ id: string; type: 'user' | 'ai' } | null>(null);
+
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -962,6 +965,20 @@ function App() {
     return () => { isCancelled = true; };
   }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels]);
 
+  // ✅ NEW: Effect to trigger regeneration AFTER edit state has committed
+  useEffect(() => {
+    if (pendingRegenRef.current && interactionData) {
+      const { id, type } = pendingRegenRef.current;
+      pendingRegenRef.current = null; // Clear immediately to prevent loops
+      
+      // Verify the message actually exists in current state before regenerating
+      const msg = interactionData.interactionHistory.find(m => m.id === id);
+      if (msg) {
+        regenerateFromMessage(id, type);
+      }
+    }
+  }, [interactionData, regenerateFromMessage]);
+
   // ✅ 4. CALLBACKS
 
   const deactivateToolbar = useCallback(() => {
@@ -1161,18 +1178,22 @@ function App() {
     catch (e) { addToast((e as Error).message, 'error'); }
   };
 
-  // ✅ NEW: Save edit AND regenerate response
+  // ✅ FIXED: Regenerate from edit now uses pendingRegenRef to avoid race condition
   const handleRegenerateFromEdit = async () => {
     if (!interactionData || !editingId) return;
     try {
       const updatedData = await editMessage(interactionData, editingId, editDraft);
+      
+      // Determine regeneration type BEFORE clearing editingId
+      const editedMsg = updatedData.interactionHistory.find(m => m.id === editingId);
+      const isUserMsg = editedMsg && 'character' in editedMsg && editedMsg.character?.id === currentCharacter?.id;
+      
+      // Set the flag so the useEffect triggers regeneration after state commit
+      pendingRegenRef.current = { id: editingId, type: isUserMsg ? 'user' : 'ai' };
+      
       setInteractionData(updatedData);
       setEditingId(null);
       setEditDraft('');
-      // Determine regeneration type based on who owns the edited message
-      const editedMsg = updatedData.interactionHistory.find(m => m.id === editingId);
-      const isUserMsg = editedMsg && 'character' in editedMsg && editedMsg.character?.id === currentCharacter?.id;
-      regenerateFromMessage(editingId, isUserMsg ? 'user' : 'ai');
     } catch (e) {
       addToast((e as Error).message, 'error');
     }
@@ -1471,7 +1492,7 @@ function App() {
                           <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" />
                           <div className="edit-actions">
                             <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
-                            {/* ✅ NEW: Regenerate button positioned left of Save */}
+                            {/* ✅ Regenerate button positioned left of Save */}
                             <button 
                               type="button" 
                               onClick={handleRegenerateFromEdit} 
