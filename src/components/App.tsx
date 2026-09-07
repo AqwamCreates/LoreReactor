@@ -59,7 +59,7 @@ const STORAGE_KEY_ACTION_CASE = 'loreReactor_actionCase';
 const STORAGE_KEY_ACTION_PUNCTUATION = 'loreReactor_actionPunctuation';
 const MIN_LOADING_SCREEN_MS = 900;
 
-type ActionWrap = '**' | '()' | 'none';
+type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
 type ActionPunctuation = '.' | '-' | 'none';
 
@@ -74,7 +74,7 @@ function isChatMessage(msg: ChatMessage): msg is ChatMessage {
     return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
 }
 
-/** Formats an interjected action string according to user preferences. */
+/* Formats an interjected action string according to user preferences. */
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
     let raw = `${label} ${targetName}`;
 
@@ -91,8 +91,8 @@ function formatActionString(label: string, targetName: string, wrap: ActionWrap,
     }
 
     switch (wrap) {
-        case '**':
-            raw = `**${raw}**`;
+        case '*':
+            raw = `*${raw}*`;
             break;
         case '()':
             raw = `(${raw})`;
@@ -363,7 +363,7 @@ function App() {
   // Action formatting state — persisted to localStorage
   const [actionWrap, setActionWrap] = useState<ActionWrap>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_ACTION_WRAP);
-    return (saved === '**' || saved === '()' || saved === 'none') ? saved : '**';
+    return (saved === '*' || saved === '()' || saved === 'none') ? saved : '*';
   });
   const [actionCase, setActionCase] = useState<ActionCase>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_ACTION_CASE);
@@ -1579,7 +1579,7 @@ function App() {
           {showActionFormat && (
             <div className="action-format-panel" onClick={e => e.stopPropagation()}>
               <div className="action-format-row">
-                <button type="button" className={`action-format-btn ${actionWrap === '**' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('**')}>**</button>
+                <button type="button" className={`action-format-btn ${actionWrap === '*' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
                 <button type="button" className={`action-format-btn ${actionWrap === '()' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
                 <button type="button" className={`action-format-btn ${actionWrap === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
               </div>
