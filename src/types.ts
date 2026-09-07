@@ -278,6 +278,7 @@ export interface Extension extends ObjectData {
 export interface BudgetStrategy extends ObjectData {
   onlineModels: LanguageModel[];
   localModels: LanguageModel[];
+  modelCostTiers: Record<string, number> // The term cost can be all kind of things like price, quality and latency.
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
@@ -290,6 +291,7 @@ export interface BudgetStrategy extends ObjectData {
 export interface RawBudgetStrategy extends RawData {
   onlineModelIds: string[];
   localModelIds: string[];
+  modelCostTiers: Record<string, number> // The term cost can be all kind of things like price, quality and latency.
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;

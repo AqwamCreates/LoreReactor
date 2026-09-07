@@ -26,6 +26,7 @@ export function BudgetStrategyEditorModal({
     const [description, setDescription] = useState('');
     const [onlineModelIds, setOnlineModelIds] = useState<string[]>([]);
     const [localModelIds, setLocalModelIds] = useState<string[]>([]);
+    const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>({});
     const [switchProbability, setSwitchProbability] = useState<number>(20);
     const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(8192);
     const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(70);
@@ -35,7 +36,6 @@ export function BudgetStrategyEditorModal({
     const [maximumBudget, setMaximumBudget] = useState<number>(10);
     const [errors, setErrors] = useState<{ name?: string; onlineModels?: string; localModels?: string }>({});
 
-    // Search state for each EntitySelectList
     const [onlineSearch, setOnlineSearch] = useState('');
     const [localSearch, setLocalSearch] = useState('');
 
@@ -46,6 +46,7 @@ export function BudgetStrategyEditorModal({
                 setDescription(existingStrategy.description || '');
                 setOnlineModelIds(existingStrategy.onlineModels?.map(m => m.id) || []);
                 setLocalModelIds(existingStrategy.localModels?.map(m => m.id) || []);
+                setModelCostTiers(existingStrategy.modelCostTiers ? { ...existingStrategy.modelCostTiers } : {});
                 setSwitchProbability(existingStrategy.switchProbability ?? 20);
                 setSwitchOnContextSize(existingStrategy.switchOnContextSize ?? 8192);
                 setSwitchOnComplexityScore(existingStrategy.switchOnComplexityScore ?? 70);
@@ -58,6 +59,7 @@ export function BudgetStrategyEditorModal({
                 setDescription('');
                 setOnlineModelIds([]);
                 setLocalModelIds([]);
+                setModelCostTiers({});
                 setSwitchProbability(20);
                 setSwitchOnContextSize(8192);
                 setSwitchOnComplexityScore(70);
@@ -73,20 +75,50 @@ export function BudgetStrategyEditorModal({
     }, [isOpen, existingStrategy]);
 
     const toggleOnlineModel = (id: string) => {
-        setOnlineModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        setOnlineModelIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            if (prev.includes(id)) {
+                setModelCostTiers(tiers => {
+                    const updated = { ...tiers };
+                    delete updated[id];
+                    return updated;
+                });
+            }
+            return next;
+        });
         if (errors.onlineModels) setErrors(prev => ({ ...prev, onlineModels: undefined }));
     };
 
     const toggleLocalModel = (id: string) => {
-        setLocalModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        setLocalModelIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            if (prev.includes(id)) {
+                setModelCostTiers(tiers => {
+                    const updated = { ...tiers };
+                    delete updated[id];
+                    return updated;
+                });
+            }
+            return next;
+        });
         if (errors.localModels) setErrors(prev => ({ ...prev, localModels: undefined }));
+    };
+
+    const setTierForModel = (modelId: string, value: string) => {
+        const num = parseFloat(value);
+        setModelCostTiers(prev => {
+            if (value === '' || isNaN(num)) {
+                const updated = { ...prev };
+                delete updated[modelId];
+                return updated;
+            }
+            return { ...prev, [modelId]: num };
+        });
     };
 
     const validate = (): boolean => {
         const newErrors: { name?: string; onlineModels?: string; localModels?: string } = {};
-        
         if (!name.trim()) newErrors.name = 'Name is required.';
-
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -97,8 +129,12 @@ export function BudgetStrategyEditorModal({
         const onlineModels = allModels.filter(m => onlineModelIds.includes(m.id));
         const localModels = allModels.filter(m => localModelIds.includes(m.id));
 
-        if ((onlineModels.length + localModels.length) === 0) {
-            return null;
+        if ((onlineModels.length + localModels.length) === 0) return null;
+
+        const activeModelIds = new Set([...onlineModelIds, ...localModelIds]);
+        const filteredTiers: Record<string, number> = {};
+        for (const [id, tier] of Object.entries(modelCostTiers)) {
+            if (activeModelIds.has(id)) filteredTiers[id] = tier;
         }
 
         const now = Date.now();
@@ -108,6 +144,7 @@ export function BudgetStrategyEditorModal({
             description: description.trim() || '',
             onlineModels,
             localModels,
+            modelCostTiers: filteredTiers,
             switchProbability,
             switchOnContextSize,
             switchOnComplexityScore,
@@ -135,6 +172,64 @@ export function BudgetStrategyEditorModal({
     };
 
     if (!isOpen) return null;
+
+    const renderTierGrid = (modelIds: string[], label: string) => {
+        if (modelIds.length === 0) return null;
+        const models = allModels.filter(m => modelIds.includes(m.id));
+        return (
+            <div style={{ marginTop: '6px', marginBottom: '10px' }}>
+                <label className="editor-label editor-label-small">
+                    Cost Tiers ({label})
+                </label>
+                <div className="editor-label" style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '4px' }}>
+                    Higher value = higher cost in terms of price, quality, latency and so on. Default 0.
+                </div>
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '3px 12px',
+                }}>
+                    {models.map(model => (
+                        <div key={model.id} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            minWidth: 0,
+                        }}>
+                            <span style={{
+                                fontSize: '0.65rem',
+                                opacity: 0.8,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flex: 1,
+                                minWidth: 0,
+                                textAlign: 'left',
+                            }}>
+                                {model.name}
+                            </span>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                pattern="[0-9]*\.?[0-9]*"
+                                value={modelCostTiers[model.id] ?? ''}
+                                onChange={(e) => setTierForModel(model.id, e.target.value)}
+                                className="editor-input"
+                                placeholder="0"
+                                style={{
+                                    width: '48px',
+                                    flexShrink: 0,
+                                    padding: '2px 4px',
+                                    fontSize: '0.7rem',
+                                    MozAppearance: 'textfield',
+                                }}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -189,7 +284,7 @@ export function BudgetStrategyEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Model Pools</span>
                         <div className="entity-ref-hint">
-                            Select models for each pool. The engine exhausts the primary pool before falling back. Order determines priority.
+                            Select models for each pool. The engine exhausts the primary pool before falling back. Cost tiers control selection priority — higher values are tried first.
                         </div>
 
                         <EntitySelectList
@@ -200,6 +295,7 @@ export function BudgetStrategyEditorModal({
                             searchQuery={onlineSearch}
                             onSearchChange={setOnlineSearch}
                         />
+                        {renderTierGrid(onlineModelIds, 'Online')}
                         {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
 
                         <EntitySelectList
@@ -210,6 +306,7 @@ export function BudgetStrategyEditorModal({
                             searchQuery={localSearch}
                             onSearchChange={setLocalSearch}
                         />
+                        {renderTierGrid(localModelIds, 'Local')}
                         {errors.localModels && <div className="editor-error-message">{errors.localModels}</div>}
                     </div>
 

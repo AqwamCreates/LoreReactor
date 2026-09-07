@@ -818,6 +818,7 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
           description: rawStrategy.description,
           onlineModels,
           localModels,
+          modelCostTiers: rawStrategy.modelCostTiers,
           switchProbability: rawStrategy.switchProbability,
           switchOnContextSize: rawStrategy.switchOnContextSize,
           switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
