@@ -919,7 +919,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const enableTools = enableWebSearch || enableCalculator
 
     if (enableTools) {
-        toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with . The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
+        toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
         if (enableWebSearch) {
             toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}search: <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
