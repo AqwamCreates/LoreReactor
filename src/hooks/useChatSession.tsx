@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory, InteractionMessage, ChatMessage } from '../types';
-import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter, deleteRawInteractionMessage } from './storage';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, Memory, InteractionMessage, ChatMessage } from '../types';
+import { saveRawInteractionData, getCharacterVoiceUrl, saveRawCharacter, deleteRawInteractionMessage, loadRawBudgetData, saveRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, prepareRequestBody, editInteractionMessageInInteractionData, findPreviousInteractionMessage } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -134,14 +134,6 @@ async function runBackgroundSummarization(
 
 // ─── Tool Invocation Processing ──────────────────────────────────────
 
-/**
- * Process tool invocations found in generated text.
- * Returns processed text versions plus individual display replacements tagged by tool type:
- * - resumeText: raw results injected for the model's next generation round
- * - displayText: full text with markers replaced by formatted results
- * - displayReplacements: individual result strings tagged by tool type for selective display injection
- * Returns null if no tools were found or none are enabled.
- */
 async function processToolInvocations(
     rawText: string,
     character: Character,
@@ -200,6 +192,7 @@ export function useChatSession() {
     const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
     const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
     const [numberOfTokens, setnumberOfTokens] = useState(0);
+    const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -207,6 +200,7 @@ export function useChatSession() {
     const selectedModelRef = useRef<LanguageModel | null>(null);
     const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
     const activeStrategyRef = useRef<BudgetStrategy | null>(null);
+    const budgetDataRef = useRef<BudgetData | null>(null);
     const isLoadingRef = useRef(false);
     const isProcessingSilentlyRef = useRef(false);
     const streamingTextRef = useRef('');
@@ -220,7 +214,6 @@ export function useChatSession() {
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
 
-    const budgetCumulativeCostRef = useRef<number>(0);
     const activeStrategyIdRef = useRef<string | null>(null);
 
     const THROTTLE_MS = 60;
@@ -231,6 +224,7 @@ export function useChatSession() {
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
     useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
     useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
+    useEffect(() => { budgetDataRef.current = budgetData; }, [budgetData]);
     useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
     useEffect(() => { streamingTextRef.current = streamingText; }, [streamingText]);
     useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
@@ -238,6 +232,21 @@ export function useChatSession() {
 
     const { addToast } = useToast();
     const [ttsServerUrl] = useState(`${localAddress}:7860`);
+
+    // ✅ Load budget data on mount
+    useEffect(() => {
+        (async () => {
+            try {
+                const bd = await loadRawBudgetData();
+                if (bd) {
+                    setBudgetData(bd);
+                    budgetDataRef.current = bd;
+                }
+            } catch (e) {
+                console.warn('Failed to load budget data:', e);
+            }
+        })();
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -482,8 +491,6 @@ export function useChatSession() {
             let accumulatedDisplayText = '';
 
             if (strat) {
-                const previousCost = budgetCumulativeCostRef.current;
-
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
                     const existing = running[modelId];
                     if (existing?.port) return existing.port;
@@ -535,12 +542,18 @@ export function useChatSession() {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    const bse = new BudgetStrategyEngine(strat, running, budgetCumulativeCostRef.current, loadLocalModel);
+                    // ✅ Use persistent budget data instead of ephemeral ref
+                    const bd = budgetDataRef.current;
+                    if (!bd) {
+                        addToast('Budget data not loaded.', 'error');
+                        return null;
+                    }
+
+                    const bse = new BudgetStrategyEngine(strat, bd, running, loadLocalModel);
                     const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
                         setGenerationSpeed(s.msPerToken);
                         if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
 
-                        // ✅ Feed only new chunk through parser for real-time display filtering
                         const newChunk = s.fullText.slice(lastRawLength);
                         lastRawLength = s.fullText.length;
                         const parsed = streamToolParser.processChunk(newChunk);
@@ -561,8 +574,14 @@ export function useChatSession() {
                         }
                     }} : undefined;
                     rawText = await bse.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
-                    budgetCumulativeCostRef.current = bse.currentCost;
-                    const requestCost = bse.currentCost - previousCost;
+
+                    // ✅ Persist updated budget data after generation
+                    const updatedBd = bse.getBudgetData();
+                    setBudgetData(updatedBd);
+                    budgetDataRef.current = updatedBd;
+                    await saveRawBudgetData(updatedBd);
+
+                    const requestCost = updatedBd.budgetSpent - (bd.budgetSpent);
                     if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
 
                     const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
@@ -571,8 +590,6 @@ export function useChatSession() {
                         break;
                     }
 
-                    // ✅ Commit pre-tool text, inject exact calculator results into streaming display
-                    // Search results are too large for raw display — model summarizes them naturally
                     committedDisplayText += liveDisplayText;
                     for (const rep of toolResult.displayReplacements) {
                         if (rep.type === 'calculator') {
@@ -595,7 +612,6 @@ export function useChatSession() {
 
                 const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
-                // ✅ Per-generation tool parser for real-time display filtering
                 const streamToolParser = new ToolInvocationParser();
                 let committedDisplayText = '';
                 let liveDisplayText = '';
@@ -607,7 +623,6 @@ export function useChatSession() {
                             setGenerationSpeed(s.msPerToken);
                             if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
 
-                            // ✅ Feed only new chunk through parser for real-time display filtering
                             const newChunk = s.fullText.slice(lastRawLength);
                             lastRawLength = s.fullText.length;
                             const parsed = streamToolParser.processChunk(newChunk);
@@ -635,7 +650,6 @@ export function useChatSession() {
                     return result.text;
                 };
 
-                // ✅ Tool invocation loop for direct model path
                 while (true) {
                     if (signal.aborted) return null;
 
@@ -657,8 +671,6 @@ export function useChatSession() {
                         break;
                     }
 
-                    // ✅ Commit pre-tool text, inject exact calculator results into streaming display
-                    // Search results are too large for raw display — model summarizes them naturally
                     committedDisplayText += liveDisplayText;
                     for (const rep of toolResult.displayReplacements) {
                         if (rep.type === 'calculator') {
@@ -679,7 +691,6 @@ export function useChatSession() {
 
             await processMemoryTrigger(rawText, character, dataWithRegen);
 
-            // Use display text (with inline tool formatting) for the stored message
             const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, dataWithRegen);
             const aiMessage = createChatMessage(dataWithRegen, character, displayText);
@@ -730,7 +741,6 @@ export function useChatSession() {
     const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => {
         const newId = s?.id ?? null;
         if (newId !== activeStrategyIdRef.current) {
-            budgetCumulativeCostRef.current = 0;
             activeStrategyIdRef.current = newId;
         }
         setActiveStrategy(s);
@@ -1076,7 +1086,7 @@ export function useChatSession() {
         generationSpeed, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
         numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
-        activeStrategy,
+        activeStrategy, budgetData,
         numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
         numberOfRequests: stats.numberOfRequests,
         totalCost: stats.totalCost,

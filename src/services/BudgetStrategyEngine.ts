@@ -1,10 +1,16 @@
 // src/services/BudgetStrategyEngine.ts
-import type { BudgetStrategy, Character, InteractionData, LanguageModel } from '../types';
+import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageModel } from '../types';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 
 const engine = new LanguageModelEngine();
+
+/** Default cache TTL assumption for online models (5 minutes). */
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Tier bonus applied to models whose cache is likely still warm. */
+const CACHE_WARMTH_TIER_BONUS = 1;
 
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
@@ -60,6 +66,21 @@ function isQuotaError(e: unknown): boolean {
         message.includes('per');
 }
 
+/** Checks if a budget reset is due based on resetDuration. */
+function isResetDue(data: BudgetData): boolean {
+    if (data.resetDuration <= 0) return false;
+    return Date.now() - data.lastResetTimestamp >= data.resetDuration;
+}
+
+/** Applies a budget reset if due. Mutates the data in place. */
+function applyResetIfDue(data: BudgetData): void {
+    if (!isResetDue(data)) return;
+    data.budgetSpent = 0;
+    data.modelLastQuotaHitTimeStamps = {};
+    data.modelLastErrorHitTimeStamps = {};
+    data.lastResetTimestamp = Date.now();
+}
+
 export interface RunningModelState {
     isRunning: boolean;
     port?: number;
@@ -67,7 +88,7 @@ export interface RunningModelState {
 
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
-    public currentCost = 0;
+    private budgetData: BudgetData;
 
     /** Snapshot of running models at time of construction */
     private runningModels: Record<string, RunningModelState>;
@@ -81,19 +102,48 @@ export class BudgetStrategyEngine {
 
     constructor(
         strategy: BudgetStrategy,
+        budgetData: BudgetData,
         runningModels: Record<string, RunningModelState>,
-        initialCost = 0,
         loadLocalModel?: (id: string) => Promise<number | null>,
     ) {
         this.strategy = strategy;
+        this.budgetData = budgetData;
         this.runningModels = runningModels;
-        this.currentCost = initialCost;
         this.loadLocalModel = loadLocalModel ?? null;
+
+        // Apply reset if due at construction time
+        applyResetIfDue(this.budgetData);
     }
 
     /** Gets the cost tier for a model. Defaults to 0 if not assigned. */
     private getTier(model: LanguageModel): number {
         return this.strategy.modelCostTiers?.[model.id] ?? 0;
+    }
+
+    /** Checks if a model's cache is likely still warm based on last usage timestamp. */
+    private isCacheWarm(modelId: string): boolean {
+        const lastUsed = this.budgetData.modelLastUsedTimestamps[modelId];
+        if (!lastUsed) return false;
+        return (Date.now() - lastUsed) < DEFAULT_CACHE_TTL_MS;
+    }
+
+    /** Checks if a model is in quota cooldown. */
+    private isInQuotaCooldown(modelId: string): boolean {
+        const lastQuotaHit = this.budgetData.modelLastQuotaHitTimeStamps[modelId];
+        if (!lastQuotaHit) return false;
+        // Cooldown for 60 seconds after quota hit
+        return (Date.now() - lastQuotaHit) < 60_000;
+    }
+
+    /** Gets the effective tier for selection, including cache warmth bonus. */
+    private getEffectiveTier(model: LanguageModel): number {
+        let tier = this.getTier(model);
+        // Only apply cache warmth bonus to cloud models
+        const isCloud = !!model.apiKey && model.backend;
+        if (isCloud && this.isCacheWarm(model.id)) {
+            tier += CACHE_WARMTH_TIER_BONUS;
+        }
+        return tier;
     }
 
     /** Builds a model context, resolving runtimePort from the running models map. */
@@ -145,9 +195,9 @@ export class BudgetStrategyEngine {
 
     /**
      * Selects the next available model from a pool using tier-aware selection.
-     * Groups models by tier (highest first), tries all models in the highest
-     * available tier before dropping to the next tier. Within a tier, rotates
-     * through models that haven't failed yet.
+     * Groups models by effective tier (highest first), tries all models in the highest
+     * available tier before dropping to the next tier. Within a tier, prefers
+     * cache-warm models. Skips models in quota cooldown.
      * Respects maxTier cap to prevent using expensive models for simple turns.
      */
     private selectFromPool(
@@ -157,31 +207,63 @@ export class BudgetStrategyEngine {
     ): LanguageModel | null {
         if (pool.length === 0) return null;
 
-        // Group models by tier, sorted highest-first
+        // Group models by effective tier, sorted highest-first
         const tierGroups = new Map<number, LanguageModel[]>();
         for (const model of pool) {
             if (failedIds.has(model.id)) continue;
-            const tier = this.getTier(model);
-            // Skip models above the per-turn tier cap
-            if (maxTier !== undefined && tier > maxTier) continue;
+            if (this.isInQuotaCooldown(model.id)) continue;
+            const tier = this.getEffectiveTier(model);
+            // Skip models above the per-turn tier cap (use base tier for cap comparison)
+            if (maxTier !== undefined && this.getTier(model) > maxTier) continue;
             if (!tierGroups.has(tier)) tierGroups.set(tier, []);
             tierGroups.get(tier)!.push(model);
         }
 
         if (tierGroups.size === 0) return null;
 
-        // Sort tiers descending — try highest tier first
+        // Sort tiers descending — try highest effective tier first
         const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
 
-        // Return the first available model from the highest non-empty tier
+        // Within the highest tier, prefer cache-warm models
         for (const tier of sortedTiers) {
             const candidates = tierGroups.get(tier)!;
+            // Sort candidates: cache-warm first, then by base tier descending
+            candidates.sort((a, b) => {
+                const aWarm = this.isCacheWarm(a.id) ? 1 : 0;
+                const bWarm = this.isCacheWarm(b.id) ? 1 : 0;
+                if (aWarm !== bWarm) return bWarm - aWarm;
+                return this.getTier(b) - this.getTier(a);
+            });
             if (candidates.length > 0) {
                 return candidates[0];
             }
         }
 
         return null;
+    }
+
+    /** Records a successful model usage in budget data. */
+    private recordSuccess(modelId: string, cost: number): void {
+        this.budgetData.budgetSpent += cost;
+        this.budgetData.modelLastUsedTimestamps[modelId] = Date.now();
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    /** Records a quota error in budget data. */
+    private recordQuotaError(modelId: string): void {
+        this.budgetData.modelLastQuotaHitTimeStamps[modelId] = Date.now();
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    /** Records a non-quota error in budget data. */
+    private recordError(modelId: string): void {
+        this.budgetData.modelLastErrorHitTimeStamps[modelId] = Date.now();
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    /** Returns the updated budget data for persistence after generation. */
+    getBudgetData(): BudgetData {
+        return this.budgetData;
     }
 
     async generateStream(
@@ -206,11 +288,8 @@ export class BudgetStrategyEngine {
         const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
         let perTurnMaxTier: number | undefined;
         if (tierValues.length === 0) {
-            // No tiers configured — no cap
             perTurnMaxTier = undefined;
         } else {
-            // Map complexity (0-100) to a percentile index into the sorted unique tiers
-            // complexity 0 → lowest tier, complexity 100 → highest tier
             const tierIndex = Math.min(
                 tierValues.length - 1,
                 Math.round((complexityScore / 100) * (tierValues.length - 1))
@@ -239,6 +318,7 @@ export class BudgetStrategyEngine {
             const loaded = await this.ensureModelLoaded(selectedModel);
             if (!loaded) {
                 primaryFailedSet.add(selectedModel.id);
+                this.recordError(selectedModel.id);
                 console.warn(`Model ${selectedModel.name} could not be loaded, skipping.`);
                 continue;
             }
@@ -260,17 +340,19 @@ export class BudgetStrategyEngine {
                 const promptTokens = await engine.countTokens(body.prompt || '');
                 const completionTokens = await engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
-                this.currentCost += cost.totalCost;
+                this.recordSuccess(selectedModel.id, cost.totalCost);
 
                 return accumulatedPartialText + result.text;
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
 
                 if (!isQuotaError(e)) {
+                    this.recordError(selectedModel.id);
                     throw e;
                 }
 
                 primaryFailedSet.add(selectedModel.id);
+                this.recordQuotaError(selectedModel.id);
                 console.warn(`Model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating to next model for continuation.`);
             }
         }
@@ -284,6 +366,7 @@ export class BudgetStrategyEngine {
                 const loaded = await this.ensureModelLoaded(selectedModel);
                 if (!loaded) {
                     fallbackFailedSet.add(selectedModel.id);
+                    this.recordError(selectedModel.id);
                     console.warn(`Fallback model ${selectedModel.name} could not be loaded, skipping.`);
                     continue;
                 }
@@ -305,15 +388,19 @@ export class BudgetStrategyEngine {
                     const promptTokens = await engine.countTokens(fallbackBody.prompt || '');
                     const completionTokens = await engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
-                    this.currentCost += cost.totalCost;
+                    this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     return accumulatedPartialText + result.text;
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
-                    if (!isQuotaError(e)) throw e;
+                    if (!isQuotaError(e)) {
+                        this.recordError(selectedModel.id);
+                        throw e;
+                    }
 
                     fallbackFailedSet.add(selectedModel.id);
+                    this.recordQuotaError(selectedModel.id);
                     console.warn(`Fallback model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) also hit quota/rate limit, rotating.`);
                 }
             }
@@ -330,7 +417,7 @@ export class BudgetStrategyEngine {
     private async shouldUseOnline(interactionData: InteractionData): Promise<boolean> {
         if (this.strategy.onlineModels.length === 0) return false;
         if (this.strategy.localModels.length === 0) return true;
-        if (this.currentCost >= this.strategy.maximumBudget) return false;
+        if (this.budgetData.budgetSpent >= this.strategy.maximumBudget) return false;
 
         let numberOfTokens = 0;
         for (const m of interactionData.interactionHistory) {
