@@ -17,7 +17,7 @@ import { localAddress, localURL } from '../configurations';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { memoryWriteTrigger } from '../stringList';
-import { ToolInvocationParser, type ToolInvocation } from '../services/ToolInvocationParser';
+import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { executeTools, type ToolResult } from '../services/ToolExecutor';
 
 const languageModelEngine = new LanguageModelEngine();

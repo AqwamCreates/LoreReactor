@@ -8,19 +8,10 @@ export interface ToolResult {
     toolType: string;
     /** The original arguments passed to the tool */
     args: string;
-    /** The raw text result to inject back into the prompt */
+    /** The raw text result to inject back into the prompt for the next generation round */
     content: string;
-    /** Optional metadata for UI display (e.g., search query, clicked link) */
-    metadata?: ToolResultMetadata;
-}
-
-export interface ToolResultMetadata {
-    /** For search: the query that was searched */
-    searchQuery?: string;
-    /** For search: URLs that were fetched */
-    sourceUrls?: string[];
-    /** For calc: the expression that was evaluated */
-    expression?: string;
+    /** Formatted replacement string for display in the final message textContent */
+    displayReplacement: string;
 }
 
 /**
@@ -30,14 +21,16 @@ export async function executeTool(invocation: ToolInvocation): Promise<ToolResul
     switch (invocation.toolType) {
         case 'search':
             return executeSearch(invocation.args);
-        case 'calc':
-            return executeCalc(invocation.args);
+        case 'calculator':
+            return executeCalculator(invocation.args);
         default:
             console.warn(`Unknown tool type: ${invocation.toolType}`);
+            const errorContent = `[Error: Unknown tool "${invocation.toolType}"]`;
             return {
                 toolType: invocation.toolType,
                 args: invocation.args,
-                content: `[Error: Unknown tool "${invocation.toolType}"]`,
+                content: errorContent,
+                displayReplacement: errorContent,
             };
     }
 }
@@ -57,29 +50,27 @@ export async function executeTools(invocations: ToolInvocation[]): Promise<ToolR
 
 async function executeSearch(query: string): Promise<ToolResult> {
     if (!query.trim()) {
+        const errorContent = '[Error: Empty search query]';
         return {
             toolType: 'search',
             args: query,
-            content: '[Error: Empty search query]',
-            metadata: { searchQuery: query },
+            content: errorContent,
+            displayReplacement: errorContent,
         };
     }
 
     try {
-        // Check if the query is a direct URL
         let urlToFetch: string;
         const trimmedQuery = query.trim();
 
         if (/^https?:\/\//i.test(trimmedQuery)) {
-            // Direct URL — fetch it
             urlToFetch = trimmedQuery;
         } else {
-            // Search query — use DuckDuckGo by default
             urlToFetch = buildSearchUrl([trimmedQuery], 'DuckDuckGo');
         }
 
         const results = await fetchLinkContent(urlToFetch, {
-            maxDepth: 0, // Single page only — AI controls recursion via subsequent tool calls
+            maxDepth: 0,
             cacheTimeToLiveMs: 5 * 60 * 1000,
             fetchMode: 'full',
             includeImages: false,
@@ -89,93 +80,91 @@ async function executeSearch(query: string): Promise<ToolResult> {
 
         if (validResults.length === 0) {
             const errorMsg = results[0]?.error || 'No content retrieved';
+            const errorContent = `[Error: ${errorMsg}]`;
             return {
                 toolType: 'search',
                 args: query,
-                content: `[Error: ${errorMsg}]`,
-                metadata: { searchQuery: query, sourceUrls: [urlToFetch] },
+                content: errorContent,
+                displayReplacement: `[🔍 Searched: "${trimmedQuery}"]\n\n${errorContent}`,
             };
         }
 
-        // Return raw content from the first valid result
         const result = validResults[0];
 
         return {
             toolType: 'search',
             args: query,
             content: result.content,
-            metadata: {
-                searchQuery: query,
-                sourceUrls: [result.url],
-            },
+            displayReplacement: `[🔍 Searched: "${trimmedQuery}"]\n\n${result.content}`,
         };
     } catch (e) {
         console.warn('Search execution failed:', e);
+        const errorContent = `[Error: Search failed - ${(e as Error).message}]`;
         return {
             toolType: 'search',
             args: query,
-            content: `[Error: Search failed - ${(e as Error).message}]`,
-            metadata: { searchQuery: query },
+            content: errorContent,
+            displayReplacement: `[🔍 Searched: "${query.trim()}"]\n\n${errorContent}`,
         };
     }
 }
 
-function executeCalc(expression: string): ToolResult {
+function executeCalculator(expression: string): ToolResult {
     if (!expression.trim()) {
+        const errorContent = '[Error: Empty expression]';
         return {
-            toolType: 'calc',
+            toolType: 'calculator',
             args: expression,
-            content: '[Error: Empty expression]',
-            metadata: { expression },
+            content: errorContent,
+            displayReplacement: errorContent,
         };
     }
 
     try {
         const sanitized = expression.trim();
 
-        // Validate: only allow safe characters
         if (!/^[\d\s+\-*/().,%^eE]+$/.test(sanitized)) {
+            const errorContent = '[Error: Invalid characters in expression]';
             return {
-                toolType: 'calc',
+                toolType: 'calculator',
                 args: expression,
-                content: '[Error: Invalid characters in expression]',
-                metadata: { expression },
+                content: errorContent,
+                displayReplacement: errorContent,
             };
         }
 
-        // Replace ^ with ** for exponentiation
         const evaluable = sanitized.replace(/\^/g, '**');
-
-        // Use Function constructor for safer evaluation than eval()
         const result = new Function(`"use strict"; return (${evaluable})`)();
 
         if (typeof result !== 'number' || !Number.isFinite(result)) {
+            const errorContent = '[Error: Expression did not produce a valid number]';
             return {
-                toolType: 'calc',
+                toolType: 'calculator',
                 args: expression,
-                content: '[Error: Expression did not produce a valid number]',
-                metadata: { expression },
+                content: errorContent,
+                displayReplacement: errorContent,
             };
         }
 
-        // Format: remove trailing zeros, limit decimal places
         const formatted = Number.isInteger(result)
             ? result.toString()
             : Number.parseFloat(result.toFixed(10)).toString();
 
+        // Calculator: displayReplacement is just the result (no indicator needed)
         return {
-            toolType: 'calc',
+            toolType: 'calculator',
             args: expression,
             content: formatted,
-            metadata: { expression },
+            displayReplacement: formatted,
         };
     } catch (e) {
-        console.warn('Calc execution failed:', e);
+        console.warn('Calculator execution failed:', e);
+        const errorContent = `[Error: Calculation failed - ${(e as Error).message}]`;
         return {
-            toolType: 'calc',
+            toolType: 'calculator',
             args: expression,
-            content: `[Error: Calculation failed - ${(e as Error).message}]`,
-            metadata: { expression },
+            content: errorContent,
+            displayReplacement: errorContent,
         };
     }
 }

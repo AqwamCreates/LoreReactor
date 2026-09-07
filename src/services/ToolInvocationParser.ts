@@ -5,7 +5,7 @@ import { toolStartSring, toolEndString } from "../stringList";
 export interface ToolInvocation {
     /** The full matched string including markers, e.g. ":|tool:search: weather in Tokyo:tool|" */
     rawMatch: string;
-    /** The tool type, e.g. "search" or "calc" */
+    /** The tool type, e.g. "search" or "calculator" */
     toolType: string;
     /** The arguments after the tool type, e.g. "weather in Tokyo" */
     args: string;
@@ -183,7 +183,7 @@ function parseToolContent(content: string): ToolInvocation | null {
         }
     }
 
-    // Try space-separated: "calc 2+2*3"
+    // Try space-separated: "calculator 2+2*3"
     const spaceIdx = trimmed.indexOf(' ');
     if (spaceIdx > 0) {
         const toolType = trimmed.slice(0, spaceIdx).trim().toLowerCase();
@@ -212,5 +212,5 @@ function parseToolContent(content: string): ToolInvocation | null {
 }
 
 function isValidToolType(type: string): boolean {
-    return type === 'search' || type === 'calc';
+    return type === 'search' || type === 'calculator';
 }

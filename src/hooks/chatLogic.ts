@@ -915,6 +915,15 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         }
     }
 
+    const toolInstructions: string[] = []
+    const enableTools = enableWebSearch || enableCalculator
+
+    if (enableTools){
+
+        toolInstructions.push()
+
+    }
+
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
@@ -937,6 +946,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         'Date And Time': dateAndTimeLines,
         'Weather': weatherLines,
         'Time Elapsed': timeElapsedLines,
+        'Tool Instructions': toolInstructions,
         'Text Injection': textInjectionLines,
     };
 
