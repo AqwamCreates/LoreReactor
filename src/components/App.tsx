@@ -309,7 +309,7 @@ function App() {
     generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
     numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
     sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
-    activeStrategy, processProtagonistImageSilently,
+    activeStrategy, budgetData, processProtagonistImageSilently,
   } = useChatSession();
 
   // Toast Hook
@@ -1460,7 +1460,24 @@ function App() {
               <button type="button" className="view-mode-toggle" onClick={() => setIsSettingsOpen(true)} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
               <button type="button" className="view-mode-toggle" onClick={() => interactionData && setIsExtListOpen(true)} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
               <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-              <ChatStatisticsBar generationSpeed={generationSpeed} timeToFirstToken={timeToFirstToken} numberOfMessages={numberOfMessages} numberOfTokens={numberOfTokens} maximumNumberOfTokens={maximumNumberOfTokens} maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens} maximumNumberOfContextTokens={maximumNumberOfContextTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} />
+              <ChatStatisticsBar
+                generationSpeed={generationSpeed}
+                timeToFirstToken={timeToFirstToken}
+                numberOfMessages={numberOfMessages}
+                numberOfTokens={numberOfTokens}
+                maximumNumberOfTokens={maximumNumberOfTokens}
+                maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
+                maximumNumberOfContextTokens={maximumNumberOfContextTokens}
+                numberOfCacheInvalidations={numberOfCacheInvalidations}
+                numberOfRequests={numberOfRequests}
+                totalCost={totalCost}
+                costWithoutCacheMisses={costWithoutCacheMisses}
+                budgetSpent={budgetData?.budgetSpent}
+                maximumBudget={activeStrategy?.maximumBudget}
+                timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0
+                    ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp))
+                    : undefined}
+            />
             </div>
           </div></div></header>
 

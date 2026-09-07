@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 interface ChatStatisticsBarProps {
     generationSpeed: number;
-    timeToFirstToken: number; // ms // ms per token
+    timeToFirstToken: number;
     numberOfTokens: number;
     maximumNumberOfTokens: number;
     maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens: number;
@@ -18,6 +18,9 @@ interface ChatStatisticsBarProps {
     inputCacheHitCostPerMillion?: number;
     inputCacheMissCostPerMillion?: number;
     outputGenerationCostPerMillion?: number;
+    budgetSpent?: number;
+    maximumBudget?: number;
+    timeUntilReset?: number | null;
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
@@ -33,6 +36,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     numberOfRequests = 0,
     totalCost = 0,
     costWithoutCacheMisses = 0,
+    budgetSpent,
+    maximumBudget,
+    timeUntilReset,
 }) => {
     const [showDetails, setShowDetails] = useState(false);
 
@@ -42,37 +48,24 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const isNearLimit = percentage > 80;
     const isCritical = percentage > 95;
     
-    // ✅ BINARY THRESHOLD
-    // Target: ~9 tokens/sec = ~111ms/token
-    // Green: < 110ms (Comfortable reading)
-    // Red: >= 110ms (Slower than reading)
-    
     const isFastEnough = generationSpeed < 110;
     const speedColor = isFastEnough ? '' : '#ff4444';
-    
     const speedDisplay = generationSpeed < 1 ? '<1' : Math.round(generationSpeed);
-    
-    // Dynamic Icon: Lightning for fast, Turtle for slow
     const speedIcon = isFastEnough ? '⚡' : '🐢';
 
-    // TTFT display formatting
     const ttftDisplay = timeToFirstToken < 1000 
         ? `${Math.round(timeToFirstToken)}ms` 
         : `${(timeToFirstToken / 1000).toFixed(1)}s`;
-    
-    // TTFT color: green < 2s, yellow 2-4s, red > 4s
     const ttftColor = timeToFirstToken < 2000 
         ? '' 
         : timeToFirstToken < 4000 
             ? '#ffaa00' 
             : '#ff4444';
 
-    // Calculate Cache Metrics
     const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
     const hitRate = numberOfRequests > 0 ? 100 - invalidationRate : 0;
     const hasCacheData = numberOfRequests > 0;
 
-    // Calculate Cost Metrics
     const costSavings = Math.max(0, costWithoutCacheMisses - totalCost);
     const efficiency = costWithoutCacheMisses > 0 ? Math.round((costSavings / costWithoutCacheMisses) * 100) : 0;
 
@@ -84,6 +77,31 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const formatNumber = (num: number) => {
         return num.toLocaleString();
     };
+
+    // Budget metrics
+    const hasBudget = budgetSpent !== undefined && maximumBudget !== undefined && maximumBudget > 0;
+    const budgetPercent = hasBudget ? Math.min(100, Math.round((budgetSpent! / maximumBudget!) * 100)) : 0;
+    const budgetIsNearLimit = budgetPercent > 80;
+    const budgetIsCritical = budgetPercent > 95;
+
+    const formatResetTime = (ms: number): string => {
+        if (ms <= 0) return 'Due now';
+        const totalSeconds = Math.ceil(ms / 1000);
+        if (totalSeconds < 60) return `${totalSeconds}s`;
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (minutes < 60) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+        const hours = Math.floor(minutes / 60);
+        const remainMinutes = minutes % 60;
+        if (hours < 24) return remainMinutes > 0 ? `${hours}h ${remainMinutes}m` : `${hours}h`;
+        const days = Math.floor(hours / 24);
+        const remainHours = hours % 24;
+        return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
+    };
+
+    // Determine primary cost display: budget takes priority over session cost
+    const primaryCostValue = hasBudget ? budgetSpent! : totalCost;
+    const showPrimaryCost = primaryCostValue > 0;
 
     return (
         <div 
@@ -131,11 +149,39 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </span>
                 </div>
 
-                {/* Total Cost (Always show if > 0) */}
-                {totalCost > 0 && (
-                    <div className="chat-stat-item" title={`Total Cost: $${formatCost(totalCost)}`}>
+                {/* Budget Usage Bar (when budget strategy active) */}
+                {hasBudget && (
+                    <div className={`chat-stat-item chat-stat-token-usage ${budgetIsCritical ? 'chat-stats-critical' : budgetIsNearLimit ? 'chat-stats-warning' : ''}`}
+                        title={`Budget: $${formatCost(budgetSpent!)} / $${formatCost(maximumBudget!)}`}>
+                        <span className="chat-stat-label">💰</span>
+                        <span className="chat-stat-context-bar">
+                            <span 
+                                className="chat-stat-context-fill" 
+                                style={{ 
+                                    width: `${budgetPercent}%`,
+                                    background: budgetIsCritical ? '#ff4444' : budgetIsNearLimit ? '#ffaa00' : undefined,
+                                }}
+                            />
+                        </span>
+                        <span className="chat-stat-value" style={{ fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
+                            {budgetPercent}%
+                        </span>
+                    </div>
+                )}
+
+                {/* Session Cost (only show when no budget, or in addition to budget) */}
+                {!hasBudget && showPrimaryCost && (
+                    <div className="chat-stat-item" title={`Session Cost: $${formatCost(totalCost)}`}>
                         <span className="chat-stat-label">💰</span>
                         <span className="chat-stat-value">${formatCost(totalCost)}</span>
+                    </div>
+                )}
+
+                {/* Reset countdown (compact) */}
+                {hasBudget && timeUntilReset !== null && timeUntilReset !== undefined && timeUntilReset > 0 && (
+                    <div className="chat-stat-item" title={`Budget resets in ${formatResetTime(timeUntilReset)}`}>
+                        <span className="chat-stat-label">⏳</span>
+                        <span className="chat-stat-value" style={{ fontSize: '0.7em' }}>{formatResetTime(timeUntilReset)}</span>
                     </div>
                 )}
             </div>
@@ -182,6 +228,26 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                     </div>
 
+                    {/* --- Budget Statistics --- */}
+                    {hasBudget && (
+                        <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+                            <div className="chat-stat-detail-row">
+                                <span className="chat-stat-detail-label">Budget Spent:</span>
+                                <span className="chat-stat-detail-value" style={{ color: budgetIsCritical ? '#ff4444' : budgetIsNearLimit ? '#ffaa00' : '' }}>
+                                    ${formatCost(budgetSpent!)} / ${formatCost(maximumBudget!)} ({budgetPercent}%)
+                                </span>
+                            </div>
+                            {timeUntilReset !== null && timeUntilReset !== undefined && (
+                                <div className="chat-stat-detail-row">
+                                    <span className="chat-stat-detail-label">Next Reset:</span>
+                                    <span className="chat-stat-detail-value">
+                                        {timeUntilReset > 0 ? `in ${formatResetTime(timeUntilReset)}` : 'Due now'}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* --- Cache Statistics --- */}
                     {hasCacheData && (
                         <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
@@ -202,11 +268,11 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                     )}
 
-                    {/* --- Cost Breakdown --- */}
+                    {/* --- Session Cost Breakdown --- */}
                     {totalCost > 0 && (
                         <div>
                             <div className="chat-stat-detail-row">
-                                <span className="chat-stat-detail-label">Total Cost:</span>
+                                <span className="chat-stat-detail-label">Session Cost:</span>
                                 <span className="chat-stat-detail-value">${formatCost(totalCost)}</span>
                             </div>
                             {costWithoutCacheMisses > 0 && (
