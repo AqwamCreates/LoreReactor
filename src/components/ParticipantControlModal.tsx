@@ -10,6 +10,8 @@ interface ParticipantControlModalProps {
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (character: Character) => void;
     onSendCustomMessage: (character: Character, text: string) => void;
+    onInjectCustomMessage: (character: Character, text: string) => void;
+    onInjectFirstMessage: (character: Character) => void;
 }
 
 export function ParticipantControlModal({
@@ -19,6 +21,8 @@ export function ParticipantControlModal({
     onUpdateInteractionData,
     onForceFirstMessage,
     onSendCustomMessage,
+    onInjectCustomMessage,
+    onInjectFirstMessage,
 }: ParticipantControlModalProps) {
     const [staminaOverrides, setStaminaOverrides] = useState<Record<string, number>>({});
     const [selectedCharId, setSelectedCharId] = useState<string>('');
@@ -74,20 +78,38 @@ export function ParticipantControlModal({
         onClose();
     };
 
+    const getSelectedCharacter = (): Character | null => {
+        if (!selectedCharId) return null;
+        return interactionData.participants.find(p => p.id === selectedCharId) ?? null;
+    };
+
     const handleSendCustomMessage = () => {
-        if (!selectedCharId || !customMessageText.trim()) return;
-        const char = interactionData.participants.find(p => p.id === selectedCharId);
-        if (!char) return;
+        const char = getSelectedCharacter();
+        if (!char || !customMessageText.trim()) return;
         onSendCustomMessage(char, customMessageText.trim());
         setCustomMessageText('');
         onClose();
     };
 
+    const handleInjectCustomMessage = () => {
+        const char = getSelectedCharacter();
+        if (!char || !customMessageText.trim()) return;
+        onInjectCustomMessage(char, customMessageText.trim());
+        setCustomMessageText('');
+        onClose();
+    };
+
     const handleForceFirstMessage = () => {
-        if (!selectedCharId) return;
-        const char = interactionData.participants.find(p => p.id === selectedCharId);
+        const char = getSelectedCharacter();
         if (!char) return;
         onForceFirstMessage(char);
+        onClose();
+    };
+
+    const handleInjectFirstMessage = () => {
+        const char = getSelectedCharacter();
+        if (!char) return;
+        onInjectFirstMessage(char);
         onClose();
     };
 
@@ -104,21 +126,26 @@ export function ParticipantControlModal({
                 <div className="modal-body editor-modal-body">
                     {/* Message Injection */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Send Message</span>
+                        <span className="editor-section-title">Message</span>
                         <div className="entity-ref-hint">
-                            Select a participant to send a custom message or force their first message to bootstrap an empty conversation.
+                            Select a participant to send or inject messages. "Send" adds a complete message to chat history. "Inject" feeds text directly into the LLM prompt without storing it.
                         </div>
-                        <div className="participant-control-message-form">
-                            <select
-                                value={selectedCharId}
-                                onChange={e => setSelectedCharId(e.target.value)}
-                                className="editor-select"
-                            >
-                                <option value="">Select character...</option>
-                                {interactionData.participants.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </select>
+
+                        <select
+                            value={selectedCharId}
+                            onChange={e => setSelectedCharId(e.target.value)}
+                            className="editor-select"
+                            style={{ marginTop: '8px' }}
+                        >
+                            <option value="">Select character...</option>
+                            {interactionData.participants.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+
+                        {/* Current Message Subsection */}
+                        <div className="participant-control-subsection">
+                            <span className="participant-control-subsection-title">Current Message</span>
                             <textarea
                                 value={customMessageText}
                                 onChange={e => setCustomMessageText(e.target.value)}
@@ -126,22 +153,47 @@ export function ParticipantControlModal({
                                 placeholder="Type the message content..."
                                 rows={3}
                             />
-                            <button
-                                type="button"
-                                className="editor-btn editor-btn-save"
-                                disabled={!selectedCharId || !customMessageText.trim()}
-                                onClick={handleSendCustomMessage}
-                            >
-                                Send Message
-                            </button>
-                            <button
-                                type="button"
-                                className="editor-btn editor-btn-cancel"
-                                disabled={!selectedCharId}
-                                onClick={handleForceFirstMessage}
-                            >
-                                Send First Message
-                            </button>
+                            <div className="participant-control-button-row">
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-save"
+                                    disabled={!selectedCharId || !customMessageText.trim()}
+                                    onClick={handleSendCustomMessage}
+                                >
+                                    Send Current Message
+                                </button>
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-cancel"
+                                    disabled={!selectedCharId || !customMessageText.trim()}
+                                    onClick={handleInjectCustomMessage}
+                                >
+                                    Inject Current Message
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* First Message Subsection */}
+                        <div className="participant-control-subsection">
+                            <span className="participant-control-subsection-title">First Message</span>
+                            <div className="participant-control-button-row">
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-save"
+                                    disabled={!selectedCharId}
+                                    onClick={handleForceFirstMessage}
+                                >
+                                    Send First Message
+                                </button>
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-cancel"
+                                    disabled={!selectedCharId}
+                                    onClick={handleInjectFirstMessage}
+                                >
+                                    Inject First Message
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -161,7 +213,7 @@ export function ParticipantControlModal({
                                     <div key={p.id} className="participant-control-stamina-row">
                                         <span className="participant-control-stamina-name">{p.name}</span>
                                         <div className="participant-control-stamina-input-group">
-                                            <label className="participant-control-stamina-label">Current Chat Stamina:</label>
+                                            <label className="participant-control-stamina-label">Stamina:</label>
                                             <input
                                                 type="number"
                                                 value={current}

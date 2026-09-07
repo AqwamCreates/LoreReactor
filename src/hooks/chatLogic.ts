@@ -44,6 +44,8 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
 
+const now = Date.now()
+
 /**
  * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
  */
@@ -852,6 +854,28 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     if (useCurrentDateAndTime) {
         const dateAndTimeString = getCurrentDateAndTimeString();
         dateAndTimeLines.push(`${contextStartString}${thinkStartString} Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
+
+        if (interactionHistory.length > 0) {
+            const now = Date.now();
+            const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
+            const diffMs = Math.max(0, now - lastMsgTimestamp);
+
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const numberOfDays = Math.floor(totalSeconds / 86400);
+            const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
+            const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
+            const numberOfSeconds = totalSeconds % 60;
+
+            const parts: string[] = [];
+            if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
+            if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
+            if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
+            if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
+
+            const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
+
+            dateAndTimeLines.push(`${contextStartString}${thinkStartString} It has been ${timeSinceLastMessageString} since the last message.${thinkEndString}${contextEndString}`);
+        }
     }
 
     const dialoguePromptLines: string[] = [];
