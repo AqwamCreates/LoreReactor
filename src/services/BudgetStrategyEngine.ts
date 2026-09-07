@@ -57,7 +57,7 @@ function isQuotaError(e: unknown): boolean {
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
         message.includes('subscribe') || message.includes('too many requests') ||
-        message.includes('per')
+        message.includes('per');
 }
 
 export interface RunningModelState {
@@ -75,13 +75,9 @@ export class BudgetStrategyEngine {
     /** Callback to load a local model by ID. Returns the port on success, null on failure. */
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
 
-    /** Index into each pool — exhaust-first means we stay on the same index until it fails. */
-    private onlineIndex = 0;
-    private localIndex = 0;
-
-    /** Tracks which models in each pool have been exhausted during the current generation attempt. */
-    private failedOnlineIndices = new Set<number>();
-    private failedLocalIndices = new Set<number>();
+    /** Tracks which model IDs in each pool have been exhausted during the current generation attempt. */
+    private failedOnlineIds = new Set<string>();
+    private failedLocalIds = new Set<string>();
 
     constructor(
         strategy: BudgetStrategy,
@@ -93,6 +89,11 @@ export class BudgetStrategyEngine {
         this.runningModels = runningModels;
         this.currentCost = initialCost;
         this.loadLocalModel = loadLocalModel ?? null;
+    }
+
+    /** Gets the cost tier for a model. Defaults to 0 if not assigned. */
+    private getTier(model: LanguageModel): number {
+        return this.strategy.modelCostTiers?.[model.id] ?? 0;
     }
 
     /** Builds a model context, resolving runtimePort from the running models map. */
@@ -143,25 +144,36 @@ export class BudgetStrategyEngine {
     }
 
     /**
-     * Selects the next available model from a pool.
-     * Exhaust-first: stays on currentIndex until it's marked failed, then advances.
+     * Selects the next available model from a pool using tier-aware selection.
+     * Groups models by tier (highest first), tries all models in the highest
+     * available tier before dropping to the next tier. Within a tier, rotates
+     * through models that haven't failed yet.
      */
     private selectFromPool(
         pool: LanguageModel[],
-        currentIndex: number,
-        failedIndices: Set<number>,
-    ): { model: LanguageModel; index: number } | null {
+        failedIds: Set<string>,
+    ): LanguageModel | null {
         if (pool.length === 0) return null;
 
-        if (!failedIndices.has(currentIndex % pool.length)) {
-            const idx = currentIndex % pool.length;
-            return { model: pool[idx], index: idx };
+        // Group models by tier, sorted highest-first
+        const tierGroups = new Map<number, LanguageModel[]>();
+        for (const model of pool) {
+            if (failedIds.has(model.id)) continue;
+            const tier = this.getTier(model);
+            if (!tierGroups.has(tier)) tierGroups.set(tier, []);
+            tierGroups.get(tier)!.push(model);
         }
 
-        for (let attempt = 1; attempt < pool.length; attempt++) {
-            const idx = (currentIndex + attempt) % pool.length;
-            if (!failedIndices.has(idx)) {
-                return { model: pool[idx], index: idx };
+        if (tierGroups.size === 0) return null;
+
+        // Sort tiers descending — try highest tier first
+        const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
+
+        // Return the first available model from the highest non-empty tier
+        for (const tier of sortedTiers) {
+            const candidates = tierGroups.get(tier)!;
+            if (candidates.length > 0) {
+                return candidates[0];
             }
         }
 
@@ -177,14 +189,13 @@ export class BudgetStrategyEngine {
     ): Promise<string> {
         const useOnline = await this.shouldUseOnline(interactionData);
 
-        this.failedOnlineIndices.clear();
-        this.failedLocalIndices.clear();
+        this.failedOnlineIds.clear();
+        this.failedLocalIds.clear();
 
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryIndex = useOnline ? this.onlineIndex : this.localIndex;
-        const primaryFailedSet = useOnline ? this.failedOnlineIndices : this.failedLocalIndices;
-        const fallbackFailedSet = useOnline ? this.failedLocalIndices : this.failedOnlineIndices;
+        const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
+        const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
 
         // Accumulates partial text across model rotations for seamless continuation
         let accumulatedPartialText = '';
@@ -199,24 +210,23 @@ export class BudgetStrategyEngine {
             },
         };
 
-        // ─── Try primary pool (exhaust-first) ───
+        // ─── Try primary pool (tier-aware) ───
         while (true) {
-            const selection = this.selectFromPool(primaryPool, primaryIndex, primaryFailedSet);
-            if (!selection) break;
+            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet);
+            if (!selectedModel) break;
 
-            const loaded = await this.ensureModelLoaded(selection.model);
+            const loaded = await this.ensureModelLoaded(selectedModel);
             if (!loaded) {
-                primaryFailedSet.add(selection.index);
-                console.warn(`Model ${selection.model.name} could not be loaded, skipping.`);
+                primaryFailedSet.add(selectedModel.id);
+                console.warn(`Model ${selectedModel.name} could not be loaded, skipping.`);
                 continue;
             }
 
-            const primaryCtx = this.buildModelContext(selection.model);
-            const pricing = buildPricing(selection.model);
+            const primaryCtx = this.buildModelContext(selectedModel);
+            const pricing = buildPricing(selectedModel);
             const runtimePort = primaryCtx.runtimePort;
 
             try {
-                // Pass accumulated partial text so the model continues from where the last one left off
                 const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
 
                 const result = await engine.generateStream(
@@ -226,18 +236,11 @@ export class BudgetStrategyEngine {
                     primaryCtx,
                 );
 
-                if (useOnline) {
-                    this.onlineIndex = selection.index;
-                } else {
-                    this.localIndex = selection.index;
-                }
-
                 const promptTokens = await engine.countTokens(body.prompt || '');
                 const completionTokens = await engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.currentCost += cost.totalCost;
 
-                // Combine accumulated partial with this model's output
                 return accumulatedPartialText + result.text;
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
@@ -246,30 +249,26 @@ export class BudgetStrategyEngine {
                     throw e;
                 }
 
-                // accumulatedPartialText already contains everything streamed before the error
-                // thanks to the wrapped onToken callback. Next model will continue from here.
-                primaryFailedSet.add(selection.index);
-                console.warn(`Model ${selection.model.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating to next model for continuation.`);
+                primaryFailedSet.add(selectedModel.id);
+                console.warn(`Model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating to next model for continuation.`);
             }
         }
 
         // ─── Primary pool exhausted — try fallback pool ───
         if (this.strategy.fallbackOnLocalFailure && !abortController.signal.aborted) {
-            const fallbackIndex = useOnline ? this.localIndex : this.onlineIndex;
-
             while (true) {
-                const selection = this.selectFromPool(fallbackPool, fallbackIndex, fallbackFailedSet);
-                if (!selection) break;
+                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet);
+                if (!selectedModel) break;
 
-                const loaded = await this.ensureModelLoaded(selection.model);
+                const loaded = await this.ensureModelLoaded(selectedModel);
                 if (!loaded) {
-                    fallbackFailedSet.add(selection.index);
-                    console.warn(`Fallback model ${selection.model.name} could not be loaded, skipping.`);
+                    fallbackFailedSet.add(selectedModel.id);
+                    console.warn(`Fallback model ${selectedModel.name} could not be loaded, skipping.`);
                     continue;
                 }
 
-                const fallbackCtx = this.buildModelContext(selection.model);
-                const fallbackPricing = buildPricing(selection.model);
+                const fallbackCtx = this.buildModelContext(selectedModel);
+                const fallbackPricing = buildPricing(selectedModel);
                 const fallbackPort = fallbackCtx.runtimePort;
 
                 try {
@@ -282,12 +281,6 @@ export class BudgetStrategyEngine {
                         fallbackCtx,
                     );
 
-                    if (useOnline) {
-                        this.localIndex = selection.index;
-                    } else {
-                        this.onlineIndex = selection.index;
-                    }
-
                     const promptTokens = await engine.countTokens(fallbackBody.prompt || '');
                     const completionTokens = await engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
@@ -299,8 +292,8 @@ export class BudgetStrategyEngine {
 
                     if (!isQuotaError(e)) throw e;
 
-                    fallbackFailedSet.add(selection.index);
-                    console.warn(`Fallback model ${selection.model.name} also hit quota/rate limit, rotating.`);
+                    fallbackFailedSet.add(selectedModel.id);
+                    console.warn(`Fallback model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) also hit quota/rate limit, rotating.`);
                 }
             }
         }
