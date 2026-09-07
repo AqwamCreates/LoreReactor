@@ -874,7 +874,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
         const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
 
-        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this. For example, a previous time must be subtracted or added with the elapsed time to get current time.${thinkEndString}${contextEndString}`);
+        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${thinkEndString}${contextEndString}`);
     }
 
     const dialoguePromptLines: string[] = [];
