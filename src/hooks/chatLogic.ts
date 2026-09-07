@@ -872,7 +872,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
         if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
 
-        const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
+        const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
 
         timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this. For example, a previous count down time may be subtracted with the elapsed time to get current count down time.${thinkEndString}${contextEndString}`);
     }
