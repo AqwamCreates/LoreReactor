@@ -148,10 +148,12 @@ export class BudgetStrategyEngine {
      * Groups models by tier (highest first), tries all models in the highest
      * available tier before dropping to the next tier. Within a tier, rotates
      * through models that haven't failed yet.
+     * Respects maxTier cap to prevent using expensive models for simple turns.
      */
     private selectFromPool(
         pool: LanguageModel[],
         failedIds: Set<string>,
+        maxTier?: number,
     ): LanguageModel | null {
         if (pool.length === 0) return null;
 
@@ -160,6 +162,8 @@ export class BudgetStrategyEngine {
         for (const model of pool) {
             if (failedIds.has(model.id)) continue;
             const tier = this.getTier(model);
+            // Skip models above the per-turn tier cap
+            if (maxTier !== undefined && tier > maxTier) continue;
             if (!tierGroups.has(tier)) tierGroups.set(tier, []);
             tierGroups.get(tier)!.push(model);
         }
@@ -197,6 +201,23 @@ export class BudgetStrategyEngine {
         const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
         const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
 
+        // ─── Compute per-turn tier cap based on complexity relative to configured tiers ───
+        const complexityScore = computeComplexityScore(interactionData);
+        const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
+        let perTurnMaxTier: number | undefined;
+        if (tierValues.length === 0) {
+            // No tiers configured — no cap
+            perTurnMaxTier = undefined;
+        } else {
+            // Map complexity (0-100) to a percentile index into the sorted unique tiers
+            // complexity 0 → lowest tier, complexity 100 → highest tier
+            const tierIndex = Math.min(
+                tierValues.length - 1,
+                Math.round((complexityScore / 100) * (tierValues.length - 1))
+            );
+            perTurnMaxTier = tierValues[tierIndex];
+        }
+
         // Accumulates partial text across model rotations for seamless continuation
         let accumulatedPartialText = '';
 
@@ -212,7 +233,7 @@ export class BudgetStrategyEngine {
 
         // ─── Try primary pool (tier-aware) ───
         while (true) {
-            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet);
+            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier);
             if (!selectedModel) break;
 
             const loaded = await this.ensureModelLoaded(selectedModel);
@@ -257,7 +278,7 @@ export class BudgetStrategyEngine {
         // ─── Primary pool exhausted — try fallback pool ───
         if (this.strategy.fallbackOnLocalFailure && !abortController.signal.aborted) {
             while (true) {
-                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet);
+                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier);
                 if (!selectedModel) break;
 
                 const loaded = await this.ensureModelLoaded(selectedModel);
