@@ -4,9 +4,10 @@ import type { Character, InteractionData, Location } from '../types';
  * Get the current location index for a character from their last interaction entry.
  */
 export function getCurrentLocationIndex(data: InteractionData, character: Character): number | undefined {
-    for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
-        if (data.interactionHistory[i].character.id === character.id && data.interactionHistory[i].locationIndex !== undefined) {
-            return data.interactionHistory[i].locationIndex;
+    const interactionHistory = data.interactionHistory
+    for (let i = interactionHistory.length - 1; i >= 0; i--) {
+        if (interactionHistory[i].character.id === character.id && interactionHistory[i].locationIndex !== undefined) {
+            return interactionHistory[i].locationIndex;
         }
     }
     return undefined;
