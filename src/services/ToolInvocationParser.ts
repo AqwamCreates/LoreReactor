@@ -3,7 +3,7 @@
 import { toolStartSring, toolEndString } from "../stringList";
 
 export interface ToolInvocation {
-    /** The full matched string including markers, e.g. "${toolStartSring}search: weather in Tokyo${toolEndString}" */
+    /** The full matched string including markers, e.g. "${toolStartSring}search: weather in Tokyo:tool|" */
     rawMatch: string;
     /** The tool type, e.g. "search" or "calculator" */
     toolType: string;
@@ -18,7 +18,7 @@ export interface ParsedStreamResult {
     resumeText: string;
     /** Tool invocations found in this chunk, in order of appearance */
     toolInvocations: ToolInvocation[];
-    /** Whether the stream ended mid-tool (suppressed state, waiting for ${toolEndString}) */
+    /** Whether the stream ended mid-tool (suppressed state, waiting for ${toolEndSring}) */
     isSuppressed: boolean;
 }
 
@@ -49,6 +49,11 @@ export class ToolInvocationParser {
 
         while (i < input.length) {
             if (this.state === 'NORMAL') {
+                    const debugIdx = input.indexOf(':|');
+    if (debugIdx !== -1 && debugIdx < input.length - 10) {
+        console.log('[PARSER DEBUG] Found ":|" at index', debugIdx, 
+            'surrounding bytes:', JSON.stringify(input.slice(debugIdx, debugIdx + 30)));
+    }
                 // Look for start marker
                 const startIdx = input.indexOf(toolStartSring, i);
 

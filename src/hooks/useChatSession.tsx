@@ -136,16 +136,17 @@ async function runBackgroundSummarization(
 
 /**
  * Process tool invocations found in generated text.
- * Returns two versions of the text:
+ * Returns processed text versions plus individual display replacements tagged by tool type:
  * - resumeText: raw results injected for the model's next generation round
- * - displayText: formatted replacements for the user-visible message
+ * - displayText: full text with markers replaced by formatted results
+ * - displayReplacements: individual result strings tagged by tool type for selective display injection
  * Returns null if no tools were found or none are enabled.
  */
 async function processToolInvocations(
     rawText: string,
     character: Character,
     profile: InteractionData['Profile'],
-): Promise<{ resumeText: string; displayText: string } | null> {
+): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
     const webSearchEnabled = getEffectiveEnableWebSearch(character, profile);
     const calculatorEnabled = getEffectiveEnableCalculator(character, profile);
 
@@ -168,15 +169,17 @@ async function processToolInvocations(
 
     let resumeText = rawText;
     let displayText = rawText;
+    const displayReplacements: { type: string; value: string }[] = [];
 
     for (let i = 0; i < enabledInvocations.length; i++) {
         const invocation = enabledInvocations[i];
         const toolResult = toolResults[i];
         resumeText = resumeText.replace(invocation.rawMatch, toolResult.content);
         displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
+        displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
     }
 
-    return { resumeText, displayText };
+    return { resumeText, displayText, displayReplacements };
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────
@@ -568,8 +571,17 @@ export function useChatSession() {
                         break;
                     }
 
-                    // ✅ Commit pre-tool display text, reset live buffer, skip injected prefix
+                    // ✅ Commit pre-tool text, inject exact calculator results into streaming display
+                    // Search results are too large for raw display — model summarizes them naturally
                     committedDisplayText += liveDisplayText;
+                    for (const rep of toolResult.displayReplacements) {
+                        if (rep.type === 'calculator') {
+                            committedDisplayText += rep.value;
+                        }
+                    }
+                    throttledSetStreamingText(committedDisplayText);
+                    onToken?.(committedDisplayText);
+
                     liveDisplayText = '';
                     streamToolParser.reset();
                     currentExistingText = toolResult.resumeText;
@@ -645,8 +657,17 @@ export function useChatSession() {
                         break;
                     }
 
-                    // ✅ Commit pre-tool display text, reset live buffer, skip injected prefix
+                    // ✅ Commit pre-tool text, inject exact calculator results into streaming display
+                    // Search results are too large for raw display — model summarizes them naturally
                     committedDisplayText += liveDisplayText;
+                    for (const rep of toolResult.displayReplacements) {
+                        if (rep.type === 'calculator') {
+                            committedDisplayText += rep.value;
+                        }
+                    }
+                    throttledSetStreamingText(committedDisplayText);
+                    onToken?.(committedDisplayText);
+
                     liveDisplayText = '';
                     streamToolParser.reset();
                     currentExistingText = toolResult.resumeText;
@@ -757,7 +778,7 @@ export function useChatSession() {
         if (!interactionData || !currentCharacter) return;
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 300)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const d = interactionDataRef.current; if (!d) { releaseLock(); return; }
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
 
@@ -803,7 +824,7 @@ export function useChatSession() {
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!interactionData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         setStreamingText(''); streamingTextRef.current = ''; pendingStreamingTextRef.current = '';
         setStreamingCharacter(null); streamingCharacterRef.current = null;
@@ -974,7 +995,7 @@ export function useChatSession() {
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!interactionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
-        if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const history = interactionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
