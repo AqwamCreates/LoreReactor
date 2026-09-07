@@ -123,6 +123,8 @@ function executeCalculator(expression: string): ToolResult {
     try {
         const sanitized = expression.trim();
 
+        // Allow digits, operators, parentheses, decimal points, whitespace,
+        // and scientific notation (e/E followed by optional +/- and digits)
         if (!/^[\d\s+\-*/().,%^eE]+$/.test(sanitized)) {
             const errorContent = '[Error: Invalid characters in expression]';
             return {
@@ -133,7 +135,31 @@ function executeCalculator(expression: string): ToolResult {
             };
         }
 
+        // Validate scientific notation is well-formed: e/E must be followed by optional sign and digits only
+        if (/[eE](?![+-]?\d)/.test(sanitized)) {
+            const errorContent = '[Error: Malformed scientific notation in expression]';
+            return {
+                toolType: 'calculator',
+                args: expression,
+                content: errorContent,
+                displayReplacement: errorContent,
+            };
+        }
+
+        // Replace ^ with ** for exponentiation
         const evaluable = sanitized.replace(/\^/g, '**');
+
+        // Safety check: only allow known-safe tokens after transformation
+        if (!/^[\d\s+\-*/().,%*eE]+$/.test(evaluable)) {
+            const errorContent = '[Error: Expression contains disallowed constructs]';
+            return {
+                toolType: 'calculator',
+                args: expression,
+                content: errorContent,
+                displayReplacement: errorContent,
+            };
+        }
+
         const result = new Function(`"use strict"; return (${evaluable})`)();
 
         if (typeof result !== 'number' || !Number.isFinite(result)) {
@@ -150,7 +176,6 @@ function executeCalculator(expression: string): ToolResult {
             ? result.toString()
             : Number.parseFloat(result.toFixed(10)).toString();
 
-        // Calculator: displayReplacement is just the result (no indicator needed)
         return {
             toolType: 'calculator',
             args: expression,
