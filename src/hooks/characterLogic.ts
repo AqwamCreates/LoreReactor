@@ -1,9 +1,28 @@
+// src/hooks/characterLogic.ts
 import type { Character, InteractionData, InteractionMessage, Profile } from "../types";
 
-export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
-    const profileValue = profile?.chatProbability;
-    if (profileValue === undefined || profileValue === -1) return character.chatProbability ?? 0.5;
+function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
+    const characterValue = character[key] as number;
+    const profileValue = profile?.[key as keyof Profile] as number | undefined;
+    if (profileValue === undefined || profileValue === -1) return characterValue;
     return profileValue;
+}
+
+/**
+ * Tri-state boolean resolution for tool/memory flags.
+ * Character values are boolean (true/false).
+ * Profile values are numeric tri-state: -1 = force off, 0 = defer to character, 1 = force on.
+ * Returns a number: 0 = off, 1 = on.
+ */
+function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
+    const characterValue = character[key] ? 1 : 0;
+    const profileValue = profile?.[key as keyof Profile] as number | undefined;
+    if (profileValue === undefined || profileValue === 0) return characterValue;
+    return profileValue === -1 ? 0 : 1;
+}
+
+export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("chatProbability", character, profile);
 }
 
 export function getEffectiveMaximumChatStamina(character: Character, profile?: Profile): number {
@@ -33,6 +52,34 @@ export function getEffectiveSkipProbability(character: Character, profile?: Prof
     const profileValue = profile?.skipProbability;
     if (profileValue === undefined || profileValue === -1) return character.skipProbability ?? 0;
     return profileValue;
+}
+
+export function getEffectiveMemoryRetentionWeight(character: Character, profile?: Profile): number {
+    const profileValue = profile?.memoryRetentionWeight;
+    if (profileValue === undefined || profileValue === -1) return character.memoryRetentionWeight ?? 1;
+    return profileValue;
+}
+
+export function getEffectiveContextSensitivity(character: Character, profile?: Profile): number {
+    const profileValue = profile?.contextSensitivity;
+    if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
+    return profileValue;
+}
+
+export function getEffectiveEnableMemoryWriting(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("enableMemoryWriting", character, profile);
+}
+
+export function getEffectiveEnableMemoryReading(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("enableMemoryReading", character, profile);
+}
+
+export function getEffectiveUseWebSearch(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("useWebSearch", character, profile);
+}
+
+export function getEffectiveUseCalculator(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("useCalculator", character, profile);
 }
 
 export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {
@@ -66,7 +113,6 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     const isIgnored = (matchStart: number, matchLength: number): boolean => {
         const matchEnd = matchStart + matchLength;
         for (const range of ignoreRanges) {
-            // Overlap check: match overlaps with ignore range if they share any characters
             if (matchStart < range.end && matchEnd > range.start) return true;
         }
         return false;
@@ -115,14 +161,12 @@ export function consumeChatStamina(interactionMessage: InteractionMessage, amoun
 
 export function generateChatStamina(character: Character, interactionMessage: InteractionMessage) {
     const maximumChatStamina = character.maximumChatStamina;
-    const remainingChatStamina = interactionMessage.remainingChatStamina
+    const remainingChatStamina = interactionMessage.remainingChatStamina;
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
-    if (remainingChatStamina === undefined) return; // Treat undefined as infinite stamina, so no generation needed.
+    if (remainingChatStamina === undefined) return;
     if (remainingChatStamina >= maximumChatStamina) return;
-    // Build cumulative distribution using logarithmic weights.
-    // Weight for recovering k points = ln(1 + k) where k goes from 1 to deficit.
-    // This makes small k values have steeply higher weight than large k values.
+
     const weights: number[] = [];
     let cumulativeWeight = 0;
 
@@ -132,10 +176,8 @@ export function generateChatStamina(character: Character, interactionMessage: In
         weights.push(cumulativeWeight);
     }
 
-    // Sample from the distribution
     const roll = Math.random() * cumulativeWeight;
 
-    // Binary search for the sampled value
     let lo = 0;
     let hi = weights.length - 1;
 
@@ -148,7 +190,7 @@ export function generateChatStamina(character: Character, interactionMessage: In
         }
     }
 
-    const amountOfChatStaminaGenerated = lo + 1; // k is 1-indexed
+    const amountOfChatStaminaGenerated = lo + 1;
 
     interactionMessage.remainingChatStamina = Math.min(
         maximumChatStamina,
