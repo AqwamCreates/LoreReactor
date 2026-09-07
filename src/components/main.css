@@ -1276,7 +1276,6 @@ gap: 8px;
 /* =============================================================================
 8. UTILITIES & SELECT FIXES
 ============================================================================= */
-.loading-screen { padding: 2rem; text-align: center; color: var(--text-h); font-family: monospace; }
 .typing-indicator { font-style: italic; opacity: 0.7; font-size: 0.85rem; padding-left: 80px; }
 select, select option {
 background: var(--social-bg); color: var(--text-h); border: 1px solid var(--border);
