@@ -4,7 +4,7 @@ import type { Character, InteractionData, InteractionMessage, Profile } from "..
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
     const characterValue = character[key] as number;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
-    if (profileValue === undefined || profileValue === -1) return characterValue;
+    if (profileValue === undefined || profileValue < 0) return characterValue;
     return profileValue;
 }
 
