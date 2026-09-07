@@ -35,7 +35,7 @@ const startOfContextLine = `${contextStartString}Start Of The Context.${contextE
 const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
 
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
-const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving there, I understand that I cannot access that location${thinkEndString}${contextEndString}`
+const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${thinkEndString}${contextEndString}`
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
