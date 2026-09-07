@@ -918,12 +918,16 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const toolInstructions: string[] = []
     const enableTools = enableWebSearch || enableCalculator
 
-    if (enableTools){
+    if (enableTools) {
+        toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write :|tool: followed by the tool type and arguments, then close with :tool|. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
-        toolInstructions.push()
-        if (enableWebSearch) toolInstructions.push()
-        if (enableCalculator) toolInstructions.push()
+        if (enableWebSearch) {
+            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write :|tool:search: <query or URL>:tool|. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
+        }
 
+        if (enableCalculator) {
+            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write :|tool:calculator: <expression>:tool|. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`);
+        }
     }
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
