@@ -1010,7 +1010,6 @@ padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
 .editor-textarea,
 .editor-select,
 .modal-search-input,
-.action-menu-search,
 .editor-btn {
 font-size: 1rem !important;
 min-height: 48px;
