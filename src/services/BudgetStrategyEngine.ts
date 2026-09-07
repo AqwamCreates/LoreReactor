@@ -71,7 +71,8 @@ function isQuotaError(e: unknown): boolean {
         message.includes('enotfound') || message.includes('etimedout') ||
         message.includes('socket hang up') || message.includes('abort') ||
         message.includes('timeout') || message.includes('502') ||
-        message.includes('504');
+        message.includes('503') || message.includes('504') ||
+        message.includes('service unavailable');
 }
 
 /** Checks if a budget reset is due based on resetDuration. */
@@ -419,7 +420,9 @@ export class BudgetStrategyEngine {
             return accumulatedPartialText;
         }
 
-        throw new Error('All models in both primary and fallback pools have been exhausted.');
+        const exhaustedError = new Error('All models in both primary and fallback pools have been exhausted.');
+        console.error('[BudgetEngine] Exhausted. Primary failed:', [...this.failedOnlineIds], 'Fallback failed:', [...this.failedLocalIds]);
+        throw exhaustedError;
     }
 
     private async shouldUseOnline(interactionData: InteractionData): Promise<boolean> {
