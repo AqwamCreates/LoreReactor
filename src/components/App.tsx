@@ -1479,7 +1479,7 @@ function App() {
                               title="Save changes and regenerate response"
                               style={!isModelReady || isLoading ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                             >
-                              ↻ Regenerate
+                              Regenerate
                             </button>
                             <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
                           </div>

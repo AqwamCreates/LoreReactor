@@ -394,6 +394,9 @@ border: 1px solid var(--border); cursor: pointer; font-family: inherit;
 min-height: 32px;
 }
 .edit-btn-save { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
+.edit-btn-regenerate {
+    background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border);
+}
 .edit-btn-cancel { background: transparent; color: var(--text-h); }
 .edit-btn:hover { opacity: 0.85; }
 .message-fading-out .message-text,
