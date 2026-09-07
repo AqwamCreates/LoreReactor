@@ -522,6 +522,12 @@ export function useChatSession() {
                     return null;
                 };
 
+                // ✅ Per-generation tool parser for real-time display filtering
+                const streamToolParser = new ToolInvocationParser();
+                let committedDisplayText = '';
+                let liveDisplayText = '';
+                let lastRawLength = 0;
+
                 // ✅ Tool invocation loop for budget strategy path
                 while (true) {
                     if (signal.aborted) return null;
@@ -530,8 +536,17 @@ export function useChatSession() {
                     const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
                         setGenerationSpeed(s.msPerToken);
                         if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
-                        streamingTextRef.current = s.fullText;
-                        onToken(s.fullText);
+
+                        // ✅ Feed only new chunk through parser for real-time display filtering
+                        const newChunk = s.fullText.slice(lastRawLength);
+                        lastRawLength = s.fullText.length;
+                        const parsed = streamToolParser.processChunk(newChunk);
+                        liveDisplayText += parsed.displayText;
+
+                        const displayOut = committedDisplayText + liveDisplayText;
+                        streamingTextRef.current = displayOut;
+                        throttledSetStreamingText(displayOut);
+                        onToken(displayOut);
 
                         const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                         if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
@@ -549,12 +564,16 @@ export function useChatSession() {
 
                     const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
                     if (!toolResult) {
-                        accumulatedDisplayText = rawText;
+                        accumulatedDisplayText = committedDisplayText + liveDisplayText;
                         break;
                     }
 
-                    accumulatedDisplayText = toolResult.displayText;
+                    // ✅ Commit pre-tool display text, reset live buffer, skip injected prefix
+                    committedDisplayText += liveDisplayText;
+                    liveDisplayText = '';
+                    streamToolParser.reset();
                     currentExistingText = toolResult.resumeText;
+                    lastRawLength = 0;
                 }
             } else {
                 if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
@@ -564,13 +583,28 @@ export function useChatSession() {
 
                 const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
+                // ✅ Per-generation tool parser for real-time display filtering
+                const streamToolParser = new ToolInvocationParser();
+                let committedDisplayText = '';
+                let liveDisplayText = '';
+                let lastRawLength = 0;
+
                 const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
                     const result = await languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
                         onToken: async (s) => {
                             setGenerationSpeed(s.msPerToken);
                             if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
-                            throttledSetStreamingText(s.fullText);
-                            onToken?.(s.fullText);
+
+                            // ✅ Feed only new chunk through parser for real-time display filtering
+                            const newChunk = s.fullText.slice(lastRawLength);
+                            lastRawLength = s.fullText.length;
+                            const parsed = streamToolParser.processChunk(newChunk);
+                            liveDisplayText += parsed.displayText;
+
+                            const displayOut = committedDisplayText + liveDisplayText;
+                            streamingTextRef.current = displayOut;
+                            throttledSetStreamingText(displayOut);
+                            onToken?.(displayOut);
 
                             const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
                             if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
@@ -607,12 +641,16 @@ export function useChatSession() {
 
                     const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
                     if (!toolResult) {
-                        accumulatedDisplayText = rawText;
+                        accumulatedDisplayText = committedDisplayText + liveDisplayText;
                         break;
                     }
 
-                    accumulatedDisplayText = toolResult.displayText;
+                    // ✅ Commit pre-tool display text, reset live buffer, skip injected prefix
+                    committedDisplayText += liveDisplayText;
+                    liveDisplayText = '';
+                    streamToolParser.reset();
                     currentExistingText = toolResult.resumeText;
+                    lastRawLength = 0;
                 }
             }
 
