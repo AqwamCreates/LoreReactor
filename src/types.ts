@@ -278,7 +278,7 @@ export interface Extension extends ObjectData {
 export interface BudgetStrategy extends ObjectData {
   onlineModels: LanguageModel[];
   localModels: LanguageModel[];
-  modelCostTiers: Record<string, number> // The term cost can be all kind of things like price, quality and latency.
+  modelCostTiers: Record<string, number> // The term "cost" can be all kind of things like price, quality and latency.
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
@@ -286,12 +286,13 @@ export interface BudgetStrategy extends ObjectData {
   fallbackOnQualityThreshold: number;
   fallbackOnTimeoutInSeconds: number;
   maximumBudget: number;
+
 }
 
 export interface RawBudgetStrategy extends RawData {
   onlineModelIds: string[];
   localModelIds: string[];
-  modelCostTiers: Record<string, number> // The term cost can be all kind of things like price, quality and latency.
+  modelCostTiers: Record<string, number> // The term "cost" can be all kind of things like price, quality and latency.
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
@@ -299,6 +300,27 @@ export interface RawBudgetStrategy extends RawData {
   fallbackOnQualityThreshold: number;
   fallbackOnTimeoutInSeconds: number;
   maximumBudget: number;
+  modelLastUsedTimestamps: Record<string, number>
+}
+
+export interface BudgetData extends ObjectData{
+
+  budgetSpent: number
+  modelLastUsedTimestamps: Record<string, number>
+  modelLastQuotaHitTimeStamps: Record<string, number>
+  modelLastErrorHitTimeStamps: Record<string, number>
+  budgetStrategy: BudgetStrategy
+
+}
+
+export interface RawBudgetData extends RawData{
+
+  budgetSpent: number
+  modelLastUsedTimestamps: Record<string, number>
+  modelLastQuotaHitTimeStamps: Record<string, number>
+  modelLastErrorHitTimeStamps: Record<string, number>
+  budgetStrategyId: string
+
 }
 
 export type SummarizationStrategyType =
