@@ -827,6 +827,8 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
         forceNoContextImageInjection: rawProfile.forceNoContextImageInjection,
         useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,
+        useWeather: rawProfile.useWeather,
+        weatherApiKey: rawProfile.weatherApiKey,
         useTimeElapsed: rawProfile.useTimeElapsed ?? false,
         numberOfMessagesToDisableThinkPrompt: rawProfile.numberOfMessagesToDisableThinkPrompt ?? 1,
         numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1,

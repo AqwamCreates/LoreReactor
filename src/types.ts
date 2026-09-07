@@ -345,6 +345,7 @@ export type PromptBlockType =
   | 'Location'
   | 'Fatigue Information'
   | 'Date And Time'
+  | 'Weather'
   | 'Time Elapsed'
   | 'Text Injection';
 
@@ -354,6 +355,8 @@ export interface Profile extends ObjectData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
+  useWeather: boolean;
+  weatherApiKey?: string;
   useTimeElapsed: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -384,6 +387,8 @@ export interface RawProfile extends RawData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   useCurrentDateAndTime: boolean;
+  useWeather: boolean;
+  weatherApiKey?: string;
   useTimeElapsed: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;

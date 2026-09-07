@@ -23,12 +23,13 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Location',
     'Fatigue Information',
     'Date And Time',
+    'Weather',
     'Time Elapsed',
     'Text Injection'
 ];
 
 const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Time Elapsed', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instruction', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Text Injection'
 ];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
@@ -124,6 +125,8 @@ export function ProfileEditorModal({
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
+    const [useWeather, setUseWeather] = useState(false);
+    const [weatherApiKey, setWeatherApiKey] = useState('');
     const [useTimeElapsed, setUseTimeElapsed] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
     const [chatProbability, setChatProbability] = useState<number>(0);
@@ -162,6 +165,8 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
+                setUseWeather(existingProfile.useWeather ?? false);
+                setWeatherApiKey(existingProfile.weatherApiKey ?? '');
                 setUseTimeElapsed(existingProfile.useTimeElapsed ?? false);
                 setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
                 setChatProbability(existingProfile.chatProbability ?? -1);
@@ -199,6 +204,8 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableDialoguePrompt(-1);
                 setForceNoContextImageInjection(false);
                 setUseCurrentDateAndTime(false);
+                setUseWeather(false);
+                setWeatherApiKey('');
                 setUseTimeElapsed(false);
                 setForceEqualInitiative(false);
                 setChatProbability(0);
@@ -249,6 +256,8 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
+            useWeather,
+            weatherApiKey,
             useTimeElapsed,
             forceEqualInitiative,
             chatProbability,
@@ -292,6 +301,8 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
             useCurrentDateAndTime,
+            useWeather,
+            weatherApiKey,
             useTimeElapsed,
             forceEqualInitiative,
             chatProbability,
@@ -555,6 +566,35 @@ export function ProfileEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place.
                         </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={useWeather}
+                                onChange={(e) => setUseWeather(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Use Weather</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API. Results are cached for 30 minutes.
+                        </div>
+                        {useWeather && (
+                            <div style={{ marginTop: '8px', marginLeft: '26px' }}>
+                                <label className="editor-label editor-label-small">OpenWeather API Key</label>
+                                <input
+                                    type="password"
+                                    value={weatherApiKey}
+                                    onChange={(e) => setWeatherApiKey(e.target.value)}
+                                    className="editor-input"
+                                    placeholder="Paste your OpenWeather API key..."
+                                    autoComplete="off"
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Free tier: 1,000 calls/day. Get one at openweathermap.org/api
+                                </div>
+                            </div>
+                        )}
 
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
                             <input
