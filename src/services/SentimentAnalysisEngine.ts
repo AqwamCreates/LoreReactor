@@ -22,28 +22,62 @@ const HF_MODEL_ID = 'Cohee/distilbert-base-uncased-go-emotions-onnx';
 
 type TextClassificationPipeline = (text: string | string[]) => Promise<Array<{ label: string; score: number }>>;
 
+/**
+ * Check if WebGPU is available in the current browser.
+ */
+async function isWebGpuAvailable(): Promise<boolean> {
+    if (typeof navigator === 'undefined' || !('gpu' in navigator)) return false;
+    try {
+        const adapter = await navigator.gpu.requestAdapter();
+        return adapter !== null;
+    } catch {
+        return false;
+    }
+}
+
 class SentimentAnalysisEngine {
     private classifier: TextClassificationPipeline | null = null;
     private loading: Promise<void> | null = null;
     private loadError: string | null = null;
+    private usingWebGpu = false;
 
     /**
-     * Initialize the sentiment engine. Downloads and loads the model via
-     * @huggingface/transformers pipeline. Safe to call multiple times —
-     * subsequent calls are no-ops if already loaded or currently loading.
+     * Initialize the sentiment engine. Tries WebGPU first, falls back to WASM/CPU.
+     * Safe to call multiple times — subsequent calls are no-ops if already loaded or loading.
      */
     async initialize(): Promise<void> {
         if (this.classifier) return;
         if (this.loading) return this.loading;
 
         this.loading = (async () => {
+            // Try WebGPU first
+            const webGpuAvailable = await isWebGpuAvailable();
+
+            if (webGpuAvailable) {
+                try {
+                    console.log('[SentimentEngine] Loading with WebGPU...');
+                    this.classifier = await pipeline('text-classification', HF_MODEL_ID, {
+                        dtype: 'fp32',
+                        device: 'webgpu',
+                    }) as TextClassificationPipeline;
+                    this.usingWebGpu = true;
+                    console.log('[SentimentEngine] Ready (WebGPU).');
+                    return;
+                } catch (e) {
+                    console.warn('[SentimentEngine] WebGPU failed, falling back to CPU:', e instanceof Error ? e.message : String(e));
+                    this.classifier = null;
+                }
+            }
+
+            // Fallback to WASM/CPU
             try {
-                console.log('[SentimentEngine] Loading pipeline from HuggingFace...');
+                console.log('[SentimentEngine] Loading with CPU/WASM...');
                 this.classifier = await pipeline('text-classification', HF_MODEL_ID, {
                     dtype: 'fp32',
-                    device: 'webgpu'
+                    device: 'cpu',
                 }) as TextClassificationPipeline;
-                console.log('[SentimentEngine] Ready.');
+                this.usingWebGpu = false;
+                console.log('[SentimentEngine] Ready (CPU).');
             } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
                 console.error('[SentimentEngine] Initialization failed:', msg);
@@ -61,20 +95,17 @@ class SentimentAnalysisEngine {
      * Unload the model and free memory. Safe to call when already unloaded.
      */
     async unload(): Promise<void> {
-        // Wait for any in-progress initialization to finish before unloading
         if (this.loading) {
             try { await this.loading; } catch { /* ignore init errors during unload */ }
         }
 
         if (this.classifier) {
-            // @huggingface/transformers pipelines don't expose a dispose method,
-            // but nullifying the reference allows GC to reclaim the ONNX session
-            // and tokenizer memory.
             this.classifier = null;
         }
 
         this.loading = null;
         this.loadError = null;
+        this.usingWebGpu = false;
         console.log('[SentimentEngine] Unloaded.');
     }
 
@@ -88,17 +119,14 @@ class SentimentAnalysisEngine {
         try {
             const results = await this.classifier(text);
 
-            // Build full emotion map from pipeline output
             const emotions = {} as Record<EmotionLabel, number>;
             let topEmotion: EmotionLabel = 'neutral';
             let topScore = -Infinity;
 
-            // Initialize all labels to 0
             for (const label of EMOTION_LABELS) {
                 emotions[label] = 0;
             }
 
-            // Fill in scores from pipeline output
             const resultList = Array.isArray(results) ? results : [results];
             for (const item of resultList) {
                 const label = item.label.toLowerCase() as EmotionLabel;
@@ -126,6 +154,13 @@ class SentimentAnalysisEngine {
     }
 
     /**
+     * Whether the engine is using WebGPU acceleration.
+     */
+    isUsingWebGpu(): boolean {
+        return this.usingWebGpu;
+    }
+
+    /**
      * Get the last initialization error, if any.
      */
     getError(): string | null {
@@ -133,5 +168,4 @@ class SentimentAnalysisEngine {
     }
 }
 
-// Shared singleton — import this everywhere instead of creating new instances
 export const sentimentEngine = new SentimentAnalysisEngine();
