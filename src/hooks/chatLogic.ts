@@ -6,7 +6,7 @@ import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack } from './storage';
 import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
+import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
 import { fetchCurrentWeather } from '../services/WeatherService';
 import { getCurrentLocation } from './locationLogic';
 
@@ -919,14 +919,14 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const enableTools = enableWebSearch || enableCalculator
 
     if (enableTools) {
-        toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write :|tool: followed by the tool type and arguments, then close with :tool|. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
+        toolInstructions.push(`${contextStartString}${thinkStartString}I have access to tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with . The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
         if (enableWebSearch) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write :|tool:search: <query or URL>:tool|. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
+            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}search: <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
         }
 
         if (enableCalculator) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write :|tool:calculator: <expression>:tool|. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`);
+            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator: <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`);
         }
     }
 

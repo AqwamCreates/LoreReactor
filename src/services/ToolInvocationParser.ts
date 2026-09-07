@@ -3,7 +3,7 @@
 import { toolStartSring, toolEndString } from "../stringList";
 
 export interface ToolInvocation {
-    /** The full matched string including markers, e.g. ":|tool:search: weather in Tokyo:tool|" */
+    /** The full matched string including markers, e.g. "${toolStartSring}search: weather in Tokyo${toolEndString}" */
     rawMatch: string;
     /** The tool type, e.g. "search" or "calculator" */
     toolType: string;
@@ -18,7 +18,7 @@ export interface ParsedStreamResult {
     resumeText: string;
     /** Tool invocations found in this chunk, in order of appearance */
     toolInvocations: ToolInvocation[];
-    /** Whether the stream ended mid-tool (suppressed state, waiting for :tool|) */
+    /** Whether the stream ended mid-tool (suppressed state, waiting for ${toolEndString}) */
     isSuppressed: boolean;
 }
 
