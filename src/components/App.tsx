@@ -155,15 +155,34 @@ function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
   );
 }
 
+function getRenderSubTextForTriStates(value: number, text: string){
+
+  if (value === 0) return null;
+
+  if (value === -1) return `${text} Disabled`
+
+  return `${text} Enabled`
+
+}
+
 function renderProfileSubtext(profile: Profile) {
+
+  const useWebSearchText = getRenderSubTextForTriStates(profile.useWebSearch, "Web Search")
+  const useCalculatorText = getRenderSubTextForTriStates(profile.useCalculator, "Calculator")
+  const enableMemoryReadingText = getRenderSubTextForTriStates(profile.enableMemoryReading, "Memory Read")
+  const enableMemoryWritingText = getRenderSubTextForTriStates(profile.enableMemoryWriting, "Memory Write")
+
   const flags: string[] = [];
   if (profile.forceNameReveal) flags.push('Force Names');
   if (profile.enableCharacterExpression) flags.push('Expressions');
   if (profile.useCurrentDateAndTime) flags.push('Clock');
+  if (profile.useWeather) flags.push('Weather');
   if (profile.useTimeElapsed) flags.push('Time Elapsed');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
-  if (profile.enableMemoryReading) flags.push('Memory Read');
-  if (profile.enableMemoryWriting) flags.push('Memory Write');
+  if (useWebSearchText) flags.push(useWebSearchText);
+  if (useCalculatorText) flags.push(useCalculatorText);
+  if (enableMemoryReadingText) flags.push(enableMemoryReadingText);
+  if (enableMemoryWritingText) flags.push(enableMemoryWritingText);
   if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.chatImpatienceSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Chat Stats Override');
 
   return (

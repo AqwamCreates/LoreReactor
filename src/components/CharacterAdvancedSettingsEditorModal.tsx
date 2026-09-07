@@ -18,6 +18,8 @@ interface CharacterAdvancedSettingsEditorModalProps {
     numberOfMessagesToDisableDialoguePromptStr: string;
     enableMemoryWriting: boolean;
     enableMemoryReading: boolean;
+    useWebSearch: boolean;
+    useCalculator: boolean;
     selectedStopPatternIds: string[];
     allSamplers: Sampler[];
     isUploading: boolean;
@@ -34,6 +36,8 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onDisableDialogueChange: (val: string) => void;
     onEnableMemoryWritingChange: (val: boolean) => void;
     onEnableMemoryReadingChange: (val: boolean) => void;
+    onUseWebSearchChange: (val: boolean) => void;
+    onUseCalculatorChange: (val: boolean) => void;
     onStopPatternToggle: (id: string) => void;
 }
 
@@ -53,6 +57,8 @@ export function CharacterAdvancedSettingsEditorModal({
     numberOfMessagesToDisableDialoguePromptStr,
     enableMemoryWriting,
     enableMemoryReading,
+    useWebSearch,
+    useCalculator,
     selectedStopPatternIds,
     allSamplers,
     isUploading,
@@ -69,6 +75,8 @@ export function CharacterAdvancedSettingsEditorModal({
     onDisableDialogueChange,
     onEnableMemoryWritingChange,
     onEnableMemoryReadingChange,
+    onUseWebSearchChange,
+    onUseCalculatorChange,
     onStopPatternToggle,
 }: CharacterAdvancedSettingsEditorModalProps) {
     if (!isOpen) return null;
@@ -160,6 +168,28 @@ export function CharacterAdvancedSettingsEditorModal({
                                 <label className="editor-label editor-label-small">Dialogue Prompt</label>
                                 <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => onDisableDialogueChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Tools */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Tools</span>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Enable runtime tool use during generation for this character. Can be overridden by profile settings.
+                        </div>
+                        <label className="editor-checkbox-label">
+                            <input type="checkbox" checked={useWebSearch} onChange={(e) => onUseWebSearchChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <span>Enable Web Search</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Allow this character to search the web during conversation.
+                        </div>
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input type="checkbox" checked={useCalculator} onChange={(e) => onUseCalculatorChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <span>Enable Calculator</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Allow this character to perform calculations during conversation.
                         </div>
                     </div>
 

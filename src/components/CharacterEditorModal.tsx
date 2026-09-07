@@ -13,11 +13,18 @@ import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import './main.css';
 
-const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
-const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
-const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
-const DEFAULT_NAME_SENSITIVITY_VALUE = 1;
-const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 0;
+// ─── Defaults ────────────────────────────────────────────────────────
+const DEFAULT_INITIATIVE_WEIGHT = 1.2;
+const DEFAULT_CHAT_PROBABILITY = 0.5;
+const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
+const DEFAULT_NAME_SENSITIVITY = 1;
+const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
+const DEFAULT_SKIP_PROBABILITY = 0;
+const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
+const DEFAULT_CONTEXT_SENSITIVITY = 1;
+const DEFAULT_DISABLE_THINK_PROMPT = 1;
+const DEFAULT_DISABLE_META_THINK = 1;
+const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const tokenEngine = new LanguageModelEngine();
@@ -74,12 +81,14 @@ export function CharacterEditorModal({
 
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
 
-    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>('1');
-    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>('1');
-    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>('1');
+    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(DEFAULT_DISABLE_THINK_PROMPT));
+    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(DEFAULT_DISABLE_META_THINK));
+    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
 
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
     const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(false);
+    const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+    const [useCalculator, setUseCalculator] = useState<boolean>(false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>({});
 
@@ -88,7 +97,6 @@ export function CharacterEditorModal({
     const [showImageEditor, setShowImageEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>({});
 
-    // For new characters without UUID yet, assign a temporary ID for image uploads
     const [pendingCharacterId, setPendingCharacterId] = useState<string | null>(null);
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
@@ -116,9 +124,9 @@ export function CharacterEditorModal({
         if (tokenCountTimeoutsRef.current[field]) clearTimeout(tokenCountTimeoutsRef.current[field]);
         tokenCountTimeoutsRef.current[field] = setTimeout(async () => {
             setCountingField(field);
-            const ctx = getModelContext()
-            const count = await tokenEngine.countTokens(text, ctx)
-            setTokenCounts(prev => ({ ...prev, [field]: count }))
+            const ctx = getModelContext();
+            const count = await tokenEngine.countTokens(text, ctx);
+            setTokenCounts(prev => ({ ...prev, [field]: count }));
             setCountingField(prev => prev === field ? null : prev);
         }, 500);
     }, [getModelContext]);
@@ -142,7 +150,6 @@ export function CharacterEditorModal({
                 setDialoguePrompt(existingCharacter.dialoguePrompt || '');
                 setFirstMessage('');
 
-                // ✅ Load from images record, map neutral to main preview
                 const imgs = existingCharacter.images ?? {};
                 setEmotionImages(imgs);
                 const neutralFilename = imgs['neutral'];
@@ -164,11 +171,13 @@ export function CharacterEditorModal({
                 setVoiceName(existingCharacter.voice || '');
                 setVoiceFile(null);
                 setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
-                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? 1));
-                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? 1));
-                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? 1));
+                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
+                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
+                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
                 setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
                 setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
+                setUseWebSearch(existingCharacter.useWebSearch ?? false);
+                setUseCalculator(existingCharacter.useCalculator ?? false);
                 setMemories(existingCharacter.memories ?? {});
                 countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
                 countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
@@ -184,8 +193,11 @@ export function CharacterEditorModal({
                 setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
                 setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
                 setDoNotInjectCharacterImage(false);
-                setNumberOfMessagesToDisableThinkPromptStr('1'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('1'); setNumberOfMessagesToDisableDialoguePromptStr('1');
+                setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
+                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
+                setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
                 setEnableMemoryWriting(false); setEnableMemoryReading(false);
+                setUseWebSearch(false); setUseCalculator(false);
                 setMemories({});
                 setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
             }
@@ -212,46 +224,19 @@ export function CharacterEditorModal({
         const mrwIsAuto = currentMRW === -1;
         const crsIsAuto = currentCRS === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto &&!spIsAuto && !mrwIsAuto && !crsIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
 
-        if (iwIsAuto) {
-            const value = getInitiativeWeightValueFromText(combinedText);
-            setInitiativeWeightStr(String(value));
-            newDetected.iw = value;
-        }
-        if (cpIsAuto) {
-            const value = getChatProbabilityValue(combinedText);
-            setChatProbabilityStr(String(value));
-            newDetected.cp = value;
-        }
-        if (msIsAuto) {
-            const value = getMaximumChatStaminaValueFromText(combinedText);
-            setMaximumChatStaminaStr(String(Math.round(value)));
-            newDetected.ms = Math.round(value);
-        }
-        if (nsIsAuto) {
-            const value = getNameSensitivityValueFromText(combinedText);
-            setNameSensitivityStr(String(value));
-        }
-        if (cisIsAuto) {
-            const value = getChatImpatienceSensitivityValueFromText(combinedText);
-            setChatImpatienceSensitivityStr(String(value));
-        }
-        if (spIsAuto) {
-            const value = getSkipProbabilityValueFromText(combinedText);
-            setSkipProbabilityStr(String(value));
-        }
-        if (mrwIsAuto) {
-            const value = getMemoryRetentionWeightValueFromText(combinedText);
-            setMemoryRetentionWeightStr(String(value));
-        }
-        if (crsIsAuto) {
-            const value = getContextSensitivityValueFromText(combinedText);
-            setContextSensitivityStr(String(value));
-        }
+        if (iwIsAuto) { const v = getInitiativeWeightValueFromText(combinedText); setInitiativeWeightStr(String(v)); newDetected.iw = v; }
+        if (cpIsAuto) { const v = getChatProbabilityValue(combinedText); setChatProbabilityStr(String(v)); newDetected.cp = v; }
+        if (msIsAuto) { const v = getMaximumChatStaminaValueFromText(combinedText); setMaximumChatStaminaStr(String(Math.round(v))); newDetected.ms = Math.round(v); }
+        if (nsIsAuto) { const v = getNameSensitivityValueFromText(combinedText); setNameSensitivityStr(String(v)); }
+        if (cisIsAuto) { const v = getChatImpatienceSensitivityValueFromText(combinedText); setChatImpatienceSensitivityStr(String(v)); }
+        if (spIsAuto) { const v = getSkipProbabilityValueFromText(combinedText); setSkipProbabilityStr(String(v)); }
+        if (mrwIsAuto) { const v = getMemoryRetentionWeightValueFromText(combinedText); setMemoryRetentionWeightStr(String(v)); }
+        if (crsIsAuto) { const v = getContextSensitivityValueFromText(combinedText); setContextSensitivityStr(String(v)); }
 
         setAutoDetected(newDetected);
     };
@@ -259,14 +244,8 @@ export function CharacterEditorModal({
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); } };
     const handleRemoveImage = (e: React.MouseEvent) => {
         e.stopPropagation();
-        setImageFile(null);
-        setImagePreview(null);
-        // Also remove neutral from emotion images
-        setEmotionImages(prev => {
-            const next = { ...prev };
-            delete next['neutral'];
-            return next;
-        });
+        setImageFile(null); setImagePreview(null);
+        setEmotionImages(prev => { const next = { ...prev }; delete next['neutral']; return next; });
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
     const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,16 +265,17 @@ export function CharacterEditorModal({
         setName(fields.name); setDescription(fields.description); setSystemPrompt(fields.systemPrompt); setThinkPrompt(fields.thinkPrompt);
         setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
-        setAutoDetected({ iw: null, cp: null, ms: null }); setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
+        setAutoDetected({ iw: null, cp: null, ms: null });
+        setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
-        setEnableMemoryWriting(false); setEnableMemoryReading(false); setMemories({});
+        setEnableMemoryWriting(false); setEnableMemoryReading(false);
+        setUseWebSearch(false); setUseCalculator(false);
+        setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
         setSubmitError(null);
-
-        // ✅ Extract emotion images from V3 assets or extensions
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
             setEmotionImages(prev => ({ ...prev, ...extended.emotionImages! }));
@@ -310,30 +290,23 @@ export function CharacterEditorModal({
         setSubmitError(null);
         if (!name.trim()) { setSubmitError("Name is required!"); return null; }
 
-        // ✅ Determine the character ID for image uploads
-        const targetCharacterId = isNewClone
-            ? uuidv4()
-            : (existingCharacter?.id || pendingCharacterId || uuidv4());
+        const targetCharacterId = isNewClone ? uuidv4() : (existingCharacter?.id || pendingCharacterId || uuidv4());
 
-        // ✅ Build images record with neutral from main portrait
         let finalImages: Record<string, string> = isNewClone ? {} : { ...(existingCharacter?.images ?? {}) };
-
-        // Merge in any emotion images edited via the image editor modal
         finalImages = { ...finalImages, ...emotionImages };
 
         if (imageFile) {
             setIsUploading(true);
-            try {
-                const neutralFilename = await uploadCharacterImage(targetCharacterId, imageFile);
-                finalImages['neutral'] = neutralFilename;
-            } catch (err) { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
+            try { finalImages['neutral'] = await uploadCharacterImage(targetCharacterId, imageFile); }
+            catch { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
             setIsUploading(false);
         }
 
         let finalVoiceFilename: string | undefined = isNewClone ? undefined : existingCharacter?.voice;
         if (voiceFile) {
             setIsUploading(true);
-            try { finalVoiceFilename = await uploadCharacterVoice(voiceFile); } catch (err) { setSubmitError("Failed to upload voice."); setIsUploading(false); return null; }
+            try { finalVoiceFilename = await uploadCharacterVoice(voiceFile); }
+            catch { setSubmitError("Failed to upload voice."); setIsUploading(false); return null; }
             setIsUploading(false);
         } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { finalVoiceFilename = undefined; }
 
@@ -349,14 +322,6 @@ export function CharacterEditorModal({
         const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
         const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
 
-        let finalIW: number;
-        let finalCP: number;
-        let finalMS: number;
-        let finalNS: number;
-        let finalCIS: number;
-        let finalSP: number;
-        let finalMRW: number;
-        let finalCRS: number;
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
@@ -366,32 +331,41 @@ export function CharacterEditorModal({
         const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
         const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
 
+        let finalIW: number, finalCP: number, finalMS: number, finalNS: number;
+        let finalCIS: number, finalSP: number, finalMRW: number, finalCRS: number;
+
         if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
             finalMS = msValid ? Math.round(rawMS) : (existingCharacter.maximumChatStamina ?? -1);
-            finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY_VALUE);
-            finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE);
-            finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? 0);
-            finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? 1);
-            finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? 1);
+            finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY);
+            finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY);
+            finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? DEFAULT_SKIP_PROBABILITY);
+            finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? DEFAULT_MEMORY_RETENTION_WEIGHT);
+            finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? DEFAULT_CONTEXT_SENSITIVITY);
             if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
-                finalIW = getInitiativeWeightValueFromText(t); finalCP = getChatProbabilityValue(t); finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
+                finalIW = getInitiativeWeightValueFromText(t);
+                finalCP = getChatProbabilityValue(t);
+                finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
             }
         } else {
-            finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT_VALUE;
-            finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY_VALUE;
-            finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE;
-            finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY_VALUE;
-            finalSP = spValid ? rawSP : 0;
-            finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE;
-            finalMRW = mrwValid ? rawMRW : 1;
-            finalCRS = crsValid ? rawCRS : 1;
+            finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT;
+            finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY;
+            finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA;
+            finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY;
+            finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
+            finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY;
+            finalMRW = mrwValid ? rawMRW : DEFAULT_MEMORY_RETENTION_WEIGHT;
+            finalCRS = crsValid ? rawCRS : DEFAULT_CONTEXT_SENSITIVITY;
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
-                const dIW = getInitiativeWeightValueFromText(t); const dCP = getChatProbabilityValue(t); const dMS = getMaximumChatStaminaValueFromText(t);
-                if (dIW >= 0) finalIW = dIW; if (dCP >= 0) finalCP = dCP; if (dMS >= 0) finalMS = Math.round(dMS);
+                const dIW = getInitiativeWeightValueFromText(t);
+                const dCP = getChatProbabilityValue(t);
+                const dMS = getMaximumChatStaminaValueFromText(t);
+                if (dIW >= 0) finalIW = dIW;
+                if (dCP >= 0) finalCP = dCP;
+                if (dMS >= 0) finalMS = Math.round(dMS);
             }
         }
 
@@ -412,10 +386,11 @@ export function CharacterEditorModal({
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
-            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
-            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
-            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
+            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
+            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
+            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
             enableMemoryWriting, enableMemoryReading,
+            useWebSearch, useCalculator,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -427,14 +402,12 @@ export function CharacterEditorModal({
 
     if (!isOpen) return null;
 
-   const renderTokenCount = (field: keyof TokenCounts) => {
+    const renderTokenCount = (field: keyof TokenCounts) => {
         const count = tokenCounts[field];
         const displayCount = count ?? 0;
         return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`~${displayCount.toLocaleString()} token(s)`}</div>;
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
-
-    // ✅ Effective character ID for the image editor (existing or pending)
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
 
     return (
@@ -469,14 +442,7 @@ export function CharacterEditorModal({
                                     <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
                                 </div>
 
-                                {/* ✅ Add More Images button */}
-                                <button
-                                    type="button"
-                                    className="editor-btn editor-btn-cancel"
-                                    onClick={() => setShowImageEditor(true)}
-                                    disabled={isUploading}
-                                    style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}
-                                >
+                                <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
                                     More Images ({Object.keys(emotionImages).length})
                                 </button>
 
@@ -520,14 +486,9 @@ export function CharacterEditorModal({
                                         </label>
                                     </div>
 
-                                    {/* Advanced Settings + Memory Buttons */}
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>
-                                            Advanced Settings
-                                        </button>
-                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>
-                                            Memory ({Object.values(memories).reduce((sum, arr) => sum + arr.length, 0)})
-                                        </button>
+                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>Advanced Settings</button>
+                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({Object.values(memories).reduce((sum, arr) => sum + arr.length, 0)})</button>
                                     </div>
                                 </div>
                             </div>
@@ -536,7 +497,6 @@ export function CharacterEditorModal({
                 </div>
             </div>
 
-            {/* Advanced Settings Sub-Modal */}
             <CharacterAdvancedSettingsEditorModal
                 isOpen={showAdvancedSettings}
                 onClose={() => setShowAdvancedSettings(false)}
@@ -553,6 +513,8 @@ export function CharacterEditorModal({
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
                 enableMemoryWriting={enableMemoryWriting}
                 enableMemoryReading={enableMemoryReading}
+                useWebSearch={useWebSearch}
+                useCalculator={useCalculator}
                 selectedStopPatternIds={selectedStopPatternIds}
                 allSamplers={allSamplers}
                 isUploading={isUploading}
@@ -569,10 +531,11 @@ export function CharacterEditorModal({
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
                 onEnableMemoryWritingChange={setEnableMemoryWriting}
                 onEnableMemoryReadingChange={setEnableMemoryReading}
+                onUseWebSearchChange={setUseWebSearch}
+                onUseCalculatorChange={setUseCalculator}
                 onStopPatternToggle={handleStopPatternToggle}
             />
 
-            {/* Memory Manager Sub-Modal */}
             <CharacterMemoryEditorModal
                 isOpen={showMemoryManager}
                 onClose={() => setShowMemoryManager(false)}
@@ -580,7 +543,6 @@ export function CharacterEditorModal({
                 onSaveMemories={setMemories}
             />
 
-            {/* ✅ Image Editor Sub-Modal */}
             <CharacterImageEditorModal
                 isOpen={showImageEditor}
                 onClose={() => setShowImageEditor(false)}
@@ -588,14 +550,9 @@ export function CharacterEditorModal({
                 images={emotionImages}
                 onSave={(updatedImages) => {
                     setEmotionImages(updatedImages);
-                    // Sync neutral preview
                     const neutral = updatedImages.neutral;
-                    if (neutral) {
-                        setImagePreview(`/user_data/character_images/${effectiveCharacterId}/${neutral}`);
-                        setImageFile(null);
-                    } else if (!imageFile) {
-                        setImagePreview(null);
-                    }
+                    if (neutral) { setImagePreview(`/user_data/character_images/${effectiveCharacterId}/${neutral}`); setImageFile(null); }
+                    else if (!imageFile) { setImagePreview(null); }
                 }}
             />
         </>
