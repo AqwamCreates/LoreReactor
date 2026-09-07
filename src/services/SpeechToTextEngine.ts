@@ -275,7 +275,9 @@ class SpeechToTextEngine {
             this.sourceNode = null;
         }
         if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
+            for (const track of this.mediaStream.getTracks()) {
+                track.stop();
+            }
             this.mediaStream = null;
         }
         if (this.audioContext) {

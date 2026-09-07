@@ -130,8 +130,8 @@ export function ProfileEditorModal({
     const [weatherApiKey, setWeatherApiKey] = useState('');
     const [useTimeElapsed, setUseTimeElapsed] = useState(false);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(false);
-    const [chatProbability, setChatProbability] = useState<number>(0);
-    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(0);
+    const [chatProbability, setChatProbability] = useState<number>(-1);
+    const [maximumChatStamina, setMaximumChatStamina] = useState<number>(-1);
     const [nameSensitivity, setNameSensitivity] = useState<number>(-1);
     const [skipProbability, setSkipProbability] = useState<number>(-1);
     const [chatImpatienceSensitivity, setChatImpatienceSensitivity] = useState<number>(-1);

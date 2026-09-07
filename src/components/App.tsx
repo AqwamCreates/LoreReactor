@@ -1387,7 +1387,7 @@ function App() {
 
   return (
     <>
-      {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
+      {false && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
       <div
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`}
         style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined}

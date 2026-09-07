@@ -6,13 +6,12 @@ function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const net of interfaces[name] || []) {
-      // Skip internal (loopback) and non-IPv4 addresses
       if (net.family === 'IPv4' && !net.internal) {
         return net.address;
       }
     }
   }
-  return '127.0.0.1'; // Fallback
+  return '127.0.0.1';
 }
 
 export default defineConfig({
@@ -32,7 +31,19 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['large-json-files'] 
+    exclude: ['large-json-files', '@huggingface/transformers'],
+  },
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('@huggingface/transformers')) {
+            return 'transformers';
+          }
+        },
+      },
+    },
   },
   define: {
     'import.meta.env.VITE_HOST_IP': JSON.stringify(getLocalIP()),
