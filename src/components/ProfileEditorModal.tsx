@@ -139,8 +139,8 @@ export function ProfileEditorModal({
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
-    const [useWebSearch, setUseWebSearch] = useState<number>(0);
-    const [useCalculator, setUseCalculator] = useState<number>(0);
+    const [enableWebSearch, setEnableWebSearch] = useState<number>(0);
+    const [enableCalculator, setEnableCalculator] = useState<number>(0);
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
     const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
     const [narrateNormalText, setNarrateNormalText] = useState(true);
@@ -181,8 +181,8 @@ export function ProfileEditorModal({
                 setContextSensitivity(existingProfile.contextSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-                setUseWebSearch(existingProfile.useWebSearch ?? 0);
-                setUseCalculator(existingProfile.useCalculator ?? 0);
+                setEnableWebSearch(existingProfile.enableWebSearch ?? 0);
+                setEnableCalculator(existingProfile.enableCalculator ?? 0);
                 setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
                 setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
                 setNarrateNormalText(existingProfile.narrateNormalText ?? true);
@@ -222,8 +222,8 @@ export function ProfileEditorModal({
                 setContextSensitivity(-1);
                 setCacheLevel(0);
                 setStripThinkTokens(false);
-                setUseWebSearch(0);
-                setUseCalculator(0);
+                setEnableWebSearch(0);
+                setEnableCalculator(0);
                 setEnableMemoryWriting(0);
                 setEnableMemoryReading(0);
                 setNarrateNormalText(true);
@@ -276,8 +276,8 @@ export function ProfileEditorModal({
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
-            useWebSearch,
-            useCalculator,
+            enableWebSearch,
+            enableCalculator,
             enableMemoryWriting,
             enableMemoryReading,
             narrateNormalText,
@@ -323,8 +323,8 @@ export function ProfileEditorModal({
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
             stripThinkTokens,
-            useWebSearch,
-            useCalculator,
+            enableWebSearch,
+            enableCalculator,
             enableMemoryWriting,
             enableMemoryReading,
             narrateNormalText,
@@ -899,17 +899,17 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Web Search Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {useWebSearch === 0 ? '(Character default)' : useWebSearch === -1 ? '(Force Off)' : '(Force On)'}
+                                    {enableWebSearch === 0 ? '(Character default)' : enableWebSearch === -1 ? '(Force Off)' : '(Force On)'}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
-                                value={useWebSearch}
+                                value={enableWebSearch}
                                 minimumValue={-1}
                                 maximumValue={1}
                                 stepValue={1}
                                 decimals={0}
-                                onChange={(val) => setUseWebSearch(Math.round(val))}
+                                onChange={(val) => setEnableWebSearch(Math.round(val))}
                                 description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
                             />
                         </div>
@@ -918,17 +918,17 @@ export function ProfileEditorModal({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                 <label className="editor-label editor-label-small" style={{ margin: 0 }}>Calculator Override</label>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {useCalculator === 0 ? '(Character default)' : useCalculator === -1 ? '(Force Off)' : '(Force On)'}
+                                    {enableCalculator === 0 ? '(Character default)' : enableCalculator === -1 ? '(Force Off)' : '(Force On)'}
                                 </span>
                             </div>
                             <SliderInput
                                 label=""
-                                value={useCalculator}
+                                value={enableCalculator}
                                 minimumValue={-1}
                                 maximumValue={1}
                                 stepValue={1}
                                 decimals={0}
-                                onChange={(val) => setUseCalculator(Math.round(val))}
+                                onChange={(val) => setEnableCalculator(Math.round(val))}
                                 description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
                             />
                         </div>

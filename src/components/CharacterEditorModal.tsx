@@ -87,8 +87,8 @@ export function CharacterEditorModal({
 
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
     const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(false);
-    const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
-    const [useCalculator, setUseCalculator] = useState<boolean>(false);
+    const [enableWebSearch, setEnableWebSearch] = useState<boolean>(false);
+    const [enableCalculator, setEnableCalculator] = useState<boolean>(false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>({});
 
@@ -176,8 +176,8 @@ export function CharacterEditorModal({
                 setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
                 setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
                 setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
-                setUseWebSearch(existingCharacter.useWebSearch ?? false);
-                setUseCalculator(existingCharacter.useCalculator ?? false);
+                setEnableWebSearch(existingCharacter.enableWebSearch ?? false);
+                setEnableCalculator(existingCharacter.enableCalculator ?? false);
                 setMemories(existingCharacter.memories ?? {});
                 countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
                 countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
@@ -197,7 +197,7 @@ export function CharacterEditorModal({
                 setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
                 setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
                 setEnableMemoryWriting(false); setEnableMemoryReading(false);
-                setUseWebSearch(false); setUseCalculator(false);
+                setEnableWebSearch(false); setEnableCalculator(false);
                 setMemories({});
                 setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
             }
@@ -271,7 +271,7 @@ export function CharacterEditorModal({
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
-        setUseWebSearch(false); setUseCalculator(false);
+        setEnableWebSearch(false); setEnableCalculator(false);
         setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
@@ -390,7 +390,7 @@ export function CharacterEditorModal({
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
             enableMemoryWriting, enableMemoryReading,
-            useWebSearch, useCalculator,
+            enableWebSearch, enableCalculator,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -513,8 +513,8 @@ export function CharacterEditorModal({
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
                 enableMemoryWriting={enableMemoryWriting}
                 enableMemoryReading={enableMemoryReading}
-                useWebSearch={useWebSearch}
-                useCalculator={useCalculator}
+                enableWebSearch={enableWebSearch}
+                enableCalculator={enableCalculator}
                 selectedStopPatternIds={selectedStopPatternIds}
                 allSamplers={allSamplers}
                 isUploading={isUploading}
@@ -531,8 +531,8 @@ export function CharacterEditorModal({
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
                 onEnableMemoryWritingChange={setEnableMemoryWriting}
                 onEnableMemoryReadingChange={setEnableMemoryReading}
-                onUseWebSearchChange={setUseWebSearch}
-                onUseCalculatorChange={setUseCalculator}
+                onEnableWebSearchChange={setEnableWebSearch}
+                onEnableCalculatorChange={setEnableCalculator}
                 onStopPatternToggle={handleStopPatternToggle}
             />
 

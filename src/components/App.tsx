@@ -167,8 +167,8 @@ function getRenderSubTextForTriStates(value: number, text: string){
 
 function renderProfileSubtext(profile: Profile) {
 
-  const useWebSearchText = getRenderSubTextForTriStates(profile.useWebSearch, "Web Search")
-  const useCalculatorText = getRenderSubTextForTriStates(profile.useCalculator, "Calculator")
+  const enableWebSearchText = getRenderSubTextForTriStates(profile.enableWebSearch, "Web Search")
+  const enableCalculatorText = getRenderSubTextForTriStates(profile.enableCalculator, "Calculator")
   const enableMemoryReadingText = getRenderSubTextForTriStates(profile.enableMemoryReading, "Memory Read")
   const enableMemoryWritingText = getRenderSubTextForTriStates(profile.enableMemoryWriting, "Memory Write")
 
@@ -179,8 +179,8 @@ function renderProfileSubtext(profile: Profile) {
   if (profile.useWeather) flags.push('Weather');
   if (profile.useTimeElapsed) flags.push('Time Elapsed');
   if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
-  if (useWebSearchText) flags.push(useWebSearchText);
-  if (useCalculatorText) flags.push(useCalculatorText);
+  if (enableWebSearchText) flags.push(enableWebSearchText);
+  if (enableCalculatorText) flags.push(enableCalculatorText);
   if (enableMemoryReadingText) flags.push(enableMemoryReadingText);
   if (enableMemoryWritingText) flags.push(enableMemoryWritingText);
   if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.chatImpatienceSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Chat Stats Override');

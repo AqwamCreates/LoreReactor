@@ -8,7 +8,7 @@ import { BudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { generateMissingSummaries, generatePeriodicCompression, checkTriggerThreshold, generateRecursiveSummary, makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
-import { consumeChatStamina, generateChatStamina, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina } from './characterLogic';
+import { consumeChatStamina, generateChatStamina, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableWebSearch, getEffectiveEnableCalculator } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,6 +17,8 @@ import { localAddress, localURL } from '../configurations';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { memoryWriteTrigger } from '../stringList';
+import { ToolInvocationParser, type ToolInvocation } from '../services/ToolInvocationParser';
+import { executeTools, type ToolResult } from '../services/ToolExecutor';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -128,6 +130,52 @@ async function runBackgroundSummarization(
             else addToast(`${triggered.strategyType} complete`, 'info');
         } else { addToast(`${triggered.strategyType} complete`, 'info'); }
     } catch (err) { console.warn('Background summarization failed:', err); addToast(`Summarization failed: ${(err as Error).message}`, 'error'); }
+}
+
+// ─── Tool Invocation Processing ──────────────────────────────────────
+
+/**
+ * Process tool invocations found in generated text.
+ * Replaces tool markers with results and returns the modified text.
+ * Returns null if no tools were found.
+ */
+async function processToolInvocations(
+    rawText: string,
+    character: Character,
+    profile: InteractionData['Profile'],
+): Promise<{ processedText: string; toolResults: ToolResult[] } | null> {
+    // Check if any tools are enabled for this character
+    const webSearchEnabled = getEffectiveEnableWebSearch(character, profile) === 1;
+    const calculatorEnabled = getEffectiveEnableCalculator(character, profile) === 1;
+
+    if (!webSearchEnabled && !calculatorEnabled) return null;
+
+    const parser = new ToolInvocationParser();
+    const result = parser.processChunk(rawText);
+
+    if (result.toolInvocations.length === 0) return null;
+
+    // Filter out disabled tool types
+    const enabledInvocations = result.toolInvocations.filter(inv => {
+        if (inv.toolType === 'search') return webSearchEnabled;
+        if (inv.toolType === 'calc') return calculatorEnabled;
+        return false;
+    });
+
+    if (enabledInvocations.length === 0) return null;
+
+    // Execute all enabled tools
+    const toolResults = await executeTools(enabledInvocations);
+
+    // Replace tool markers with results in the text
+    let processedText = rawText;
+    for (let i = 0; i < enabledInvocations.length; i++) {
+        const invocation = enabledInvocations[i];
+        const toolResult = toolResults[i];
+        processedText = processedText.replace(invocation.rawMatch, toolResult.content);
+    }
+
+    return { processedText, toolResults };
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────
@@ -426,6 +474,7 @@ export function useChatSession() {
 
         try {
             let rawText: string;
+            let currentExistingText = existingCharacterText || '';
 
             if (strat) {
                 const previousCost = budgetCumulativeCostRef.current;
@@ -471,33 +520,44 @@ export function useChatSession() {
                     return null;
                 };
 
-                const bse = new BudgetStrategyEngine(strat, running, previousCost, loadLocalModel);
-                const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
-                    setGenerationSpeed(s.msPerToken);
-                    if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
-                    streamingTextRef.current = s.fullText;
-                    onToken(s.fullText);
+                // ✅ Tool invocation loop for budget strategy path
+                while (true) {
+                    if (signal.aborted) return null;
 
-                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
-                    if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
-                        const sentiment = await sentimentEngine.analyze(s.fullText);
-                        if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
-                            previousExpressionRef.current = sentiment.topEmotion;
-                            setCurrentCharacterExpression(sentiment.topEmotion);
+                    const bse = new BudgetStrategyEngine(strat, running, budgetCumulativeCostRef.current, loadLocalModel);
+                    const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
+                        setGenerationSpeed(s.msPerToken);
+                        if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
+                        streamingTextRef.current = s.fullText;
+                        onToken(s.fullText);
+
+                        const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
+                        if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
+                            const sentiment = await sentimentEngine.analyze(s.fullText);
+                            if (sentiment && sentiment.topEmotion !== previousExpressionRef.current) {
+                                previousExpressionRef.current = sentiment.topEmotion;
+                                setCurrentCharacterExpression(sentiment.topEmotion);
+                            }
                         }
-                    }
-                }} : undefined;
-                rawText = await bse.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
-                budgetCumulativeCostRef.current = bse.currentCost;
-                const requestCost = bse.currentCost - previousCost;
-                if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
+                    }} : undefined;
+                    rawText = await bse.generateStream(dataWithRegen, character, { signal } as AbortController, cb);
+                    budgetCumulativeCostRef.current = bse.currentCost;
+                    const requestCost = bse.currentCost - previousCost;
+                    if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
+
+                    // Check for tool invocations
+                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
+                    if (!toolResult) break; // No tools found — done
+
+                    // Replace tool markers with results, use as existing text for next iteration
+                    currentExistingText = toolResult.processedText;
+                }
             } else {
                 if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
                 const port = model.id ? running[model.id]?.port : undefined;
                 const ep = port || (model.parameters as any)?._runtimePort;
                 if (!ep && !model.apiKey) { if (!signal.aborted) addToast('Model not ready.', 'error'); return null; }
 
-                const { body } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', ep);
                 const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
                 const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
@@ -525,15 +585,28 @@ export function useChatSession() {
                     return result.text;
                 };
 
-                rawText = await doStream(body, lmCtx);
+                // ✅ Tool invocation loop for direct model path
+                while (true) {
+                    if (signal.aborted) return null;
 
-                if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                    const rp = model.id ? running[model.id]?.port : undefined;
-                    const rep = rp || (model.parameters as any)?._runtimePort;
-                    const { body: rb } = await prepareRequestBody(dataWithRegen, character, existingCharacterText || '', rep);
-                    const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
-                    rawText = await doStream(rb, rc);
-                    if (!rawText || !rawText.trim()) return null;
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
+                    rawText = await doStream(body, lmCtx);
+
+                    if ((!rawText || !rawText.trim()) && !signal.aborted) {
+                        const rp = model.id ? running[model.id]?.port : undefined;
+                        const rep = rp || (model.parameters as any)?._runtimePort;
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, rep);
+                        const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
+                        rawText = await doStream(rb, rc);
+                        if (!rawText || !rawText.trim()) return null;
+                    }
+
+                    // Check for tool invocations
+                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
+                    if (!toolResult) break; // No tools found — done
+
+                    // Replace tool markers with results, use as existing text for next iteration
+                    currentExistingText = toolResult.processedText;
                 }
             }
 

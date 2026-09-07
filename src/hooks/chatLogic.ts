@@ -5,7 +5,7 @@ import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack } from './storage';
-import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina } from './characterLogic';
+import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 import { fetchCurrentWeather } from '../services/WeatherService';
 import { getCurrentLocation } from './locationLogic';
@@ -545,6 +545,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const useTimeElapsed = profile?.useTimeElapsed
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
+    const enableWebSearch = getEffectiveEnableWebSearch(character, profile)
+    const enableCalculator = getEffectiveEnableCalculator(character, profile)
     const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile)
     const enableMemoryWriting = getEffectiveEnableMemoryWriting(character, profile);
 

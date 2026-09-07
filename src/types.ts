@@ -172,8 +172,8 @@ export interface Character extends ObjectData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
-  useWebSearch: boolean,
-  useCalculator: boolean,
+  enableWebSearch: boolean,
+  enableCalculator: boolean,
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   memories: Record<string, Memory[]>;
@@ -200,8 +200,8 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
-  useWebSearch: boolean,
-  useCalculator: boolean,
+  enableWebSearch: boolean,
+  enableCalculator: boolean,
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   memories: Record<string, string[]>;
@@ -380,8 +380,8 @@ export interface Profile extends ObjectData {
   narrateBoldedText: boolean;
   narrateItalicizedText: boolean;
   stripThinkTokens: boolean;
-  useWebSearch: number,
-  useCalculator: number,
+  enableWebSearch: number,
+  enableCalculator: number,
   enableMemoryWriting: number;
   enableMemoryReading: number;
   inputStrategy: PromptBlockType[];
@@ -414,8 +414,8 @@ export interface RawProfile extends RawData {
   narrateBoldedText: boolean;
   narrateItalicizedText: boolean;
   stripThinkTokens: boolean;
-  useWebSearch: number,
-  useCalculator: number,
+  enableWebSearch: number,
+  enableCalculator: number,
   enableMemoryWriting: number;
   enableMemoryReading: number;
   inputStrategy: PromptBlockType[];

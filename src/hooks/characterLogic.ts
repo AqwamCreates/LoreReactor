@@ -74,12 +74,12 @@ export function getEffectiveEnableMemoryReading(character: Character, profile?: 
     return getEffectiveTriStateBoolean("enableMemoryReading", character, profile);
 }
 
-export function getEffectiveUseWebSearch(character: Character, profile?: Profile): number {
-    return getEffectiveTriStateBoolean("useWebSearch", character, profile);
+export function getEffectiveEnableWebSearch(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("enableWebSearch", character, profile);
 }
 
-export function getEffectiveUseCalculator(character: Character, profile?: Profile): number {
-    return getEffectiveTriStateBoolean("useCalculator", character, profile);
+export function getEffectiveEnableCalculator(character: Character, profile?: Profile): number {
+    return getEffectiveTriStateBoolean("enableCalculator", character, profile);
 }
 
 export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {

@@ -18,8 +18,8 @@ interface CharacterAdvancedSettingsEditorModalProps {
     numberOfMessagesToDisableDialoguePromptStr: string;
     enableMemoryWriting: boolean;
     enableMemoryReading: boolean;
-    useWebSearch: boolean;
-    useCalculator: boolean;
+    enableWebSearch: boolean;
+    enableCalculator: boolean;
     selectedStopPatternIds: string[];
     allSamplers: Sampler[];
     isUploading: boolean;
@@ -36,8 +36,8 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onDisableDialogueChange: (val: string) => void;
     onEnableMemoryWritingChange: (val: boolean) => void;
     onEnableMemoryReadingChange: (val: boolean) => void;
-    onUseWebSearchChange: (val: boolean) => void;
-    onUseCalculatorChange: (val: boolean) => void;
+    onEnableWebSearchChange: (val: boolean) => void;
+    onEnableCalculatorChange: (val: boolean) => void;
     onStopPatternToggle: (id: string) => void;
 }
 
@@ -57,8 +57,8 @@ export function CharacterAdvancedSettingsEditorModal({
     numberOfMessagesToDisableDialoguePromptStr,
     enableMemoryWriting,
     enableMemoryReading,
-    useWebSearch,
-    useCalculator,
+    enableWebSearch,
+    enableCalculator,
     selectedStopPatternIds,
     allSamplers,
     isUploading,
@@ -75,8 +75,8 @@ export function CharacterAdvancedSettingsEditorModal({
     onDisableDialogueChange,
     onEnableMemoryWritingChange,
     onEnableMemoryReadingChange,
-    onUseWebSearchChange,
-    onUseCalculatorChange,
+    onEnableWebSearchChange,
+    onEnableCalculatorChange,
     onStopPatternToggle,
 }: CharacterAdvancedSettingsEditorModalProps) {
     if (!isOpen) return null;
@@ -178,14 +178,14 @@ export function CharacterAdvancedSettingsEditorModal({
                             Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                         </div>
                         <label className="editor-checkbox-label">
-                            <input type="checkbox" checked={useWebSearch} onChange={(e) => onUseWebSearchChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <input type="checkbox" checked={enableWebSearch} onChange={(e) => onEnableWebSearchChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
                             <span>Enable Web Search</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             Allow this character to search the web during conversation.
                         </div>
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input type="checkbox" checked={useCalculator} onChange={(e) => onUseCalculatorChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <input type="checkbox" checked={enableCalculator} onChange={(e) => onEnableCalculatorChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
                             <span>Enable Calculator</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
