@@ -11,7 +11,7 @@ import { localURL } from '../configurations';
 import { v4 as uuidv4 } from 'uuid';
 import {
     browserReadJson, browserWriteJson, browserDeleteFile,
-    browserListDirectory, browserExists, isServerAvailable,
+    browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
 const now = Date.now()
