@@ -1,5 +1,4 @@
 // src/services/SentimentAnalysisEngine.ts
-import { pipeline } from '@huggingface/transformers';
 
 const EMOTION_LABELS = [
     'admiration', 'amusement', 'anger', 'annoyance', 'approval',
@@ -22,9 +21,6 @@ const HF_MODEL_ID = 'Cohee/distilbert-base-uncased-go-emotions-onnx';
 
 type TextClassificationPipeline = (text: string | string[]) => Promise<Array<{ label: string; score: number }>>;
 
-/**
- * Check if WebGPU is available in the current browser.
- */
 async function isWebGpuAvailable(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !('gpu' in navigator)) return false;
     try {
@@ -41,16 +37,13 @@ class SentimentAnalysisEngine {
     private loadError: string | null = null;
     private usingWebGpu = false;
 
-    /**
-     * Initialize the sentiment engine. Tries WebGPU first, falls back to WASM/CPU.
-     * Safe to call multiple times — subsequent calls are no-ops if already loaded or loading.
-     */
     async initialize(): Promise<void> {
         if (this.classifier) return;
         if (this.loading) return this.loading;
 
         this.loading = (async () => {
-            // Try WebGPU first
+            const { pipeline } = await import('@huggingface/transformers');
+
             const webGpuAvailable = await isWebGpuAvailable();
 
             if (webGpuAvailable) {
@@ -69,7 +62,6 @@ class SentimentAnalysisEngine {
                 }
             }
 
-            // Fallback to WASM/CPU
             try {
                 console.log('[SentimentEngine] Loading with CPU/WASM...');
                 this.classifier = await pipeline('text-classification', HF_MODEL_ID, {
@@ -91,28 +83,18 @@ class SentimentAnalysisEngine {
         return this.loading;
     }
 
-    /**
-     * Unload the model and free memory. Safe to call when already unloaded.
-     */
     async unload(): Promise<void> {
         if (this.loading) {
-            try { await this.loading; } catch { /* ignore init errors during unload */ }
+            try { await this.loading; } catch { /* ignore */ }
         }
 
-        if (this.classifier) {
-            this.classifier = null;
-        }
-
+        this.classifier = null;
         this.loading = null;
         this.loadError = null;
         this.usingWebGpu = false;
         console.log('[SentimentEngine] Unloaded.');
     }
 
-    /**
-     * Analyze text and return emotion scores.
-     * Returns null if engine is not initialized or analysis fails.
-     */
     async analyze(text: string): Promise<SentimentResult | null> {
         if (!this.classifier) return null;
 
@@ -146,23 +128,14 @@ class SentimentAnalysisEngine {
         }
     }
 
-    /**
-     * Check if the engine is ready for inference.
-     */
     isReady(): boolean {
         return this.classifier !== null;
     }
 
-    /**
-     * Whether the engine is using WebGPU acceleration.
-     */
     isUsingWebGpu(): boolean {
         return this.usingWebGpu;
     }
 
-    /**
-     * Get the last initialization error, if any.
-     */
     getError(): string | null {
         return this.loadError;
     }

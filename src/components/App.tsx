@@ -35,6 +35,7 @@ import { ParticipantControlModal } from './ParticipantControlModal';
 import { DataExportModal } from './DataExportModal';
 import { DataImportModal } from './DataImportModal';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
@@ -373,6 +374,7 @@ function App() {
     return (saved === '.' || saved === '-' || saved === 'none') ? saved : '.';
   });
   const [showActionFormat, setShowActionFormat] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
   // Persist action formatting to localStorage on change
   useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_WRAP, actionWrap); }, [actionWrap]);
@@ -1130,6 +1132,22 @@ function App() {
     requestAnimationFrame(() => { if (fileInputRef.current) fileInputRef.current.value = ''; });
   };
 
+  const handleToggleMicrophone = useCallback(async () => {
+    if (isRecording) {
+        await speechToTextEngine.stopRecording();
+        setIsRecording(false);
+    } else {
+        const started = await speechToTextEngine.startRecording((text) => {
+            setInputText(prev => prev + (prev ? ' ' : '') + text);
+        });
+        if (!started) {
+            addToast('Failed to start voice input. Check microphone permissions.', 'error');
+            return;
+        }
+        setIsRecording(true);
+    }
+}, [isRecording, addToast]);
+
   const handleSaveEdit = async () => {
     if (!interactionData || !editingId) return;
     try { setInteractionData(await editMessage(interactionData, editingId, editDraft)); setEditingId(null); setEditDraft(''); addToast('Message edited.', 'success'); }
@@ -1473,10 +1491,11 @@ function App() {
             {!isModelReady && <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>{!selectedModelId && <span className="model-status-icon">🤖</span>}{isModelLoading && <span className="model-status-spinner" />}<span className="model-status-text">{modelStatusMessage}</span>{!selectedModelId && <button type="button" className="model-status-action-btn" onClick={() => setIsModelListOpen(true)}>Open Models</button>}</div>}
             {pendingFiles.length > 0 && <div className="attachment-strip">{pendingFiles.map((f, i) => <div key={`${f.name}-${i}`} className="attachment-chip"><span className="attachment-name">{f.name}</span><span className="attachment-size">{(f.size / 1024).toFixed(1)} KB</span><button type="button" onClick={() => setPendingFiles(p => p.filter((_, j) => j !== i))} className="attachment-remove">×</button></div>)}</div>}
             <div className="input-area">
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
-              <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-              <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !interactionData || !isModelReady} />
-              <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
+                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
+                <button type="button" onClick={handleToggleMicrophone} disabled={!isModelReady} className={`attach-button toolbar-btn ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
+                <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !interactionData || !isModelReady} />
+                <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
             </div>
           </div>
         </>}

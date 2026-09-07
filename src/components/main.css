@@ -3318,3 +3318,13 @@ PARTICIPANT CONTROL MODAL
     font-size: 0.7rem;
     opacity: 0.4;
 }
+
+.attach-button.stt-mic-active {
+    color: #ef4444;
+    animation: stt-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes stt-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 8px 4px rgba(239, 68, 68, 0.2); }
+}
