@@ -840,11 +840,17 @@ function App() {
     if (stratChanged) setActiveBudgetStrategy(updatedStrat);
   }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
+  // ✅ FIXED: Initialization completion check
   useEffect(() => {
     if (!isInitializing) return;
     const allDone = loadSteps.every(s => s.done);
-    const hasData = !!interactionData && (!!interactionData.protagonist || interactionData.interactionHistory.length > 0 || allChats.length === 0);
+    // Restoration guarantees interactionData is set to a valid state
+    // (either a loaded chat, a new empty chat, or a fallback placeholder).
+    // We only need to confirm it exists, not validate its content.
+    const hasData = !!interactionData;
+
     if (!allDone || !activeChatRestored || !hasData) return;
+    
     const loadingStartedAt = loadingStartedAtRef.current ?? Date.now();
     loadingStartedAtRef.current = loadingStartedAt;
     const elapsed = Date.now() - loadingStartedAt;
@@ -1154,6 +1160,23 @@ function App() {
     catch (e) { addToast((e as Error).message, 'error'); }
   };
 
+  // ✅ NEW: Save edit AND regenerate response
+  const handleRegenerateFromEdit = async () => {
+    if (!interactionData || !editingId) return;
+    try {
+      const updatedData = await editMessage(interactionData, editingId, editDraft);
+      setInteractionData(updatedData);
+      setEditingId(null);
+      setEditDraft('');
+      // Determine regeneration type based on who owns the edited message
+      const editedMsg = updatedData.interactionHistory.find(m => m.id === editingId);
+      const isUserMsg = editedMsg && 'character' in editedMsg && editedMsg.character?.id === currentCharacter?.id;
+      regenerateFromMessage(editingId, isUserMsg ? 'user' : 'ai');
+    } catch (e) {
+      addToast((e as Error).message, 'error');
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!interactionData) return;
     try { setInteractionData(await deleteMessage(interactionData, id)); addToast('Message deleted.', 'info'); }
@@ -1387,7 +1410,7 @@ function App() {
 
   return (
     <>
-      {false && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
+      {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
       <div
         className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`}
         style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined}
@@ -1445,7 +1468,21 @@ function App() {
                       {isEditing ? (
                         <div className="edit-mode">
                           <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } if (e.key === 'Escape') { setEditingId(null); setEditDraft(''); } }} className="edit-textarea" />
-                          <div className="edit-actions"><button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button><button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button></div>
+                          <div className="edit-actions">
+                            <button type="button" onClick={() => { setEditingId(null); setEditDraft(''); }} className="edit-btn edit-btn-cancel">Cancel</button>
+                            {/* ✅ NEW: Regenerate button positioned left of Save */}
+                            <button 
+                              type="button" 
+                              onClick={handleRegenerateFromEdit} 
+                              disabled={!isModelReady || isLoading}
+                              className="edit-btn edit-btn-regenerate"
+                              title="Save changes and regenerate response"
+                              style={!isModelReady || isLoading ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            >
+                              ↻ Regenerate
+                            </button>
+                            <button type="button" onClick={handleSaveEdit} className="edit-btn edit-btn-save">Save</button>
+                          </div>
                         </div>
                       ) : <>
                         <MemoizedMessageText text={message.textContent} />
@@ -1493,7 +1530,7 @@ function App() {
             <div className="input-area">
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
                 <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelected} />
-                <button type="button" onClick={handleToggleMicrophone} disabled={!isModelReady} className={`attach-button toolbar-btn ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
+                <button type="button" onClick={handleToggleMicrophone} disabled={isLoading ||!isModelReady} className={`attach-button toolbar-btn ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
                 <textarea ref={textareaRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isModelReady ? `Chat as ${currentCharacter?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'} className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`} disabled={isLoading || !interactionData || !isModelReady} />
                 <button type="button" onClick={isLoading ? stopGeneration : handleSend} disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)} className={`send-button counter ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}>{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
             </div>
