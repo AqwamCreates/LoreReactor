@@ -63,7 +63,15 @@ function isQuotaError(e: unknown): boolean {
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
         message.includes('subscribe') || message.includes('too many requests') ||
-        message.includes('per');
+        message.includes('per') ||
+
+        // Network/transient errors that warrant rotation
+        message.includes('failed to fetch') || message.includes('networkerror') ||
+        message.includes('err_aborted') || message.includes('econnrefused') ||
+        message.includes('enotfound') || message.includes('etimedout') ||
+        message.includes('socket hang up') || message.includes('abort') ||
+        message.includes('timeout') || message.includes('502') ||
+        message.includes('504');
 }
 
 /** Checks if a budget reset is due based on resetDuration. */
