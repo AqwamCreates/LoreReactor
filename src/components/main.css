@@ -3151,3 +3151,61 @@ AI RECOMMENDATION MODAL — TABS & RAW OUTPUT
     font-family: monospace;
     font-size: 0.75rem;
 }
+
+/* =============================================================================
+PARTICIPANT CONTROL MODAL
+============================================================================= */
+.participant-control-message-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.participant-control-stamina-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.participant-control-stamina-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: var(--social-bg);
+    border-radius: 6px;
+}
+
+.participant-control-stamina-name {
+    flex: 1;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+
+.participant-control-stamina-input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.participant-control-stamina-label {
+    font-size: 0.7rem;
+    opacity: 0.6;
+}
+
+.participant-control-stamina-input {
+    width: 70px;
+    text-align: center;
+}
+
+.participant-control-stamina-max {
+    font-size: 0.65rem;
+    opacity: 0.4;
+}
+
+.participant-control-apply-btn {
+    margin-top: 12px;
+    width: 100%;
+}

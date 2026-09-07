@@ -10,6 +10,12 @@ interface SettingsItem {
 
 const SETTINGS_ITEMS: SettingsItem[] = [
     {
+        id: 'participant-control',
+        icon: '🎛️',
+        label: 'Participant Control',
+        description: 'Force messages and override chat stamina for participants.',
+    },
+    {
         id: 'ai-recommendation',
         icon: '✨',
         label: 'Get AI Recommendation',
@@ -42,6 +48,7 @@ interface SettingsModalProps {
     onOpenAIRecommendation: () => void;
     onOpenExportData: () => void;
     onOpenImportData: () => void;
+    onOpenParticipantControl: () => void;
 }
 
 export function SettingsModal({
@@ -51,11 +58,13 @@ export function SettingsModal({
     onOpenImportCharacterCard,
     onOpenExportData,
     onOpenImportData,
+    onOpenParticipantControl,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
         switch (id) {
+            case 'participant-control': onOpenParticipantControl(); break;
             case 'ai-recommendation': onOpenAIRecommendation(); break;
             case 'import-character-card': onOpenImportCharacterCard(); break;
             case 'import-data': onOpenImportData(); break;

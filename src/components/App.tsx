@@ -15,6 +15,7 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { loadInteractionMessages, loadInterjectableActions, saveInterjectableActions, saveRawInteractionData, loadRawInteractionData, getCharacterImageUrl, getLocationImageUrl, loadRawContext, loadRawLocation } from '../hooks/storage';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../hooks/messageLogic';
+import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -30,6 +31,7 @@ import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
+import { ParticipantControlModal } from './ParticipantControlModal';
 import { DataExportModal } from './DataExportModal';
 import { DataImportModal } from './DataImportModal';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -376,6 +378,7 @@ function App() {
   const [isCardImportOpen, setIsCardImportOpen] = useState(false);
   const [isExportDataOpen, setIsExportDataOpen] = useState(false);
   const [isImportDataOpen, setIsImportDataOpen] = useState(false);
+  const [isParticipantControlOpen, setIsParticipantControlOpen] = useState(false);
 
   // ✅ Active chat restoration guard
   const [activeChatRestored, setActiveChatRestored] = useState(false);
@@ -795,7 +798,6 @@ function App() {
     let stratChanged = false;
     const updatedStrat = { ...activeStrategy };
 
-    // Sync online models pool
     const freshOnlineModels = activeStrategy.onlineModels.map(m => {
       const fresh = allModels.find(x => x.id === m.id);
       return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
@@ -805,7 +807,6 @@ function App() {
       stratChanged = true;
     }
 
-    // Sync local models pool
     const freshLocalModels = activeStrategy.localModels.map(m => {
       const fresh = allModels.find(x => x.id === m.id);
       return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
@@ -1227,6 +1228,28 @@ function App() {
     refreshChatList();
   }, [refreshChatList]);
 
+  // ✅ Participant Control callbacks
+  const handleForceFirstMessage = useCallback(async (character: Character) => {
+    if (!interactionData) return;
+    const firstMsgText = `*${character.name} enters the scene.*`;
+    const chatMessage = createChatMessage(interactionData, character, firstMsgText);
+    const updated = addMessageToInteractionData(interactionData, chatMessage);
+    setInteractionData(updated);
+    interactionDataRef.current = updated;
+    await saveRawInteractionData(updated);
+    addToast(`Sent first message as ${character.name}`, 'success');
+  }, [interactionData, addToast]);
+
+  const handleSendCustomMessage = useCallback(async (character: Character, text: string) => {
+    if (!interactionData) return;
+    const chatMessage = createChatMessage(interactionData, character, text);
+    const updated = addMessageToInteractionData(interactionData, chatMessage);
+    setInteractionData(updated);
+    interactionDataRef.current = updated;
+    await saveRawInteractionData(updated);
+    addToast(`Injected message as ${character.name}`, 'success');
+  }, [interactionData, addToast]);
+
   // ✅ 5. RENDER RETURN
 
   const streamingIndicators = (
@@ -1393,9 +1416,10 @@ function App() {
         {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
         {isExtListOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={isExtListOpen} onClose={() => setIsExtListOpen(false)} onSelect={undefined} onDelete={deleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={renderExtensionSubtext} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={handleToggleExtension} />}
 
-        {/* Settings Modal */}
+        {/* Settings & Tool Modals */}
+        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenImportCharacterCard={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} onOpenParticipantControl={() => setIsParticipantControlOpen(true)} />}
+        {isParticipantControlOpen && <ParticipantControlModal isOpen={isParticipantControlOpen} onClose={() => setIsParticipantControlOpen(false)} interactionData={interactionData} onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }} onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage} />}
         {isAIRecommendationOpen && <AIRecommendationModal isOpen={isAIRecommendationOpen} onClose={() => setIsAIRecommendationOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} activeStrategy={activeStrategy} />}
-        {isSettingsOpen && <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onOpenImportCharacterCard={() => setIsCardImportOpen(true)} onOpenAIRecommendation={() => setIsAIRecommendationOpen(true)} onOpenExportData={() => setIsExportDataOpen(true)} onOpenImportData={() => setIsImportDataOpen(true)} />}
         {isCardImportOpen && <CharacterCardImportModal isOpen={isCardImportOpen} onClose={() => setIsCardImportOpen(false)} onSaveCharacter={saveCharacter} onSaveContext={saveContext} allSamplers={allSamplers} />}
         {isExportDataOpen && <DataExportModal isOpen={isExportDataOpen} onClose={() => setIsExportDataOpen(false)} />}
         {isImportDataOpen && <DataImportModal isOpen={isImportDataOpen} onClose={() => setIsImportDataOpen(false)} onImportComplete={handleImportComplete} />}
@@ -1409,22 +1433,18 @@ function App() {
             <button type="button" className={`action-format-toggle ${showActionFormat ? 'action-format-toggle-active' : ''}`} onClick={e => { e.stopPropagation(); setShowActionFormat(prev => !prev); }}>Format</button>
           </div>
 
-          {/* Format panel — slides in like a progress bar */}
           {showActionFormat && (
             <div className="action-format-panel" onClick={e => e.stopPropagation()}>
-              {/* Row 1: Wrap style */}
               <div className="action-format-row">
                 <button type="button" className={`action-format-btn ${actionWrap === '**' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('**')}>**</button>
                 <button type="button" className={`action-format-btn ${actionWrap === '()' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
                 <button type="button" className={`action-format-btn ${actionWrap === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
               </div>
-              {/* Row 2: Capitalization */}
               <div className="action-format-row">
                 <button type="button" className={`action-format-btn ${actionCase === 'first' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
                 <button type="button" className={`action-format-btn ${actionCase === 'pascal' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
                 <button type="button" className={`action-format-btn ${actionCase === 'lower' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
               </div>
-              {/* Row 3: End punctuation */}
               <div className="action-format-row">
                 <button type="button" className={`action-format-btn ${actionPunctuation === '.' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
                 <button type="button" className={`action-format-btn ${actionPunctuation === '-' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
