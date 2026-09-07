@@ -539,7 +539,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     let thinkPrompt = character.thinkPrompt;
 
     const profile = interactionData.Profile;
-    const useCurrentDateAndTime = profile?.useCurrentDateAndTime ?? false;
+    const useCurrentDateAndTime = profile?.useCurrentDateAndTime
+    const useTimeElapsed = profile?.useTimeElapsed
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
     const enableMemoryWriting = (() => {
@@ -858,7 +859,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     const timeElapsedLines: string[] = []
 
-    if (profile?.useTimeElapsed && interactionHistory.length > 0) {
+    if (useTimeElapsed && interactionHistory.length > 0) {
         const now = Date.now();
         const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
         const diffMs = Math.max(0, now - lastMsgTimestamp);
@@ -877,7 +878,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
         const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
 
-        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message. I will update relevant information according to this.${thinkEndString}${contextEndString}`);
+        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this.${thinkEndString}${contextEndString}`);
     }
 
     const dialoguePromptLines: string[] = [];
