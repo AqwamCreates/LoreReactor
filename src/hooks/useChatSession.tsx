@@ -248,6 +248,21 @@ export function useChatSession() {
         })();
     }, []);
 
+    // ✅ Sync budget data from external updates (e.g., BudgetControlModal)
+    useEffect(() => {
+        const handleBudgetDataUpdated = (event: Event) => {
+            const customEvent = event as CustomEvent<BudgetData | null>;
+            const updated = customEvent.detail;
+            setBudgetData(updated);
+            budgetDataRef.current = updated;
+        };
+
+        window.addEventListener('budget-data-updated', handleBudgetDataUpdated);
+        return () => {
+            window.removeEventListener('budget-data-updated', handleBudgetDataUpdated);
+        };
+    }, []);
+
     useEffect(() => {
         (async () => {
             try {
