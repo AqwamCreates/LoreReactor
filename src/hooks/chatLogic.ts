@@ -939,6 +939,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         'Location': locationLines,
         'Fatigue Information': fatigueLines,
         'Date And Time': dateAndTimeLines,
+        'Weather': weatherLines,
         'Time Elapsed': timeElapsedLines,
         'Text Injection': textInjectionLines,
     };
