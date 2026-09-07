@@ -159,7 +159,7 @@ function getRenderSubTextForTriStates(value: number, text: string){
 
   if (value === 0) return null;
 
-  if (value === -1) return `${text} Disabled`
+  if (value < 0) return `${text} Disabled`
 
   return `${text} Enabled`
 

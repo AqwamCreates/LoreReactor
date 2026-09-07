@@ -8,17 +8,12 @@ function getEffectiveNumeric<K extends keyof Character>(key: K, character: Chara
     return profileValue;
 }
 
-/**
- * Tri-state boolean resolution for tool/memory flags.
- * Character values are boolean (true/false).
- * Profile values are numeric tri-state: -1 = force off, 0 = defer to character, 1 = force on.
- * Returns a number: 0 = off, 1 = on.
- */
-function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
-    const characterValue = character[key] ? 1 : 0;
+function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
+    const characterValue = character[key] as boolean;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
     if (profileValue === undefined || profileValue === 0) return characterValue;
-    return profileValue === -1 ? 0 : 1;
+    if (profileValue < 0) return false
+    return true;
 }
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
@@ -66,19 +61,19 @@ export function getEffectiveContextSensitivity(character: Character, profile?: P
     return profileValue;
 }
 
-export function getEffectiveEnableMemoryWriting(character: Character, profile?: Profile): number {
+export function getEffectiveEnableMemoryWriting(character: Character, profile?: Profile): boolean {
     return getEffectiveTriStateBoolean("enableMemoryWriting", character, profile);
 }
 
-export function getEffectiveEnableMemoryReading(character: Character, profile?: Profile): number {
+export function getEffectiveEnableMemoryReading(character: Character, profile?: Profile): boolean {
     return getEffectiveTriStateBoolean("enableMemoryReading", character, profile);
 }
 
-export function getEffectiveEnableWebSearch(character: Character, profile?: Profile): number {
+export function getEffectiveEnableWebSearch(character: Character, profile?: Profile): boolean {
     return getEffectiveTriStateBoolean("enableWebSearch", character, profile);
 }
 
-export function getEffectiveEnableCalculator(character: Character, profile?: Profile): number {
+export function getEffectiveEnableCalculator(character: Character, profile?: Profile): boolean {
     return getEffectiveTriStateBoolean("enableCalculator", character, profile);
 }
 

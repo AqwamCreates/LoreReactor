@@ -874,7 +874,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
         const timeSinceLastMessageString = parts.length > 0 ? parts.join(', ') : 'just now';
 
-        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this.${thinkEndString}${contextEndString}`);
+        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I will update relevant information according to this. For example, a previous count down time may be subtracted with the elapsed time to get current count down time.${thinkEndString}${contextEndString}`);
     }
 
     const dialoguePromptLines: string[] = [];
@@ -921,6 +921,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     if (enableTools){
 
         toolInstructions.push()
+        if (enableWebSearch) toolInstructions.push()
+        if (enableCalculator) toolInstructions.push()
 
     }
 

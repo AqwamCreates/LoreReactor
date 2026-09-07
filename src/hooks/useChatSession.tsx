@@ -18,7 +18,7 @@ import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } 
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { memoryWriteTrigger } from '../stringList';
 import { ToolInvocationParser } from '../services/ToolInvocationParser';
-import { executeTools, type ToolResult } from '../services/ToolExecutor';
+import { executeTools } from '../services/ToolExecutor';
 
 const languageModelEngine = new LanguageModelEngine();
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
@@ -136,15 +136,16 @@ async function runBackgroundSummarization(
 
 /**
  * Process tool invocations found in generated text.
- * Replaces tool markers with results and returns the modified text.
- * Returns null if no tools were found.
+ * Returns two versions of the text:
+ * - resumeText: raw results injected for the model's next generation round
+ * - displayText: formatted replacements for the user-visible message
+ * Returns null if no tools were found or none are enabled.
  */
 async function processToolInvocations(
     rawText: string,
     character: Character,
     profile: InteractionData['Profile'],
-): Promise<{ processedText: string; toolResults: ToolResult[] } | null> {
-    // Check if any tools are enabled for this character
+): Promise<{ resumeText: string; displayText: string } | null> {
     const webSearchEnabled = getEffectiveEnableWebSearch(character, profile) === 1;
     const calculatorEnabled = getEffectiveEnableCalculator(character, profile) === 1;
 
@@ -155,27 +156,27 @@ async function processToolInvocations(
 
     if (result.toolInvocations.length === 0) return null;
 
-    // Filter out disabled tool types
     const enabledInvocations = result.toolInvocations.filter(inv => {
         if (inv.toolType === 'search') return webSearchEnabled;
-        if (inv.toolType === 'calc') return calculatorEnabled;
+        if (inv.toolType === 'calculator') return calculatorEnabled;
         return false;
     });
 
     if (enabledInvocations.length === 0) return null;
 
-    // Execute all enabled tools
     const toolResults = await executeTools(enabledInvocations);
 
-    // Replace tool markers with results in the text
-    let processedText = rawText;
+    let resumeText = rawText;
+    let displayText = rawText;
+
     for (let i = 0; i < enabledInvocations.length; i++) {
         const invocation = enabledInvocations[i];
         const toolResult = toolResults[i];
-        processedText = processedText.replace(invocation.rawMatch, toolResult.content);
+        resumeText = resumeText.replace(invocation.rawMatch, toolResult.content);
+        displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
     }
 
-    return { processedText, toolResults };
+    return { resumeText, displayText };
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────
@@ -475,6 +476,7 @@ export function useChatSession() {
         try {
             let rawText: string;
             let currentExistingText = existingCharacterText || '';
+            let accumulatedDisplayText = '';
 
             if (strat) {
                 const previousCost = budgetCumulativeCostRef.current;
@@ -545,12 +547,14 @@ export function useChatSession() {
                     const requestCost = bse.currentCost - previousCost;
                     if (requestCost > 0) setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, totalCost: p.totalCost + requestCost }));
 
-                    // Check for tool invocations
                     const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
-                    if (!toolResult) break; // No tools found — done
+                    if (!toolResult) {
+                        accumulatedDisplayText = rawText;
+                        break;
+                    }
 
-                    // Replace tool markers with results, use as existing text for next iteration
-                    currentExistingText = toolResult.processedText;
+                    accumulatedDisplayText = toolResult.displayText;
+                    currentExistingText = toolResult.resumeText;
                 }
             } else {
                 if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
@@ -601,12 +605,14 @@ export function useChatSession() {
                         if (!rawText || !rawText.trim()) return null;
                     }
 
-                    // Check for tool invocations
                     const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
-                    if (!toolResult) break; // No tools found — done
+                    if (!toolResult) {
+                        accumulatedDisplayText = rawText;
+                        break;
+                    }
 
-                    // Replace tool markers with results, use as existing text for next iteration
-                    currentExistingText = toolResult.processedText;
+                    accumulatedDisplayText = toolResult.displayText;
+                    currentExistingText = toolResult.resumeText;
                 }
             }
 
@@ -614,7 +620,9 @@ export function useChatSession() {
 
             await processMemoryTrigger(rawText, character, dataWithRegen);
 
-            const displayText = convertIdsToDisplayNames(rawText, dataWithRegen);
+            // Use display text (with inline tool formatting) for the stored message
+            const finalDisplayText = accumulatedDisplayText || rawText;
+            const displayText = convertIdsToDisplayNames(finalDisplayText, dataWithRegen);
             const aiMessage = createChatMessage(dataWithRegen, character, displayText);
             const paragraphs = countParagraphs(displayText);
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
