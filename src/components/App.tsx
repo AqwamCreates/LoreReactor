@@ -1041,6 +1041,7 @@ function App() {
   const handleNewChat = useCallback(async () => {
     await safeAutoSave(interactionData); clearFetchCache();
     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+    setIsChatListOpen(false);
     let c = currentCharacter;
     if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
     if (!c && allChats.length) c = allChats[0].protagonist;
