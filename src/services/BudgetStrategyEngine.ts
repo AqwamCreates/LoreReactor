@@ -56,7 +56,8 @@ function isQuotaError(e: unknown): boolean {
         message.includes('quota') || message.includes('credit') ||
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
-        message.includes('subscribe') || message.includes('too many requests');
+        message.includes('subscribe') || message.includes('too many requests') ||
+        message.includes('per')
 }
 
 export interface RunningModelState {
