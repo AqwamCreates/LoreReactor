@@ -557,12 +557,46 @@ export function useChatSession() {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    // ✅ Use persistent budget data instead of ephemeral ref
-                    const bd = budgetDataRef.current;
-                    if (!bd) {
-                        addToast('Budget data not loaded.', 'error');
-                        return null;
+                    // ✅ Use persistent budget data, lazy-load if not yet available
+                let bd = budgetDataRef.current;
+                if (!bd) {
+                    try {
+                        bd = await loadRawBudgetData();
+                    } catch (e) {
+                        console.warn('Failed to load budget data:', e);
                     }
+                    if (!bd) {
+                        // Auto-create budget data from the active strategy with sensible defaults
+                        const now = Date.now();
+                        bd = {
+                            id: 'global-budget-data',
+                            name: 'Global Budget Data',
+                            description: 'Auto-created on first budget strategy activation',
+                            budgetSpent: 0,
+                            resetDuration: 24 * 60 * 60 * 1000, // Daily reset
+                            modelLastUsedTimestamps: {},
+                            modelLastQuotaHitTimeStamps: {},
+                            modelLastErrorHitTimeStamps: {},
+                            lastResetTimestamp: now,
+                            budgetStrategy: strat,
+                            firstCreatedTimestamp: now,
+                            lastUpdatedTimestamp: now,
+                        };
+                        try {
+                            await saveRawBudgetData(bd);
+                            setBudgetData(bd);
+                            budgetDataRef.current = bd;
+                            addToast('Budget tracking initialized with daily reset.', 'info');
+                        } catch (e) {
+                            console.error('Failed to create budget data:', e);
+                            addToast('Failed to initialize budget tracking.', 'error');
+                            return null;
+                        }
+                    } else {
+                        setBudgetData(bd);
+                        budgetDataRef.current = bd;
+                    }
+                }
 
                     const bse = new BudgetStrategyEngine(strat, bd, running, loadLocalModel);
                     const cb: StreamCallbacks | undefined = onToken ? { onToken: async (s) => {
