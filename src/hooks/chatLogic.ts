@@ -604,11 +604,11 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const activeContextsForImages: Context[] = [];
     const fetchErrors: string[] = [];
 
-    const getFilteredData = (ctxType: string, tgtType: string) => {
+    const getFilteredData = (ctxType: 'global' | 'local' | 'previous', tgtType: 'everyone' | 'listener' | 'self') => {
         if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
         if (!combinationCache[ctxType][tgtType]) {
-            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType as any);
-            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType as any);
+            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
+            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType);
             combinationCache[ctxType][tgtType] = step2;
         }
         return combinationCache[ctxType][tgtType];
@@ -620,12 +620,12 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         (c.searchTerms && c.searchTerms.length > 0)
     );
 
-    const selectedModelParams = (sampler?.parameters as any)?._selectedModel;
+    const selectedModelParams = (sampler?.parameters as Record<string, unknown>)?._selectedModel as Record<string, unknown> | undefined;
     const modelContext = selectedModelParams ? {
-        apiKey: selectedModelParams.apiKey,
-        backend: selectedModelParams.backend,
-        modelPath: selectedModelParams.model,
-        runtimePort: runtimePort || selectedModelParams.parameters?._runtimePort,
+        apiKey: selectedModelParams?.apiKey,
+        backend: selectedModelParams?.backend,
+        modelPath: selectedModelParams?.model,
+        runtimePort: runtimePort || (selectedModelParams?.parameters as Record<string, unknown>)?._runtimePort,
     } : { runtimePort };
 
     if (webContexts.length > 0) {

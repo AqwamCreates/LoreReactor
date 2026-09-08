@@ -613,13 +613,13 @@ export function ContextEditorModal({
                         <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context</label>
-                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as any)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
+                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as 'global' | 'local' | 'previous')} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
                                 </select>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Target</label>
-                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as any)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
+                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as 'everyone' | 'listener' | 'self')} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
                                 </select>
                             </div>
