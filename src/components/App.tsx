@@ -296,16 +296,16 @@ function App() {
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
-        { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
-        { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
+        { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
+        { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-    ], [charsLoading, actionsLoading, modelsLoading, contextsLoading, locationsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
+    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
