@@ -22,6 +22,7 @@ function applyResetIfDue(data: BudgetData): BudgetData {
     return {
         ...data,
         budgetSpent: 0,
+        modelBudgetSpent: {},
         modelLastQuotaHitTimeStamps: {},
         modelLastErrorHitTimeStamps: {},
         lastResetTimestamp: now,
@@ -48,6 +49,7 @@ function createDefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAU
         modelErrorHitCount: {},
         lastResetTimestamp: now,
         budgetStrategy: strategy,
+        modelBudgetSpent: {},
         modelAverageGenerationSpeedMsPerToken: {},
         modelAverageTimeToFirstToken: {},
         firstCreatedTimestamp: now,
@@ -151,6 +153,7 @@ export function useBudgetDataManager() {
         return updateBudgetData(data => ({
             ...data,
             budgetSpent: 0,
+            modelBudgetSpent: {},
             modelLastQuotaHitTimeStamps: {},
             modelLastErrorHitTimeStamps: {},
             lastResetTimestamp: now,
@@ -205,6 +208,7 @@ export function useBudgetDataManager() {
             modelLastUsedTimestamps: {},
             modelLastQuotaHitTimeStamps: {},
             modelLastErrorHitTimeStamps: {},
+            modelBudgetSpent: {},
         }));
     }, [updateBudgetData]);
 
