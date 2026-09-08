@@ -166,6 +166,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         protagonist: { ...currentChat.protagonist },
         participants: currentChat.participants.map(p => ({ ...p })),
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
+        locations: currentChat.locations || [],
         interactionHistory: clonedMessages,
         Profile: currentChat.Profile, // ✅ Preserve active profile
         firstCreatedTimestamp: now,

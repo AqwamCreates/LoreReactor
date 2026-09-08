@@ -1,6 +1,6 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile } from '../types';
+import type { LanguageModel, BudgetStrategy, Profile, InteractionData } from '../types';
 import { cloudBackends } from '../languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -84,13 +84,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     );
 }
 
-export function renderChatSubtext(c: {
-    parentInteractionDataId?: string;
-    numberOfMessages?: number;
-    interactionHistory: unknown[];
-    participants?: unknown[];
-    contexts?: unknown[];
-}): string {
+export function renderChatSubtext(c: InteractionData): string {
     const parts: string[] = [];
     if (c.parentInteractionDataId) parts.push(`Branch of ${c.parentInteractionDataId.substring(0, 8)}...`);
     parts.push(`${c.numberOfMessages ?? c.interactionHistory.length} message${(c.numberOfMessages ?? c.interactionHistory.length) > 1 ? 's' : ''}`);

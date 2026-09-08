@@ -31,9 +31,8 @@ interface EntityModalState<T> {
     open: (item?: T) => void;
     close: () => void;
     handleSave: (item: T) => void;
-    handleDelete: (item: T) => Promise<void>;
+    handleDelete: (id: string) => Promise<void>;  // was (item: T) => void
 }
-
 interface AppModalsProps {
     modals: Record<string, ModalVisibility>;
     // Data
@@ -121,7 +120,7 @@ export function AppModals({
                     items={allChats}
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
-                    onSelect={onSwitchChat}
+                    onSelect={(item: InteractionData) => onSwitchChat(item.id)}
                     onDelete={onDeleteChat}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
@@ -438,7 +437,6 @@ export function AppModals({
                     allLocations={allLocations}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
                     runningModels={runningModels}
-                    activeStrategy={activeStrategy}
                 />
             )}
             {modals.cardImport.isOpen && (

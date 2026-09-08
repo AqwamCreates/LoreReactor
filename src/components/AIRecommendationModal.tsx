@@ -397,6 +397,7 @@ export function AIRecommendationModal({
                     text: fields['Context Text Content'] || '',
                     regularExpressionActivationTrigger: fields['Context Regular Expression Activation Trigger'] || undefined,
                     regularExpressionDeactivationTrigger: fields['Context Regular Expression Deactivation Trigger'] || undefined,
+                    limitLinksToSubdirectory: false,
                     useBase64Encoding: false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveContext(ctx)) throw new Error('Failed to save context.');

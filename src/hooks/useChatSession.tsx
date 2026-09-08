@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, InteractionMessage } from '../types';
-import { saveRawInteractionData, loadRawBudgetData, saveRawBudgetData } from './storage';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel } from '../types';
+import { saveRawInteractionData, loadRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { editMessage, clearPartialFlag } from './messageLogic';
@@ -11,7 +11,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
-import { DefaultBudgetData } from '../defaults';
 import { useThrottledStream } from './useThrottledStream';
 import { useGenerationLock } from './useGenerationLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -19,13 +18,9 @@ import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
 import { useGeneration } from './useGeneration';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
-
-function hasTextContent(msg: InteractionMessage): boolean {
-    return 'textContent' in msg && typeof (msg as any).textContent === 'string';
-}
 
 export function useChatSession() {
     // ─── Core State ──────────────────────────────────────────────────
@@ -33,10 +28,8 @@ export function useChatSession() {
     const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
     const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
     const [currentCharacterExpression, setCurrentCharacterExpression] = useState<string>('neutral');
-    const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
     const [generationSpeed, setGenerationSpeed] = useState(0);
     const [timeToFirstToken, setTimeToFirstToken] = useState(0);
-    const [parentInteractionMessageIds, setParentInteractionMessageIds] = useState<Set<string>>(new Set());
     const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
     const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
     const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
@@ -186,7 +179,6 @@ export function useChatSession() {
         c.name = 'Untitled Chat';
         setInteractionData(c);
         setCurrentCharacter(char);
-        setIsInitialImageProcessed(false);
         isAtBottomRef.current = true;
     }, []);
 
@@ -230,9 +222,9 @@ export function useChatSession() {
         const hasLocations = ud.locations && ud.locations.length > 0;
         if (hasLocations) {
             const protagonistMsg = ud.interactionHistory[ud.interactionHistory.length - 1];
-            if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && hasTextContent(protagonistMsg)) {
+            if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && isChatMessage(protagonistMsg)) {
                 const currentLoc = getCurrentLocationIndex(ud, currentCharacter);
-                const regexLoc = findLocationByRegex(ud.locations, (protagonistMsg as any).textContent, currentCharacter);
+                const regexLoc = findLocationByRegex(ud.locations, protagonistMsg.textContent, currentCharacter);
                 const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
                 ud = { ...ud, interactionHistory: ud.interactionHistory.map((m, i) => i === ud.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
             }
@@ -278,9 +270,9 @@ export function useChatSession() {
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && hasTextContent(protagonistMsg)) {
+                if (protagonistMsg && protagonistMsg.character.id === currentCharacter.id && isChatMessage(protagonistMsg)) {
                     const currentLoc = getCurrentLocationIndex(td, currentCharacter);
-                    const regexLoc = findLocationByRegex(td.locations, (protagonistMsg as any).textContent, currentCharacter);
+                    const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, currentCharacter);
                     const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
                     td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
                 }
@@ -298,7 +290,11 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
-                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
+                runBackgroundSummarization({
+                    data: ud, setData: setInteractionData, dataRef: interactionDataRef,
+                    modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
+                    addToast, activeStrategy: activeStrategyRef.current,
+                });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
@@ -317,10 +313,9 @@ export function useChatSession() {
         if (!isChatMessage(msg) || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        const model = selectedModelRef.current;
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
-        const existingText = isChatMessage(msg) ? msg.textContent : '';;
+        const existingText = msg.textContent;
         const char = msg.character;
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
@@ -334,8 +329,12 @@ export function useChatSession() {
             const result = await handleServerResponse(interactionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText);
             if (!result) return;
 
-            const edited = await editMessage(result, messageId, result.interactionHistory.find(m => m.id === messageId)?.textContent || existingText);
-            if (result.interactionHistory.find(m => m.id === messageId)?.isPartial === false) {
+            const foundMsg = result.interactionHistory.find(m => m.id === messageId);
+            const msgText = foundMsg && isChatMessage(foundMsg) ? foundMsg.textContent : existingText;
+            const edited = await editMessage(result, messageId, msgText);
+
+            const foundEdited = edited.interactionHistory.find(m => m.id === messageId);
+            if (foundEdited && isChatMessage(foundEdited) && !foundEdited.isPartial) {
                 const finalData = await clearPartialFlag(edited, messageId);
                 setInteractionData(finalData); interactionDataRef.current = finalData;
                 await saveRawInteractionData(finalData);
@@ -343,7 +342,9 @@ export function useChatSession() {
                 setInteractionData(edited); interactionDataRef.current = edited;
                 await saveRawInteractionData(edited);
             }
-            if (char.id !== interactionData.protagonist.id) speakMessage(edited.interactionHistory.find(m => m.id === messageId)?.textContent || '', char);
+
+            const finalText = foundEdited && isChatMessage(foundEdited) ? foundEdited.textContent : '';
+            if (char.id !== interactionData.protagonist.id) speakMessage(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
                 console.error('Resume failed:', e);
@@ -389,7 +390,11 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
-                runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
+                runBackgroundSummarization({
+                    data: ud, setData: setInteractionData, dataRef: interactionDataRef,
+                    modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
+                    addToast, activeStrategy: activeStrategyRef.current,
+                });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
@@ -401,14 +406,14 @@ export function useChatSession() {
     }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
-        if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) { setIsInitialImageProcessed(true); return; }
-        if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) { setIsInitialImageProcessed(true); return; }
+        if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
+        if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) return;
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
         const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
         try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, ''); }
         catch (e) { console.warn('Silent image processing failed:', e); }
-        finally { isProcessingSilentlyRef.current = false; setIsInitialImageProcessed(true); }
+        finally { isProcessingSilentlyRef.current = false; }
     }, [handleServerResponse, isModelReadyForGeneration]);
 
     // ─── Return ──────────────────────────────────────────────────────
@@ -418,7 +423,7 @@ export function useChatSession() {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
-        messageEndRef, chatHistoryRef, parentInteractionMessageIds,
+        messageEndRef, chatHistoryRef,
         generationSpeed, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
         numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,

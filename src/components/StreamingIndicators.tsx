@@ -1,5 +1,5 @@
 // src/components/StreamingIndicators.tsx
-import React from 'react';
+import type React from 'react';
 import type { Character, InteractionData } from '../types';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 
@@ -9,7 +9,7 @@ interface StreamingIndicatorsProps {
     isLoading: boolean;
     streamingCharacter: Character | null;
     streamingText: string;
-    formattedStreamingText: string;
+    formattedStreamingText: React.ReactNode;
     viewMode: 'ladder' | 'cinematic';
     currentCharacterId: string | undefined;
     streamingPortraitUrl: string | null;

@@ -157,13 +157,20 @@ export function SamplerEditorModal({
 
                 // Restore parameter values
                 const loadedParams: any = {};
-                Object.keys(DEFAULT_PARAMETERS).forEach(key => {
-                    loadedParams[key] = getParamValue(existingSampler.parameters, key, DEFAULT_PARAMETERS[key as keyof SamplerParameters]);
-                });
+                for (const key of Object.keys(DEFAULT_PARAMETERS)) {
+                    const defaultValue = DEFAULT_PARAMETERS[key];
+                    if (
+                        typeof defaultValue === 'number' ||
+                        typeof defaultValue === 'string' ||
+                        typeof defaultValue === 'boolean'
+                    ) {
+                        loadedParams[key] = getParamValue(existingSampler.parameters, key, defaultValue);
+                    }
+                }
                 setParameters(loadedParams);
 
                 // ✅ RESTORE ACTIVE PARAMETER ORDER FROM SAVED DATA
-                const storedOrder = existingSampler.parameters?.['_parameterOrder'] as string[] | undefined;
+                const storedOrder = existingSampler.parameters?._parameterOrder as string[] | undefined;
                 if (Array.isArray(storedOrder) && storedOrder.length > 0) {
                     const validKeys = Object.keys(PARAMETER_CONFIGS);
                     const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
@@ -176,10 +183,10 @@ export function SamplerEditorModal({
                 } else {
                     // Fallback: reconstruct from _enabled_ flags
                     const enabledKeys: string[] = [];
-                    Object.keys(PARAMETER_CONFIGS).forEach(key => {
+                    for (const key of Object.keys(PARAMETER_CONFIGS)) {
                         const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
                         if (wasEnabled === true) enabledKeys.push(key);
-                    });
+                    }
                     // If nothing was explicitly enabled, use defaults
                     if (enabledKeys.length === 0) {
                         setActiveParamKeys(
@@ -240,12 +247,12 @@ export function SamplerEditorModal({
         const paramsWithEnabled: Record<string, unknown> = { ...parameters };
 
         // ✅ Persist the active parameter order
-        paramsWithEnabled['_parameterOrder'] = [...activeParamKeys];
+        paramsWithEnabled._parameterOrder = [...activeParamKeys];
 
         // ✅ Mark active params as enabled (backwards compatibility)
-        Object.keys(PARAMETER_CONFIGS).forEach(key => {
+        for (const key of Object.keys(PARAMETER_CONFIGS)) {
             paramsWithEnabled[`_enabled_${key}`] = activeParamKeys.includes(key);
-        });
+        }
 
         const now = Date.now();
         return {
@@ -294,7 +301,7 @@ export function SamplerEditorModal({
 
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
-        const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
         if (dragIndex === dropIndex) return;
         const newOrder = [...activeParamKeys];
         const [removed] = newOrder.splice(dragIndex, 1);

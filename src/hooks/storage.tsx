@@ -583,6 +583,7 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         chatProbability: rawCharacter.chatProbability,
         maximumChatStamina: rawCharacter.maximumChatStamina,
         nameSensitivity: rawCharacter.nameSensitivity,
+        chatImpatienceSensitivity: rawCharacter.chatImpatienceSensitivity,
         skipProbability: rawCharacter.skipProbability,
         memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
         contextSensitivity: rawCharacter.contextSensitivity,

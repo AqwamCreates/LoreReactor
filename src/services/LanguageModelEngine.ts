@@ -10,7 +10,8 @@ export interface TokenStats {
 }
 
 export interface StreamCallbacks {
-  onToken: (stats: TokenStats) => void;
+    onToken?: (state: StreamState) => void | Promise<void>;
+    onFinish?: (result: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }) => void;
 }
 
 export interface StreamResult {

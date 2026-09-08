@@ -1041,9 +1041,10 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
 
     if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-        const characterImagePath = getCharacterImageUrlWithFallBack(character.image);
+        const characterImagePath = await getCharacterImageUrlWithFallBack(character.images?.neutral); // Use a sentimental analysis on the protagonist's chat message here!
 
         if (characterImagePath) {
+
             const characterImageBase64 = await getImageBase64(characterImagePath);
 
             if (characterImageBase64) {

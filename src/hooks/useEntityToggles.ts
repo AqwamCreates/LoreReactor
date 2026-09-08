@@ -6,7 +6,6 @@ import { saveRawInteractionData, loadRawContext, loadRawLocation } from './stora
 interface UseEntityTogglesOptions {
     interactionData: InteractionData | null;
     allCharacters: Character[];
-    allContexts: Context[];
     allExtensions: Extension[];
     allProfiles: Profile[];
     allBudgetStrategies: BudgetStrategy[];
@@ -22,7 +21,7 @@ interface UseEntityTogglesOptions {
 
 export function useEntityToggles(options: UseEntityTogglesOptions) {
     const {
-        interactionData, allCharacters, allContexts, allExtensions,
+        interactionData, allCharacters, allExtensions,
         allProfiles, allBudgetStrategies,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,

@@ -76,7 +76,7 @@ function App() {
     const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
     const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
-    const { extensions: allExtensions, isLoading: extLoading, deleteExtension } = useExtensionManager();
+    const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
 
     // ─── Entity Modals ───────────────────────────────────────────────

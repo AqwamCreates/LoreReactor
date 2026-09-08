@@ -263,7 +263,7 @@ export function ModelEditorModal({
     }, [isOpen, existingModel]);
 
     useEffect(() => {
-        const cacheTypes = getCacheTypes(backend);
+        const cacheTypes = getCacheTypes(backend || "");
         if (cacheTypes.length === 0) return;
 
         const validValues = cacheTypes.map(ct => ct.value);

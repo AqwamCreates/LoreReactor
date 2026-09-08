@@ -287,7 +287,7 @@ export function useGeneration(options: UseGenerationOptions) {
                 const doStream = async (reqBody: any, ctx: LanguageModelContext) => {
                     const result = await languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
                         ...createStreamCallbacks(streamToolParser, committedDisplayText, liveDisplayText, lastRawLength),
-                        onFinish: (rs) => {
+                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }) => {
                             const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
                             setStats(p => ({ ...p, numberOfRequests: p.numberOfRequests + 1, numberOfCacheInvalidations: p.numberOfCacheInvalidations + (rs.cacheMiss ? 1 : 0), totalCost: p.totalCost + cr.totalCost, costWithoutCacheMisses: p.costWithoutCacheMisses + cr.potentialMaxCost }));
                         },

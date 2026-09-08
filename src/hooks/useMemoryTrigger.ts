@@ -33,6 +33,8 @@ export function useMemoryTrigger(
         const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
         const ep = port || (model?.parameters as any)?._runtimePort;
         if (!ep && !model?.apiKey) return;
+        // Line 36: add null guard
+        if (!model) return;
         const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
         const effectiveRetentionWeight = (() => {
