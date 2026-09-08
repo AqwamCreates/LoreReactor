@@ -82,10 +82,6 @@ function applyResetIfDue(data: BudgetData): void {
     data.modelLastQuotaHitTimeStamps = {};
     data.modelLastErrorHitTimeStamps = {};
     data.lastResetTimestamp = Date.now();
-    // Preserve: modelUsedCount, modelQuotaHitCount, modelErrorHitCount,
-    //           modelAverageGenerationSpeedMsPerToken, modelAverageTimeToFirstToken,
-    //           modelTotalSessionDuration
-    // These are long-term metrics, not per-cycle state
 }
 
 export interface RunningModelState {
@@ -124,37 +120,24 @@ export class BudgetStrategyEngine {
         return (Date.now() - lastQuotaHit) < 60_000;
     }
 
-    /** Gets the average generation speed (ms/token) for a model. Returns Infinity if no data. */
     private getModelSpeed(modelId: string): number {
         return this.budgetData.modelAverageGenerationSpeedMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
-    /** Gets the average TTFT (ms) for a model. Returns Infinity if no data. */
     private getModelTTFT(modelId: string): number {
         return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
-    /**
-     * Gets the quality score for a model based on total session duration.
-     * Higher duration = user found it acceptable = higher quality signal.
-     * Returns 0 if no data.
-     */
     private getModelQualityScore(modelId: string): number {
         return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
     }
 
-    /**
-     * Checks if a model's average session duration per use falls below the
-     * configured quality threshold. Models with insufficient usage data (< 3 uses)
-     * are given benefit of the doubt and pass the check.
-     * The threshold value represents minimum acceptable average session duration in seconds.
-     */
     private isBelowQualityThreshold(modelId: string): boolean {
         const threshold = this.strategy.fallbackOnQualityThreshold;
         if (!threshold || threshold <= 0) return false;
 
         const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
-        if (usedCount < 3) return false; // Not enough data to judge
+        if (usedCount < 3) return false;
 
         const totalDuration = this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
         const avgDurationSeconds = (totalDuration / usedCount) / 1000;
@@ -162,7 +145,6 @@ export class BudgetStrategyEngine {
         return avgDurationSeconds < threshold;
     }
 
-    /** Updates the rolling average generation speed for a model using configurable EMA alpha. */
     private recordGenerationSpeed(modelId: string, observedMsPerToken: number): void {
         if (!this.budgetData.modelAverageGenerationSpeedMsPerToken) {
             this.budgetData.modelAverageGenerationSpeedMsPerToken = {};
@@ -177,7 +159,6 @@ export class BudgetStrategyEngine {
         }
     }
 
-    /** Updates the rolling average TTFT for a model using configurable EMA alpha. */
     private recordTTFT(modelId: string, observedMs: number): void {
         if (!this.budgetData.modelAverageTimeToFirstToken) {
             this.budgetData.modelAverageTimeToFirstToken = {};
@@ -192,7 +173,6 @@ export class BudgetStrategyEngine {
         }
     }
 
-    /** Records session duration for a model after generation completes. */
     private recordSessionDuration(modelId: string, durationMs: number): void {
         if (!this.budgetData.modelTotalSessionDuration) {
             this.budgetData.modelTotalSessionDuration = {};
@@ -243,16 +223,31 @@ export class BudgetStrategyEngine {
     }
 
     /**
-     * Selects the next available model from a pool.
-     * Groups by tier (highest first), then within each tier sorts by:
-     *   1. Quality score (higher total session duration = user accepted it = preferred)
-     *      Models below the quality threshold are pushed to the bottom of their tier.
-     *   2. Generation speed (faster first — lower ms/token is better)
-     *   3. TTFT (lower first — snappier response preferred)
-     *   4. Reliability (lower error rate = more stable = preferred)
-     *   5. Recency (more recently used = warmer cache = preferred)
-     *   6. Base tier descending as final tiebreaker
+     * Creates a timeout abort controller linked to the parent signal.
+     * If fallbackOnTimeoutInSeconds > 0, aborts after that many seconds.
+     * Caller MUST call cleanup() when done to prevent leaks.
      */
+    private createTimeoutController(parentSignal: AbortSignal): { controller: AbortController; cleanup: () => void } {
+        const timeoutSeconds = this.strategy.fallbackOnTimeoutInSeconds;
+        const controller = new AbortController();
+
+        const onParentAbort = () => controller.abort();
+        parentSignal.addEventListener('abort', onParentAbort);
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        if (timeoutSeconds > 0) {
+            timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+        }
+
+        return {
+            controller,
+            cleanup: () => {
+                if (timeoutId !== undefined) clearTimeout(timeoutId);
+                parentSignal.removeEventListener('abort', onParentAbort);
+            },
+        };
+    }
+
     private selectFromPool(
         pool: LanguageModel[],
         failedIds: Set<string>,
@@ -279,8 +274,7 @@ export class BudgetStrategyEngine {
             const candidates = tierGroups.get(tier);
             if (!candidates) continue;
             candidates.sort((a, b) => {
-                // 1. Quality threshold gate: models below threshold are deprioritized
-                //    within their tier but not excluded (they may be all we have left).
+                // 1. Quality threshold gate
                 const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
                 const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
                 if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
@@ -410,12 +404,31 @@ export class BudgetStrategyEngine {
             try {
                 const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
 
-                const result = await engine.generateStream(
-                    body,
-                    abortController,
-                    wrappedCallbacks,
-                    primaryCtx,
-                );
+                // Wrap with timeout controller
+                const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
+                let result;
+                try {
+                    result = await engine.generateStream(
+                        body,
+                        timeoutCtrl,
+                        wrappedCallbacks,
+                        primaryCtx,
+                    );
+                } catch (e) {
+                    cleanupTimeout();
+                    // Check if it was our timeout (not the parent abort)
+                    if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
+                        const sessionDuration = Date.now() - sessionStart;
+                        this.recordSessionDuration(selectedModel.id, sessionDuration);
+                        primaryFailedSet.add(selectedModel.id);
+                        this.recordError(selectedModel.id);
+                        console.warn(`Model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
+                        continue;
+                    }
+                    throw e;
+                } finally {
+                    cleanupTimeout();
+                }
 
                 // Record session duration
                 const sessionDuration = Date.now() - sessionStart;
@@ -438,7 +451,6 @@ export class BudgetStrategyEngine {
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
 
-                // Record partial session duration even on failure
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(selectedModel.id, sessionDuration);
 
@@ -475,12 +487,30 @@ export class BudgetStrategyEngine {
                 try {
                     const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, fallbackPort);
 
-                    const result = await engine.generateStream(
-                        fallbackBody,
-                        abortController,
-                        wrappedCallbacks,
-                        fallbackCtx,
-                    );
+                    // Wrap with timeout controller
+                    const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
+                    let result;
+                    try {
+                        result = await engine.generateStream(
+                            fallbackBody,
+                            timeoutCtrl,
+                            wrappedCallbacks,
+                            fallbackCtx,
+                        );
+                    } catch (e) {
+                        cleanupTimeout();
+                        if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
+                            const sessionDuration = Date.now() - sessionStart;
+                            this.recordSessionDuration(selectedModel.id, sessionDuration);
+                            fallbackFailedSet.add(selectedModel.id);
+                            this.recordError(selectedModel.id);
+                            console.warn(`Fallback model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
+                            continue;
+                        }
+                        throw e;
+                    } finally {
+                        cleanupTimeout();
+                    }
 
                     // Record session duration
                     const sessionDuration = Date.now() - sessionStart;
@@ -502,7 +532,6 @@ export class BudgetStrategyEngine {
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
-                    // Record partial session duration even on failure
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 

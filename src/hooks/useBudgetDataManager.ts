@@ -203,13 +203,26 @@ export function useBudgetDataManager() {
         }));
     }, [updateBudgetData]);
 
+    const clearDurationTimestamps = useCallback(async (): Promise<boolean> => {
+        return updateBudgetData(data => ({
+            ...data,
+            modelTotalSessionDuration: {},
+        }));
+    }, [updateBudgetData]);
+
     const clearAllModelTelemetry = useCallback(async (): Promise<boolean> => {
         return updateBudgetData(data => ({
             ...data,
             modelLastUsedTimestamps: {},
             modelLastQuotaHitTimeStamps: {},
             modelLastErrorHitTimeStamps: {},
+            modelUsedCount: {},
+            modelQuotaHitCount: {},
+            modelErrorHitCount: {},
+            modelAverageGenerationSpeedMsPerToken: {},
+            modelAverageTimeToFirstToken: {},
             modelBudgetSpent: {},
+            modelTotalSessionDuration: {},
         }));
     }, [updateBudgetData]);
 
@@ -250,6 +263,7 @@ export function useBudgetDataManager() {
         clearModelLastUsedTimestamps,
         clearQuotaTimestamps,
         clearErrorTimestamps,
+        clearDurationTimestamps,
         clearAllModelTelemetry,
 
         getTimeUntilReset,

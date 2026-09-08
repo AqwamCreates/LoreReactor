@@ -244,6 +244,8 @@ export function useChatSession() {
         setInteractionData(c);
         setCurrentCharacter(char);
         isAtBottomRef.current = true;
+        // Reset session timer for new chat
+        useSessionStore.setState({ sessionStartTimestamp: Date.now() });
     }, [setInteractionData, setCurrentCharacter]);
 
     const stopGeneration = useCallback(() => {

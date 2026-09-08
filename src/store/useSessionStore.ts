@@ -29,6 +29,7 @@ interface SessionState {
     totalCost: number;
     costWithoutCacheMisses: number;
     numberOfTokens: number;
+    sessionStartTimestamp: number | null;
 
     // UI preferences (persisted to localStorage)
     selectedBudgetStrategyId: string | null;
@@ -54,6 +55,7 @@ export const useSessionStore = create<SessionState>()(() => ({
     totalCost: 0,
     costWithoutCacheMisses: 0,
     numberOfTokens: 0,
+    sessionStartTimestamp: null,
 
     // Initialize from localStorage
     selectedBudgetStrategyId: (() => {

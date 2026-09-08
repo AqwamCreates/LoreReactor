@@ -303,6 +303,15 @@ export function BudgetControlModal({
         setTtftAlpha('');
     };
 
+    const clearDurationTimestamps = async (): Promise<boolean> => {
+        if (!budgetData) return false;
+        const { saveRawBudgetData } = await import('../hooks/storage');
+        const updated = { ...budgetData, modelTotalSessionDuration: {} };
+        await saveRawBudgetData(updated);
+        await refresh();
+        return true;
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content modal-content-manager" onClick={e => e.stopPropagation()}>
@@ -502,6 +511,7 @@ export function BudgetControlModal({
                                             <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearModelLastUsedTimestamps)}>Clear Used</button>
                                             <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearQuotaTimestamps)}>Clear Quotas</button>
                                             <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearErrorTimestamps)}>Clear Errors</button>
+                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearDurationTimestamps)}>Clear Duration</button>
                                             <button type="button" className="budget-btn budget-btn-danger" disabled={isSaving} onClick={() => runAction(clearAllModelTelemetry)}>Clear All</button>
                                         </div>
                                     </div>
@@ -572,7 +582,7 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Strategy Binding — moved to bottom */}
+                                    {/* Strategy Binding — bottom */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Budget Strategy</span>
                                         <div className="budget-control-row">

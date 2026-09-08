@@ -1,6 +1,6 @@
 // src/components/ChatStatisticsBar.tsx
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 
 interface ChatStatisticsBarProps {
@@ -101,8 +101,23 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
         return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
     };
 
-    // Compute live session duration
+    // Compute base session duration from store
     const sessionDurationMs = sessionStartTimestamp ? Date.now() - sessionStartTimestamp : 0;
+
+    // Live ticking duration while details panel is open
+    const [liveDuration, setLiveDuration] = useState(sessionDurationMs);
+
+    useEffect(() => {
+        if (!showDetails || !sessionStartTimestamp) {
+            setLiveDuration(sessionDurationMs);
+            return;
+        }
+        // Tick every second while details are visible
+        const interval = setInterval(() => {
+            setLiveDuration(Date.now() - sessionStartTimestamp);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [showDetails, sessionStartTimestamp, sessionDurationMs]);
 
     return (
         <div
@@ -205,7 +220,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Session Duration:</span>
-                            <span className="chat-stat-detail-value">{formatSessionDuration(sessionDurationMs)}</span>
+                            <span className="chat-stat-detail-value">{formatSessionDuration(liveDuration)}</span>
                         </div>
                     </div>
 
