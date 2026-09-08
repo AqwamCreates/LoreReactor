@@ -27,7 +27,7 @@ type RunningModelStatus = Record<string, { isRunning: boolean; port?: number }>;
 type StatsState = { numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number };
 
 export function useChatSession() {
-    // ─── Core State (dual-write with store during Phase 1) ──────────
+    // ─── Core State (dual-write with store) ─────────────────────────
     const [interactionData, _setInteractionData] = useState<InteractionData | null>(null);
     const [currentCharacter, _setCurrentCharacter] = useState<Character | null>(null);
     const [streamingCharacter, _setStreamingCharacter] = useState<Character | null>(null);
@@ -45,6 +45,10 @@ export function useChatSession() {
     const setInteractionData = useCallback((data: InteractionData | null) => {
         _setInteractionData(data);
         useSessionStore.setState({ interactionData: data });
+        if (!data) {
+            _setNumberOfTokens(0);
+            useSessionStore.setState({ numberOfTokens: 0 });
+        }
     }, []);
 
     const setCurrentCharacter = useCallback((char: Character | null) => {
@@ -88,10 +92,12 @@ export function useChatSession() {
     }, []);
 
     const setStats = useCallback((newStats: SetStateAction<StatsState>) => {
-        const nextStats = typeof newStats === 'function' ? newStats(stats) : newStats;
-        _setStats(nextStats);
-        useSessionStore.setState(nextStats);
-    }, [stats]);
+        _setStats(prev => {
+            const next = typeof newStats === 'function' ? newStats(prev) : newStats;
+            useSessionStore.setState(next);
+            return next;
+        });
+    }, []);
 
     const setNumberOfTokens = useCallback((count: number) => {
         _setNumberOfTokens(count);
@@ -103,14 +109,10 @@ export function useChatSession() {
         useSessionStore.setState({ budgetData: data });
     }, []);
 
-    // ─── Refs ────────────────────────────────────────────────────────
+    // ─── Refs (only genuine imperative handles) ─────────────────────
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     const chatHistoryRef = useRef<HTMLDivElement>(null);
-    const selectedModelRef = useRef<LanguageModel | null>(null);
-    const runningModelsMapRef = useRef<RunningModelStatus>({});
-    const activeStrategyRef = useRef<BudgetStrategy | null>(null);
-    const budgetDataRef = useRef<BudgetData | null>(null);
     const isProcessingSilentlyRef = useRef(false);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
     const isAtBottomRef = useRef(true);
@@ -122,14 +124,10 @@ export function useChatSession() {
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, streamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { isLoading, acquireLock, releaseLock, isLoadingRef } = useGenerationLock();
-    const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, null, setStreamingText, streamingTextRef);
+    const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, setStreamingText, streamingTextRef);
     const { speakMessage } = useCharacterVoice();
     const { processMemoryTrigger } = useMemoryTrigger();
     const { handleServerResponse } = useGeneration({
-        selectedModelRef,
-        runningModelsMapRef,
-        activeStrategyRef,
-        budgetDataRef,
         setBudgetData,
         setStats,
         setGenerationSpeed,
@@ -144,9 +142,6 @@ export function useChatSession() {
 
     const { addToast } = useToast();
 
-    // ─── Remaining Ref Sync Effects (only for refs that still exist) ─
-    useEffect(() => { budgetDataRef.current = budgetData; }, [budgetData]);
-
     // ─── Mount Effects ───────────────────────────────────────────────
     useEffect(() => {
         (async () => {
@@ -155,7 +150,7 @@ export function useChatSession() {
                 if (bd) { setBudgetData(bd); }
             } catch (e) { console.warn('Failed to load budget data:', e); }
         })();
-    }, []);
+    }, [setBudgetData]);
 
     useEffect(() => {
         const handler = (event: Event) => {
@@ -164,7 +159,7 @@ export function useChatSession() {
         };
         window.addEventListener('budget-data-updated', handler);
         return () => window.removeEventListener('budget-data-updated', handler);
-    }, []);
+    }, [setBudgetData]);
 
     useEffect(() => {
         (async () => {
@@ -177,10 +172,10 @@ export function useChatSession() {
                 setRunningModelsMap(status);
             } catch { }
         })();
-    }, []);
+    }, [setRunningModelsMap]);
 
     useEffect(() => {
-        if (!interactionData) { setNumberOfTokens(0); return; }
+        if (!interactionData) return;
         let cancelled = false;
         (async () => {
             const model = useSessionStore.getState().selectedModel;
@@ -195,7 +190,7 @@ export function useChatSession() {
             if (!cancelled) setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [interactionData?.interactionHistory, interactionData]);
+    }, [interactionData?.interactionHistory, interactionData, setNumberOfTokens]);
 
     // ─── Scroll Tracking ─────────────────────────────────────────────
     useEffect(() => {
@@ -271,7 +266,7 @@ export function useChatSession() {
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
         } else {
-            pendingPartialRef.current = (t && t.trim() && c) ? { text: t, character: c } : null;
+            pendingPartialRef.current = (t?.trim() && c) ? { text: t, character: c } : null;
         }
 
         abortControllerRef.current?.abort();
@@ -279,7 +274,7 @@ export function useChatSession() {
         releaseLock();
         resetStream();
         setGenerationSpeed(0);
-    }, [releaseLock, resetStream, setInteractionData, setGenerationSpeed]);
+    }, [streamingTextRef, releaseLock, resetStream, setGenerationSpeed, setInteractionData]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         if (!interactionData || !currentCharacter) return;
@@ -319,7 +314,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
+    }, [interactionData, currentCharacter, isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setGenerationSpeed, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage]);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!interactionData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
@@ -359,8 +354,7 @@ export function useChatSession() {
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData, dataRef: null,
-                    modelRef: null, runningModelsRef: null,
+                    data: ud, setData: setInteractionData,
                     addToast, activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
@@ -423,7 +417,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [interactionData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, throttledSetStreamingText, speakMessage, handleServerResponse, setStreamingText, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
+    }, [interactionData, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setGenerationSpeed, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!interactionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
@@ -459,8 +453,7 @@ export function useChatSession() {
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData, dataRef: null,
-                    modelRef: null, runningModelsRef: null,
+                    data: ud, setData: setInteractionData,
                     addToast, activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
@@ -482,7 +475,7 @@ export function useChatSession() {
         try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, ''); }
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; }
-    }, [handleServerResponse, isModelReadyForGeneration]);
+    }, [handleServerResponse, isLoadingRef, isModelReadyForGeneration]);
 
     // ─── Return ──────────────────────────────────────────────────────
     const maxCtx = selectedModel?.contextLength || 8192;

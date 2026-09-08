@@ -1,6 +1,6 @@
 // src/hooks/useGeneration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, BudgetData } from '../types';
+import type { Character, InteractionData } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from './storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from './chatLogic';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
@@ -94,8 +94,7 @@ function countParagraphs(text: string): number {
 // ─── Hook ────────────────────────────────────────────────────────────
 
 interface UseGenerationOptions {
-    budgetDataRef: React.MutableRefObject<BudgetData | null>;
-    setBudgetData: (bd: BudgetData) => void;
+    setBudgetData: (bd: import('../types').BudgetData) => void;
     setStats: React.Dispatch<React.SetStateAction<{ numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number }>>;
     setGenerationSpeed: (speed: number) => void;
     setTimeToFirstToken: (ttft: number) => void;
@@ -109,7 +108,6 @@ interface UseGenerationOptions {
 
 export function useGeneration(options: UseGenerationOptions) {
     const {
-        budgetDataRef,
         setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,
@@ -218,7 +216,7 @@ export function useGeneration(options: UseGenerationOptions) {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    let bd = budgetDataRef.current;
+                    let bd = useSessionStore.getState().budgetData;
                     if (!bd) {
                         try { bd = await loadRawBudgetData(); } catch (e) { console.warn('Failed to load budget data:', e); }
                         if (!bd) {
@@ -226,7 +224,6 @@ export function useGeneration(options: UseGenerationOptions) {
                             try {
                                 await saveRawBudgetData(bd);
                                 setBudgetData(bd);
-                                budgetDataRef.current = bd;
                                 addToast('Budget tracking initialized with daily reset.', 'info');
                             } catch (e) {
                                 console.error('Failed to create budget data:', e);
@@ -235,7 +232,6 @@ export function useGeneration(options: UseGenerationOptions) {
                             }
                         } else {
                             setBudgetData(bd);
-                            budgetDataRef.current = bd;
                         }
                     }
 
@@ -245,7 +241,6 @@ export function useGeneration(options: UseGenerationOptions) {
 
                     const updatedBd = bse.getBudgetData();
                     setBudgetData(updatedBd);
-                    budgetDataRef.current = updatedBd;
                     await saveRawBudgetData(updatedBd);
 
                     const requestCost = updatedBd.budgetSpent - bd.budgetSpent;
@@ -357,7 +352,6 @@ export function useGeneration(options: UseGenerationOptions) {
             return null;
         }
     }, [
-        budgetDataRef,
         setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,
