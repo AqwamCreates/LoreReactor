@@ -101,7 +101,7 @@ function App() {
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
-    const modals = useModalVisibility();
+    const { modals, closeAll } = useModalVisibility();
     const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
     const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER));
     const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY));
@@ -540,12 +540,29 @@ function App() {
                             <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
                             <button type="button" className="view-mode-toggle" onClick={() => interactionData && modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
                             <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-                            <ChatStatisticsBar generationSpeed={generationSpeed} timeToFirstToken={timeToFirstToken} numberOfMessages={numberOfMessages} numberOfTokens={numberOfTokens} maximumNumberOfTokens={maximumNumberOfTokens} maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens} maximumNumberOfContextTokens={maximumNumberOfContextTokens} numberOfCacheInvalidations={numberOfCacheInvalidations} numberOfRequests={numberOfRequests} totalCost={totalCost} costWithoutCacheMisses={costWithoutCacheMisses} budgetSpent={budgetData?.budgetSpent} maximumBudget={activeStrategy?.maximumBudget} timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined} />
+                            <ChatStatisticsBar
+                                numberOfMessages={numberOfMessages}
+                                maximumNumberOfTokens={maximumNumberOfTokens}
+                                maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
+                                maximumNumberOfContextTokens={maximumNumberOfContextTokens}
+                                budgetSpent={budgetData?.budgetSpent}
+                                maximumBudget={activeStrategy?.maximumBudget}
+                                timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
+                            />
                         </div>
                     </div></div></header>
 
                     <div className="chat-history" ref={chatHistoryRef}>
-                        {viewMode === 'cinematic' && <StreamingIndicators isLoading={isLoading} streamingCharacter={streamingCharacter} streamingText={streamingText} formattedStreamingText={formattedStreamingText} viewMode={viewMode} currentCharacterId={currentCharacter?.id} streamingPortraitUrl={streamingPortraitUrl} interactionData={interactionData} messagesLength={InteractionMessages.length} onAvatarClick={handleAvatarClick} />}
+                        {viewMode === 'cinematic' && (
+                            <StreamingIndicators
+                                formattedStreamingText={formattedStreamingText}
+                                viewMode={viewMode}
+                                currentCharacterId={currentCharacter?.id}
+                                streamingPortraitUrl={streamingPortraitUrl}
+                                messagesLength={InteractionMessages.length}
+                                onAvatarClick={handleAvatarClick}
+                            />
+                        )}
                         {displayMessages.map((message, renderIndex) => {
                             const index = viewMode === 'cinematic' ? InteractionMessages.length - 1 - renderIndex : renderIndex;
                             if (!message.character) return null;
@@ -555,10 +572,56 @@ function App() {
                             const beforeBranch = !!(interactionData.parentInteractionMessageId && index === branchOffIndex);
                             const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
                             return (
-                                <MessageBubble key={message.id} message={message} index={index} viewMode={viewMode} currentCharacterId={currentCharacter?.id} editingId={editingId} editDraft={editDraft} massDeleteId={massDeleteId} isMassActive={isMassActive} massStartIndex={massStartIndex} activeToolbarId={activeToolbarId} portraitUrl={messagePortraitUrl} displayName={dn} isStem={stem} beforeBranch={beforeBranch} isModelReady={isModelReady} isLoading={isLoading} onAvatarClick={handleAvatarClick} onStartEditing={startEditing} onCancelEditing={cancelEditing} onSaveEdit={handleSaveEdit} onRegenerateFromEdit={handleRegenerateFromEdit} onResumeGeneration={resumeGeneration} onCopyText={handleCopyText} onRegenerateFromMessage={regenerateFromMessage} onBranch={handleBranch} onClone={handleClone} onDelete={handleDelete} onSetMassDelete={setMassDeleteId} onMassDeleteConfirm={handleMassDeleteConfirm} onCancelMassDelete={() => setMassDeleteId(null)} onTouchStart={handleBubbleTouchStart} onTouchEnd={handleBubbleTouchEnd} onTouchMove={handleBubbleTouchMove} suppressNextClickRef={suppressNextClickRef} editTextareaRef={editTextareaRef} setEditDraft={setEditDraft} onNavigateToBranchSource={handleNavigateToBranchSource} />
+                                <MessageBubble
+                                    key={message.id}
+                                    message={message}
+                                    index={index}
+                                    viewMode={viewMode}
+                                    currentCharacterId={currentCharacter?.id}
+                                    editingId={editingId}
+                                    editDraft={editDraft}
+                                    massDeleteId={massDeleteId}
+                                    isMassActive={isMassActive}
+                                    massStartIndex={massStartIndex}
+                                    activeToolbarId={activeToolbarId}
+                                    portraitUrl={messagePortraitUrl}
+                                    displayName={dn}
+                                    isStem={stem}
+                                    beforeBranch={beforeBranch}
+                                    onAvatarClick={handleAvatarClick}
+                                    onStartEditing={startEditing}
+                                    onCancelEditing={cancelEditing}
+                                    onSaveEdit={handleSaveEdit}
+                                    onRegenerateFromEdit={handleRegenerateFromEdit}
+                                    onResumeGeneration={resumeGeneration}
+                                    onCopyText={handleCopyText}
+                                    onRegenerateFromMessage={regenerateFromMessage}
+                                    onBranch={handleBranch}
+                                    onClone={handleClone}
+                                    onDelete={handleDelete}
+                                    onSetMassDelete={setMassDeleteId}
+                                    onMassDeleteConfirm={handleMassDeleteConfirm}
+                                    onCancelMassDelete={() => setMassDeleteId(null)}
+                                    onTouchStart={handleBubbleTouchStart}
+                                    onTouchEnd={handleBubbleTouchEnd}
+                                    onTouchMove={handleBubbleTouchMove}
+                                    suppressNextClickRef={suppressNextClickRef}
+                                    editTextareaRef={editTextareaRef}
+                                    setEditDraft={setEditDraft}
+                                    onNavigateToBranchSource={handleNavigateToBranchSource}
+                                />
                             );
                         })}
-                        {viewMode === 'ladder' && <StreamingIndicators isLoading={isLoading} streamingCharacter={streamingCharacter} streamingText={streamingText} formattedStreamingText={formattedStreamingText} viewMode={viewMode} currentCharacterId={currentCharacter?.id} streamingPortraitUrl={streamingPortraitUrl} interactionData={interactionData} messagesLength={InteractionMessages.length} onAvatarClick={handleAvatarClick} />}
+                        {viewMode === 'ladder' && (
+                            <StreamingIndicators
+                                formattedStreamingText={formattedStreamingText}
+                                viewMode={viewMode}
+                                currentCharacterId={currentCharacter?.id}
+                                streamingPortraitUrl={streamingPortraitUrl}
+                                messagesLength={InteractionMessages.length}
+                                onAvatarClick={handleAvatarClick}
+                            />
+                        )}
                         {InteractionMessages.length === 0 && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
@@ -569,8 +632,59 @@ function App() {
                 </>}
 
                 <AppModals
-                    modals={modals as unknown as Record<string, { isOpen: boolean; open: () => void; close: () => void }>}
-                    allChats={allChats} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allSamplers={allSamplers} allStopPatterns={allStopPatterns} allModels={allModels} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles} allExtensions={allExtensions} runningModels={runningModels} samplerToEdit={samplerToEdit} charModal={charModal} contextModal={contextModal} locationModal={locationModal} stopModal={stopModal} modelModal={modelModal} budgetModal={budgetModal} profileModal={profileModal} onSwitchChat={handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={handleNewChat} onDeleteCharacter={deleteCharacter} onLoadFullCharacter={loadFullCharacter} onToggleParticipant={handleToggleParticipant} onSetProtagonist={handleSetChatProtagonist} onDeleteContext={contextModal.handleDelete} onToggleContext={handleToggleContext} onDeleteLocation={locationModal.handleDelete} onToggleLocation={handleToggleLocation} onDeleteModel={deleteModel} onToggleModelLoad={toggleModelLoad} onDeleteSampler={deleteSampler} onSaveSampler={handleSaveSampler} onOpenSamplerEditor={handleOpenSamplerEditor} onDeleteStopPattern={stopModal.handleDelete} onDeleteBudgetStrategy={budgetModal.handleDelete} onActivateBudgetStrategy={handleActivateBudgetStrategy} onDeleteProfile={deleteProfile} onActivateProfile={handleActivateProfile} onDeleteExtension={deleteExtension} onToggleExtension={handleToggleExtension} onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }} onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage} onInjectCustomMessage={handleInjectCustomMessage} onInjectFirstMessage={handleInjectFirstMessage} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} onImportComplete={handleImportComplete} addToast={addToast}
+                    modals={modals}
+                    allChats={allChats}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allSamplers={allSamplers}
+                    allStopPatterns={allStopPatterns}
+                    allModels={allModels}
+                    allBudgetStrategies={allBudgetStrategies}
+                    allProfiles={allProfiles}
+                    allExtensions={allExtensions}
+                    runningModels={runningModels}
+                    samplerToEdit={samplerToEdit}
+                    charModal={charModal}
+                    contextModal={contextModal}
+                    locationModal={locationModal}
+                    stopModal={stopModal}
+                    modelModal={modelModal}
+                    budgetModal={budgetModal}
+                    profileModal={profileModal}
+                    onSwitchChat={handleSwitchChat}
+                    onDeleteChat={onDeleteChatForModals}
+                    onNewChat={handleNewChat}
+                    onDeleteCharacter={deleteCharacter}
+                    onLoadFullCharacter={loadFullCharacter}
+                    onToggleParticipant={handleToggleParticipant}
+                    onSetProtagonist={handleSetChatProtagonist}
+                    onDeleteContext={contextModal.handleDelete}
+                    onToggleContext={handleToggleContext}
+                    onDeleteLocation={locationModal.handleDelete}
+                    onToggleLocation={handleToggleLocation}
+                    onDeleteModel={deleteModel}
+                    onToggleModelLoad={toggleModelLoad}
+                    onDeleteSampler={deleteSampler}
+                    onSaveSampler={handleSaveSampler}
+                    onOpenSamplerEditor={handleOpenSamplerEditor}
+                    onDeleteStopPattern={stopModal.handleDelete}
+                    onDeleteBudgetStrategy={budgetModal.handleDelete}
+                    onActivateBudgetStrategy={handleActivateBudgetStrategy}
+                    onDeleteProfile={deleteProfile}
+                    onActivateProfile={handleActivateProfile}
+                    onDeleteExtension={deleteExtension}
+                    onToggleExtension={handleToggleExtension}
+                    onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }}
+                    onForceFirstMessage={handleForceFirstMessage}
+                    onSendCustomMessage={handleSendCustomMessage}
+                    onInjectCustomMessage={handleInjectCustomMessage}
+                    onInjectFirstMessage={handleInjectFirstMessage}
+                    onSaveCharacter={saveCharacter}
+                    onSaveContext={saveContext}
+                    onSaveLocation={saveLocation}
+                    onImportComplete={handleImportComplete}
+                    addToast={addToast}
                 />
             </div>
 
