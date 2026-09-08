@@ -781,7 +781,7 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
       const localModelsResults = await Promise.all(localModelPromises);
       const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
 
-      return {
+      const strategy: BudgetStrategy & { _rawOnlineModelIds?: string[]; _rawLocalModelIds?: string[] } = {
           id,
           name: rawStrategy.name || 'Unknown Strategy',
           description: rawStrategy.description,
@@ -797,7 +797,12 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
           maximumBudget: rawStrategy.maximumBudget,
           firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp || Date.now(),
           lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp || Date.now(),
+          // Preserve raw IDs for reconciliation when models load later
+          _rawOnlineModelIds: rawStrategy.onlineModelIds || [],
+          _rawLocalModelIds: rawStrategy.localModelIds || [],
       };
+
+      return strategy;
     } catch (e) {
       console.warn(`Failed to load budget strategy ${id}`, e);
       return null;
@@ -1284,44 +1289,33 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 
 // --- Budget Data Repository (Global Singleton) ---
 
-export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy | null> {
-    const rawStrategy = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
-    if (!rawStrategy) return null;
-    
+export async function loadRawBudgetData(): Promise<BudgetData | null> {
+    const raw = await fetchJson<RawBudgetData>(PATHS.budgetData);
+    if (!raw) return null;
+
     try {
-      const onlineModelPromises = (rawStrategy.onlineModelIds || []).map(mid => loadRawModel(mid));
-      const onlineModelsResults = await Promise.all(onlineModelPromises);
-      const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
+        const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
+        if (!strategy) return null;
 
-      const localModelPromises = (rawStrategy.localModelIds || []).map(mid => loadRawModel(mid));
-      const localModelsResults = await Promise.all(localModelPromises);
-      const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
+        const now = Date.now()
 
-      const strategy: BudgetStrategy & { _rawOnlineModelIds?: string[]; _rawLocalModelIds?: string[] } = {
-          id,
-          name: rawStrategy.name || 'Unknown Strategy',
-          description: rawStrategy.description,
-          onlineModels,
-          localModels,
-          modelCostTiers: rawStrategy.modelCostTiers,
-          switchProbability: rawStrategy.switchProbability,
-          switchOnContextSize: rawStrategy.switchOnContextSize,
-          switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
-          fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
-          fallbackOnQualityThreshold: rawStrategy.fallbackOnQualityThreshold,
-          fallbackOnTimeoutInSeconds: rawStrategy.fallbackOnTimeoutInSeconds,
-          maximumBudget: rawStrategy.maximumBudget,
-          firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp || Date.now(),
-          lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp || Date.now(),
-          // Preserve raw IDs for reconciliation when models load later
-          _rawOnlineModelIds: rawStrategy.onlineModelIds || [],
-          _rawLocalModelIds: rawStrategy.localModelIds || [],
-      };
-
-      return strategy;
+        return {
+            id: raw.id || 'global-budget-data',
+            name: 'Global Budget Data',
+            description: 'Persistent runtime budget tracking',
+            budgetSpent: raw.budgetSpent ?? 0,
+            resetDuration: raw.resetDuration,
+            modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
+            lastResetTimestamp: raw.lastResetTimestamp,
+            budgetStrategy: strategy,
+            firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+        };
     } catch (e) {
-      console.warn(`Failed to load budget strategy ${id}`, e);
-      return null;
+        console.warn('Failed to load budget data:', e);
+        return null;
     }
 }
 

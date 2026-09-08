@@ -176,14 +176,6 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         <span className="chat-stat-value">${formatCost(totalCost)}</span>
                     </div>
                 )}
-
-                {/* Reset countdown (compact) */}
-                {hasBudget && timeUntilReset !== null && timeUntilReset !== undefined && timeUntilReset > 0 && (
-                    <div className="chat-stat-item" title={`Budget resets in ${formatResetTime(timeUntilReset)}`}>
-                        <span className="chat-stat-label">⏳</span>
-                        <span className="chat-stat-value" style={{ fontSize: '0.7em' }}>{formatResetTime(timeUntilReset)}</span>
-                    </div>
-                )}
             </div>
 
             {showDetails && (
