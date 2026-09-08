@@ -21,7 +21,7 @@ interface UseEntityTogglesOptions {
 
 export function useEntityToggles(options: UseEntityTogglesOptions) {
     const {
-        interactionData, allCharacters, allExtensions,
+        interactionData, allCharacters,
         allProfiles, allBudgetStrategies,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,

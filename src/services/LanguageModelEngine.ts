@@ -494,6 +494,7 @@ export class LanguageModelEngine {
       const { url, headers, body } = this.resolveRequest(prompt, false, modelContext, {
         maxTokens: maxTokens ?? 512,
         temperature: temperature ?? 0.3,
+        top_p: top_p,
         stop,
         extraParams,
       });
