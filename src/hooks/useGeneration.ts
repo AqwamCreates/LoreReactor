@@ -291,14 +291,14 @@ export function useGeneration(options: UseGenerationOptions) {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep ? [ep.toString()] : undefined);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const currentRunning = useSessionStore.getState().runningModels;
                         const rp = model.id ? currentRunning[model.id]?.port : undefined;
                         const rep = rp || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, rep ? [rep.toString()] : undefined);
                         const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) return null;
