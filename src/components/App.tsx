@@ -247,11 +247,11 @@ function App() {
         if (!activeStrategy) return;
         let stratChanged = false;
         const updatedStrat = { ...activeStrategy };
-        const savedOnlineIds = (activeStrategy as BudgetStrategy)._rawOnlineModelIds || activeStrategy.onlineModels.map((m: LanguageModel) => m.id);
+        const savedOnlineIds = (activeStrategy as any)._rawOnlineModelIds || activeStrategy.onlineModels.map((m: LanguageModel) => m.id);
         const freshOnlineModels: LanguageModel[] = [];
         for (const mid of savedOnlineIds) { const fresh = allModels.find(x => x.id === mid); if (fresh) freshOnlineModels.push(fresh); }
         if (freshOnlineModels.length !== activeStrategy.onlineModels.length || freshOnlineModels.some((m, i) => m.id !== activeStrategy.onlineModels[i]?.id)) { updatedStrat.onlineModels = freshOnlineModels; stratChanged = true; }
-        const savedLocalIds = (activeStrategy as BudgetStrategy)._rawLocalModelIds || activeStrategy.localModels.map((m: LanguageModel) => m.id);
+        const savedLocalIds = (activeStrategy as any)._rawLocalModelIds || activeStrategy.localModels.map((m: LanguageModel) => m.id);
         const freshLocalModels: LanguageModel[] = [];
         for (const mid of savedLocalIds) { const fresh = allModels.find(x => x.id === mid); if (fresh) freshLocalModels.push(fresh); }
         if (freshLocalModels.length !== activeStrategy.localModels.length || freshLocalModels.some((m, i) => m.id !== activeStrategy.localModels[i]?.id)) { updatedStrat.localModels = freshLocalModels; stratChanged = true; }
