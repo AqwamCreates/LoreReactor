@@ -27,7 +27,7 @@ type RunningModelStatus = Record<string, { isRunning: boolean; port?: number }>;
 type StatsState = { numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number };
 
 export function useChatSession() {
-    // ─── Store selectors (read directly, no local state) ────────────
+    // ─── Store selectors (individual primitives to avoid infinite loop) ─
     const interactionData = useSessionStore(s => s.interactionData);
     const currentCharacter = useSessionStore(s => s.currentCharacter);
     const streamingCharacter = useSessionStore(s => s.streamingCharacter);
@@ -37,12 +37,10 @@ export function useChatSession() {
     const activeStrategy = useSessionStore(s => s.activeStrategy);
     const selectedModel = useSessionStore(s => s.selectedModel);
     const runningModelsMap = useSessionStore(s => s.runningModels);
-    const stats = useSessionStore(s => ({
-        numberOfCacheInvalidations: s.numberOfCacheInvalidations,
-        numberOfRequests: s.numberOfRequests,
-        totalCost: s.totalCost,
-        costWithoutCacheMisses: s.costWithoutCacheMisses,
-    }));
+    const numberOfCacheInvalidations = useSessionStore(s => s.numberOfCacheInvalidations);
+    const numberOfRequests = useSessionStore(s => s.numberOfRequests);
+    const totalCost = useSessionStore(s => s.totalCost);
+    const costWithoutCacheMisses = useSessionStore(s => s.costWithoutCacheMisses);
     const numberOfTokens = useSessionStore(s => s.numberOfTokens);
     const budgetData = useSessionStore(s => s.budgetData);
     const isLoading = useSessionStore(s => s.isLoading);
@@ -118,13 +116,6 @@ export function useChatSession() {
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
     const activeStrategyIdRef = useRef<string | null>(null);
-    const dataRef = useRef<InteractionData | null>(interactionData ?? null);
-    const modelRef = useRef<LanguageModel | null>(selectedModel ?? null);
-    const runningModelsRef = useRef<RunningModelStatus>({});
-
-    useEffect(() => { dataRef.current = interactionData ?? null; }, [interactionData]);
-    useEffect(() => { modelRef.current = selectedModel ?? null; }, [selectedModel]);
-    useEffect(() => { runningModelsRef.current = runningModelsMap; }, [runningModelsMap]);
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -281,7 +272,7 @@ export function useChatSession() {
         releaseLock();
         resetStream();
         setGenerationSpeed(0);
-    }, [releaseLock, resetStream, setGenerationSpeed, setInteractionData, streamingTextRef]);
+    }, [releaseLock, resetStream, setGenerationSpeed, setInteractionData]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -367,9 +358,6 @@ export function useChatSession() {
                 runBackgroundSummarization({
                     data: ud,
                     setData: setInteractionData,
-                    dataRef,
-                    modelRef,
-                    runningModelsRef,
                     addToast,
                     activeStrategy: useSessionStore.getState().activeStrategy,
                 });
@@ -510,10 +498,10 @@ export function useChatSession() {
         numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy, budgetData,
-        numberOfCacheInvalidations: stats.numberOfCacheInvalidations,
-        numberOfRequests: stats.numberOfRequests,
-        totalCost: stats.totalCost,
-        costWithoutCacheMisses: stats.costWithoutCacheMisses,
+        numberOfCacheInvalidations,
+        numberOfRequests,
+        totalCost,
+        costWithoutCacheMisses,
         processProtagonistImageSilently,
     };
 }

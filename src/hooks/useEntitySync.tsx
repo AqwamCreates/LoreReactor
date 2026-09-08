@@ -1,10 +1,10 @@
 // src/hooks/useEntitySync.tsx
 import { useEffect, useRef } from 'react';
 import type { Character, Context, Profile, InteractionData } from '../types';
+import { useSessionStore } from '../store/useSessionStore';
 
 interface UseEntitySyncOptions {
     activeChatRestored: boolean;
-    interactionDataRef: React.MutableRefObject<InteractionData | null>;
     allCharacters: Character[];
     allContexts: Context[];
     allProfiles: Profile[];
@@ -15,7 +15,7 @@ interface UseEntitySyncOptions {
 
 export function useEntitySync(options: UseEntitySyncOptions) {
     const {
-        activeChatRestored, interactionDataRef,
+        activeChatRestored,
         allCharacters, allContexts, allProfiles,
         currentCharacter, setInteractionData, setCurrentCharacter,
     } = options;
@@ -26,7 +26,7 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         if (!activeChatRestored) return;
         if (!initialSyncSkippedRef.current) { initialSyncSkippedRef.current = true; return; }
 
-        const currentChat = interactionDataRef.current;
+        const currentChat = useSessionStore.getState().interactionData;
         if (!currentChat) return;
 
         let changed = false;
@@ -78,5 +78,5 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         }
 
         if (changed) setInteractionData(updated);
-    }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setCurrentCharacter, interactionDataRef]);
+    }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setCurrentCharacter]);
 }
