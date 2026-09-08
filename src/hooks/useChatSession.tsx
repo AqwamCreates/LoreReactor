@@ -19,25 +19,87 @@ import { useMemoryTrigger } from './useMemoryTrigger';
 import { useGeneration } from './useGeneration';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
 import { isChatMessage } from '../typeGuard';
+import { useSessionStore } from '../store/useSessionStore';
 
 const languageModelEngine = new LanguageModelEngine();
 
 export function useChatSession() {
-    // ─── Core State ──────────────────────────────────────────────────
-    const [interactionData, setInteractionData] = useState<InteractionData | null>(null);
-    const [currentCharacter, setCurrentCharacter] = useState<Character | null>(null);
-    const [streamingCharacter, setStreamingCharacter] = useState<Character | null>(null);
-    const [currentCharacterExpression, setCurrentCharacterExpression] = useState<string>('neutral');
-    const [generationSpeed, setGenerationSpeed] = useState(0);
-    const [timeToFirstToken, setTimeToFirstToken] = useState(0);
-    const [activeStrategy, setActiveStrategy] = useState<BudgetStrategy | null>(null);
-    const [selectedModel, setSelectedModel] = useState<LanguageModel | null>(null);
-    const [runningModelsMap, setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
-    const [stats, setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
-    const [numberOfTokens, setnumberOfTokens] = useState(0);
-    const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
+    // ─── Core State (dual-write with store during Phase 1) ──────────
+    const [interactionData, _setInteractionData] = useState<InteractionData | null>(null);
+    const [currentCharacter, _setCurrentCharacter] = useState<Character | null>(null);
+    const [streamingCharacter, _setStreamingCharacter] = useState<Character | null>(null);
+    const [currentCharacterExpression, _setCurrentCharacterExpression] = useState<string>('neutral');
+    const [generationSpeed, _setGenerationSpeed] = useState(0);
+    const [timeToFirstToken, _setTimeToFirstToken] = useState(0);
+    const [activeStrategy, _setActiveStrategy] = useState<BudgetStrategy | null>(null);
+    const [selectedModel, _setSelectedModel] = useState<LanguageModel | null>(null);
+    const [runningModelsMap, _setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
+    const [stats, _setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
+    const [numberOfTokens, _setNumberOfTokens] = useState(0);
+    const [budgetData, _setBudgetData] = useState<BudgetData | null>(null);
 
-    // ─── Refs ────────────────────────────────────────────────────────
+    // Dual-write setters — write to both local state AND store (no subscription)
+    const setInteractionData = useCallback((data: InteractionData | null) => {
+        _setInteractionData(data);
+        useSessionStore.setState({ interactionData: data });
+    }, []);
+
+    const setCurrentCharacter = useCallback((char: Character | null) => {
+        _setCurrentCharacter(char);
+        useSessionStore.setState({ currentCharacter: char });
+    }, []);
+
+    const setStreamingCharacter = useCallback((char: Character | null) => {
+        _setStreamingCharacter(char);
+        useSessionStore.setState({ streamingCharacter: char });
+    }, []);
+
+    const setCurrentCharacterExpression = useCallback((expr: string) => {
+        _setCurrentCharacterExpression(expr);
+        useSessionStore.setState({ currentCharacterExpression: expr });
+    }, []);
+
+    const setGenerationSpeed = useCallback((speed: number) => {
+        _setGenerationSpeed(speed);
+        useSessionStore.setState({ generationSpeed: speed });
+    }, []);
+
+    const setTimeToFirstToken = useCallback((time: number) => {
+        _setTimeToFirstToken(time);
+        useSessionStore.setState({ timeToFirstToken: time });
+    }, []);
+
+    const setActiveStrategy = useCallback((strategy: BudgetStrategy | null) => {
+        _setActiveStrategy(strategy);
+        useSessionStore.setState({ activeStrategy: strategy });
+    }, []);
+
+    const setSelectedModel = useCallback((model: LanguageModel | null) => {
+        _setSelectedModel(model);
+        useSessionStore.setState({ selectedModel: model });
+    }, []);
+
+    const setRunningModelsMap = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
+        _setRunningModelsMap(models);
+        useSessionStore.setState({ runningModels: models });
+    }, []);
+
+    const setStats = useCallback((newStats: typeof stats) => {
+        _setStats(newStats);
+        useSessionStore.setState(newStats);
+    }, []);
+
+    const setNumberOfTokens = useCallback((count: number) => {
+        _setNumberOfTokens(count);
+        useSessionStore.setState({ numberOfTokens: count });
+    }, []);
+
+    const setBudgetData = useCallback((data: BudgetData | null) => {
+        _setBudgetData(data);
+        useSessionStore.setState({ budgetData: data });
+    }, []);
+
+    // ─── Refs (kept for Phase 1, removed in Phase 2) ────────────────
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     const chatHistoryRef = useRef<HTMLDivElement>(null);
@@ -71,7 +133,7 @@ export function useChatSession() {
 
     const { addToast } = useToast();
 
-    // ─── Ref Sync Effects ────────────────────────────────────────────
+    // ─── Ref Sync Effects (kept for Phase 1, removed in Phase 2) ────
     useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
     useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
     useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
@@ -84,7 +146,7 @@ export function useChatSession() {
         (async () => {
             try {
                 const bd = await loadRawBudgetData();
-                if (bd) { setBudgetData(bd); budgetDataRef.current = bd; }
+                if (bd) { setBudgetData(bd); }
             } catch (e) { console.warn('Failed to load budget data:', e); }
         })();
     }, []);
@@ -93,7 +155,6 @@ export function useChatSession() {
         const handler = (event: Event) => {
             const updated = (event as CustomEvent<BudgetData | null>).detail;
             setBudgetData(updated);
-            budgetDataRef.current = updated;
         };
         window.addEventListener('budget-data-updated', handler);
         return () => window.removeEventListener('budget-data-updated', handler);
@@ -113,7 +174,7 @@ export function useChatSession() {
     }, []);
 
     useEffect(() => {
-        if (!interactionData) { setnumberOfTokens(0); return; }
+        if (!interactionData) { setNumberOfTokens(0); return; }
         let cancelled = false;
         (async () => {
             const model = selectedModelRef.current;
@@ -124,7 +185,7 @@ export function useChatSession() {
             for (const m of interactionData.interactionHistory) {
                 if (isChatMessage(m)) total += await languageModelEngine.countTokens(m.textContent, lmCtx);
             }
-            if (!cancelled) setnumberOfTokens(total);
+            if (!cancelled) setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
     }, [interactionData?.interactionHistory, interactionData]);
@@ -164,15 +225,15 @@ export function useChatSession() {
     }, []);
 
     // ─── Public Actions ──────────────────────────────────────────────
-    const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), []);
+    const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), [setRunningModelsMap]);
 
     const setActiveBudgetStrategy = useCallback((s: BudgetStrategy | null) => {
         const newId = s?.id ?? null;
         if (newId !== activeStrategyIdRef.current) activeStrategyIdRef.current = newId;
         setActiveStrategy(s);
-    }, []);
+    }, [setActiveStrategy]);
 
-    const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), []);
+    const setSelectedGlobalModel = useCallback((m: LanguageModel | null) => setSelectedModel(m), [setSelectedModel]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);
@@ -180,7 +241,7 @@ export function useChatSession() {
         setInteractionData(c);
         setCurrentCharacter(char);
         isAtBottomRef.current = true;
-    }, []);
+    }, [setInteractionData, setCurrentCharacter]);
 
     const stopGeneration = useCallback(() => {
         const t = streamingTextRef.current, c = streamingCharacterRef.current;
@@ -195,7 +256,6 @@ export function useChatSession() {
                 const withPartial = [...updated.interactionHistory];
                 withPartial[idx] = { ...withPartial[idx], isPartial: true, lastUpdatedTimestamp: Date.now() };
                 setInteractionData({ ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() });
-                interactionDataRef.current = { ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() };
             }
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
@@ -209,7 +269,7 @@ export function useChatSession() {
         releaseLock();
         resetStream();
         setGenerationSpeed(0);
-    }, [releaseLock, resetStream]);
+    }, [releaseLock, resetStream, setInteractionData, setGenerationSpeed]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         if (!interactionData || !currentCharacter) return;
@@ -232,26 +292,24 @@ export function useChatSession() {
 
         await saveRawInteractionData(ud);
         setInteractionData(ud);
-        interactionDataRef.current = ud;
 
         await new Promise(r => setTimeout(r, 50));
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
-        setStreamingCharacter(targetChar); streamingCharacterRef.current = targetChar;
+        setStreamingCharacter(targetChar);
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (result) {
                 await saveRawInteractionData(result);
                 setInteractionData(result);
-                interactionDataRef.current = result;
                 const lm = result.interactionHistory[result.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!interactionData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
@@ -259,7 +317,7 @@ export function useChatSession() {
         if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
-        setStreamingCharacter(null); streamingCharacterRef.current = null;
+        setStreamingCharacter(null);
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
@@ -278,18 +336,18 @@ export function useChatSession() {
                 }
             }
 
-            setInteractionData(td); interactionDataRef.current = td;
+            setInteractionData(td);
             await saveRawInteractionData(td);
 
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 resetStream();
-                setStreamingCharacter(c); streamingCharacterRef.current = c;
+                setStreamingCharacter(c);
                 return handleServerResponse(d, c, s, ot, undefined, '');
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentCharacter.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
+                await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
                     data: ud, setData: setInteractionData, dataRef: interactionDataRef,
                     modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
@@ -299,11 +357,11 @@ export function useChatSession() {
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
+                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Send failed:', e); addToast(`Send failed: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
 
     const resumeGeneration = useCallback(async (messageId: string) => {
         if (!interactionData) return;
@@ -322,7 +380,7 @@ export function useChatSession() {
 
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         setStreamingText(existingText); streamingTextRef.current = existingText;
-        setStreamingCharacter(char); streamingCharacterRef.current = char;
+        setStreamingCharacter(char);
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
 
         try {
@@ -336,10 +394,10 @@ export function useChatSession() {
             const foundEdited = edited.interactionHistory.find(m => m.id === messageId);
             if (foundEdited && isChatMessage(foundEdited) && !foundEdited.isPartial) {
                 const finalData = await clearPartialFlag(edited, messageId);
-                setInteractionData(finalData); interactionDataRef.current = finalData;
+                setInteractionData(finalData);
                 await saveRawInteractionData(finalData);
             } else {
-                setInteractionData(edited); interactionDataRef.current = edited;
+                setInteractionData(edited);
                 await saveRawInteractionData(edited);
             }
 
@@ -355,7 +413,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [interactionData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, throttledSetStreamingText, speakMessage, handleServerResponse, setStreamingText, setStreamingCharacter]);
+    }, [interactionData, addToast, isModelReadyForGeneration, acquireLock, releaseLock, throttledSetStreamingText, speakMessage, handleServerResponse, setStreamingText, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!interactionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
@@ -372,24 +430,24 @@ export function useChatSession() {
         const toDelete = history.slice(trimIdx);
         if (toDelete.length) try { await Promise.all(toDelete.map(m => import('./storage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
         const td: InteractionData = { ...interactionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
-        setInteractionData(td); interactionDataRef.current = td;
+        setInteractionData(td);
         await saveRawInteractionData(td);
 
         resetStream();
-        setStreamingCharacter(null); streamingCharacterRef.current = null;
+        setStreamingCharacter(null);
         setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         const preCount = td.interactionHistory.length;
         try {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 resetStream();
-                setStreamingCharacter(c); streamingCharacterRef.current = c;
+                setStreamingCharacter(c);
                 return handleServerResponse(d, c, s, ot, undefined, '');
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); interactionDataRef.current = fd; return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, interactionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > preCount) {
-                await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
+                await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
                     data: ud, setData: setInteractionData, dataRef: interactionDataRef,
                     modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
@@ -399,11 +457,11 @@ export function useChatSession() {
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
+                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter]);
+    }, [interactionData, currentCharacter, handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
@@ -416,7 +474,7 @@ export function useChatSession() {
         finally { isProcessingSilentlyRef.current = false; }
     }, [handleServerResponse, isModelReadyForGeneration]);
 
-    // ─── Return ──────────────────────────────────────────────────────
+    // ─── Return (unchanged — App.tsx keeps working identically) ─────
     const maxCtx = selectedModel?.contextLength || 8192;
 
     return {

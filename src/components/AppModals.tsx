@@ -120,7 +120,10 @@ export function AppModals({
                     items={allChats}
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
-                    onSelect={(item: InteractionData) => onSwitchChat(item.id)}
+                    onSelect={(item: InteractionData) => {
+                        onSwitchChat(item.id)
+                        modals.chatList.close()
+                    }}
                     onDelete={onDeleteChat}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
