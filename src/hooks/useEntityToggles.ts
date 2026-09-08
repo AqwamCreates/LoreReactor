@@ -13,6 +13,7 @@ interface UseEntityTogglesOptions {
     setInteractionData: (data: InteractionData) => void;
     setCurrentCharacter: (char: Character | null) => void;
     setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
+    selectedBudgetStrategyId: string | null;
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setDefaultCharacterId: (id: string | null) => void;
     loadFullCharacter: (id: string) => Promise<Character | null>;
@@ -24,6 +25,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         interactionData, allCharacters, allContexts, allExtensions,
         allProfiles, allBudgetStrategies,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
+        selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setDefaultCharacterId,
         loadFullCharacter, addToast,
     } = options;
@@ -99,14 +101,15 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
     }, [interactionData, allExtensions, setInteractionData, addToast]);
 
     const handleActivateBudgetStrategy = useCallback((sid: string) => {
-        if (interactionData && sid === (interactionData as any)._selectedBudgetStrategyId) {
+        if (selectedBudgetStrategyId === sid) {
             setSelectedBudgetStrategyId(null);
+            setActiveBudgetStrategy(null);  // ← This line is missing
             addToast('Budget strategy deactivated.', 'info');
         } else {
             setSelectedBudgetStrategyId(sid);
             addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === sid)?.name}" activated!`, 'success');
         }
-    }, [interactionData, allBudgetStrategies, setSelectedBudgetStrategyId, addToast]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, addToast]);
 
     const handleActivateProfile = useCallback(async (pid: string) => {
         if (!interactionData) return;

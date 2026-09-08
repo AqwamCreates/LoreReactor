@@ -261,7 +261,7 @@ function App() {
     useEffect(() => {
         const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
         if (enabled) sentimentEngine.initialize(); else sentimentEngine.unload();
-    }, [interactionData?.Profile?.id, interactionData?.Profile?.enableCharacterExpression]);
+    }, [interactionData?.Profile?.enableCharacterExpression]);
 
     useEffect(() => { void selectedModelId; void runningModels; new LanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
 
@@ -283,7 +283,7 @@ function App() {
         const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend);
         if (isCloudModel) return;
         if (!runningModels[selectedModelId]?.isRunning) setSelectedModelId(null);
-    }, [selectedModelId, allModels, runningModels]);
+    }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
 
     useEffect(() => {
         const parentInteractionDataId = interactionData?.parentInteractionDataId;
