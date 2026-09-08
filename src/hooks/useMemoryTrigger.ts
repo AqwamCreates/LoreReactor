@@ -32,7 +32,7 @@ export function useMemoryTrigger() {
         const port = model?.id ? models[model.id]?.port : undefined;
         const ep = port || (model?.parameters as Record<string, string>)?._runtimePort;
         if (!ep && !model?.apiKey) return;
-        const lmCtx: LanguageModelContext = { apiKey: model.apiKey ?? '', backend: model.backend ?? '', modelPath: model.model ?? '', runtimePort: ep ?? '' };
+        const lmCtx: LanguageModelContext = { apiKey: model.apiKey ?? '', backend: model.backend, modelPath: model.model ?? '', runtimePort: Number(ep) };
 
         const effectiveRetentionWeight = (() => {
             const profileValue = profile?.memoryRetentionWeight;
