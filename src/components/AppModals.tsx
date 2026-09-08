@@ -25,10 +25,19 @@ interface ModalVisibility {
     close: () => void;
 }
 
+interface EntityModalState<T> {
+    isOpen: boolean;
+    itemToEdit: T | null;
+    open: (item?: T) => void;
+    close: () => void;
+    handleSave: (item: T) => void;
+    handleDelete: (item: T) => Promise<void>;
+}
+
 interface AppModalsProps {
     modals: Record<string, ModalVisibility>;
     // Data
-    allChats: any[];
+    allChats: InteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -45,36 +54,36 @@ interface AppModalsProps {
     selectedBudgetStrategyId: string | null;
     samplerToEdit: Sampler | null;
     // Entity modals
-    charModal: any;
-    contextModal: any;
-    locationModal: any;
-    stopModal: any;
-    modelModal: any;
-    budgetModal: any;
-    profileModal: any;
-    // Callbacks
+    charModal: EntityModalState<Character>;
+    contextModal: EntityModalState<Context>;
+    locationModal: EntityModalState<Location>;
+    stopModal: EntityModalState<StopPattern>;
+    modelModal: EntityModalState<LanguageModel>;
+    budgetModal: EntityModalState<BudgetStrategy>;
+    profileModal: EntityModalState<Profile>;
+    // Delete callbacks — all take ID strings matching ManagerModal's onDelete signature
     onSwitchChat: (id: string) => void;
-    onDeleteChat: (e: any, id: string) => void;
+    onDeleteChat: (id: string) => void;
     onNewChat: () => void;
-    onDeleteCharacter: (char: Character) => void;
+    onDeleteCharacter: (id: string) => void;
     onLoadFullCharacter: (id: string) => Promise<Character | null>;
     onToggleParticipant: (id: string) => void;
     onSetProtagonist: (id: string) => void;
-    onDeleteContext: (ctx: Context) => void;
+    onDeleteContext: (id: string) => void;
     onToggleContext: (id: string) => void;
-    onDeleteLocation: (loc: Location) => void;
+    onDeleteLocation: (id: string) => void;
     onToggleLocation: (id: string) => void;
-    onDeleteModel: (m: LanguageModel) => void;
+    onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
-    onDeleteSampler: (s: Sampler) => void;
+    onDeleteSampler: (id: string) => void;
     onSaveSampler: (s: Sampler) => void;
     onOpenSamplerEditor: (s?: Sampler | null) => void;
-    onDeleteStopPattern: (s: StopPattern) => void;
-    onDeleteBudgetStrategy: (s: BudgetStrategy) => void;
+    onDeleteStopPattern: (id: string) => void;
+    onDeleteBudgetStrategy: (id: string) => void;
     onActivateBudgetStrategy: (id: string) => void;
-    onDeleteProfile: (p: Profile) => void;
+    onDeleteProfile: (id: string) => void;
     onActivateProfile: (id: string) => void;
-    onDeleteExtension: (e: Extension) => void;
+    onDeleteExtension: (id: string) => void;
     onToggleExtension: (id: string) => void;
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -105,41 +114,367 @@ export function AppModals({
 }: AppModalsProps) {
     return (
         <>
-            {modals.chatList.isOpen && <ManagerModal title="Chat Sessions" items={allChats} isOpen={modals.chatList.isOpen} onClose={modals.chatList.close} onSelect={onSwitchChat} onDelete={id => onDeleteChat(undefined, id)} onCreateNew={onNewChat} renderSubtext={renderChatSubtext} emptyMessage="No saved chat sessions found." />}
+            {/* Chat Sessions */}
+            {modals.chatList.isOpen && (
+                <ManagerModal
+                    title="Chat Sessions"
+                    items={allChats}
+                    isOpen={modals.chatList.isOpen}
+                    onClose={modals.chatList.close}
+                    onSelect={onSwitchChat}
+                    onDelete={onDeleteChat}
+                    onCreateNew={onNewChat}
+                    renderSubtext={renderChatSubtext}
+                    emptyMessage="No saved chat sessions found."
+                />
+            )}
 
-            {modals.charList.isOpen && <ManagerModal title="Characters" items={allCharacters} isOpen={modals.charList.isOpen} onClose={modals.charList.close} onSelect={async c => { const f = c.sampler ? c : await onLoadFullCharacter(c.id); charModal.open(f || c); }} onDelete={id => { const item = allCharacters.find(c => c.id === id); if (item) onDeleteCharacter(item); }} onCreateNew={() => charModal.open()} renderSubtext={c => c.description || 'No description'} emptyMessage="No characters found." actionLabel="Delete" orderedListMode={!!interactionData} currentOrderIds={interactionData?.participants.map(p => p.id) || []} onToggleOrder={onToggleParticipant} specialActionIcon="★" onSpecialAction={c => onSetProtagonist(c.id)} specialActionTooltip={c => `set ${c.name} as the protagonist`} activeSpecialActionId={interactionData?.protagonist?.id} />}
-            {charModal.isOpen && <CharacterEditorModal isOpen={charModal.isOpen} onClose={charModal.close} onSave={charModal.handleSave} existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} />}
+            {/* Characters */}
+            {modals.charList.isOpen && (
+                <ManagerModal
+                    title="Characters"
+                    items={allCharacters}
+                    isOpen={modals.charList.isOpen}
+                    onClose={modals.charList.close}
+                    onSelect={async (c: Character) => { const f = c.sampler ? c : await onLoadFullCharacter(c.id); charModal.open(f || c); }}
+                    onDelete={onDeleteCharacter}
+                    onCreateNew={() => charModal.open()}
+                    renderSubtext={(c: Character) => c.description || 'No description'}
+                    emptyMessage="No characters found."
+                    actionLabel="Delete"
+                    orderedListMode={!!interactionData}
+                    currentOrderIds={interactionData?.participants.map(p => p.id) || []}
+                    onToggleOrder={onToggleParticipant}
+                    specialActionIcon="★"
+                    onSpecialAction={(c: Character) => onSetProtagonist(c.id)}
+                    specialActionTooltip={(c: Character) => `set ${c.name} as the protagonist`}
+                    activeSpecialActionId={interactionData?.protagonist?.id}
+                />
+            )}
+            {charModal.isOpen && (
+                <CharacterEditorModal
+                    isOpen={charModal.isOpen}
+                    onClose={charModal.close}
+                    onSave={charModal.handleSave}
+                    existingCharacter={charModal.itemToEdit}
+                    allSamplers={allSamplers}
+                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+                    runningModels={runningModels}
+                />
+            )}
 
-            {modals.contextList.isOpen && <ManagerModal title="Contexts" items={allContexts} isOpen={modals.contextList.isOpen} onClose={modals.contextList.close} onSelect={c => contextModal.open(c)} onDelete={id => { const item = allContexts.find(c => c.id === id); if (item) onDeleteContext(item); }} onCreateNew={() => contextModal.open()} renderSubtext={renderContextSubtext} emptyMessage="No contexts found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.contexts?.map(i => i.id) || []} onToggleOrder={onToggleContext} />}
-            {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
+            {/* Contexts */}
+            {modals.contextList.isOpen && (
+                <ManagerModal
+                    title="Contexts"
+                    items={allContexts}
+                    isOpen={modals.contextList.isOpen}
+                    onClose={modals.contextList.close}
+                    onSelect={(c: Context) => contextModal.open(c)}
+                    onDelete={onDeleteContext}
+                    onCreateNew={() => contextModal.open()}
+                    renderSubtext={renderContextSubtext}
+                    emptyMessage="No contexts found."
+                    actionLabel="Delete"
+                    orderedListMode={true}
+                    currentOrderIds={interactionData?.contexts?.map(i => i.id) || []}
+                    onToggleOrder={onToggleContext}
+                />
+            )}
+            {contextModal.isOpen && (
+                <ContextEditorModal
+                    isOpen={contextModal.isOpen}
+                    onClose={contextModal.close}
+                    onSave={contextModal.handleSave}
+                    existingContext={contextModal.itemToEdit}
+                    allCharacters={allCharacters}
+                />
+            )}
 
-            {modals.locationList.isOpen && <ManagerModal title="Locations" items={allLocations} isOpen={modals.locationList.isOpen} onClose={modals.locationList.close} onSelect={l => locationModal.open(l)} onDelete={id => { const item = allLocations.find(l => l.id === id); if (item) onDeleteLocation(item); }} onCreateNew={() => locationModal.open()} renderSubtext={renderLocationSubtext} emptyMessage="No locations found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.locations?.map(l => l.id) || []} onToggleOrder={onToggleLocation} />}
-            {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} allLocations={allLocations} />}
+            {/* Locations */}
+            {modals.locationList.isOpen && (
+                <ManagerModal
+                    title="Locations"
+                    items={allLocations}
+                    isOpen={modals.locationList.isOpen}
+                    onClose={modals.locationList.close}
+                    onSelect={(l: Location) => locationModal.open(l)}
+                    onDelete={onDeleteLocation}
+                    onCreateNew={() => locationModal.open()}
+                    renderSubtext={renderLocationSubtext}
+                    emptyMessage="No locations found."
+                    actionLabel="Delete"
+                    orderedListMode={true}
+                    currentOrderIds={interactionData?.locations?.map(l => l.id) || []}
+                    onToggleOrder={onToggleLocation}
+                />
+            )}
+            {locationModal.isOpen && (
+                <LocationEditorModal
+                    isOpen={locationModal.isOpen}
+                    onClose={locationModal.close}
+                    onSave={locationModal.handleSave}
+                    existingLocation={locationModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allLocations={allLocations}
+                />
+            )}
 
-            {modals.modelList.isOpen && <ManagerModal title="Models" items={allModels} isOpen={modals.modelList.isOpen} onClose={modals.modelList.close} onSelect={m => modelModal.open(m)} onDelete={id => { const item = allModels.find(m => m.id === id); if (item) onDeleteModel(item); }} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={onToggleModelLoad} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
-            {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
+            {/* Models */}
+            {modals.modelList.isOpen && (
+                <ManagerModal
+                    title="Models"
+                    items={allModels}
+                    isOpen={modals.modelList.isOpen}
+                    onClose={modals.modelList.close}
+                    onSelect={(m: LanguageModel) => modelModal.open(m)}
+                    onDelete={onDeleteModel}
+                    onCreateNew={() => modelModal.open()}
+                    renderSubtext={(m: LanguageModel) => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)}
+                    emptyMessage="No models available."
+                    actionLabel="Delete"
+                    orderedListMode={false}
+                    activeSpecialActionId={selectedModelId || undefined}
+                    specialActionIcon="★"
+                    onSpecialAction={(m: LanguageModel) => onToggleModelLoad(m.id)}
+                    specialActionTooltip={(m: LanguageModel) => {
+                        const ms = runningModels[m.id];
+                        const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend);
+                        if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect';
+                        if (isCloud) return '☁️ Cloud Model — Click to Select';
+                        if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect';
+                        if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model';
+                        if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...';
+                        if (selectedModelId === m.id) return '✓ Already Selected — Click to Load';
+                        return '▶ Load & Select Model';
+                    }}
+                />
+            )}
+            {modelModal.isOpen && (
+                <ModelEditorModal
+                    isOpen={modelModal.isOpen}
+                    onClose={modelModal.close}
+                    onSave={modelModal.handleSave}
+                    existingModel={modelModal.itemToEdit}
+                    allStopPatterns={allStopPatterns}
+                />
+            )}
 
-            {modals.samplerList.isOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={modals.samplerList.isOpen} onClose={modals.samplerList.close} onSelect={onOpenSamplerEditor} onDelete={onDeleteSampler} onCreateNew={() => onOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
-            {modals.samplerEditor.isOpen && <SamplerEditorModal isOpen={modals.samplerEditor.isOpen} onClose={() => { modals.samplerEditor.close(); }} onSave={onSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />}
+            {/* Samplers */}
+            {modals.samplerList.isOpen && (
+                <ManagerModal
+                    title="Samplers"
+                    items={allSamplers}
+                    isOpen={modals.samplerList.isOpen}
+                    onClose={modals.samplerList.close}
+                    onSelect={onOpenSamplerEditor}
+                    onDelete={onDeleteSampler}
+                    onCreateNew={() => onOpenSamplerEditor(null)}
+                    renderSubtext={(s: Sampler) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`}
+                    emptyMessage="No samplers found."
+                    actionLabel="Delete"
+                />
+            )}
+            {modals.samplerEditor.isOpen && (
+                <SamplerEditorModal
+                    isOpen={modals.samplerEditor.isOpen}
+                    onClose={() => { modals.samplerEditor.close(); }}
+                    onSave={onSaveSampler}
+                    existingSampler={samplerToEdit}
+                    allStopPatterns={allStopPatterns}
+                />
+            )}
 
-            {modals.stopList.isOpen && <ManagerModal title="Stop Patterns" items={allStopPatterns} isOpen={modals.stopList.isOpen} onClose={modals.stopList.close} onSelect={s => stopModal.open(s)} onDelete={onDeleteStopPattern} onCreateNew={() => stopModal.open()} renderSubtext={s => <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}</span>} emptyMessage="No stop patterns found." actionLabel="Delete" orderedListMode={false} />}
-            {stopModal.isOpen && <StopPatternEditorModal isOpen={stopModal.isOpen} onClose={stopModal.close} onSave={stopModal.handleSave} existingStopPattern={stopModal.itemToEdit} />}
+            {/* Stop Patterns */}
+            {modals.stopList.isOpen && (
+                <ManagerModal
+                    title="Stop Patterns"
+                    items={allStopPatterns}
+                    isOpen={modals.stopList.isOpen}
+                    onClose={modals.stopList.close}
+                    onSelect={(s: StopPattern) => stopModal.open(s)}
+                    onDelete={onDeleteStopPattern}
+                    onCreateNew={() => stopModal.open()}
+                    renderSubtext={(s: StopPattern) => (
+                        <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>
+                            {s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}
+                        </span>
+                    )}
+                    emptyMessage="No stop patterns found."
+                    actionLabel="Delete"
+                    orderedListMode={false}
+                />
+            )}
+            {stopModal.isOpen && (
+                <StopPatternEditorModal
+                    isOpen={stopModal.isOpen}
+                    onClose={stopModal.close}
+                    onSave={stopModal.handleSave}
+                    existingStopPattern={stopModal.itemToEdit}
+                />
+            )}
 
-            {modals.budgetStrategyList.isOpen && <ManagerModal title="Budget Strategies" items={allBudgetStrategies} isOpen={modals.budgetStrategyList.isOpen} onClose={modals.budgetStrategyList.close} onSelect={s => budgetModal.open(s)} onDelete={onDeleteBudgetStrategy} onCreateNew={() => budgetModal.open()} renderSubtext={renderBudgetStrategySubtext} emptyMessage="No budget strategies found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedBudgetStrategyId || undefined} specialActionIcon="★" onSpecialAction={onActivateBudgetStrategy} specialActionTooltip={s => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`} />}
-            {budgetModal.isOpen && <BudgetStrategyEditorModal isOpen={budgetModal.isOpen} onClose={budgetModal.close} onSave={budgetModal.handleSave} existingStrategy={budgetModal.itemToEdit} allModels={allModels} />}
+            {/* Budget Strategies */}
+            {modals.budgetStrategyList.isOpen && (
+                <ManagerModal
+                    title="Budget Strategies"
+                    items={allBudgetStrategies}
+                    isOpen={modals.budgetStrategyList.isOpen}
+                    onClose={modals.budgetStrategyList.close}
+                    onSelect={(s: BudgetStrategy) => budgetModal.open(s)}
+                    onDelete={onDeleteBudgetStrategy}
+                    onCreateNew={() => budgetModal.open()}
+                    renderSubtext={renderBudgetStrategySubtext}
+                    emptyMessage="No budget strategies found."
+                    actionLabel="Delete"
+                    orderedListMode={false}
+                    activeSpecialActionId={selectedBudgetStrategyId || undefined}
+                    specialActionIcon="★"
+                    onSpecialAction={(s: BudgetStrategy) => onActivateBudgetStrategy(s.id)}
+                    specialActionTooltip={(s: BudgetStrategy) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`}
+                />
+            )}
+            {budgetModal.isOpen && (
+                <BudgetStrategyEditorModal
+                    isOpen={budgetModal.isOpen}
+                    onClose={budgetModal.close}
+                    onSave={budgetModal.handleSave}
+                    existingStrategy={budgetModal.itemToEdit}
+                    allModels={allModels}
+                />
+            )}
 
-            {modals.profileList.isOpen && <ManagerModal title="Profiles" items={allProfiles} isOpen={modals.profileList.isOpen} onClose={modals.profileList.close} onSelect={p => profileModal.open(p)} onDelete={onDeleteProfile} onCreateNew={() => profileModal.open()} renderSubtext={renderProfileSubtext} emptyMessage="No profiles found." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={interactionData?.Profile?.id || undefined} specialActionIcon="★" onSpecialAction={onActivateProfile} specialActionTooltip={p => interactionData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`} />}
-            {profileModal.isOpen && <ProfileEditorModal isOpen={profileModal.isOpen} onClose={profileModal.close} onSave={profileModal.handleSave} existingProfile={profileModal.itemToEdit} />}
+            {/* Profiles */}
+            {modals.profileList.isOpen && (
+                <ManagerModal
+                    title="Profiles"
+                    items={allProfiles}
+                    isOpen={modals.profileList.isOpen}
+                    onClose={modals.profileList.close}
+                    onSelect={(p: Profile) => profileModal.open(p)}
+                    onDelete={onDeleteProfile}
+                    onCreateNew={() => profileModal.open()}
+                    renderSubtext={renderProfileSubtext}
+                    emptyMessage="No profiles found."
+                    actionLabel="Delete"
+                    orderedListMode={false}
+                    activeSpecialActionId={interactionData?.Profile?.id || undefined}
+                    specialActionIcon="★"
+                    onSpecialAction={(p: Profile) => onActivateProfile(p.id)}
+                    specialActionTooltip={(p: Profile) => interactionData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`}
+                />
+            )}
+            {profileModal.isOpen && (
+                <ProfileEditorModal
+                    isOpen={profileModal.isOpen}
+                    onClose={profileModal.close}
+                    onSave={profileModal.handleSave}
+                    existingProfile={profileModal.itemToEdit}
+                />
+            )}
 
-            {modals.extList.isOpen && <ManagerModal title="Extensions" items={allExtensions} isOpen={modals.extList.isOpen} onClose={modals.extList.close} onSelect={undefined} onDelete={onDeleteExtension} onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')} renderSubtext={ext => renderExtensionSubtext({ extensionType: ext.extensionType, description: ext.description ?? '' })} emptyMessage="No extensions available." actionLabel="Delete" orderedListMode={true} currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []} onToggleOrder={onToggleExtension} />}
+            {/* Extensions */}
+            {modals.extList.isOpen && (
+                <ManagerModal
+                    title="Extensions"
+                    items={allExtensions}
+                    isOpen={modals.extList.isOpen}
+                    onClose={modals.extList.close}
+                    onSelect={undefined}
+                    onDelete={onDeleteExtension}
+                    onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')}
+                    renderSubtext={(ext: Extension) => renderExtensionSubtext({ extensionType: ext.extensionType, description: ext.description ?? '' })}
+                    emptyMessage="No extensions available."
+                    actionLabel="Delete"
+                    orderedListMode={true}
+                    currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []}
+                    onToggleOrder={onToggleExtension}
+                />
+            )}
 
-            {modals.settings.isOpen && <SettingsModal isOpen={modals.settings.isOpen} onClose={modals.settings.close} onOpenImportCharacterCard={modals.cardImport.open} onOpenAIRecommendation={modals.aiRecommendation.open} onOpenExportData={modals.exportData.open} onOpenImportData={modals.importData.open} onOpenParticipantControl={modals.participantControl.open} onOpenBudgetControl={modals.budgetControl.open} />}
-            {modals.budgetControl.isOpen && <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allBudgetStrategies={allBudgetStrategies} activeStrategy={activeStrategy} />}
-            {modals.participantControl.isOpen && <ParticipantControlModal isOpen={modals.participantControl.isOpen} onClose={modals.participantControl.close} interactionData={interactionData} onUpdateInteractionData={onUpdateInteractionData} onForceFirstMessage={onForceFirstMessage} onSendCustomMessage={onSendCustomMessage} onInjectCustomMessage={onInjectCustomMessage} onInjectFirstMessage={onInjectFirstMessage} />}
-            {modals.aiRecommendation.isOpen && <AIRecommendationModal isOpen={modals.aiRecommendation.isOpen} onClose={modals.aiRecommendation.close} onSaveCharacter={async c => { onSaveCharacter(c); return true; }} onSaveContext={async c => { onSaveContext(c); return true; }} onSaveLocation={async l => { onSaveLocation(l); return true; }} allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} selectedModel={allModels.find(m => m.id === selectedModelId) || null} runningModels={runningModels} activeStrategy={activeStrategy} />}
-            {modals.cardImport.isOpen && <CharacterCardImportModal isOpen={modals.cardImport.isOpen} onClose={modals.cardImport.close} onSaveCharacter={async c => { onSaveCharacter(c); return true; }} onSaveContext={async c => { onSaveContext(c); return true; }} allSamplers={allSamplers} />}
-            {modals.exportData.isOpen && <DataExportModal isOpen={modals.exportData.isOpen} onClose={modals.exportData.close} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allSamplers={allSamplers} allStopPatterns={allStopPatterns} allModels={allModels} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles} interactionData={interactionData} activeStrategy={activeStrategy} selectedModelId={selectedModelId} selectedBudgetStrategyId={selectedBudgetStrategyId} />} 
-            {modals.importData.isOpen && <DataImportModal isOpen={modals.importData.isOpen} onClose={modals.importData.close} onImportComplete={onImportComplete} />}
+            {/* Settings & Tool Modals */}
+            {modals.settings.isOpen && (
+                <SettingsModal
+                    isOpen={modals.settings.isOpen}
+                    onClose={modals.settings.close}
+                    onOpenImportCharacterCard={modals.cardImport.open}
+                    onOpenAIRecommendation={modals.aiRecommendation.open}
+                    onOpenExportData={modals.exportData.open}
+                    onOpenImportData={modals.importData.open}
+                    onOpenParticipantControl={modals.participantControl.open}
+                    onOpenBudgetControl={modals.budgetControl.open}
+                />
+            )}
+            {modals.budgetControl.isOpen && (
+                <BudgetControlModal
+                    isOpen={modals.budgetControl.isOpen}
+                    onClose={modals.budgetControl.close}
+                    allBudgetStrategies={allBudgetStrategies}
+                    activeStrategy={activeStrategy}
+                />
+            )}
+            {modals.participantControl.isOpen && (
+                <ParticipantControlModal
+                    isOpen={modals.participantControl.isOpen}
+                    onClose={modals.participantControl.close}
+                    interactionData={interactionData}
+                    onUpdateInteractionData={onUpdateInteractionData}
+                    onForceFirstMessage={onForceFirstMessage}
+                    onSendCustomMessage={onSendCustomMessage}
+                    onInjectCustomMessage={onInjectCustomMessage}
+                    onInjectFirstMessage={onInjectFirstMessage}
+                />
+            )}
+            {modals.aiRecommendation.isOpen && (
+                <AIRecommendationModal
+                    isOpen={modals.aiRecommendation.isOpen}
+                    onClose={modals.aiRecommendation.close}
+                    onSaveCharacter={async (c: Character) => { onSaveCharacter(c); return true; }}
+                    onSaveContext={async (c: Context) => { onSaveContext(c); return true; }}
+                    onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
+                    allSamplers={allSamplers}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+                    runningModels={runningModels}
+                    activeStrategy={activeStrategy}
+                />
+            )}
+            {modals.cardImport.isOpen && (
+                <CharacterCardImportModal
+                    isOpen={modals.cardImport.isOpen}
+                    onClose={modals.cardImport.close}
+                    onSaveCharacter={async (c: Character) => { onSaveCharacter(c); return true; }}
+                    onSaveContext={async (c: Context) => { onSaveContext(c); return true; }}
+                    allSamplers={allSamplers}
+                />
+            )}
+            {modals.exportData.isOpen && (
+                <DataExportModal
+                    isOpen={modals.exportData.isOpen}
+                    onClose={modals.exportData.close}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allSamplers={allSamplers}
+                    allStopPatterns={allStopPatterns}
+                    allModels={allModels}
+                    allBudgetStrategies={allBudgetStrategies}
+                    allProfiles={allProfiles}
+                    interactionData={interactionData}
+                    activeStrategy={activeStrategy}
+                    selectedModelId={selectedModelId}
+                    selectedBudgetStrategyId={selectedBudgetStrategyId}
+                />
+            )}
+            {modals.importData.isOpen && (
+                <DataImportModal
+                    isOpen={modals.importData.isOpen}
+                    onClose={modals.importData.close}
+                    onImportComplete={onImportComplete}
+                />
+            )}
         </>
     );
 }

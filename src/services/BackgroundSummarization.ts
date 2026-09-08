@@ -3,6 +3,7 @@ import type { InteractionData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
+import { isChatMessage } from '../components/typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -22,9 +23,9 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
     try {
         const ctxLen = modelRef.current?.contextLength || 8192;
         let tokens = 0;
-        for (const m of data.interactionHistory) {
-            tokens += await languageModelEngine.countTokens(m.textContent);
-        }
+    for (const m of data.interactionHistory) {
+        if (isChatMessage(m)) tokens += await languageModelEngine.countTokens(m.textContent);
+    }
 
         const triggered = checkTriggerThreshold(data, tokens, ctxLen);
         if (!triggered) return;
@@ -78,7 +79,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
             dataRef.current = updated;
 
             const ns = triggered.strategyType === 'Sliding Window Replace'
-                ? updated.interactionHistory.filter(m => m.textContentSummary).length - data.interactionHistory.filter(m => m.textContentSummary).length
+                ? updated.interactionHistory.filter(m => isChatMessage(m) && m.textContentSummary).length - data.interactionHistory.filter(m => isChatMessage(m) && m.textContentSummary).length
                 : 0;
             const nc = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary')
                 ? (updated.contexts?.length ?? 0) - (data.contexts?.length ?? 0)

@@ -19,6 +19,7 @@ import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
 import { useGeneration } from './useGeneration';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
+import { isChatMessage } from '../components/typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -128,12 +129,12 @@ export function useChatSession() {
             const lmCtx = ep ? { runtimePort: ep } : undefined;
             let total = 0;
             for (const m of interactionData.interactionHistory) {
-                total += await languageModelEngine.countTokens(m.textContent, lmCtx);
+                if (isChatMessage(m)) total += await languageModelEngine.countTokens(m.textContent, lmCtx);
             }
             if (!cancelled) setnumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [interactionData?.interactionHistory]);
+    }, [interactionData?.interactionHistory, interactionData]);
 
     // ─── Scroll Tracking ─────────────────────────────────────────────
     useEffect(() => {
@@ -254,7 +255,7 @@ export function useChatSession() {
                 setInteractionData(result);
                 interactionDataRef.current = result;
                 const lm = result.interactionHistory[result.interactionHistory.length - 1];
-                if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
@@ -299,7 +300,7 @@ export function useChatSession() {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
                 runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
@@ -313,13 +314,13 @@ export function useChatSession() {
         const msgIndex = interactionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
         const msg = interactionData.interactionHistory[msgIndex];
-        if (!msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
+        if (!isChatMessage(msg) || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         const model = selectedModelRef.current;
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
-        const existingText = msg.textContent;
+        const existingText = isChatMessage(msg) ? msg.textContent : '';;
         const char = msg.character;
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
@@ -390,7 +391,7 @@ export function useChatSession() {
                 await saveRawInteractionData(ud); setInteractionData(ud); interactionDataRef.current = ud;
                 runBackgroundSummarization(ud, setInteractionData, interactionDataRef, selectedModelRef, runningModelsMapRef, addToast, activeStrategyRef.current);
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd); interactionDataRef.current = sd;
