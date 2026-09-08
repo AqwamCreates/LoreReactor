@@ -83,7 +83,8 @@ function applyResetIfDue(data: BudgetData): void {
     data.modelLastErrorHitTimeStamps = {};
     data.lastResetTimestamp = Date.now();
     // Preserve: modelUsedCount, modelQuotaHitCount, modelErrorHitCount,
-    //           modelAverageGenerationSpeedMsPerToken, modelAverageTimeToFirstToken
+    //           modelAverageGenerationSpeedMsPerToken, modelAverageTimeToFirstToken,
+    //           modelTotalSessionDuration
     // These are long-term metrics, not per-cycle state
 }
 
@@ -133,6 +134,34 @@ export class BudgetStrategyEngine {
         return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
+    /**
+     * Gets the quality score for a model based on total session duration.
+     * Higher duration = user found it acceptable = higher quality signal.
+     * Returns 0 if no data.
+     */
+    private getModelQualityScore(modelId: string): number {
+        return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
+    }
+
+    /**
+     * Checks if a model's average session duration per use falls below the
+     * configured quality threshold. Models with insufficient usage data (< 3 uses)
+     * are given benefit of the doubt and pass the check.
+     * The threshold value represents minimum acceptable average session duration in seconds.
+     */
+    private isBelowQualityThreshold(modelId: string): boolean {
+        const threshold = this.strategy.fallbackOnQualityThreshold;
+        if (!threshold || threshold <= 0) return false;
+
+        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        if (usedCount < 3) return false; // Not enough data to judge
+
+        const totalDuration = this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
+        const avgDurationSeconds = (totalDuration / usedCount) / 1000;
+
+        return avgDurationSeconds < threshold;
+    }
+
     /** Updates the rolling average generation speed for a model using configurable EMA alpha. */
     private recordGenerationSpeed(modelId: string, observedMsPerToken: number): void {
         if (!this.budgetData.modelAverageGenerationSpeedMsPerToken) {
@@ -161,6 +190,15 @@ export class BudgetStrategyEngine {
             this.budgetData.modelAverageTimeToFirstToken[modelId] =
                 (alpha * observedMs) + ((1 - alpha) * previous);
         }
+    }
+
+    /** Records session duration for a model after generation completes. */
+    private recordSessionDuration(modelId: string, durationMs: number): void {
+        if (!this.budgetData.modelTotalSessionDuration) {
+            this.budgetData.modelTotalSessionDuration = {};
+        }
+        this.budgetData.modelTotalSessionDuration[modelId] =
+            (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
     }
 
     private buildModelContext(model: LanguageModel): LanguageModelContext {
@@ -207,11 +245,13 @@ export class BudgetStrategyEngine {
     /**
      * Selects the next available model from a pool.
      * Groups by tier (highest first), then within each tier sorts by:
-     *   1. Generation speed (faster first — lower ms/token is better)
-     *   2. TTFT (lower first — snappier response preferred)
-     *   3. Reliability (lower error rate = more stable = preferred)
-     *   4. Recency (more recently used = warmer cache = preferred)
-     *   5. Base tier descending as final tiebreaker
+     *   1. Quality score (higher total session duration = user accepted it = preferred)
+     *      Models below the quality threshold are pushed to the bottom of their tier.
+     *   2. Generation speed (faster first — lower ms/token is better)
+     *   3. TTFT (lower first — snappier response preferred)
+     *   4. Reliability (lower error rate = more stable = preferred)
+     *   5. Recency (more recently used = warmer cache = preferred)
+     *   6. Base tier descending as final tiebreaker
      */
     private selectFromPool(
         pool: LanguageModel[],
@@ -239,17 +279,28 @@ export class BudgetStrategyEngine {
             const candidates = tierGroups.get(tier);
             if (!candidates) continue;
             candidates.sort((a, b) => {
-                // 1. Generation speed (lower ms/token = faster = preferred)
+                // 1. Quality threshold gate: models below threshold are deprioritized
+                //    within their tier but not excluded (they may be all we have left).
+                const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
+                const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
+                if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
+
+                // 2. Quality score (higher total session duration = preferred)
+                const aQuality = this.getModelQualityScore(a.id);
+                const bQuality = this.getModelQualityScore(b.id);
+                if (aQuality !== bQuality) return bQuality - aQuality;
+
+                // 3. Generation speed (lower ms/token = faster = preferred)
                 const aSpeed = this.getModelSpeed(a.id);
                 const bSpeed = this.getModelSpeed(b.id);
                 if (aSpeed !== bSpeed) return aSpeed - bSpeed;
 
-                // 2. TTFT (lower = snappier = preferred)
+                // 4. TTFT (lower = snappier = preferred)
                 const aTTFT = this.getModelTTFT(a.id);
                 const bTTFT = this.getModelTTFT(b.id);
                 if (aTTFT !== bTTFT) return aTTFT - bTTFT;
 
-                // 3. Reliability (lower error rate = more stable = preferred)
+                // 5. Reliability (lower error rate = more stable = preferred)
                 const aUsed = this.budgetData.modelUsedCount?.[a.id] ?? 0;
                 const bUsed = this.budgetData.modelUsedCount?.[b.id] ?? 0;
                 const aErrors = (this.budgetData.modelQuotaHitCount?.[a.id] ?? 0) + (this.budgetData.modelErrorHitCount?.[a.id] ?? 0);
@@ -258,12 +309,12 @@ export class BudgetStrategyEngine {
                 const bReliability = bUsed > 0 ? bErrors / bUsed : 0;
                 if (aReliability !== bReliability) return aReliability - bReliability;
 
-                // 4. Recency (more recently used = warmer cache = preferred)
+                // 6. Recency (more recently used = warmer cache = preferred)
                 const aLastUsed = this.budgetData.modelLastUsedTimestamps?.[a.id] ?? 0;
                 const bLastUsed = this.budgetData.modelLastUsedTimestamps?.[b.id] ?? 0;
                 if (aLastUsed !== bLastUsed) return bLastUsed - aLastUsed;
 
-                // 5. Base tier as final tiebreaker
+                // 7. Base tier as final tiebreaker
                 return this.getTier(b) - this.getTier(a);
             });
             if (candidates.length > 0) {
@@ -354,6 +405,7 @@ export class BudgetStrategyEngine {
             const primaryCtx = this.buildModelContext(selectedModel);
             const pricing = buildPricing(selectedModel);
             const runtimePort = primaryCtx.runtimePort;
+            const sessionStart = Date.now();
 
             try {
                 const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
@@ -364,6 +416,10 @@ export class BudgetStrategyEngine {
                     wrappedCallbacks,
                     primaryCtx,
                 );
+
+                // Record session duration
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(selectedModel.id, sessionDuration);
 
                 // Record generation speed and TTFT from observed stats
                 if (result.msPerToken && result.msPerToken > 0) {
@@ -381,6 +437,10 @@ export class BudgetStrategyEngine {
                 return accumulatedPartialText + result.text;
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
+
+                // Record partial session duration even on failure
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(selectedModel.id, sessionDuration);
 
                 if (!isQuotaError(e)) {
                     this.recordError(selectedModel.id);
@@ -410,6 +470,7 @@ export class BudgetStrategyEngine {
                 const fallbackCtx = this.buildModelContext(selectedModel);
                 const fallbackPricing = buildPricing(selectedModel);
                 const fallbackPort = fallbackCtx.runtimePort;
+                const sessionStart = Date.now();
 
                 try {
                     const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, fallbackPort);
@@ -420,6 +481,10 @@ export class BudgetStrategyEngine {
                         wrappedCallbacks,
                         fallbackCtx,
                     );
+
+                    // Record session duration
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(selectedModel.id, sessionDuration);
 
                     if (result.msPerToken && result.msPerToken > 0) {
                         this.recordGenerationSpeed(selectedModel.id, result.msPerToken);
@@ -436,6 +501,10 @@ export class BudgetStrategyEngine {
                     return accumulatedPartialText + result.text;
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
+
+                    // Record partial session duration even on failure
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(selectedModel.id, sessionDuration);
 
                     if (!isQuotaError(e)) {
                         this.recordError(selectedModel.id);

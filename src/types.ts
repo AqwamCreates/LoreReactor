@@ -347,6 +347,7 @@ export interface BudgetData extends ObjectData {
   modelBudgetSpent: Record<string, number>
   modelAverageGenerationSpeedMsPerToken: Record<string, number>;
   modelAverageTimeToFirstToken: Record<string, number>
+  modelTotalSessionDuration: Record<string, number>
 }
 
 export interface RawBudgetData extends RawData {
@@ -366,6 +367,7 @@ export interface RawBudgetData extends RawData {
   modelBudgetSpent: Record<string, number>
   modelAverageGenerationSpeedMsPerToken: Record<string, number>;
   modelAverageTimeToFirstToken: Record<string, number>
+  modelTotalSessionDuration: Record<string, number>
 }
 
 export type SummarizationStrategyType =

@@ -19,7 +19,7 @@ const RESET_PRESETS = [
     { label: 'Monthly', value: 30 * 24 * 60 * 60 * 1000 },
 ];
 
-type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'spent' | 'uses' | 'errors';
+type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'spent' | 'uses' | 'errors' | 'duration';
 type SortDirection = 'asc' | 'desc';
 
 function formatCost(value: number): string {
@@ -30,6 +30,21 @@ function formatDuration(ms: number | null | undefined): string {
     if (ms === null || ms === undefined) return '—';
     if (ms <= 0) return 'Disabled';
     const totalSeconds = Math.ceil(ms / 1000);
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) return seconds > 0 ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
+    const totalHours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (totalHours < 24) return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
+function formatSessionDuration(ms: number): string {
+    if (!ms || ms <= 0) return '—';
+    const totalSeconds = Math.round(ms / 1000);
     if (totalSeconds < 60) return `${totalSeconds}s`;
     const totalMinutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -74,6 +89,7 @@ interface ModelRow {
     reliability: number;
     spent: number;
     lastUsed: number;
+    totalSessionDuration: number;
 }
 
 export function BudgetControlModal({
@@ -128,6 +144,7 @@ export function BudgetControlModal({
         Object.keys(budgetData.modelUsedCount || {}).forEach(id => allModelIds.add(id));
         Object.keys(budgetData.modelAverageGenerationSpeedMsPerToken || {}).forEach(id => allModelIds.add(id));
         Object.keys(budgetData.modelBudgetSpent || {}).forEach(id => allModelIds.add(id));
+        Object.keys(budgetData.modelTotalSessionDuration || {}).forEach(id => allModelIds.add(id));
 
         const nameMap = new Map<string, string>();
         if (budgetData.budgetStrategy?.onlineModels) budgetData.budgetStrategy.onlineModels.forEach(m => nameMap.set(m.id, m.name));
@@ -151,6 +168,7 @@ export function BudgetControlModal({
                 reliability,
                 spent: budgetData.modelBudgetSpent?.[id] ?? 0,
                 lastUsed: budgetData.modelLastUsedTimestamps?.[id] ?? 0,
+                totalSessionDuration: budgetData.modelTotalSessionDuration?.[id] ?? 0,
             });
         }
         return rows;
@@ -161,12 +179,13 @@ export function BudgetControlModal({
         const totalQuotaHits = modelRows.reduce((sum, r) => sum + r.quotaHits, 0);
         const totalErrorHits = modelRows.reduce((sum, r) => sum + r.errorHits, 0);
         const totalSpent = modelRows.reduce((sum, r) => sum + r.spent, 0);
+        const totalDuration = modelRows.reduce((sum, r) => sum + r.totalSessionDuration, 0);
         const speedValues = modelRows.filter(r => Number.isFinite(r.speed) && r.speed > 0).map(r => r.speed);
         const ttftValues = modelRows.filter(r => Number.isFinite(r.ttft) && r.ttft > 0).map(r => r.ttft);
         const avgSpeed = speedValues.length > 0 ? speedValues.reduce((a, b) => a + b, 0) / speedValues.length : 0;
         const avgTtft = ttftValues.length > 0 ? ttftValues.reduce((a, b) => a + b, 0) / ttftValues.length : 0;
         const overallReliability = totalUses > 0 ? (totalQuotaHits + totalErrorHits) / totalUses : 0;
-        return { totalUses, totalQuotaHits, totalErrorHits, totalSpent, avgSpeed, avgTtft, overallReliability };
+        return { totalUses, totalQuotaHits, totalErrorHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability };
     }, [modelRows]);
 
     const sortedRows = useMemo(() => {
@@ -181,6 +200,7 @@ export function BudgetControlModal({
                 case 'spent': cmp = a.spent - b.spent; break;
                 case 'uses': cmp = a.uses - b.uses; break;
                 case 'errors': cmp = (a.quotaHits + a.errorHits) - (b.quotaHits + b.errorHits); break;
+                case 'duration': cmp = a.totalSessionDuration - b.totalSessionDuration; break;
             }
             return sortDirection === 'asc' ? cmp : -cmp;
         });
@@ -397,6 +417,10 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{aggregateStats.avgTtft > 0 ? formatMs(aggregateStats.avgTtft) : '—'}</span>
                                             </div>
                                             <div className="budget-stat-row">
+                                                <span className="budget-stat-label">Total Session Time</span>
+                                                <span className="budget-stat-value">{formatSessionDuration(aggregateStats.totalDuration)}</span>
+                                            </div>
+                                            <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Active Models</span>
                                                 <span className="budget-stat-value">{modelRows.filter(r => r.uses > 0).length} / {modelRows.length}</span>
                                             </div>
@@ -415,6 +439,7 @@ export function BudgetControlModal({
                                                             <th className="sort-right" onClick={() => handleSort('speed')}>Speed{sortIndicator('speed')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('ttft')}>TTFT{sortIndicator('ttft')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('uses')}>Uses{sortIndicator('uses')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('duration')}>Duration{sortIndicator('duration')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('reliability')}>Rel%{sortIndicator('reliability')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('spent')}>Spent{sortIndicator('spent')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('errors')}>Errs{sortIndicator('errors')}</th>
@@ -430,6 +455,7 @@ export function BudgetControlModal({
                                                                     <td className="num">{Number.isFinite(row.speed) && row.speed > 0 ? formatMs(row.speed) : '—'}</td>
                                                                     <td className="num">{Number.isFinite(row.ttft) && row.ttft > 0 ? formatMs(row.ttft) : '—'}</td>
                                                                     <td className="num">{row.uses}</td>
+                                                                    <td className="num">{row.totalSessionDuration > 0 ? formatSessionDuration(row.totalSessionDuration) : '—'}</td>
                                                                     <td className="num" style={{ color: relColor }}>{relPct !== null ? `${relPct}%` : '—'}</td>
                                                                     <td className="num">{row.spent > 0 ? `$${formatCost(row.spent)}` : '—'}</td>
                                                                     <td className="num" style={{ color: (row.quotaHits + row.errorHits) > 0 ? '#ef4444' : undefined }}>{row.quotaHits + row.errorHits > 0 ? `${row.quotaHits}/${row.errorHits}` : '—'}</td>
@@ -439,7 +465,7 @@ export function BudgetControlModal({
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Click headers to sort. Errs = quota/error. Rel% = 100 − (hits ÷ uses).</div>
+                                            <div className="budget-hint">Click headers to sort. Duration = total session time. Errs = quota/error. Rel% = 100 − (hits ÷ uses).</div>
                                         </div>
                                     )}
 
@@ -527,25 +553,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Strategy Binding */}
-                                    <div className="budget-section">
-                                        <span className="budget-section-title">Strategy Binding</span>
-                                        <div className="budget-control-row">
-                                            <div className="budget-control-field">
-                                                <label className="budget-control-label">Budget Strategy</label>
-                                                <select className="budget-control-select" value={selectedStrategyId || budgetData.budgetStrategy?.id || ''} onChange={e => setSelectedStrategyId(e.target.value)}>
-                                                    {allBudgetStrategies.map(strategy => (
-                                                        <option key={strategy.id} value={strategy.id}>{strategy.name} — ${formatCost(strategy.maximumBudget)}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="budget-btn-group" style={{ marginTop: '8px' }}>
-                                            <button type="button" className="budget-btn budget-btn-primary" disabled={!selectedStrategy || isSaving} onClick={handleStrategyChange}>Apply Strategy</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => refresh()}>Refresh</button>
-                                        </div>
-                                    </div>
-
                                     {/* Budget Editing */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Budget Editing</span>
@@ -562,6 +569,25 @@ export function BudgetControlModal({
                                         </div>
                                         <div style={{ marginTop: '10px' }}>
                                             <button type="button" className="budget-btn budget-btn-danger" disabled={isSaving} onClick={() => runAction(resetBudget)}>Reset Budget Now</button>
+                                        </div>
+                                    </div>
+
+                                    {/* Strategy Binding — moved to bottom */}
+                                    <div className="budget-section">
+                                        <span className="budget-section-title">Budget Strategy</span>
+                                        <div className="budget-control-row">
+                                            <div className="budget-control-field">
+                                                <label className="budget-control-label">Budget Strategy</label>
+                                                <select className="budget-control-select" value={selectedStrategyId || budgetData.budgetStrategy?.id || ''} onChange={e => setSelectedStrategyId(e.target.value)}>
+                                                    {allBudgetStrategies.map(strategy => (
+                                                        <option key={strategy.id} value={strategy.id}>{strategy.name} — ${formatCost(strategy.maximumBudget)}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="budget-btn-group" style={{ marginTop: '8px' }}>
+                                            <button type="button" className="budget-btn budget-btn-primary" disabled={!selectedStrategy || isSaving} onClick={handleStrategyChange}>Apply Strategy</button>
+                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => refresh()}>Refresh</button>
                                         </div>
                                     </div>
                                 </>

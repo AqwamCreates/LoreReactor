@@ -45,6 +45,7 @@ export const DefaultBudgetData: BudgetData = {
     modelBudgetSpent: {},
     modelAverageGenerationSpeedMsPerToken: {},
     modelAverageTimeToFirstToken: {},
+    modelTotalSessionDuration: {},
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
 

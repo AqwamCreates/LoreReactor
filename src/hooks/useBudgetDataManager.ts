@@ -52,6 +52,7 @@ function createDefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAU
         modelBudgetSpent: {},
         modelAverageGenerationSpeedMsPerToken: {},
         modelAverageTimeToFirstToken: {},
+        modelTotalSessionDuration: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

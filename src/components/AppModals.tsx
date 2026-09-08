@@ -94,6 +94,8 @@ interface AppModalsProps {
     onSaveCharacter: (c: Character) => void;
     onSaveContext: (c: Context) => void;
     onSaveLocation: (l: Location) => void;
+    onSaveProfile: (p: Profile) => void;
+    onSaveWorld: (w: World) => void;
     onLoadWorld: (world: World) => void;
     onDeleteWorld: (id: string) => void;
     onImportComplete: () => void;
@@ -112,8 +114,8 @@ export function AppModals({
     onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
     onDeleteExtension, onToggleExtension, onUpdateInteractionData,
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
-    onSaveCharacter, onSaveContext, onSaveLocation, onLoadWorld, onDeleteWorld,
-    onImportComplete, addToast,
+    onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
+    onLoadWorld, onDeleteWorld, onImportComplete, addToast,
 }: AppModalsProps) {
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -484,6 +486,8 @@ export function AppModals({
                     onSaveCharacter={async (c: Character) => { onSaveCharacter(c); return true; }}
                     onSaveContext={async (c: Context) => { onSaveContext(c); return true; }}
                     onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
+                    onSaveProfile={async (profile: Profile) => { onSaveProfile(profile); return true; }}
+                    onSaveWorld={async (world: World) => { onSaveWorld(world); return true; }}
                     allSamplers={allSamplers}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
@@ -520,6 +524,7 @@ export function AppModals({
                     allModels={allModels}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
+                    allWorlds={allWorlds}
                     allChats={allChats}
                 />
             )}

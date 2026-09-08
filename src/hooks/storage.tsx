@@ -1349,6 +1349,7 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
             modelBudgetSpent: raw.modelBudgetSpent,
             modelAverageGenerationSpeedMsPerToken: raw.modelAverageGenerationSpeedMsPerToken || {},
             modelAverageTimeToFirstToken: raw.modelAverageTimeToFirstToken ||{},
+            modelTotalSessionDuration: raw.modelTotalSessionDuration || {},
             firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
         };
@@ -1378,6 +1379,7 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         modelBudgetSpent: data.modelBudgetSpent,
         modelAverageGenerationSpeedMsPerToken: data.modelAverageGenerationSpeedMsPerToken,
         modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
+        modelTotalSessionDuration: data.modelTotalSessionDuration,
         firstCreatedTimestamp: data.firstCreatedTimestamp,
         lastUpdatedTimestamp: Date.now(),
     };
