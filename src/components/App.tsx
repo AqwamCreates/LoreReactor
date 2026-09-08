@@ -82,7 +82,7 @@ function App() {
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
 
     // ─── Active Extensions ───────────────────────────────────────────
-    const { activeExtensions, activeIds: activeExtensionIds } = useActiveExtensions(allExtensions);
+    const { activeIds: activeExtensionIds } = useActiveExtensions(allExtensions);
     const [activeExtensionIdsState, setActiveExtensionIdsState] = useState<string[]>(activeExtensionIds);
     useEffect(() => { setActiveExtensionIdsState(activeExtensionIds); }, [activeExtensionIds]);
 
