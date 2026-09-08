@@ -72,7 +72,8 @@ function isQuotaError(e: unknown): boolean {
         message.includes('socket hang up') || message.includes('abort') ||
         message.includes('timeout') || message.includes('502') ||
         message.includes('503') || message.includes('504') ||
-        message.includes('service unavailable');
+        message.includes('service unavailable') ||
+        message.includes('429') || message.includes('api error');
 }
 
 /** Checks if a budget reset is due based on resetDuration. */

@@ -132,21 +132,44 @@ const MemoizedMessageText = React.memo(({ text }: { text: string }) => (
 
 // ─── Render Helpers ─────────────────────────────────────────────────
 
-function renderModelSubtext(model: LanguageModel, runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>, selectedModelId: string | null) {
-  const ms = runningModels[model.id];
-  const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
-  return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
-      {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
-      {isCloud && <span style={{ fontSize: '0.7rem', background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cloud</span>}
-      {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
-      {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
-      {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
-      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
-      <span>{model.description}</span>
-    </span>
-  );
+function renderModelSubtext(
+    model: LanguageModel,
+    runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
+    selectedModelId: string | null,
+    activeStrategy?: BudgetStrategy | null,
+) {
+    const ms = runningModels[model.id];
+    const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
+
+    // Determine pool membership in active budget strategy
+    let poolLabel: React.ReactNode = null;
+    if (activeStrategy) {
+        const inOnline = activeStrategy.onlineModels.some(m => m.id === model.id);
+        const inLocal = activeStrategy.localModels.some(m => m.id === model.id);
+        const tier = activeStrategy.modelCostTiers?.[model.id];
+        const tierText = tier !== undefined ? `T${tier}` : 'T0';
+        if (inOnline && inLocal) {
+            poolLabel = <span style={{ fontSize: '0.7rem', background: '#a855f7', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Online+Local {tierText}</span>;
+        } else if (inOnline) {
+            poolLabel = <span style={{ fontSize: '0.7rem', background: '#22c55e', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Online {tierText}</span>;
+        } else if (inLocal) {
+            poolLabel = <span style={{ fontSize: '0.7rem', background: '#f97316', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Local {tierText}</span>;
+        }
+    }
+
+    return (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
+            {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
+            {isCloud && <span style={{ fontSize: '0.7rem', background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cloud</span>}
+            {poolLabel}
+            {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
+            {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
+            {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
+            <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
+            <span>{model.description}</span>
+        </span>
+    );
 }
 
 function renderBudgetStrategySubtext(strategy: BudgetStrategy) {
@@ -825,20 +848,32 @@ function App() {
     let stratChanged = false;
     const updatedStrat = { ...activeStrategy };
 
-    const freshOnlineModels = activeStrategy.onlineModels.map(m => {
-      const fresh = allModels.find(x => x.id === m.id);
-      return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
-    });
-    if (freshOnlineModels.some((m, i) => m !== activeStrategy.onlineModels[i])) {
+    // Reconcile online models: update existing + add missing from saved IDs
+    const savedOnlineIds = new Set(
+      (activeStrategy as any)._rawOnlineModelIds || activeStrategy.onlineModels.map(m => m.id)
+    );
+    const freshOnlineModels: LanguageModel[] = [];
+    for (const id of savedOnlineIds) {
+      const fresh = allModels.find(x => x.id === id);
+      if (fresh) freshOnlineModels.push(fresh);
+    }
+    if (freshOnlineModels.length !== activeStrategy.onlineModels.length ||
+        freshOnlineModels.some((m, i) => m.id !== activeStrategy.onlineModels[i]?.id)) {
       updatedStrat.onlineModels = freshOnlineModels;
       stratChanged = true;
     }
 
-    const freshLocalModels = activeStrategy.localModels.map(m => {
-      const fresh = allModels.find(x => x.id === m.id);
-      return (fresh && fresh.lastUpdatedTimestamp !== m.lastUpdatedTimestamp) ? fresh : m;
-    });
-    if (freshLocalModels.some((m, i) => m !== activeStrategy.localModels[i])) {
+    // Reconcile local models: update existing + add missing from saved IDs
+    const savedLocalIds = new Set(
+      (activeStrategy as any)._rawLocalModelIds || activeStrategy.localModels.map(m => m.id)
+    );
+    const freshLocalModels: LanguageModel[] = [];
+    for (const id of savedLocalIds) {
+      const fresh = allModels.find(x => x.id === id);
+      if (fresh) freshLocalModels.push(fresh);
+    }
+    if (freshLocalModels.length !== activeStrategy.localModels.length ||
+        freshLocalModels.some((m, i) => m.id !== activeStrategy.localModels[i]?.id)) {
       updatedStrat.localModels = freshLocalModels;
       stratChanged = true;
     }
@@ -944,6 +979,10 @@ function App() {
 
   useEffect(() => {
     if (InteractionMessages.length === 0 || !interactionData?.participants) return;
+    if (activeStrategy) {
+      setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
+      return;
+    }
     let isCancelled = false;
     const calculateMaxTokens = async () => {
       const participantCounts: Record<string, number> = {};
@@ -966,7 +1005,7 @@ function App() {
     };
     calculateMaxTokens();
     return () => { isCancelled = true; };
-  }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels]);
+  }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
 
   // ✅ NEW: Effect to trigger regeneration AFTER edit state has committed
   useEffect(() => {
@@ -1588,7 +1627,7 @@ function App() {
         {contextModal.isOpen && <ContextEditorModal isOpen={contextModal.isOpen} onClose={contextModal.close} onSave={contextModal.handleSave} existingContext={contextModal.itemToEdit} allCharacters={allCharacters} />}
         {isLocationListOpen && <ManagerModal title="Locations" items={allLocations} isOpen={isLocationListOpen} onClose={() => setIsLocationListOpen(false)} onSelect={l => locationModal.open(l)} onDelete={locationModal.handleDelete} onCreateNew={() => locationModal.open()} renderSubtext={renderLocationSubtext} emptyMessage="No locations found." actionLabel="Delete" orderedListMode={true} currentOrderIds={interactionData?.locations?.map(l => l.id) || []} onToggleOrder={handleToggleLocation} />}
         {locationModal.isOpen && <LocationEditorModal isOpen={locationModal.isOpen} onClose={locationModal.close} onSave={locationModal.handleSave} existingLocation={locationModal.itemToEdit} allCharacters={allCharacters} allLocations={allLocations} />}
-        {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
+        {isModelListOpen && <ManagerModal title="Models" items={allModels} isOpen={isModelListOpen} onClose={() => setIsModelListOpen(false)} onSelect={m => modelModal.open(m)} onDelete={deleteModel} onCreateNew={() => modelModal.open()} renderSubtext={m => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)} emptyMessage="No models available." actionLabel="Delete" orderedListMode={false} activeSpecialActionId={selectedModelId || undefined} specialActionIcon="★" onSpecialAction={id => toggleModelLoad(id)} specialActionTooltip={m => { const ms = runningModels[m.id]; const isCloud = !!m.apiKey && m.backend && cloudBackends.includes(m.backend); if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect'; if (isCloud) return '☁️ Cloud Model — Click to Select'; if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect'; if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model'; if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...'; if (selectedModelId === m.id) return '✓ Already Selected — Click to Load'; return '▶ Load & Select Model'; }} />}
         {modelModal.isOpen && <ModelEditorModal isOpen={modelModal.isOpen} onClose={modelModal.close} onSave={modelModal.handleSave} existingModel={modelModal.itemToEdit} allStopPatterns={allStopPatterns} />}
         {isSamplerListOpen && <ManagerModal title="Samplers" items={allSamplers} isOpen={isSamplerListOpen} onClose={() => setIsSamplerListOpen(false)} onSelect={s => handleOpenSamplerEditor(s)} onDelete={deleteSampler} onCreateNew={() => handleOpenSamplerEditor(null)} renderSubtext={s => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`} emptyMessage="No samplers found." actionLabel="Delete" />}
         {isSamplerEditorOpen && <SamplerEditorModal isOpen={isSamplerEditorOpen} onClose={() => { setIsSamplerEditorOpen(false); setSamplerToEdit(null); }} onSave={handleSaveSampler} existingSampler={samplerToEdit} allStopPatterns={allStopPatterns} />}
