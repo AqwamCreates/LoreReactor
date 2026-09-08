@@ -64,8 +64,7 @@ interface UseActionMenuOptions {
 
 export function useActionMenu(options: UseActionMenuOptions) {
     const {
-        interactionData, currentCharacter, isLoading, isModelReady,
-        allCharacters, stopGeneration, sendActionAndGetResponse, addToast,
+        interactionData, currentCharacter, isLoading, stopGeneration, sendActionAndGetResponse, addToast,
     } = options;
 
     const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);

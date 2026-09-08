@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { BudgetData, BudgetStrategy } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from './storage';
-import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_RESET_DURATION_MS = 24 * 60 * 60 * 1000;
 

@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
 import { loadRawInteractionData, loadInteractionMessages } from './storage';
-import { createNewInteractionData } from './chatLogic';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';

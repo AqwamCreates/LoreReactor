@@ -300,7 +300,6 @@ export interface RawBudgetStrategy extends RawData {
   fallbackOnQualityThreshold: number;
   fallbackOnTimeoutInSeconds: number;
   maximumBudget: number;
-  modelLastUsedTimestamps: Record<string, number>
 }
 
 export interface BudgetData extends ObjectData{
