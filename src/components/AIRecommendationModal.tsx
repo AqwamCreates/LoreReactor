@@ -546,6 +546,8 @@ export function AIRecommendationModal({
     const [imageInjectionPriority, setImageInjectionPriority] = useState<ImagePriorityItem[]>([
         'reference', 'character', 'context', 'location'
     ]);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -579,6 +581,7 @@ export function AIRecommendationModal({
         setError(null); setUserPrompt(''); setMaxTokens(2048);
         setShowSchemaPreview(false); setSchemaCopied(false);
         setImageInjectionPriority(['reference', 'character', 'context', 'location']);
+        setDragIndex(null); setDragOverIndex(null);
         setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
         setCharSearch(''); setCtxSearch(''); setLocSearch('');
         setReferenceImages([]);
@@ -618,20 +621,41 @@ export function AIRecommendationModal({
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
-    const moveImagePriority = (index: number, direction: -1 | 1) => {
-        setImageInjectionPriority(prev => {
-            const next = [...prev];
-            const targetIndex = index + direction;
-            if (targetIndex < 0 || targetIndex >= next.length) return prev;
-            [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-            return next;
-        });
-    };
-
     const toggleImagePriorityItem = (item: ImagePriorityItem) => {
         setImageInjectionPriority(prev =>
             prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]
         );
+    };
+
+    const handleDragStart = (index: number) => {
+        setDragIndex(index);
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (dragIndex === null || dragIndex === index) return;
+        setDragOverIndex(index);
+    };
+
+    const handleDrop = (index: number) => {
+        if (dragIndex === null || dragIndex === index) {
+            setDragIndex(null);
+            setDragOverIndex(null);
+            return;
+        }
+        setImageInjectionPriority(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(dragIndex, 1);
+            next.splice(index, 0, moved);
+            return next;
+        });
+        setDragIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const handleDragEnd = () => {
+        setDragIndex(null);
+        setDragOverIndex(null);
     };
 
     const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -721,7 +745,6 @@ export function AIRecommendationModal({
         const effectivePort = port || runtimePort;
         if (!effectivePort && !selectedModel.apiKey) { setError('Model not loaded and has no API key.'); return; }
 
-        // Build image descriptions from reference uploads
         let imageDescriptions = '';
         const hasReferenceImages = referenceImages.length > 0;
         if (hasReferenceImages) {
@@ -731,7 +754,6 @@ export function AIRecommendationModal({
             setIsUploadingImages(false);
         }
 
-        // Build injection priority instructions from ordered list
         const injectionNotes: string[] = [];
         if (imageInjectionPriority.length > 0) {
             injectionNotes.push('IMAGE INJECTION PRIORITY (highest to lowest):');
@@ -1019,22 +1041,33 @@ export function AIRecommendationModal({
                         <div className="editor-section">
                             <span className="editor-section-title">Image Injection Priority</span>
                             <div className="entity-ref-hint">
-                                Reorder to set priority. Higher = takes precedence. Click × to disable an image type entirely. Disabled types are excluded from generation.
+                                Drag to reorder priority. Higher = takes precedence. Click × to disable an image type entirely.
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 {imageInjectionPriority.map((item, index) => (
-                                    <div key={item} style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '4px 8px', background: 'var(--social-bg)',
-                                        border: '1px solid var(--border)', borderRadius: '4px',
-                                        fontSize: '0.75rem',
-                                    }}>
+                                    <div
+                                        key={item}
+                                        draggable
+                                        onDragStart={() => handleDragStart(index)}
+                                        onDragOver={(e) => handleDragOver(e, index)}
+                                        onDrop={() => handleDrop(index)}
+                                        onDragEnd={handleDragEnd}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '4px 8px',
+                                            background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)',
+                                            border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)',
+                                            borderRadius: '4px',
+                                            fontSize: '0.75rem',
+                                            cursor: 'grab',
+                                            opacity: dragIndex === index ? 0.5 : 1,
+                                            transition: 'border 0.15s, background 0.15s, opacity 0.15s',
+                                            userSelect: 'none',
+                                        }}
+                                    >
+                                        <span style={{ opacity: 0.3, cursor: 'grab', fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span>
                                         <span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span>
                                         <span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span>
-                                        <button type="button" onClick={() => moveImagePriority(index, -1)} disabled={index === 0}
-                                            className="editor-btn editor-btn-cancel" style={{ padding: '1px 6px', fontSize: '0.65rem', minHeight: '20px', opacity: index === 0 ? 0.3 : 1 }}>↑</button>
-                                        <button type="button" onClick={() => moveImagePriority(index, 1)} disabled={index === imageInjectionPriority.length - 1}
-                                            className="editor-btn editor-btn-cancel" style={{ padding: '1px 6px', fontSize: '0.65rem', minHeight: '20px', opacity: index === imageInjectionPriority.length - 1 ? 0.3 : 1 }}>↓</button>
                                         <button type="button" onClick={() => toggleImagePriorityItem(item)}
                                             className="context-character-binding-remove" title="Remove from priority">×</button>
                                     </div>
