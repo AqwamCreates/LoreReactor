@@ -713,8 +713,6 @@ function App() {
                     onSaveCharacter={saveCharacter}
                     onSaveContext={saveContext}
                     onSaveLocation={saveLocation}
-                    onSaveProfile={saveProfile}
-                    onSaveWorld={saveWorld}
                     onLoadWorld={handleLoadWorld}
                     onDeleteWorld={deleteWorld}
                     onImportComplete={handleImportComplete}
