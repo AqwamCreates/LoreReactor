@@ -1,5 +1,4 @@
 // src/components/ToastContainer.tsx
-import React from 'react';
 import { useToast } from '../context/ToastContext';
 
 export function ToastContainer() {
@@ -10,7 +9,7 @@ export function ToastContainer() {
       {toasts.map((toast) => (
         <div key={toast.id} className={`toast toast-${toast.type}`}>
           <span className="toast-message">{toast.message}</span>
-          <button onClick={() => removeToast(toast.id)} className="toast-close">×</button>
+          <button type="button" onClick={() => removeToast(toast.id)} className="toast-close">×</button>
         </div>
       ))}
     </div>
