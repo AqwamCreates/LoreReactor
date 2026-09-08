@@ -167,7 +167,7 @@ function App() {
 
     const {
         actionMenuTarget, menuSearchQuery, setMenuSearchQuery,
-        actions, actionsLoading,
+        actionsLoading,
         showActionFormat, setShowActionFormat,
         actionWrap, setActionWrap, actionCase, setActionCase, actionPunctuation, setActionPunctuation,
         handleAddAction, handleDeleteAction, handleActionInterject,
@@ -193,7 +193,7 @@ function App() {
 
     const {
         isEditingTitle, editTitleValue, setEditTitleValue,
-        safeAutoSave, handleSwitchChat, handleNewChat, handleDeleteChat,
+        handleSwitchChat, handleNewChat, handleDeleteChat,
         handleStartEditTitle, handleSaveTitle, cancelEditTitle,
     } = useChatOperations({
         interactionData, currentCharacter, defaultCharacterId,
@@ -533,7 +533,7 @@ function App() {
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-            <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`} style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} onClick={closeActionMenu}>
+            <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`} style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} onClick={closeActionMenu(); deactivateToolbar()}>
                 {!interactionData && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
