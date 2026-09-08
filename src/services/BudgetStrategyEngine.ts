@@ -6,12 +6,6 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 
 const engine = new LanguageModelEngine();
 
-/** Default cache TTL assumption for online models (5 minutes). */
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
-
-/** Tier bonus applied to models whose cache is likely still warm. */
-const CACHE_WARMTH_TIER_BONUS = 1;
-
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
         cacheHitPerMillion: model.cacheHitCostPerOneMillionOfTokens ?? 0,
@@ -88,7 +82,9 @@ function applyResetIfDue(data: BudgetData): void {
     data.modelLastQuotaHitTimeStamps = {};
     data.modelLastErrorHitTimeStamps = {};
     data.lastResetTimestamp = Date.now();
-    // Don't reset speed/TTFT — they're persistent performance metrics
+    // Preserve: modelUsedCount, modelQuotaHitCount, modelErrorHitCount,
+    //           modelAverageGenerationSpeedMsPerToken, modelAverageTimeToFirstToken
+    // These are long-term metrics, not per-cycle state
 }
 
 export interface RunningModelState {
@@ -119,12 +115,6 @@ export class BudgetStrategyEngine {
 
     private getTier(model: LanguageModel): number {
         return this.strategy.modelCostTiers?.[model.id] ?? 0;
-    }
-
-    private isCacheWarm(modelId: string): boolean {
-        const lastUsed = this.budgetData.modelLastUsedTimestamps[modelId];
-        if (!lastUsed) return false;
-        return (Date.now() - lastUsed) < DEFAULT_CACHE_TTL_MS;
     }
 
     private isInQuotaCooldown(modelId: string): boolean {
@@ -173,15 +163,6 @@ export class BudgetStrategyEngine {
         }
     }
 
-    private getEffectiveTier(model: LanguageModel): number {
-        let tier = this.getTier(model);
-        const isCloud = !!model.apiKey && model.backend;
-        if (isCloud && this.isCacheWarm(model.id)) {
-            tier += CACHE_WARMTH_TIER_BONUS;
-        }
-        return tier;
-    }
-
     private buildModelContext(model: LanguageModel): LanguageModelContext {
         const isCloud = !!model.apiKey && model.backend;
         const running = this.runningModels[model.id];
@@ -225,11 +206,12 @@ export class BudgetStrategyEngine {
 
     /**
      * Selects the next available model from a pool.
-     * Groups by effective tier (highest first), then within each tier sorts by:
-     *   1. Cache warmth (warm first)
-     *   2. Generation speed (faster first — lower ms/token is better)
-     *   3. TTFT (lower first — snappier response preferred)
-     *   4. Base tier descending as tiebreaker
+     * Groups by tier (highest first), then within each tier sorts by:
+     *   1. Generation speed (faster first — lower ms/token is better)
+     *   2. TTFT (lower first — snappier response preferred)
+     *   3. Reliability (lower error rate = more stable = preferred)
+     *   4. Recency (more recently used = warmer cache = preferred)
+     *   5. Base tier descending as final tiebreaker
      */
     private selectFromPool(
         pool: LanguageModel[],
@@ -242,8 +224,8 @@ export class BudgetStrategyEngine {
         for (const model of pool) {
             if (failedIds.has(model.id)) continue;
             if (this.isInQuotaCooldown(model.id)) continue;
-            const tier = this.getEffectiveTier(model);
-            if (maxTier !== undefined && this.getTier(model) > maxTier) continue;
+            const tier = this.getTier(model);
+            if (maxTier !== undefined && tier > maxTier) continue;
             if (!tierGroups.has(tier)) tierGroups.set(tier, []);
             const tierModels = tierGroups.get(tier);
             if (tierModels) tierModels.push(model);
@@ -257,22 +239,31 @@ export class BudgetStrategyEngine {
             const candidates = tierGroups.get(tier);
             if (!candidates) continue;
             candidates.sort((a, b) => {
-                // 1. Cache warmth
-                const aWarm = this.isCacheWarm(a.id) ? 1 : 0;
-                const bWarm = this.isCacheWarm(b.id) ? 1 : 0;
-                if (aWarm !== bWarm) return bWarm - aWarm;
-
-                // 2. Generation speed (lower ms/token = faster = preferred)
+                // 1. Generation speed (lower ms/token = faster = preferred)
                 const aSpeed = this.getModelSpeed(a.id);
                 const bSpeed = this.getModelSpeed(b.id);
                 if (aSpeed !== bSpeed) return aSpeed - bSpeed;
 
-                // 3. TTFT (lower = snappier = preferred)
+                // 2. TTFT (lower = snappier = preferred)
                 const aTTFT = this.getModelTTFT(a.id);
                 const bTTFT = this.getModelTTFT(b.id);
                 if (aTTFT !== bTTFT) return aTTFT - bTTFT;
 
-                // 4. Base tier as tiebreaker
+                // 3. Reliability (lower error rate = more stable = preferred)
+                const aUsed = this.budgetData.modelUsedCount?.[a.id] ?? 0;
+                const bUsed = this.budgetData.modelUsedCount?.[b.id] ?? 0;
+                const aErrors = (this.budgetData.modelQuotaHitCount?.[a.id] ?? 0) + (this.budgetData.modelErrorHitCount?.[a.id] ?? 0);
+                const bErrors = (this.budgetData.modelQuotaHitCount?.[b.id] ?? 0) + (this.budgetData.modelErrorHitCount?.[b.id] ?? 0);
+                const aReliability = aUsed > 0 ? aErrors / aUsed : 0;
+                const bReliability = bUsed > 0 ? bErrors / bUsed : 0;
+                if (aReliability !== bReliability) return aReliability - bReliability;
+
+                // 4. Recency (more recently used = warmer cache = preferred)
+                const aLastUsed = this.budgetData.modelLastUsedTimestamps?.[a.id] ?? 0;
+                const bLastUsed = this.budgetData.modelLastUsedTimestamps?.[b.id] ?? 0;
+                if (aLastUsed !== bLastUsed) return bLastUsed - aLastUsed;
+
+                // 5. Base tier as final tiebreaker
                 return this.getTier(b) - this.getTier(a);
             });
             if (candidates.length > 0) {
@@ -286,16 +277,19 @@ export class BudgetStrategyEngine {
     private recordSuccess(modelId: string, cost: number): void {
         this.budgetData.budgetSpent += cost;
         this.budgetData.modelLastUsedTimestamps[modelId] = Date.now();
+        this.budgetData.modelUsedCount[modelId] = (this.budgetData.modelUsedCount?.[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
     private recordQuotaError(modelId: string): void {
         this.budgetData.modelLastQuotaHitTimeStamps[modelId] = Date.now();
+        this.budgetData.modelQuotaHitCount[modelId] = (this.budgetData.modelQuotaHitCount?.[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
     private recordError(modelId: string): void {
         this.budgetData.modelLastErrorHitTimeStamps[modelId] = Date.now();
+        this.budgetData.modelErrorHitCount[modelId] = (this.budgetData.modelErrorHitCount?.[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
