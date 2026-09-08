@@ -48,6 +48,10 @@ const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
 const MIN_LOADING_SCREEN_MS = 900;
 
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
+type BudgetStrategyWithRawModelIds = BudgetStrategy & {
+    _rawOnlineModelIds?: string[];
+    _rawLocalModelIds?: string[];
+};
 
 function App() {
     // ─── Session Hook ────────────────────────────────────────────────
@@ -247,11 +251,12 @@ function App() {
         if (!activeStrategy) return;
         let stratChanged = false;
         const updatedStrat = { ...activeStrategy };
-        const savedOnlineIds = (activeStrategy as any)._rawOnlineModelIds || activeStrategy.onlineModels.map((m: LanguageModel) => m.id);
+        const strategyWithRawModelIds = activeStrategy as BudgetStrategyWithRawModelIds;
+        const savedOnlineIds = strategyWithRawModelIds._rawOnlineModelIds || activeStrategy.onlineModels.map((m: LanguageModel) => m.id);
         const freshOnlineModels: LanguageModel[] = [];
         for (const mid of savedOnlineIds) { const fresh = allModels.find(x => x.id === mid); if (fresh) freshOnlineModels.push(fresh); }
         if (freshOnlineModels.length !== activeStrategy.onlineModels.length || freshOnlineModels.some((m, i) => m.id !== activeStrategy.onlineModels[i]?.id)) { updatedStrat.onlineModels = freshOnlineModels; stratChanged = true; }
-        const savedLocalIds = (activeStrategy as any)._rawLocalModelIds || activeStrategy.localModels.map((m: LanguageModel) => m.id);
+        const savedLocalIds = strategyWithRawModelIds._rawLocalModelIds || activeStrategy.localModels.map((m: LanguageModel) => m.id);
         const freshLocalModels: LanguageModel[] = [];
         for (const mid of savedLocalIds) { const fresh = allModels.find(x => x.id === mid); if (fresh) freshLocalModels.push(fresh); }
         if (freshLocalModels.length !== activeStrategy.localModels.length || freshLocalModels.some((m, i) => m.id !== activeStrategy.localModels[i]?.id)) { updatedStrat.localModels = freshLocalModels; stratChanged = true; }
