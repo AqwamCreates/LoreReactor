@@ -14,7 +14,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData } from '../hooks/storage';
+import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -33,6 +33,7 @@ import { useEntityToggles } from '../hooks/useEntityToggles';
 import { useCinematicMode } from '../hooks/useCinematicMode';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useModalVisibility } from '../hooks/useModalVisibility';
+import { useActiveExtensions } from '../hooks/useActiveExtensions';
 import { MessageBubble } from './MessageBubble';
 import { StreamingIndicators } from './StreamingIndicators';
 import { ActionMenu } from './ActionMenu';
@@ -63,7 +64,7 @@ function App() {
         generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
         numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
-        activeStrategy, budgetData,
+        activeStrategy, budgetData, processProtagonistImageSilently,
     } = useChatSession();
 
     const { addToast } = useToast();
@@ -79,6 +80,11 @@ function App() {
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
+
+    // ─── Active Extensions ───────────────────────────────────────────
+    const { activeExtensions, activeIds: activeExtensionIds } = useActiveExtensions(allExtensions);
+    const [activeExtensionIdsState, setActiveExtensionIdsState] = useState<string[]>(activeExtensionIds);
+    useEffect(() => { setActiveExtensionIdsState(activeExtensionIds); }, [activeExtensionIds]);
 
     // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
@@ -99,6 +105,7 @@ function App() {
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+    const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
 
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
@@ -159,7 +166,9 @@ function App() {
         handleSetChatProtagonist, handleToggleExtension,
         handleActivateBudgetStrategy, handleActivateProfile,
     } = useEntityToggles({
-        interactionData, allCharacters, allExtensions,
+        interactionData, allCharacters,
+        activeExtensionIds: activeExtensionIdsState,
+        setActiveExtensionIds: setActiveExtensionIdsState,
         allProfiles, allBudgetStrategies, selectedBudgetStrategyId,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId, setDefaultCharacterId,
@@ -262,6 +271,16 @@ function App() {
         if (freshLocalModels.length !== activeStrategy.localModels.length || freshLocalModels.some((m, i) => m.id !== activeStrategy.localModels[i]?.id)) { updatedStrat.localModels = freshLocalModels; stratChanged = true; }
         if (stratChanged) setActiveBudgetStrategy(updatedStrat);
     }, [activeStrategy, allModels, setActiveBudgetStrategy]);
+
+    // Process protagonist image on new/restored chat
+    useEffect(() => {
+        if (interactionData && currentCharacter && !isInitialImageProcessed) {
+            processProtagonistImageSilently(interactionData, currentCharacter).then(() => setIsInitialImageProcessed(true));
+        }
+    }, [interactionData?.id, currentCharacter?.id, processProtagonistImageSilently]);
+
+    // Reset image processed flag when chat changes
+    useEffect(() => { setIsInitialImageProcessed(false); }, [interactionData?.id]);
 
     // Loading screen
     const loadSteps = useMemo<LoadStep[]>(() => [
@@ -465,6 +484,25 @@ function App() {
         handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [handleDeleteChat]);
 
+    // ─── Branch source navigation ────────────────────────────────────
+    const handleNavigateToBranchSource = useCallback(async () => {
+        if (!interactionData?.parentInteractionDataId) return;
+        try {
+            const source = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
+            if (source) {
+                setInteractionData(source);
+                interactionDataRef.current = source;
+                if (source.protagonist) setCurrentCharacter(source.protagonist);
+                refreshChatList();
+                addToast(`Returned to source: "${source.name}"`, 'info');
+            } else {
+                addToast('Source chat not found.', 'error');
+            }
+        } catch {
+            addToast('Failed to load source chat.', 'error');
+        }
+    }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+
     // ─── Render ──────────────────────────────────────────────────────
     const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
 
@@ -512,7 +550,7 @@ function App() {
                             const beforeBranch = !!(interactionData.parentInteractionMessageId && index === branchOffIndex);
                             const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
                             return (
-                                <MessageBubble key={message.id} message={message} index={index} viewMode={viewMode} currentCharacterId={currentCharacter?.id} editingId={editingId} editDraft={editDraft} massDeleteId={massDeleteId} isMassActive={isMassActive} massStartIndex={massStartIndex} activeToolbarId={activeToolbarId} portraitUrl={messagePortraitUrl} displayName={dn} isStem={stem} beforeBranch={beforeBranch} isModelReady={isModelReady} isLoading={isLoading} onAvatarClick={handleAvatarClick} onStartEditing={startEditing} onCancelEditing={cancelEditing} onSaveEdit={handleSaveEdit} onRegenerateFromEdit={handleRegenerateFromEdit} onResumeGeneration={resumeGeneration} onCopyText={handleCopyText} onRegenerateFromMessage={regenerateFromMessage} onBranch={handleBranch} onClone={handleClone} onDelete={handleDelete} onSetMassDelete={setMassDeleteId} onMassDeleteConfirm={handleMassDeleteConfirm} onCancelMassDelete={() => setMassDeleteId(null)} onTouchStart={handleBubbleTouchStart} onTouchEnd={handleBubbleTouchEnd} onTouchMove={handleBubbleTouchMove} suppressNextClickRef={suppressNextClickRef} editTextareaRef={editTextareaRef} setEditDraft={setEditDraft} />
+                                <MessageBubble key={message.id} message={message} index={index} viewMode={viewMode} currentCharacterId={currentCharacter?.id} editingId={editingId} editDraft={editDraft} massDeleteId={massDeleteId} isMassActive={isMassActive} massStartIndex={massStartIndex} activeToolbarId={activeToolbarId} portraitUrl={messagePortraitUrl} displayName={dn} isStem={stem} beforeBranch={beforeBranch} isModelReady={isModelReady} isLoading={isLoading} onAvatarClick={handleAvatarClick} onStartEditing={startEditing} onCancelEditing={cancelEditing} onSaveEdit={handleSaveEdit} onRegenerateFromEdit={handleRegenerateFromEdit} onResumeGeneration={resumeGeneration} onCopyText={handleCopyText} onRegenerateFromMessage={regenerateFromMessage} onBranch={handleBranch} onClone={handleClone} onDelete={handleDelete} onSetMassDelete={setMassDeleteId} onMassDeleteConfirm={handleMassDeleteConfirm} onCancelMassDelete={() => setMassDeleteId(null)} onTouchStart={handleBubbleTouchStart} onTouchEnd={handleBubbleTouchEnd} onTouchMove={handleBubbleTouchMove} suppressNextClickRef={suppressNextClickRef} editTextareaRef={editTextareaRef} setEditDraft={setEditDraft} onNavigateToBranchSource={handleNavigateToBranchSource} />
                             );
                         })}
                         {viewMode === 'ladder' && <StreamingIndicators isLoading={isLoading} streamingCharacter={streamingCharacter} streamingText={streamingText} formattedStreamingText={formattedStreamingText} viewMode={viewMode} currentCharacterId={currentCharacter?.id} streamingPortraitUrl={streamingPortraitUrl} interactionData={interactionData} messagesLength={InteractionMessages.length} onAvatarClick={handleAvatarClick} />}
