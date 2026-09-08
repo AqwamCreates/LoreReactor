@@ -18,6 +18,7 @@ import { DataExportModal } from './DataExportModal';
 import { DataImportModal } from './DataImportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
+import { useSessionStore } from '../store/useSessionStore';
 
 interface ModalVisibility {
     isOpen: boolean;
@@ -31,8 +32,9 @@ interface EntityModalState<T> {
     open: (item?: T) => void;
     close: () => void;
     handleSave: (item: T) => void;
-    handleDelete: (id: string) => Promise<void>;  // was (item: T) => void
+    handleDelete: (id: string) => Promise<void>;
 }
+
 interface AppModalsProps {
     modals: Record<string, ModalVisibility>;
     // Data
@@ -47,10 +49,6 @@ interface AppModalsProps {
     allProfiles: Profile[];
     allExtensions: Extension[];
     runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean; port?: number }>;
-    interactionData: InteractionData | null;
-    activeStrategy: BudgetStrategy | null;
-    selectedModelId: string | null;
-    selectedBudgetStrategyId: string | null;
     samplerToEdit: Sampler | null;
     // Entity modals
     charModal: EntityModalState<Character>;
@@ -60,7 +58,7 @@ interface AppModalsProps {
     modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
-    // Delete callbacks — all take ID strings matching ManagerModal's onDelete signature
+    // Callbacks
     onSwitchChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
@@ -99,8 +97,7 @@ interface AppModalsProps {
 export function AppModals({
     modals, allChats, allCharacters, allContexts, allLocations, allSamplers,
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions,
-    runningModels, interactionData, activeStrategy, selectedModelId, selectedBudgetStrategyId,
-    samplerToEdit, charModal, contextModal, locationModal, stopModal, modelModal,
+    runningModels, samplerToEdit, charModal, contextModal, locationModal, stopModal, modelModal,
     budgetModal, profileModal,
     onSwitchChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
@@ -111,6 +108,11 @@ export function AppModals({
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onSaveCharacter, onSaveContext, onSaveLocation, onImportComplete, addToast,
 }: AppModalsProps) {
+    const interactionData = useSessionStore(s => s.interactionData);
+    const activeStrategy = useSessionStore(s => s.activeStrategy);
+    const selectedModelId = useSessionStore(s => s.selectedModel?.id ?? null);
+    const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
+
     return (
         <>
             {/* Chat Sessions */}
@@ -121,8 +123,8 @@ export function AppModals({
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
                     onSelect={(item: InteractionData) => {
-                        onSwitchChat(item.id)
-                        modals.chatList.close()
+                        onSwitchChat(item.id);
+                        modals.chatList.close();
                     }}
                     onDelete={onDeleteChat}
                     onCreateNew={onNewChat}

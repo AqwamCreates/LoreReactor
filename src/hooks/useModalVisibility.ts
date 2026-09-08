@@ -5,7 +5,12 @@ interface ModalState {
     isOpen: boolean;
     open: () => void;
     close: () => void;
-    toggle: () => void;
+}
+
+export interface ModalVisibility {
+    isOpen: boolean;
+    open: () => void;
+    close: () => void;
 }
 
 export function useModal(initial = false): [ModalState, React.Dispatch<React.SetStateAction<boolean>>] {
@@ -15,10 +20,20 @@ export function useModal(initial = false): [ModalState, React.Dispatch<React.Set
         isOpen,
         open: () => setIsOpen(true),
         close: () => setIsOpen(false),
-        toggle: () => setIsOpen(prev => !prev),
     };
 
     return [state, setIsOpen];
+}
+
+function createModalState(
+    isOpen: boolean,
+    setOpen: (v: boolean) => void,
+): ModalVisibility {
+    return {
+        isOpen,
+        open: () => setOpen(true),
+        close: () => setOpen(false),
+    };
 }
 
 export function useModalVisibility() {
@@ -41,7 +56,6 @@ export function useModalVisibility() {
     const [importData, setImportDataOpen] = useState(false);
     const [participantControl, setParticipantControlOpen] = useState(false);
 
-    // Convenience: close all panels at once
     const closeAll = useCallback(() => {
         setChatListOpen(false);
         setCharListOpen(false);
@@ -63,25 +77,28 @@ export function useModalVisibility() {
         setParticipantControlOpen(false);
     }, []);
 
-    return {
-        chatList: { isOpen: chatList, open: () => setChatListOpen(true), close: () => setChatListOpen(false) },
-        charList: { isOpen: charList, open: () => setCharListOpen(true), close: () => setCharListOpen(false) },
-        contextList: { isOpen: contextList, open: () => setContextListOpen(true), close: () => setContextListOpen(false) },
-        locationList: { isOpen: locationList, open: () => setLocationListOpen(true), close: () => setLocationListOpen(false) },
-        samplerList: { isOpen: samplerList, open: () => setSamplerListOpen(true), close: () => setSamplerListOpen(false) },
-        extList: { isOpen: extList, open: () => setExtListOpen(true), close: () => setExtListOpen(false) },
-        modelList: { isOpen: modelList, open: () => setModelListOpen(true), close: () => setModelListOpen(false) },
-        stopList: { isOpen: stopList, open: () => setStopListOpen(true), close: () => setStopListOpen(false) },
-        budgetStrategyList: { isOpen: budgetStrategyList, open: () => setBudgetStrategyListOpen(true), close: () => setBudgetStrategyListOpen(false) },
-        profileList: { isOpen: profileList, open: () => setProfileListOpen(true), close: () => setProfileListOpen(false) },
-        samplerEditor: { isOpen: samplerEditor, open: () => setSamplerEditorOpen(true), close: () => setSamplerEditorOpen(false) },
-        settings: { isOpen: settings, open: () => setSettingsOpen(true), close: () => setSettingsOpen(false) },
-        budgetControl: { isOpen: budgetControl, open: () => setBudgetControlOpen(true), close: () => setBudgetControlOpen(false) },
-        aiRecommendation: { isOpen: aiRecommendation, open: () => setAiRecommendationOpen(true), close: () => setAiRecommendationOpen(false) },
-        cardImport: { isOpen: cardImport, open: () => setCardImportOpen(true), close: () => setCardImportOpen(false) },
-        exportData: { isOpen: exportData, open: () => setExportDataOpen(true), close: () => setExportDataOpen(false) },
-        importData: { isOpen: importData, open: () => setImportDataOpen(true), close: () => setImportDataOpen(false) },
-        participantControl: { isOpen: participantControl, open: () => setParticipantControlOpen(true), close: () => setParticipantControlOpen(false) },
-        closeAll,
+    // Return modals as a clean Record<string, ModalVisibility>
+    // closeAll is returned separately so it doesn't pollute the record type
+    const modals: Record<string, ModalVisibility> = {
+        chatList: createModalState(chatList, setChatListOpen),
+        charList: createModalState(charList, setCharListOpen),
+        contextList: createModalState(contextList, setContextListOpen),
+        locationList: createModalState(locationList, setLocationListOpen),
+        samplerList: createModalState(samplerList, setSamplerListOpen),
+        extList: createModalState(extList, setExtListOpen),
+        modelList: createModalState(modelList, setModelListOpen),
+        stopList: createModalState(stopList, setStopListOpen),
+        budgetStrategyList: createModalState(budgetStrategyList, setBudgetStrategyListOpen),
+        profileList: createModalState(profileList, setProfileListOpen),
+        samplerEditor: createModalState(samplerEditor, setSamplerEditorOpen),
+        settings: createModalState(settings, setSettingsOpen),
+        budgetControl: createModalState(budgetControl, setBudgetControlOpen),
+        aiRecommendation: createModalState(aiRecommendation, setAiRecommendationOpen),
+        cardImport: createModalState(cardImport, setCardImportOpen),
+        exportData: createModalState(exportData, setExportDataOpen),
+        importData: createModalState(importData, setImportDataOpen),
+        participantControl: createModalState(participantControl, setParticipantControlOpen),
     };
+
+    return { modals, closeAll };
 }
