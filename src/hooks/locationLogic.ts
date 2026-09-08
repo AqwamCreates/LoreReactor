@@ -91,21 +91,42 @@ export function sampleLocationByWeight(locations: Location[], character: Charact
  * Filter locations to only those reachable from the character's current location.
  * A location is reachable if:
  * - Its locationBindings array is empty or undefined (unrestricted)
- * - The character's current location ID is in its locationBindings
+ * - The character's current location ID is in its locationBindings AND
+ *   either no conditional regex is set for that binding, or the message text matches it
  * - The character has no current location (fallback to unrestricted)
  */
 export function getReachableLocations(
     locations: Location[],
     currentLocationIndex: number | undefined,
+    messageText?: string,
 ): { location: Location; originalIndex: number }[] {
     const currentLocation = currentLocationIndex !== undefined ? locations[currentLocationIndex] : undefined;
 
     return locations
         .map((loc, i) => ({ location: loc, originalIndex: i }))
         .filter(({ location }) => {
+            // No bindings = always reachable
             if (!location.locationBindings || location.locationBindings.length === 0) return true;
+
+            // No current location = fallback to unrestricted
             if (!currentLocation) return true;
-            return location.locationBindings.includes(currentLocation.id);
+
+            // Check if current location is in bindings
+            if (!location.locationBindings.includes(currentLocation.id)) return false;
+
+            // Check conditional regex trigger for this specific binding
+            const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
+            if (!conditionalRegex || !conditionalRegex.trim()) return true; // Unconditional binding
+
+            // Conditional binding — must match message text
+            if (!messageText) return false;
+            try {
+                const regex = new RegExp(conditionalRegex, 'i');
+                return regex.test(messageText);
+            } catch {
+                console.warn(`Invalid conditional regex on location ${location.id} for binding ${currentLocation.id}: ${conditionalRegex}`);
+                return false;
+            }
         });
 }
 

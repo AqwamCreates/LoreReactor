@@ -102,6 +102,10 @@ export async function runTurnSequence(
     const profile = currentInteractionData.Profile;
     let workingData = { ...currentInteractionData, interactionHistory: [...currentInteractionData.interactionHistory] };
 
+    // Capture the triggering message text for conditional location binding evaluation
+    const lastChatEntry = [...workingData.interactionHistory].reverse().find(m => hasTextContent(m));
+    const triggeringMessageText = lastChatEntry && hasTextContent(lastChatEntry) ? lastChatEntry.textContent : undefined;
+
     const lastEntry = workingData.interactionHistory.length > 0
         ? workingData.interactionHistory[workingData.interactionHistory.length - 1]
         : null;
@@ -170,9 +174,9 @@ export async function runTurnSequence(
                 // Regenerate stamina before recording movement
                 regenerateChatStaminaForCharacter(workingData, picked);
 
-                // Filter by reachability first, then sample from reachable locations only
+                // Filter by reachability first (with conditional regex), then sample from reachable locations only
                 const pLoc = getCurrentLocationIndex(workingData, picked);
-                const reachable = getReachableLocations(workingData.locations, pLoc);
+                const reachable = getReachableLocations(workingData.locations, pLoc, triggeringMessageText);
                 const newLoc = sampleReachableLocationByWeight(reachable, picked);
                 if (newLoc !== undefined && newLoc !== pLoc) {
                     const silent = createSilentInteraction(picked, newLoc, prevStamina, lastParentId);

@@ -36,8 +36,9 @@ export function LocationEditorModal({
     const [isUploading, setIsUploading] = useState(false);
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
+    const [locationBindingRegexTriggers, setLocationBindingRegexTriggers] = useState<Record<string, string>>({});
+    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
     const [globalWeight, setGlobalWeight] = useState<number>(1);
     const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
@@ -45,13 +46,13 @@ export function LocationEditorModal({
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string> }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textNumberOfTokens, setTextNumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // ✅ Debounced accurate token count
+    // Debounced accurate token count
     useEffect(() => {
         let cancelled = false;
 
@@ -83,8 +84,9 @@ export function LocationEditorModal({
 
                 setImageFiles([]);
                 setRegexActivationTrigger(existingLocation.regularExpressionActivationTrigger || '');
-                setCharacterBindings(existingLocation.characterBindings ?? []);
                 setLocationBindings(existingLocation.locationBindings ?? []);
+                setLocationBindingRegexTriggers(existingLocation.locationBindingRegularExpressionTriggers ?? {});
+                setCharacterBindings(existingLocation.characterBindings ?? []);
                 setGlobalWeight(existingLocation.globalWeight ?? 1);
                 setCharacterWeights(existingLocation.characterWeights ?? {});
                 setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
@@ -95,8 +97,9 @@ export function LocationEditorModal({
                 setImageFiles([]);
                 setImagePreviews([]);
                 setRegexActivationTrigger('');
-                setCharacterBindings([]);
                 setLocationBindings([]);
+                setLocationBindingRegexTriggers({});
+                setCharacterBindings([]);
                 setGlobalWeight(1);
                 setCharacterWeights({});
                 setUseBase64Encoding(false);
@@ -108,7 +111,7 @@ export function LocationEditorModal({
     }, [isOpen, existingLocation]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string; images?: string } = {};
+        const newErrors: { name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string> } = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasText = text.trim().length > 0;
@@ -122,6 +125,15 @@ export function LocationEditorModal({
         if (regexActivationTrigger.trim()) {
             try { new RegExp(regexActivationTrigger); } catch (e) { newErrors.regex = 'Invalid activation regular expression.'; }
         }
+
+        // Validate location binding regex triggers
+        const bindingRegexErrors: Record<string, string> = {};
+        for (const [locId, pattern] of Object.entries(locationBindingRegexTriggers)) {
+            if (pattern.trim()) {
+                try { new RegExp(pattern); } catch (e) { bindingRegexErrors[locId] = 'Invalid regex'; }
+            }
+        }
+        if (Object.keys(bindingRegexErrors).length > 0) newErrors.bindingRegex = bindingRegexErrors;
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -186,8 +198,9 @@ export function LocationEditorModal({
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
-            characterBindings: characterBindings.length > 0 ? characterBindings : [],
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
+            locationBindingRegularExpressionTriggers: Object.keys(locationBindingRegexTriggers).length > 0 ? locationBindingRegexTriggers : undefined,
+            characterBindings: characterBindings.length > 0 ? characterBindings : [],
             globalWeight: globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
             useBase64Encoding,
@@ -304,55 +317,98 @@ export function LocationEditorModal({
                         )}
                     </div>
 
-                    {(
-                        <div className="editor-section">
-                            <span className="editor-section-title">Character Bindings</span>
-                            <div className="context-field-group">
-                                <div className="context-binding-hint">Only these characters can move to this location. Empty = all characters.</div>
-                                <div className="context-character-binding-list">
-                                    {characterBindings.map(id => {
-                                        const char = getCharacterById(id);
-                                        if (!char) return null;
-                                        return (
-                                            <div key={id} className="context-character-binding-chip">
-                                                <span className="context-character-binding-name">{char.name}</span>
-                                                <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                    <option value="" disabled>+ Bind to a character</option>
-                                    {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                </select>
+                    {/* Location Bindings (above Character Bindings) */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Location Bindings</span>
+                        <div className="context-field-group">
+                            <div className="context-binding-hint">Characters can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
+                            <div className="context-character-binding-list">
+                                {locationBindings.map(id => {
+                                    const loc = getLocationById(id);
+                                    if (!loc) return null;
+                                    return (
+                                        <div key={id} className="context-character-binding-chip">
+                                            <span className="context-character-binding-name">{loc.name}</span>
+                                            <button type="button" onClick={() => {
+                                                setLocationBindings(prev => prev.filter(lid => lid !== id));
+                                                setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; });
+                                            }} className="context-character-binding-remove" title="Remove binding">×</button>
+                                        </div>
+                                    );
+                                })}
                             </div>
+                            <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <option value="" disabled>+ Connect from a location</option>
+                                {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                            </select>
                         </div>
-                    )}
 
-                    {(
-                        <div className="editor-section">
-                            <span className="editor-section-title">Location Bindings</span>
-                            <div className="context-field-group">
-                                <div className="context-binding-hint">Characters can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
-                                <div className="context-character-binding-list">
-                                    {locationBindings.map(id => {
-                                        const loc = getLocationById(id);
-                                        if (!loc) return null;
-                                        return (
-                                            <div key={id} className="context-character-binding-chip">
-                                                <span className="context-character-binding-name">{loc.name}</span>
-                                                <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                    <option value="" disabled>+ Connect from a location</option>
-                                    {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                </select>
+                        {/* Conditional Regex Triggers per Location Binding */}
+                        {locationBindings.length > 0 && (
+                            <div className="context-field-group" style={{ marginTop: '8px' }}>
+                                <span className="editor-label editor-label-small">Conditional Access Triggers</span>
+                                <div className="context-binding-hint">Optional regex per binding. If set, the connection only works when recent messages match. Leave empty for unconditional access.</div>
+                                {locationBindings.map(id => {
+                                    const loc = getLocationById(id);
+                                    if (!loc) return null;
+                                    const currentRegex = locationBindingRegexTriggers[id] || '';
+                                    const hasError = errors.bindingRegex?.[id];
+                                    return (
+                                        <div key={id} style={{ marginBottom: '6px' }}>
+                                            <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>{loc.name}</label>
+                                            <input
+                                                type="text"
+                                                value={currentRegex}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setLocationBindingRegexTriggers(prev => {
+                                                        const next = { ...prev };
+                                                        if (val.trim()) next[id] = val;
+                                                        else delete next[id];
+                                                        return next;
+                                                    });
+                                                    if (errors.bindingRegex) setErrors(prev => {
+                                                        const next = { ...prev, bindingRegex: { ...(prev.bindingRegex || {}) } };
+                                                        delete next.bindingRegex![id];
+                                                        if (Object.keys(next.bindingRegex!).length === 0) delete next.bindingRegex;
+                                                        return next;
+                                                    });
+                                                }}
+                                                className={`editor-input context-mono-input ${hasError ? 'error' : ''}`}
+                                                placeholder="Unconditional (no regex)"
+                                                style={{ fontSize: '0.75rem' }}
+                                            />
+                                            {hasError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasError}</div>}
+                                        </div>
+                                    );
+                                })}
                             </div>
+                        )}
+                    </div>
+
+                    {/* Character Bindings (below Location Bindings) */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Character Bindings</span>
+                        <div className="context-field-group">
+                            <div className="context-binding-hint">Only these characters can move to this location. Empty = all characters.</div>
+                            <div className="context-character-binding-list">
+                                {characterBindings.map(id => {
+                                    const char = getCharacterById(id);
+                                    if (!char) return null;
+                                    return (
+                                        <div key={id} className="context-character-binding-chip">
+                                            <span className="context-character-binding-name">{char.name}</span>
+                                            <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <option value="" disabled>+ Bind to a character</option>
+                                {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                            </select>
                         </div>
-                    )}
+                    </div>
 
                     <div className="editor-section">
                         <span className="editor-section-title">Movement Weights</span>
@@ -362,29 +418,27 @@ export function LocationEditorModal({
                             <div className="context-field-hint">Base likelihood for any character to enter this location. Higher = more likely. Used when no character-specific weight is set.</div>
                         </div>
 
-                        {(
-                            <div className="context-field-group">
-                                <span className="editor-label editor-label-small">Character-Specific Weights</span>
-                                <div className="context-binding-hint">Override global weight per character. Characters not listed use the global weight.</div>
-                                <div className="context-character-binding-list">
-                                    {Object.entries(characterWeights).map(([charId, weight]) => {
-                                        const char = getCharacterById(charId);
-                                        if (!char) return null;
-                                        return (
-                                            <div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}>
-                                                <span className="context-character-binding-name">{char.name}</span>
-                                                <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} />
-                                                <button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override">×</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                    <option value="" disabled>+ Add character weight override</option>
-                                    {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                </select>
+                        <div className="context-field-group">
+                            <span className="editor-label editor-label-small">Character-Specific Weights</span>
+                            <div className="context-binding-hint">Override global weight per character. Characters not listed use the global weight.</div>
+                            <div className="context-character-binding-list">
+                                {Object.entries(characterWeights).map(([charId, weight]) => {
+                                    const char = getCharacterById(charId);
+                                    if (!char) return null;
+                                    return (
+                                        <div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}>
+                                            <span className="context-character-binding-name">{char.name}</span>
+                                            <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} />
+                                            <button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override">×</button>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        )}
+                            <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <option value="" disabled>+ Add character weight override</option>
+                                {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                            </select>
+                        </div>
                     </div>
 
                     <div className="editor-section">

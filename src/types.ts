@@ -100,8 +100,9 @@ export interface Location extends ObjectData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
-  characterBindings: string[];
   locationBindings: string[];
+  locationBindingRegularExpressionTriggers?: Record<string, string>
+  characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
   useBase64Encoding: boolean;
@@ -111,8 +112,9 @@ export interface RawLocation extends RawData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
-  characterBindings: string[];
   locationBindings: string[];
+  locationBindingRegularExpressionTriggers?: Record<string, string>
+  characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
   useBase64Encoding: boolean;
