@@ -29,6 +29,11 @@ interface SessionState {
     totalCost: number;
     costWithoutCacheMisses: number;
     numberOfTokens: number;
+
+    // UI preferences (persisted to localStorage)
+    selectedBudgetStrategyId: string | null;
+    defaultCharacterId: string | null;
+    activeExtensionIds: string[];
 }
 
 export const useSessionStore = create<SessionState>()(() => ({
@@ -49,4 +54,18 @@ export const useSessionStore = create<SessionState>()(() => ({
     totalCost: 0,
     costWithoutCacheMisses: 0,
     numberOfTokens: 0,
+
+    // Initialize from localStorage
+    selectedBudgetStrategyId: (() => {
+        try { return localStorage.getItem('loreReactor_selectedBudgetStrategyId'); } catch { return null; }
+    })(),
+    defaultCharacterId: (() => {
+        try { return localStorage.getItem('loreReactor_defaultCharacterId'); } catch { return null; }
+    })(),
+    activeExtensionIds: (() => {
+        try {
+            const saved = localStorage.getItem('loreReactor_activeExtensionIds');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    })(),
 }));

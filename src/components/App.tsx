@@ -81,15 +81,8 @@ function App() {
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
 
-    // ─── Active Extensions ───────────────────────────────────────────
-    const { activeIds: activeExtensionIds } = useActiveExtensions(allExtensions);
-    const [activeExtensionIdsState, setActiveExtensionIdsState] = useState<string[]>(activeExtensionIds);
-    useEffect(() => {
-        const syncActiveExtensionIds = setTimeout(() => {
-            setActiveExtensionIdsState(activeExtensionIds);
-        }, 0);
-        return () => clearTimeout(syncActiveExtensionIds);
-    }, [activeExtensionIds]);
+    // ─── Active Extensions (read directly from hook, no local state sync) ─
+    const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 
     // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
@@ -169,8 +162,8 @@ function App() {
         handleActivateBudgetStrategy, handleActivateProfile,
     } = useEntityToggles({
         interactionData, allCharacters,
-        activeExtensionIds: activeExtensionIdsState,
-        setActiveExtensionIds: setActiveExtensionIdsState,
+        activeExtensionIds,
+        setActiveExtensionIds,
         allProfiles, allBudgetStrategies, selectedBudgetStrategyId,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId, setDefaultCharacterId,
