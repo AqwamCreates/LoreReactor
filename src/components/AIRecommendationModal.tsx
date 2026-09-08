@@ -10,6 +10,30 @@ import './main.css';
 type EntityType = 'Character' | 'Context' | 'Location' | 'Profile' | 'World';
 type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'Profile' | 'World';
 
+const IMAGE_PRIORITY_ITEMS = ['reference', 'character', 'context', 'location'] as const;
+type ImagePriorityItem = typeof IMAGE_PRIORITY_ITEMS[number];
+
+const IMAGE_LABELS: Record<ImagePriorityItem, string> = {
+    reference: '📷 Reference Images',
+    character: '🎭 Character Images',
+    context: '📜 Context Images',
+    location: '📍 Location Images',
+};
+
+const IMAGE_SHORT_LABELS: Record<ImagePriorityItem, string> = {
+    reference: '📷 Reference',
+    character: '🎭 Character',
+    context: '📜 Context',
+    location: '📍 Location',
+};
+
+const IMAGE_PROMPT_DESCRIPTIONS: Record<ImagePriorityItem, string> = {
+    reference: 'Reference images (user-uploaded visual references)',
+    character: 'Character portrait/appearance details',
+    context: 'Context visual descriptions',
+    location: 'Location scenery/atmosphere visuals',
+};
+
 interface GeneratedCharacter {
     name: string;
     description?: string;
@@ -149,16 +173,9 @@ const recommendationEngine = new LanguageModelEngine();
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * When World is selected alongside individual entity types, those individual types
- * are absorbed into the World generation. The schema only shows "world" (which contains
- * arrays of all sub-entity types) rather than duplicating them at the top level.
- */
 function getEffectiveSchemaEntities(selectedEntities: EntityType[]): EntityType[] {
     const hasWorld = selectedEntities.includes('World');
     if (!hasWorld) return selectedEntities;
-
-    // World absorbs Character, Context, Location, Profile — only show "world" in schema
     return ['World'];
 }
 
@@ -525,9 +542,10 @@ export function AIRecommendationModal({
     const [showSchemaPreview, setShowSchemaPreview] = useState(false);
     const [schemaCopied, setSchemaCopied] = useState(false);
 
-    const [injectCharacterImages, setInjectCharacterImages] = useState(true);
-    const [injectContextImages, setInjectContextImages] = useState(true);
-    const [injectLocationImages, setInjectLocationImages] = useState(true);
+    // Image injection priority list — ordered highest to lowest
+    const [imageInjectionPriority, setImageInjectionPriority] = useState<ImagePriorityItem[]>([
+        'reference', 'character', 'context', 'location'
+    ]);
 
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -550,13 +568,17 @@ export function AIRecommendationModal({
     const [isSaving, setIsSaving] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Compute effective schema entities: World absorbs co-selected individual types
     const effectiveSchemaEntities = useMemo(() => getEffectiveSchemaEntities(selectedEntities), [selectedEntities]);
+
+    // Derive injection booleans from priority list
+    const injectCharacterImages = imageInjectionPriority.includes('character');
+    const injectContextImages = imageInjectionPriority.includes('context');
+    const injectLocationImages = imageInjectionPriority.includes('location');
 
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
         setShowSchemaPreview(false); setSchemaCopied(false);
-        setInjectCharacterImages(true); setInjectContextImages(true); setInjectLocationImages(true);
+        setImageInjectionPriority(['reference', 'character', 'context', 'location']);
         setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
         setCharSearch(''); setCtxSearch(''); setLocSearch('');
         setReferenceImages([]);
@@ -594,6 +616,22 @@ export function AIRecommendationModal({
 
     const toggleInOrderedList = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const moveImagePriority = (index: number, direction: -1 | 1) => {
+        setImageInjectionPriority(prev => {
+            const next = [...prev];
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= next.length) return prev;
+            [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+            return next;
+        });
+    };
+
+    const toggleImagePriorityItem = (item: ImagePriorityItem) => {
+        setImageInjectionPriority(prev =>
+            prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]
+        );
     };
 
     const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -683,9 +721,9 @@ export function AIRecommendationModal({
         const effectivePort = port || runtimePort;
         if (!effectivePort && !selectedModel.apiKey) { setError('Model not loaded and has no API key.'); return; }
 
+        // Build image descriptions from reference uploads
         let imageDescriptions = '';
         const hasReferenceImages = referenceImages.length > 0;
-
         if (hasReferenceImages) {
             setIsUploadingImages(true);
             const descriptions = referenceImages.map((f, i) => `[Reference Image ${i + 1}: ${f.name}]`);
@@ -693,29 +731,22 @@ export function AIRecommendationModal({
             setIsUploadingImages(false);
         }
 
+        // Build injection priority instructions from ordered list
         const injectionNotes: string[] = [];
-        if (hasReferenceImages) {
-            injectionNotes.push('- Reference images take HIGHEST priority. When reference images are provided, they override entity-specific images for visual context.');
-        }
-        if (injectCharacterImages) {
-            injectionNotes.push('- Character images: ENABLED. Include character portrait/appearance details in descriptions.');
+        if (imageInjectionPriority.length > 0) {
+            injectionNotes.push('IMAGE INJECTION PRIORITY (highest to lowest):');
+            imageInjectionPriority.forEach((item, i) => {
+                injectionNotes.push(`${i + 1}. ${IMAGE_PROMPT_DESCRIPTIONS[item]}`);
+            });
+            const disabled = IMAGE_PRIORITY_ITEMS.filter(x => !imageInjectionPriority.includes(x));
+            if (disabled.length > 0) {
+                injectionNotes.push(`DISABLED (do NOT generate): ${disabled.map(d => IMAGE_PROMPT_DESCRIPTIONS[d]).join(', ')}`);
+            }
         } else {
-            injectionNotes.push('- Character images: DISABLED. Do NOT generate or reference character portraits.');
-        }
-        if (injectContextImages) {
-            injectionNotes.push('- Context images: ENABLED. Include relevant visual context in descriptions.');
-        } else {
-            injectionNotes.push('- Context images: DISABLED. Do NOT generate or reference context images.');
-        }
-        if (injectLocationImages) {
-            injectionNotes.push('- Location images: ENABLED. Include location scenery/atmosphere visuals in descriptions.');
-        } else {
-            injectionNotes.push('- Location images: DISABLED. Do NOT generate or reference location images.');
+            injectionNotes.push('ALL IMAGE TYPES DISABLED. Do NOT generate or reference any images.');
         }
 
-        const injectionBlock = injectionNotes.length > 0
-            ? `\nIMAGE INJECTION PRIORITY (highest to lowest: Reference > Character > Context > Location):\n${injectionNotes.join('\n')}\n`
-            : '';
+        const injectionBlock = injectionNotes.length > 0 ? `\n${injectionNotes.join('\n')}\n` : '';
 
         setError(null); resetResult(); setIsResultOpen(true); setIsGenerating(true);
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
@@ -880,6 +911,8 @@ export function AIRecommendationModal({
     if (hasWorld) availableTabs.push('World');
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
 
+    const disabledImageItems = IMAGE_PRIORITY_ITEMS.filter(item => !imageInjectionPriority.includes(item));
+
     return (
         <>
             {/* FORM MODAL */}
@@ -965,7 +998,7 @@ export function AIRecommendationModal({
 
                         <div className="editor-section">
                             <span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span>
-                            <div className="entity-ref-hint">Upload images as visual reference. These take highest priority over entity-specific images.</div>
+                            <div className="entity-ref-hint">Upload images as visual reference. Priority is controlled below.</div>
                             <div className="editor-image-grid">
                                 {referenceImagePreviews.map((preview, index) => (
                                     <div key={preview} className="editor-image-square active">
@@ -984,20 +1017,39 @@ export function AIRecommendationModal({
                         </div>
 
                         <div className="editor-section">
-                            <span className="editor-section-title">Image Injection</span>
-                            <div className="entity-ref-hint">Control which entity images are included. Priority: Reference Images &gt; Character &gt; Context &gt; Location.</div>
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={injectCharacterImages} onChange={e => setInjectCharacterImages(e.target.checked)} className="editor-checkbox-input" />
-                                <span>🎭 Inject Character Images</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={injectContextImages} onChange={e => setInjectContextImages(e.target.checked)} className="editor-checkbox-input" />
-                                <span>📜 Inject Context Images</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={injectLocationImages} onChange={e => setInjectLocationImages(e.target.checked)} className="editor-checkbox-input" />
-                                <span>📍 Inject Location Images</span>
-                            </label>
+                            <span className="editor-section-title">Image Injection Priority</span>
+                            <div className="entity-ref-hint">
+                                Reorder to set priority. Higher = takes precedence. Click × to disable an image type entirely. Disabled types are excluded from generation.
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {imageInjectionPriority.map((item, index) => (
+                                    <div key={item} style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '4px 8px', background: 'var(--social-bg)',
+                                        border: '1px solid var(--border)', borderRadius: '4px',
+                                        fontSize: '0.75rem',
+                                    }}>
+                                        <span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span>
+                                        <span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span>
+                                        <button type="button" onClick={() => moveImagePriority(index, -1)} disabled={index === 0}
+                                            className="editor-btn editor-btn-cancel" style={{ padding: '1px 6px', fontSize: '0.65rem', minHeight: '20px', opacity: index === 0 ? 0.3 : 1 }}>↑</button>
+                                        <button type="button" onClick={() => moveImagePriority(index, 1)} disabled={index === imageInjectionPriority.length - 1}
+                                            className="editor-btn editor-btn-cancel" style={{ padding: '1px 6px', fontSize: '0.65rem', minHeight: '20px', opacity: index === imageInjectionPriority.length - 1 ? 0.3 : 1 }}>↓</button>
+                                        <button type="button" onClick={() => toggleImagePriorityItem(item)}
+                                            className="context-character-binding-remove" title="Remove from priority">×</button>
+                                    </div>
+                                ))}
+                            </div>
+                            {disabledImageItems.length > 0 && (
+                                <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {disabledImageItems.map(item => (
+                                        <button key={item} type="button" onClick={() => toggleImagePriorityItem(item)}
+                                            className="editor-btn editor-btn-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>
+                                            + {IMAGE_SHORT_LABELS[item]}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="editor-section">
