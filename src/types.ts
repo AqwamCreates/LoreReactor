@@ -335,7 +335,7 @@ export interface BudgetData extends ObjectData {
   lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
   modelAverageGenerationSpeedMsPerToken: Record<string, number>;
-  modelAverageTimeToFirstToken?: Record<string, number>
+  modelAverageTimeToFirstToken: Record<string, number>
 }
 
 export interface RawBudgetData extends RawData {
@@ -350,7 +350,7 @@ export interface RawBudgetData extends RawData {
   lastResetTimestamp: number
   budgetStrategyId: string
   modelAverageGenerationSpeedMsPerToken?: Record<string, number>;
-  modelAverageTimeToFirstToken?: Record<string, number>
+  modelAverageTimeToFirstToken: Record<string, number>
 }
 
 export type SummarizationStrategyType =
