@@ -169,6 +169,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         actionCase, setActionCase,
         actionPunctuation, setActionPunctuation,
         handleAddAction,
+        handleDeleteAction,
         handleActionInterject,
         getFilteredActions,
         handleAvatarClick,
