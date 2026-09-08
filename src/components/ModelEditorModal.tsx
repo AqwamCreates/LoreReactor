@@ -10,7 +10,6 @@ interface ModelEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (model: LanguageModel) => void;
-    onDelete?: (id: string) => void;
     existingModel?: LanguageModel | null;
     allStopPatterns: StopPattern[];
 }
@@ -140,7 +139,6 @@ export function ModelEditorModal({
     isOpen,
     onClose,
     onSave,
-    onDelete,
     existingModel,
     allStopPatterns,
 }: ModelEditorModalProps) {

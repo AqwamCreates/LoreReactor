@@ -1,5 +1,6 @@
 // src/App.tsx
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type React from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -13,7 +14,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
+import { saveRawInteractionData } from '../hooks/storage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -90,7 +91,7 @@ function App() {
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const modals = useModalVisibility();
-    const { closeAll: _closeAll, ...modalVisibility } = modals;
+    const { ...modalVisibility } = modals;
     const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
     const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER));
     const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY));
@@ -159,7 +160,7 @@ function App() {
         handleSetChatProtagonist, handleToggleExtension,
         handleActivateBudgetStrategy, handleActivateProfile,
     } = useEntityToggles({
-        interactionData, allCharacters, allContexts, allExtensions,
+        interactionData, allCharacters, allExtensions,
         allProfiles, allBudgetStrategies, selectedBudgetStrategyId,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId, setDefaultCharacterId,

@@ -8,7 +8,7 @@ interface ModalState {
     toggle: () => void;
 }
 
-function createModal(initial = false): [ModalState, React.Dispatch<React.SetStateAction<boolean>>] {
+export function useModal(initial = false): [ModalState, React.Dispatch<React.SetStateAction<boolean>>] {
     const [isOpen, setIsOpen] = useState(initial);
 
     const state: ModalState = {
