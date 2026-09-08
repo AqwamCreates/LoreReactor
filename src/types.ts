@@ -165,7 +165,7 @@ export interface Character extends ObjectData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
-  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
+  chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -193,7 +193,7 @@ export interface RawCharacter extends RawData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
-  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
+  chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -210,10 +210,12 @@ export interface RawCharacter extends RawData {
   memories: Record<string, string[]>;
 }
 
-export interface InteractionMessage {
+// ─── Message Types (Discriminated Union) ─────────────────────────────
+
+interface MessageBase {
   id: string;
   character: Character;
-  remainingChatStamina: number | undefined;
+  remainingChatStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
@@ -222,17 +224,26 @@ export interface InteractionMessage {
   lastUpdatedTimestamp: number;
 }
 
-export interface ChatMessage extends InteractionMessage {
+export interface InteractionMessage extends MessageBase {
+  kind: 'interaction';
+}
+
+export interface ChatMessage extends MessageBase {
+  kind: 'chat';
   textContent: string;
-  files: string[] // Base-64 encoding due to files can move around and it might not get detected. Generally for the protagonist to attach their files.
+  files?: string[];
   isPartial?: boolean;
   textContentSummary?: string;
   kvCachePath?: string;
 }
 
-export interface RawInteractionMessage {
+export type HistoryMessage = InteractionMessage | ChatMessage;
+
+// ─── Raw Message Types (Discriminated Union) ─────────────────────────
+
+interface RawMessageBase {
   characterId: string;
-  remainingChatStamina: number | undefined;
+  remainingChatStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
@@ -241,20 +252,29 @@ export interface RawInteractionMessage {
   lastUpdatedTimestamp: number;
 }
 
-export interface RawChatMessage extends RawInteractionMessage {
+export interface RawInteractionMessage extends RawMessageBase {
+  kind: 'interaction';
+}
+
+export interface RawChatMessage extends RawMessageBase {
+  kind: 'chat';
   textContent: string;
-  files: string[] // Base-64 encoding due to files can move around and it might not get detected. Generally for the protagonist to attach their files.
+  files?: string[];
   isPartial?: boolean;
   textContentSummary?: string;
   kvCachePath?: string;
 }
+
+export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
+
+// ─── Interaction Data ────────────────────────────────────────────────
 
 export interface InteractionData extends ObjectData {
   protagonist: Character;
   participants: Character[];
   contexts: Context[];
   locations: Location[];
-  interactionHistory: (InteractionMessage | ChatMessage)[];
+  interactionHistory: HistoryMessage[];
   numberOfMessages?: number;
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
@@ -281,7 +301,7 @@ export interface Extension extends ObjectData {
 export interface BudgetStrategy extends ObjectData {
   onlineModels: LanguageModel[];
   localModels: LanguageModel[];
-  modelCostTiers: Record<string, number> // The term "cost" can be all kind of things like price, quality and latency.
+  modelCostTiers: Record<string, number>
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
@@ -289,13 +309,12 @@ export interface BudgetStrategy extends ObjectData {
   fallbackOnQualityThreshold: number;
   fallbackOnTimeoutInSeconds: number;
   maximumBudget: number;
-
 }
 
 export interface RawBudgetStrategy extends RawData {
   onlineModelIds: string[];
   localModelIds: string[];
-  modelCostTiers: Record<string, number> // The term "cost" can be all kind of things like price, quality and latency.
+  modelCostTiers: Record<string, number>
   switchProbability: number;
   switchOnContextSize: number;
   switchOnComplexityScore: number;
@@ -305,29 +324,25 @@ export interface RawBudgetStrategy extends RawData {
   maximumBudget: number;
 }
 
-export interface BudgetData extends ObjectData{
-
+export interface BudgetData extends ObjectData {
   budgetSpent: number
-  resetDuration: number // User defined duration. It could be hourly, daily, weekly or monthly. The user can also add custom durations.
+  resetDuration: number
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
-
 }
 
-export interface RawBudgetData extends RawData{
-
+export interface RawBudgetData extends RawData {
   id?: string;
   budgetSpent: number
-  resetDuration: number // User defined duration. It could be hourly, daily, weekly or monthly. The user can also add custom durations.
+  resetDuration: number
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   lastResetTimestamp: number
   budgetStrategyId: string
-
 }
 
 export type SummarizationStrategyType =
@@ -402,7 +417,7 @@ export interface Profile extends ObjectData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
-  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
+  chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -436,7 +451,7 @@ export interface RawProfile extends RawData {
   chatProbability: number;
   maximumChatStamina: number;
   nameSensitivity: number;
-  chatImpatienceSensitivity: number; // 0 = disabled, >0 = impatience multiplier per turn of silence
+  chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;

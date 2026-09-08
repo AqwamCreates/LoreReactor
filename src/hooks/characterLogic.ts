@@ -88,7 +88,7 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     const latestMessage = history[history.length - 1];
     if (latestMessage.character.id === character.id) return 1;
 
-    if (!isChatMessage(latestMessage)) return 1;
+    if (latestMessage.kind === "interaction") return 1;
     const textLower = latestMessage.textContent.toLowerCase();
     const fullNameLower = character.name.toLowerCase().trim();
 
@@ -153,7 +153,7 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
 }
 
 export function consumeChatStamina(interactionMessage: InteractionMessage, amountOfChatStaminaConsumed: number) {
-    if (!isChatMessage(interactionMessage) || interactionMessage.remainingChatStamina === undefined) return;
+    if ((interactionMessage.kind === "interaction") || interactionMessage.remainingChatStamina === undefined) return;
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 

@@ -34,6 +34,7 @@ import { useCinematicMode } from '../hooks/useCinematicMode';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useModalVisibility } from '../hooks/useModalVisibility';
 import { useActiveExtensions } from '../hooks/useActiveExtensions';
+import { useSessionStore } from '../store/useSessionStore';
 import { MessageBubble } from './MessageBubble';
 import { StreamingIndicators } from './StreamingIndicators';
 import { ActionMenu } from './ActionMenu';
@@ -81,8 +82,24 @@ function App() {
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
 
-    // ─── Active Extensions (read directly from hook, no local state sync) ─
+    // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
+
+    // ─── Store-backed UI preferences ─────────────────────────────────
+    const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
+    const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
+
+    const setDefaultCharacterId = useCallback((id: string | null) => {
+        useSessionStore.setState({ defaultCharacterId: id });
+        if (id) localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, id);
+        else localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
+    }, []);
+
+    const setSelectedBudgetStrategyId = useCallback((id: string | null) => {
+        useSessionStore.setState({ selectedBudgetStrategyId: id });
+        if (id) localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, id);
+        else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
+    }, []);
 
     // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
@@ -96,8 +113,6 @@ function App() {
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { modals, closeAll } = useModalVisibility();
     const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
-    const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER));
-    const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY));
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
@@ -212,8 +227,6 @@ function App() {
 
     useEffect(() => { void selectedModelId; void runningModels; new LanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
     useEffect(() => { if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id); else localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT); }, [interactionData?.id]);
-    useEffect(() => { if (selectedBudgetStrategyId) localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, selectedBudgetStrategyId); else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY); }, [selectedBudgetStrategyId]);
-    useEffect(() => { if (defaultCharacterId) localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, defaultCharacterId); else localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER); }, [defaultCharacterId]);
     useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
 
     useEffect(() => {

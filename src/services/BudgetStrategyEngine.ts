@@ -434,7 +434,7 @@ export class BudgetStrategyEngine {
 
         let numberOfTokens = 0;
         for (const m of interactionData.interactionHistory) {
-            if (isChatMessage(m)) numberOfTokens += await engine.countTokens(m.textContent);
+            if (m.kind === "chat") numberOfTokens += await engine.countTokens(m.textContent);
         }
 
         if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
