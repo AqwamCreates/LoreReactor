@@ -14,6 +14,21 @@ interface ChatStatisticsBarProps {
     timeUntilReset?: number | null;
 }
 
+function formatSessionDuration(ms: number): string {
+    if (!ms || ms <= 0) return '—';
+    const totalSeconds = Math.round(ms / 1000);
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) return seconds > 0 ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
+    const totalHours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (totalHours < 24) return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     maximumNumberOfTokens = 65536,
     maximumNumberOfContextTokens = 0,
@@ -33,6 +48,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const numberOfRequests = useSessionStore(s => s.numberOfRequests);
     const totalCost = useSessionStore(s => s.totalCost);
     const costWithoutCacheMisses = useSessionStore(s => s.costWithoutCacheMisses);
+    const sessionStartTimestamp = useSessionStore(s => s.sessionStartTimestamp);
 
     const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
     const percentage = Math.min(100, Math.round((numberOfTokens / safeMax) * 100));
@@ -84,6 +100,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
         const remainHours = hours % 24;
         return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
     };
+
+    // Compute live session duration
+    const sessionDurationMs = sessionStartTimestamp ? Date.now() - sessionStartTimestamp : 0;
 
     return (
         <div
@@ -183,6 +202,10 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
                             <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(2) : '00'} tokens</span>
+                        </div>
+                        <div className="chat-stat-detail-row">
+                            <span className="chat-stat-detail-label">Session Duration:</span>
+                            <span className="chat-stat-detail-value">{formatSessionDuration(sessionDurationMs)}</span>
                         </div>
                     </div>
 
