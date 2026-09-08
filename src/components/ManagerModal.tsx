@@ -20,6 +20,8 @@ interface ManagerModalProps<T> {
     onSpecialAction?: (item: T) => void;
     specialActionTooltip?: (item: T) => string;
     activeSpecialActionId?: string;
+    /** Additional IDs that should show a secondary indicator (e.g., models in active strategy) */
+    secondaryActiveIds?: Set<string>;
 }
 
 function getSingularNoun(plural: string): string {
@@ -43,6 +45,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
     specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
+    secondaryActiveIds,
 }: ManagerModalProps<T>) {
     const [searchQuery, setSearchQuery] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -154,12 +157,13 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         <ul className="manager-list">
                             {filteredItems.map(item => {
                                 const isActive = activeSpecialActionId === item.id;
+                                const isSecondaryActive = secondaryActiveIds?.has(item.id) ?? false;
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
                                 const orderNumber = currentOrderIds.indexOf(item.id) + 1;
                                 const isConfirmingDelete = activeConfirmDeleteId === item.id;
 
                                 return (
-                                    <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''}`}>
+                                    <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
                                         <div
                                             className={`manager-item-main ${onSelect ? 'manager-item-main-clickable' : ''}`}
                                             onClick={() => onSelect?.(item)}
@@ -186,7 +190,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                     onClick={e => { e.stopPropagation(); onSpecialAction(item); }}
                                                     className="toolbar-btn special-action-btn"
                                                     title={specialActionTooltip?.(item) || "Action"}
-                                                >{isActive ? '⭐' : '☆'}</button>
+                                                >{isActive ? '⭐' : isSecondaryActive ? '★' : '☆'}</button>
                                             )}
 
                                             {onDelete && (

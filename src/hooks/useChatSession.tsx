@@ -35,7 +35,6 @@ export function useChatSession() {
     const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
     const selectedModel = useSessionStore(s => s.selectedModel);
-    const runningModelsMap = useSessionStore(s => s.runningModels);
     const numberOfCacheInvalidations = useSessionStore(s => s.numberOfCacheInvalidations);
     const numberOfRequests = useSessionStore(s => s.numberOfRequests);
     const totalCost = useSessionStore(s => s.totalCost);
@@ -165,9 +164,9 @@ export function useChatSession() {
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
                 setRunningModelsMap(status);
-            } catch { }
+            } catch (e) { addToast(`Failed to fetch models status: ${e}`); }
         })();
-    }, [setRunningModelsMap]);
+    }, [setRunningModelsMap, addToast]);
 
     useEffect(() => {
         if (!interactionData) return;

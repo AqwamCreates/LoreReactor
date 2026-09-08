@@ -19,6 +19,7 @@ import { DataImportModal } from './DataImportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
+import { useMemo } from 'react';
 
 interface ModalVisibility {
     isOpen: boolean;
@@ -225,35 +226,50 @@ export function AppModals({
             )}
 
             {/* Models */}
-            {modals.modelList.isOpen && (
-                <ManagerModal
-                    title="Models"
-                    items={allModels}
-                    isOpen={modals.modelList.isOpen}
-                    onClose={modals.modelList.close}
-                    onSelect={(m: LanguageModel) => modelModal.open(m)}
-                    onDelete={onDeleteModel}
-                    onCreateNew={() => modelModal.open()}
-                    renderSubtext={(m: LanguageModel) => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)}
-                    emptyMessage="No models available."
-                    actionLabel="Delete"
-                    orderedListMode={false}
-                    activeSpecialActionId={selectedModelId || undefined}
-                    specialActionIcon="★"
-                    onSpecialAction={(m: LanguageModel) => onToggleModelLoad(m.id)}
-                    specialActionTooltip={(m: LanguageModel) => {
-                        const ms = runningModels[m.id];
-                        const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend);
-                        if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect';
-                        if (isCloud) return '☁️ Cloud Model — Click to Select';
-                        if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect';
-                        if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model';
-                        if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...';
-                        if (selectedModelId === m.id) return '✓ Already Selected — Click to Load';
-                        return '▶ Load & Select Model';
-                    }}
-                />
-            )}
+            {useMemo(() => {
+                if (!modals.modelList.isOpen) return null;
+                
+                const strategyModelIds = new Set<string>();
+                if (activeStrategy) {
+                    for (const m of activeStrategy.onlineModels) strategyModelIds.add(m.id);
+                    for (const m of activeStrategy.localModels) strategyModelIds.add(m.id);
+                }
+
+                return (
+                    <ManagerModal
+                        title="Models"
+                        items={allModels}
+                        isOpen={modals.modelList.isOpen}
+                        onClose={modals.modelList.close}
+                        onSelect={(m: LanguageModel) => modelModal.open(m)}
+                        onDelete={onDeleteModel}
+                        onCreateNew={() => modelModal.open()}
+                        renderSubtext={(m: LanguageModel) => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)}
+                        emptyMessage="No models available."
+                        actionLabel="Delete"
+                        orderedListMode={false}
+                        activeSpecialActionId={selectedModelId || undefined}
+                        secondaryActiveIds={strategyModelIds}
+                        specialActionIcon="★"
+                        onSpecialAction={(m: LanguageModel) => onToggleModelLoad(m.id)}
+                        specialActionTooltip={(m: LanguageModel) => {
+                            const ms = runningModels[m.id];
+                            const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend);
+                            const inStrategy = strategyModelIds.has(m.id);
+                            if (inStrategy && activeStrategy && selectedModelId !== m.id) {
+                                return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
+                            }
+                            if (isCloud && selectedModelId === m.id) return '☁️ Cloud Model — Click to Deselect';
+                            if (isCloud) return '☁️ Cloud Model — Click to Select';
+                            if (ms?.isRunning && ms?.isIdle && selectedModelId === m.id) return '⏹ Stop & Deselect';
+                            if (ms?.isRunning && ms?.isIdle) return '⏹ Stop Model';
+                            if (ms?.isRunning && !ms?.isIdle) return '⏳ Loading...';
+                            if (selectedModelId === m.id) return '✓ Already Selected — Click to Load';
+                            return '▶ Load & Select Model';
+                        }}
+                    />
+                );
+            }, [modals.modelList.isOpen, modals.modelList.close, allModels, modelModal, onDeleteModel, runningModels, selectedModelId, activeStrategy, onToggleModelLoad])}
             {modelModal.isOpen && (
                 <ModelEditorModal
                     isOpen={modelModal.isOpen}
