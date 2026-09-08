@@ -2,7 +2,7 @@
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
-import type { searchEngine } from '../types';
+import type { linkFetchMode, searchEngine } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
