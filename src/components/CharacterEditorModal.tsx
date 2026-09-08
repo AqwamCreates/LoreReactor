@@ -116,7 +116,10 @@ export function CharacterEditorModal({
     const getModelContext = useCallback((): LanguageModelContext | undefined => {
         if (!selectedModel) return undefined;
         const runtimePort = selectedModel.id && runningModels?.[selectedModel.id]?.port;
-        return { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: (selectedModel as any).modelPath || (selectedModel as any).parameters?.modelPath, runtimePort };
+        const modelPathFromProperty = (selectedModel as { modelPath?: string }).modelPath;
+        const modelPathFromParameters = (selectedModel as { parameters?: { modelPath?: string } }).parameters?.modelPath;
+        const modelPath = modelPathFromProperty || modelPathFromParameters;
+        return { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath, runtimePort };
     }, [selectedModel, runningModels]);
 
     const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
@@ -134,76 +137,75 @@ export function CharacterEditorModal({
     useEffect(() => { return () => { Object.values(tokenCountTimeoutsRef.current).forEach(clearTimeout); }; }, []);
 
     useEffect(() => {
-        if (isOpen) {
-            setSubmitError(null);
-            setAutoDetected({ iw: null, cp: null, ms: null });
-            setShowAdvancedSettings(false);
-            setShowMemoryManager(false);
-            setShowImageEditor(false);
+        if (!isOpen) return;
+        
+        setSubmitError(null);
+        setAutoDetected({ iw: null, cp: null, ms: null });
+        setShowAdvancedSettings(false);
+        setShowMemoryManager(false);
+        setShowImageEditor(false);
 
-            if (existingCharacter) {
-                setName(existingCharacter.name || '');
-                setDescription(existingCharacter.description || '');
-                setSystemPrompt(existingCharacter.systemPrompt || '');
-                setThinkPrompt(existingCharacter.thinkPrompt || '');
-                setAppearancePrompt(existingCharacter.appearancePrompt || '');
-                setDialoguePrompt(existingCharacter.dialoguePrompt || '');
-                setFirstMessage('');
+        if (existingCharacter) {
+            setName(existingCharacter.name || '');
+            setDescription(existingCharacter.description || '');
+            setSystemPrompt(existingCharacter.systemPrompt || '');
+            setThinkPrompt(existingCharacter.thinkPrompt || '');
+            setAppearancePrompt(existingCharacter.appearancePrompt || '');
+            setDialoguePrompt(existingCharacter.dialoguePrompt || '');
+            setFirstMessage('');
 
-                const imgs = existingCharacter.images ?? {};
-                setEmotionImages(imgs);
-                const neutralFilename = imgs['neutral'];
-                setImagePreview(neutralFilename ? `/user_data/character_images/${existingCharacter.id}/${neutralFilename}` : null);
-                setImageFile(null);
-                setPendingCharacterId(null);
+            const imgs = existingCharacter.images ?? {};
+            setEmotionImages(imgs);
+            const neutralFilename = imgs.neutral;
+            setImagePreview(neutralFilename ? `/user_data/character_images/${existingCharacter.id}/${neutralFilename}` : null);
+            setImageFile(null);
+            setPendingCharacterId(null);
 
-                setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
-                setSelectedStopPatternIds(existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || []);
-                setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
-                setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
-                setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
-                setNameSensitivityStr(String(existingCharacter.nameSensitivity ?? -1));
-                setChatImpatienceSensitivityStr(String(existingCharacter.chatImpatienceSensitivity ?? -1));
-                setSkipProbabilityStr(String(existingCharacter.skipProbability ?? -1));
-                setMemoryRetentionWeightStr(String(existingCharacter.memoryRetentionWeight ?? -1));
-                setContextSensitivityStr(String(existingCharacter.contextSensitivity ?? -1));
-                setExistingVoiceName(existingCharacter.voice || '');
-                setVoiceName(existingCharacter.voice || '');
-                setVoiceFile(null);
-                setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
-                setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
-                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
-                setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
-                setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
-                setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
-                setEnableWebSearch(existingCharacter.enableWebSearch ?? false);
-                setEnableCalculator(existingCharacter.enableCalculator ?? false);
-                setMemories(existingCharacter.memories ?? {});
-                countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
-                countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
-                countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
-                countFieldTokens('dialoguePrompt', existingCharacter.dialoguePrompt || '');
-            } else {
-                setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setFirstMessage('');
-                setImageFile(null); setImagePreview(null);
-                setEmotionImages({});
-                setPendingCharacterId(uuidv4());
-                setSelectedSamplerId(allSamplers[0]?.id || ''); setSelectedStopPatternIds([]);
-                setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
-                setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
-                setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
-                setDoNotInjectCharacterImage(false);
-                setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
-                setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
-                setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-                setEnableMemoryWriting(false); setEnableMemoryReading(false);
-                setEnableWebSearch(false); setEnableCalculator(false);
-                setMemories({});
-                setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
-            }
+            setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
+            setSelectedStopPatternIds(existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || []);
+            setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
+            setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
+            setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
+            setNameSensitivityStr(String(existingCharacter.nameSensitivity ?? -1));
+            setChatImpatienceSensitivityStr(String(existingCharacter.chatImpatienceSensitivity ?? -1));
+            setSkipProbabilityStr(String(existingCharacter.skipProbability ?? -1));
+            setMemoryRetentionWeightStr(String(existingCharacter.memoryRetentionWeight ?? -1));
+            setContextSensitivityStr(String(existingCharacter.contextSensitivity ?? -1));
+            setExistingVoiceName(existingCharacter.voice || '');
+            setVoiceName(existingCharacter.voice || '');
+            setVoiceFile(null);
+            setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
+            setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
+            setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
+            setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
+            setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
+            setEnableWebSearch(existingCharacter.enableWebSearch ?? false);
+            setEnableCalculator(existingCharacter.enableCalculator ?? false);
+            setMemories(existingCharacter.memories ?? {});
+            countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
+            countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
+            countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
+            countFieldTokens('dialoguePrompt', existingCharacter.dialoguePrompt || '');
+        } else {
+            setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setFirstMessage('');
+            setImageFile(null); setImagePreview(null);
+            setEmotionImages({});
+            setPendingCharacterId(uuidv4());
+            setSelectedSamplerId(allSamplers[0]?.id || ''); setSelectedStopPatternIds([]);
+            setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1'); setNameSensitivityStr('-1');
+            setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
+            setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
+            setDoNotInjectCharacterImage(false);
+            setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
+            setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
+            setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setEnableMemoryWriting(false); setEnableMemoryReading(false);
+            setEnableWebSearch(false); setEnableCalculator(false);
+            setMemories({});
+            setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, existingCharacter, allSamplers]);
+    }, [isOpen, existingCharacter, allSamplers, countFieldTokens]);
 
     const handleSystemPromptBlur = () => {
         const currentIW = Number.parseFloat(initiativeWeightStr);
@@ -245,7 +247,7 @@ export function CharacterEditorModal({
     const handleRemoveImage = (e: React.MouseEvent) => {
         e.stopPropagation();
         setImageFile(null); setImagePreview(null);
-        setEmotionImages(prev => { const next = { ...prev }; delete next['neutral']; return next; });
+        setEmotionImages(prev => { const { ...next } = prev; return next; });
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
     const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,8 +333,14 @@ export function CharacterEditorModal({
         const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
         const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
 
-        let finalIW: number, finalCP: number, finalMS: number, finalNS: number;
-        let finalCIS: number, finalSP: number, finalMRW: number, finalCRS: number;
+        let finalIW: number;
+        let finalCP: number;
+        let finalMS: number;
+        let finalNS: number;
+        let finalCIS: number;
+        let finalSP: number;
+        let finalMRW: number;
+        let finalCRS: number;
 
         if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);

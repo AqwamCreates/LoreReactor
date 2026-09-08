@@ -32,7 +32,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
         addToast(`Running ${triggered.strategyType}...`, 'info');
 
         const port = model?.id ? runningModels[model.id]?.port : undefined;
-        const effectivePort = port || (model?.parameters as any)?._runtimePort;
+        const effectivePort = port || (model?.parameters as Record<string, unknown>)?._runtimePort;
         const lmCtx: LanguageModelContext = {
             apiKey: model?.apiKey,
             backend: model?.backend,

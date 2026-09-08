@@ -57,7 +57,8 @@ function computeComplexityScore(interactionData: InteractionData): number {
 }
 
 function isQuotaError(e: unknown): boolean {
-    const status = (e as any)?.status ?? (e as any)?.statusCode;
+    const obj = e as Record<string, unknown>;
+    const status = obj?.status ?? obj?.statusCode;
     const message = ((e as Error)?.message || '').toLowerCase();
     return status === 429 || status === 403 || status === 503 ||
         message.includes('rate limit') || message.includes('usage limit') ||
@@ -134,12 +135,12 @@ export class BudgetStrategyEngine {
 
     /** Gets the average generation speed (ms/token) for a model. Returns Infinity if no data. */
     private getModelSpeed(modelId: string): number {
-        return this.budgetData.modelAverageGenerationSpeedMsPerToken?.[modelId] ?? Infinity;
+        return this.budgetData.modelAverageGenerationSpeedMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
     /** Gets the average TTFT (ms) for a model. Returns Infinity if no data. */
     private getModelTTFT(modelId: string): number {
-        return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Infinity;
+        return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
     /** Updates the rolling average generation speed for a model using configurable EMA alpha. */
@@ -184,7 +185,7 @@ export class BudgetStrategyEngine {
     private buildModelContext(model: LanguageModel): LanguageModelContext {
         const isCloud = !!model.apiKey && model.backend;
         const running = this.runningModels[model.id];
-        const runtimePort = isCloud ? undefined : (running?.port || (model.parameters as any)?._runtimePort);
+        const runtimePort = isCloud ? undefined : (running?.port || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined);
 
         return {
             apiKey: model.apiKey,
@@ -198,7 +199,7 @@ export class BudgetStrategyEngine {
         const isCloud = !!model.apiKey && model.backend;
         if (isCloud) return true;
         const running = this.runningModels[model.id];
-        return !!(running?.port || (model.parameters as any)?._runtimePort);
+        return !!(running?.port || (model.parameters as Record<string, unknown>)?._runtimePort);
     }
 
     private async ensureModelLoaded(model: LanguageModel): Promise<boolean> {
@@ -244,7 +245,8 @@ export class BudgetStrategyEngine {
             const tier = this.getEffectiveTier(model);
             if (maxTier !== undefined && this.getTier(model) > maxTier) continue;
             if (!tierGroups.has(tier)) tierGroups.set(tier, []);
-            tierGroups.get(tier)!.push(model);
+            const tierModels = tierGroups.get(tier);
+            if (tierModels) tierModels.push(model);
         }
 
         if (tierGroups.size === 0) return null;
@@ -252,7 +254,8 @@ export class BudgetStrategyEngine {
         const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
 
         for (const tier of sortedTiers) {
-            const candidates = tierGroups.get(tier)!;
+            const candidates = tierGroups.get(tier);
+            if (!candidates) continue;
             candidates.sort((a, b) => {
                 // 1. Cache warmth
                 const aWarm = this.isCacheWarm(a.id) ? 1 : 0;

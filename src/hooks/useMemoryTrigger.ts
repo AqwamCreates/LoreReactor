@@ -30,7 +30,7 @@ export function useMemoryTrigger() {
         if (!model) return;
         const models = useSessionStore.getState().runningModels;
         const port = model?.id ? models[model.id]?.port : undefined;
-        const ep = port || (model?.parameters as any)?._runtimePort;
+        const ep = port || (model?.parameters as Record<string, unknown>)?._runtimePort;
         if (!ep && !model?.apiKey) return;
         const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 

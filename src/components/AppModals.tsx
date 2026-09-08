@@ -407,7 +407,7 @@ export function AppModals({
                     emptyMessage="No extensions available."
                     actionLabel="Delete"
                     orderedListMode={true}
-                    currentOrderIds={(interactionData as any)?.extensions?.map((e: any) => e.id) || []}
+                    currentOrderIds={(interactionData as InteractionData)?.extensions?.map((e: Extension) => e.id) || []}
                     onToggleOrder={onToggleExtension}
                 />
             )}

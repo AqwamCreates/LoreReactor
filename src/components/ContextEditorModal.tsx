@@ -372,7 +372,7 @@ export function ContextEditorModal({
             includeLinkImages: hasWebContent ? includeLinkImages : undefined,
             maximumLinkDepth: hasWebContent ? linkMaxDepth : undefined,
             limitLinksToSubdirectory: hasWebContent ? (limitLinksToSubdirectory ?? false) : false,
-            linkFetchMode: hasWebContent ? (linkFetchMode as any) : undefined,
+            linkFetchMode: hasWebContent ? linkFetchMode : undefined,
             fetchCacheTimeToLiveMs: hasWebContent ? fetchCacheTimeToLiveMs : undefined,
 
             searchTerms: hasSearchTerms ? [...searchTerms] : undefined,

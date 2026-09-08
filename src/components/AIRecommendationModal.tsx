@@ -274,7 +274,8 @@ export function AIRecommendationModal({
         if (!selectedModel) { setError('No model selected. Open Models to load one first.'); return; }
 
         const port = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
-        const effectivePort = port || (selectedModel.parameters as any)?._runtimePort;
+        const runtimePort = (selectedModel.parameters && typeof selectedModel.parameters === 'object' && '_runtimePort' in selectedModel.parameters) ? (selectedModel.parameters as Record<string, number>)._runtimePort : undefined;
+        const effectivePort = port || runtimePort;
         if (!effectivePort && !selectedModel.apiKey) { setError('Selected model is not loaded and has no API key.'); return; }
 
         // Process reference images into prompt descriptions
@@ -287,7 +288,7 @@ export function AIRecommendationModal({
                     const file = referenceImages[i];
                     descriptions.push(`[Reference Image ${i + 1}: ${file.name} — use as visual reference when generating content]`);
                 }
-                imageDescriptions = '\nREFERENCE IMAGES:\n' + descriptions.join('\n') + '\nUse these images as visual reference when generating content.\n';
+                imageDescriptions = `\nREFERENCE IMAGES:\n${descriptions.join('\n')}\nUse these images as visual reference when generating content.\n`;
             } catch (e) {
                 setError('Failed to process reference images.');
                 setIsUploadingImages(false);
@@ -315,7 +316,7 @@ export function AIRecommendationModal({
             const modelContext = {
                 apiKey: selectedModel.apiKey,
                 backend: selectedModel.backend,
-                modelPath: selectedModel.model || (selectedModel as any).modelPath || (selectedModel.parameters as any)?.modelPath,
+                modelPath: (selectedModel.model || selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined,
                 runtimePort: effectivePort,
             };
 
@@ -502,7 +503,7 @@ export function AIRecommendationModal({
                             </div>
                             <div className="editor-image-grid">
                                 {referenceImagePreviews.map((preview, index) => (
-                                    <div key={index} className="editor-image-square active">
+                                    <div key={preview} className="editor-image-square active">
                                         <img src={preview} alt={`Reference ${index + 1}`} />
                                         <button type="button" onClick={() => handleRemoveReferenceImage(index)} className="editor-image-remove-btn">×</button>
                                     </div>
