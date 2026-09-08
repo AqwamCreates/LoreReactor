@@ -568,8 +568,8 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     const memories = await hydrateMemories(rawCharacter.memories);
 
     const images: Record<string, string> = rawCharacter.images ?? {};
-    if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
-      images.neutral = (rawCharacter as any).image;
+    if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
+      images.neutral = rawCharacter.image;
     }
 
     return {
