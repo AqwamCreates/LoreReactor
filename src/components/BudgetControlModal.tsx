@@ -389,11 +389,11 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{aggregateStats.totalUses > 0 ? `${Math.round((1 - aggregateStats.overallReliability) * 100)}%` : '—'}</span>
                                             </div>
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Avg Speed</span>
+                                                <span className="budget-stat-label">Average Speed</span>
                                                 <span className="budget-stat-value">{aggregateStats.avgSpeed > 0 ? formatMs(aggregateStats.avgSpeed) + '/tok' : '—'}</span>
                                             </div>
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Avg TTFT</span>
+                                                <span className="budget-stat-label">Average TTFT</span>
                                                 <span className="budget-stat-value">{aggregateStats.avgTtft > 0 ? formatMs(aggregateStats.avgTtft) : '—'}</span>
                                             </div>
                                             <div className="budget-stat-row">
