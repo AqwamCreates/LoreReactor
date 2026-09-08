@@ -185,15 +185,15 @@ export const MessageBubble = React.memo(function MessageBubble({
                 </div>
             </div>
 
-            {beforeBranch && (
-                <div className="branch-separator-line clickable" style={{ cursor: 'pointer' }}>
-                    <div className="branch-separator-content">
-                        <span className="branch-separator-icon">🌿</span>
-                        <span className="branch-separator-text">Conversation Branches Here</span>
-                        <span className="branch-separator-icon">🌿</span>
-                    </div>
+        {beforeBranch && (
+            <div className="branch-separator-line clickable" onClick={onNavigateToBranchSource} title="Click to go back to source chat" style={{ cursor: 'pointer' }}>
+                <div className="branch-separator-content">
+                    <span className="branch-separator-icon">🌿</span>
+                    <span className="branch-separator-text">Conversation Branches Here</span>
+                    <span className="branch-separator-icon">🌿</span>
                 </div>
-            )}
+            </div>
+        )}
         </React.Fragment>
     );
 });

@@ -1,12 +1,15 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, Extension, Profile, BudgetStrategy, InteractionData } from '../types';
+import type { Character, Context, Location, Profile, BudgetStrategy, InteractionData } from '../types';
 import { saveRawInteractionData, loadRawContext, loadRawLocation } from './storage';
+
+const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
 
 interface UseEntityTogglesOptions {
     interactionData: InteractionData | null;
     allCharacters: Character[];
-    allExtensions: Extension[];
+    activeExtensionIds: string[];
+    setActiveExtensionIds: (ids: string[]) => void;
     allProfiles: Profile[];
     allBudgetStrategies: BudgetStrategy[];
     setInteractionData: (data: InteractionData) => void;
@@ -22,6 +25,7 @@ interface UseEntityTogglesOptions {
 export function useEntityToggles(options: UseEntityTogglesOptions) {
     const {
         interactionData, allCharacters,
+        activeExtensionIds, setActiveExtensionIds,
         allProfiles, allBudgetStrategies,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,
@@ -85,22 +89,19 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         addToast('Protagonist switched.', 'info');
     }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, setDefaultCharacterId, loadFullCharacter, addToast]);
 
-    const handleToggleExtension = useCallback(async (extId: string) => {
-        if (!interactionData) return;
-        // Extensions are global — read/write from localStorage directly
-        const saved = localStorage.getItem('loreReactor_activeExtensionIds');
-        const currentIds: string[] = saved ? JSON.parse(saved) : [];
-        const nextIds = currentIds.includes(extId)
-            ? currentIds.filter(id => id !== extId)
-            : [...currentIds, extId];
-        localStorage.setItem('loreReactor_activeExtensionIds', JSON.stringify(nextIds));
+    const handleToggleExtension = useCallback((extId: string) => {
+        const nextIds = activeExtensionIds.includes(extId)
+            ? activeExtensionIds.filter(id => id !== extId)
+            : [...activeExtensionIds, extId];
+        setActiveExtensionIds(nextIds);
+        localStorage.setItem(EXTENSION_STORAGE_KEY, JSON.stringify(nextIds));
         addToast('Extensions updated.', 'info');
-    }, [interactionData, addToast]);
+    }, [activeExtensionIds, setActiveExtensionIds, addToast]);
 
     const handleActivateBudgetStrategy = useCallback((sid: string) => {
         if (selectedBudgetStrategyId === sid) {
             setSelectedBudgetStrategyId(null);
-            setActiveBudgetStrategy(null);  // ← This line is missing
+            setActiveBudgetStrategy(null);
             addToast('Budget strategy deactivated.', 'info');
         } else {
             setSelectedBudgetStrategyId(sid);
