@@ -21,7 +21,6 @@ import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
-import './main.css';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
 import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData } from '../types';
@@ -41,6 +40,7 @@ import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
+import './main.css';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
