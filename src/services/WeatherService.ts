@@ -51,7 +51,8 @@ export async function fetchCurrentWeather(apiKey?: string): Promise<string | nul
         const windSpeed = Math.round((data.wind?.speed ?? 0) * 10) / 10;
         const windDirection = degreesToCompass(data.wind?.deg ?? 0);
         const clouds = data.clouds?.all ?? 0;
-        const precipitation = data.rain ? `${data.rain['1h']}mm/h rain` : data.snow ? `${data.snow['1h']}mm/h snow` : null;
+        const rainPrecipitation = data.rain ? `${data.rain['1h']}mm/h rain` : null;
+        const snowPrecipitation = data.snow ? `${data.snow['1h']}mm/h snow` : null;
 
         const parts: string[] = [];
         parts.push(`${description}, ${temperature}°C (feels like ${feelsLike}°C)`);
@@ -67,9 +68,10 @@ export async function fetchCurrentWeather(apiKey?: string): Promise<string | nul
             parts.push('Clear skies');
         }
 
-        if (precipitation) parts.push(precipitation);
+        if (rainPrecipitation) parts.push(rainPrecipitation);
+        if (snowPrecipitation) parts.push(snowPrecipitation);
 
-        return parts.join('. ') + '.';
+        return `${parts.join('. ')}.`;
     } catch (e) {
         console.warn('Failed to fetch weather:', e);
         return null;

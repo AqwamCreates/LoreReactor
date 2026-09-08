@@ -37,7 +37,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
             apiKey: model?.apiKey,
             backend: model?.backend,
             modelPath: model?.model,
-            runtimePort: effectivePort as number | undefined,
+            runtimePort: effectivePort as number,
         };
         if (!effectivePort && !model?.apiKey) return;
 
