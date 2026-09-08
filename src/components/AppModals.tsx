@@ -460,10 +460,7 @@ export function AppModals({
                     allModels={allModels}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
-                    interactionData={interactionData}
-                    activeStrategy={activeStrategy}
-                    selectedModelId={selectedModelId}
-                    selectedBudgetStrategyId={selectedBudgetStrategyId}
+                    allChats={allChats}
                 />
             )}
             {modals.importData.isOpen && (
