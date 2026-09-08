@@ -35,7 +35,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
 
         const resolvePortrait = (characterId: string, images: Record<string, string> | undefined, expression?: string): string | null => {
             const expr = expression || 'neutral';
-            const filename = images?.[expr] || images?.['neutral'];
+            const filename = images?.[expr] || images?.neutral;
             if (!filename) return null;
             return getCharacterImageUrl(characterId, filename);
         };

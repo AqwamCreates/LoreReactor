@@ -1,5 +1,5 @@
 // src/services/InteractionOrchestrator.ts
-import type { Character, InteractionData, InteractionMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
@@ -8,16 +8,16 @@ import { v4 as uuidv4 } from 'uuid';
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<InteractionData | null>
 
 /**
- * Check if an InteractionMessage has text content (is a spoken message).
+ * Check if a HistoryMessage has text content (is a spoken message).
  */
-function hasTextContent(msg: InteractionMessage): boolean {
-    return 'textContent' in msg && typeof (msg as any).textContent === 'string';
+function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
+    return msg.kind === 'chat';
 }
 
 /**
- * Get the last InteractionMessage for a character from interactionHistory.
+ * Get the last HistoryMessage for a character from interactionHistory.
  */
-function getLastInteractionForCharacter(history: InteractionMessage[], characterId: string): InteractionMessage | undefined {
+function getLastInteractionForCharacter(history: HistoryMessage[], characterId: string): HistoryMessage | undefined {
     for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].character.id === characterId) return history[i];
     }
@@ -63,6 +63,7 @@ function createSilentInteraction(
 ): InteractionMessage {
     const now = Date.now();
     return {
+        kind: 'interaction',
         id: uuidv4(),
         character: { ...character },
         remainingChatStamina: previousStamina,
@@ -77,7 +78,7 @@ function createSilentInteraction(
  * Count the number of spoken turns since a character last spoke.
  * Only counts messages with text content — silent movement records are ignored.
  */
-function getTurnsSinceLastSpoken(history: InteractionMessage[], characterId: string): number {
+function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: string): number {
     let turns = 0;
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
@@ -117,7 +118,7 @@ export async function runTurnSequence(
         const protagonistLoc = getCurrentLocationIndex(workingData, workingData.protagonist);
         const hasLocations = workingData.locations && workingData.locations.length > 0;
 
-        // ✅ Non-co-located AI participants roll location in initiative-weighted order
+        // Non-co-located AI participants roll location in initiative-weighted order
         if (hasLocations) {
             const lastParentId = workingData.interactionHistory.length > 0
                 ? workingData.interactionHistory[workingData.interactionHistory.length - 1].id
@@ -155,7 +156,7 @@ export async function runTurnSequence(
                 }
                 if (!picked) picked = pool[pool.length - 1].char;
 
-                // ✅ Skip probability gate — character may skip moving this turn
+                // Skip probability gate — character may skip moving this turn
                 const effectiveSkip = getEffectiveSkipProbability(picked, profile);
                 if (effectiveSkip > 0 && Math.random() < effectiveSkip) {
                     const idx = remaining.indexOf(picked);
@@ -163,13 +164,13 @@ export async function runTurnSequence(
                     continue;
                 }
 
-                // ✅ Capture stamina BEFORE regeneration so silent interaction records pre-regen state
+                // Capture stamina BEFORE regeneration so silent interaction records pre-regen state
                 const prevStamina = getLastInteractionForCharacter(workingData.interactionHistory, picked.id)?.remainingChatStamina;
 
-                // ✅ Regenerate stamina before recording movement
+                // Regenerate stamina before recording movement
                 regenerateChatStaminaForCharacter(workingData, picked);
 
-                // ✅ Filter by reachability first, then sample from reachable locations only
+                // Filter by reachability first, then sample from reachable locations only
                 const pLoc = getCurrentLocationIndex(workingData, picked);
                 const reachable = getReachableLocations(workingData.locations, pLoc);
                 const newLoc = sampleReachableLocationByWeight(reachable, picked);
@@ -184,7 +185,7 @@ export async function runTurnSequence(
             }
         }
 
-        // ✅ Eligible speakers: co-located AI who haven't spoken this sequence
+        // Eligible speakers: co-located AI who haven't spoken this sequence
         const eligible = allAI.filter(p => {
             if (p.id === lastSpeakerId) return false;
             if (spokenThisSequence.has(p.id)) return false;
@@ -195,7 +196,7 @@ export async function runTurnSequence(
 
         if (eligible.length === 0) break;
 
-        // ✅ Pick speaker by initiative weight × name sensitivity × response delay
+        // Pick speaker by initiative weight × name sensitivity × response delay
         let selectedSpeaker: Character | null;
 
         if (eligible.length === 1) {
@@ -207,7 +208,7 @@ export async function runTurnSequence(
                 const baseWeight = getEffectiveInitiativeWeight(p, profile);
                 const nameMultiplier = getNameSensitivityMultiplier(p, workingData);
 
-                // ✅ Response delay: longer silence = higher selection weight
+                // Response delay: longer silence = higher selection weight
                 const delayWeight = getEffectiveChatImpatienceSensitivity(p, profile);
                 let delayMultiplier = 1;
                 if (delayWeight > 0) {
@@ -242,14 +243,14 @@ export async function runTurnSequence(
 
         regenerateChatStaminaForCharacter(workingData, selectedSpeaker);
 
-        // ✅ Chat probability gate — does this character want to speak?
+        // Chat probability gate — does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
         if (Math.random() >= effectiveProb) {
             spokenThisSequence.add(selectedSpeaker.id);
             continue;
         }
 
-        // ✅ Character speaks — co-located
+        // Character speaks — co-located
         if (onSpeakerChange) onSpeakerChange(selectedSpeaker);
 
         const resultData = await executor(
@@ -261,19 +262,19 @@ export async function runTurnSequence(
 
         if (!resultData) break;
 
-        // ✅ Post-speech processing: consume stamina and resolve location
+        // Post-speech processing: consume stamina and resolve location
         const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
         if (newLastEntry && newLastEntry.character.id === selectedSpeaker.id && hasTextContent(newLastEntry)) {
             // Consume stamina based on paragraph count
-            const paragraphs = countParagraphs((newLastEntry as any).textContent);
+            const paragraphs = countParagraphs(newLastEntry.textContent);
             if (paragraphs > 0) {
                 consumeChatStamina(newLastEntry, paragraphs);
             }
 
-            // ✅ Resolve location using resultData (not stale workingData)
+            // Resolve location using resultData (not stale workingData)
             if (hasLocations) {
                 const currentLoc = getCurrentLocationIndex(resultData, selectedSpeaker);
-                const regexLoc = findLocationByRegex(resultData.locations, (newLastEntry as any).textContent, selectedSpeaker);
+                const regexLoc = findLocationByRegex(resultData.locations, newLastEntry.textContent, selectedSpeaker);
                 const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
                 resultData.interactionHistory[resultData.interactionHistory.length - 1] = {
                     ...newLastEntry,
