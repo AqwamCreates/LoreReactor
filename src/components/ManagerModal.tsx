@@ -55,12 +55,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         }
     }, [isOpen]);
 
-    // Clear confirm state if the confirmed item no longer exists
-    useEffect(() => {
-        if (confirmDeleteId && !items.some(item => item.id === confirmDeleteId)) {
-            setConfirmDeleteId(null);
-        }
-    }, [items, confirmDeleteId]);
+    const activeConfirmDeleteId = confirmDeleteId && items.some(item => item.id === confirmDeleteId)
+        ? confirmDeleteId
+        : null;
 
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
@@ -159,7 +156,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 const isActive = activeSpecialActionId === item.id;
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
                                 const orderNumber = currentOrderIds.indexOf(item.id) + 1;
-                                const isConfirmingDelete = confirmDeleteId === item.id;
+                                const isConfirmingDelete = activeConfirmDeleteId === item.id;
 
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''}`}>

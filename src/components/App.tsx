@@ -91,7 +91,6 @@ function App() {
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const modals = useModalVisibility();
-    const { ...modalVisibility } = modals;
     const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
     const [defaultCharacterId, setDefaultCharacterId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_DEFAULT_CHARACTER));
     const [selectedBudgetStrategyId, setSelectedBudgetStrategyId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_BUDGET_STRATEGY));
@@ -424,7 +423,7 @@ function App() {
     const handleInjectCustomMessage = useCallback(async (character: Character, text: string) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: `${crypto.randomUUID()}`,
+            id: crypto.randomUUID(),
             name: `[Injected] ${character.name}`,
             description: 'User-injected message for LLM context',
             text: `${character.name}: ${text}`,
@@ -444,7 +443,7 @@ function App() {
     const handleInjectFirstMessage = useCallback(async (character: Character) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: `${crypto.randomUUID()}`,
+            id: crypto.randomUUID(),
             name: `[Injected First] ${character.name}`,
             description: 'User-injected first message for LLM context',
             text: `${character.name}: *${character.name} enters the scene.*`,
@@ -460,6 +459,11 @@ function App() {
         setInteractionData(updated); interactionDataRef.current = updated;
         await saveRawInteractionData(updated); addToast(`Injected first message as ${character.name} into LLM context`, 'success');
     }, [interactionData, addToast, setInteractionData]);
+
+    // ─── Delete chat wrapper for AppModals ───────────────────────────
+    const onDeleteChatForModals = useCallback((id: string) => {
+        handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
+    }, [handleDeleteChat]);
 
     // ─── Render ──────────────────────────────────────────────────────
     const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
@@ -504,7 +508,8 @@ function App() {
                             if (!message.character) return null;
                             const dn = getDelayedDisplayName(interactionData, index, message.character.id);
                             const stem = isStemMessage(message.id);
-                            const beforeBranch = interactionData.parentInteractionMessageId && index === (interactionData.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1);
+                            const branchOffIndex = interactionData.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1;
+                            const beforeBranch = !!(interactionData.parentInteractionMessageId && index === branchOffIndex);
                             const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
                             return (
                                 <MessageBubble key={message.id} message={message} index={index} viewMode={viewMode} interactionData={interactionData} currentCharacterId={currentCharacter?.id} editingId={editingId} editDraft={editDraft} massDeleteId={massDeleteId} isMassActive={isMassActive} massStartIndex={massStartIndex} activeToolbarId={activeToolbarId} portraitUrl={messagePortraitUrl} displayName={dn} isStem={stem} beforeBranch={beforeBranch} isModelReady={isModelReady} isLoading={isLoading} onAvatarClick={handleAvatarClick} onStartEditing={startEditing} onCancelEditing={cancelEditing} onSaveEdit={handleSaveEdit} onRegenerateFromEdit={handleRegenerateFromEdit} onResumeGeneration={resumeGeneration} onCopyText={handleCopyText} onRegenerateFromMessage={regenerateFromMessage} onBranch={handleBranch} onClone={handleClone} onDelete={handleDelete} onSetMassDelete={setMassDeleteId} onMassDeleteConfirm={handleMassDeleteConfirm} onCancelMassDelete={() => setMassDeleteId(null)} onTouchStart={handleBubbleTouchStart} onTouchEnd={handleBubbleTouchEnd} onTouchMove={handleBubbleTouchMove} suppressNextClickRef={suppressNextClickRef} editTextareaRef={editTextareaRef} setEditDraft={setEditDraft} />
@@ -520,7 +525,10 @@ function App() {
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
 
-                <AppModals modals={modalVisibility} allChats={allChats} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allSamplers={allSamplers} allStopPatterns={allStopPatterns} allModels={allModels} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles} allExtensions={allExtensions} runningModels={runningModels} interactionData={interactionData} activeStrategy={activeStrategy} selectedModelId={selectedModelId} selectedBudgetStrategyId={selectedBudgetStrategyId} samplerToEdit={samplerToEdit} charModal={charModal} contextModal={contextModal} locationModal={locationModal} stopModal={stopModal} modelModal={modelModal} budgetModal={budgetModal} profileModal={profileModal} onSwitchChat={handleSwitchChat} onDeleteChat={handleDeleteChat} onNewChat={handleNewChat} onDeleteCharacter={deleteCharacter} onLoadFullCharacter={loadFullCharacter} onToggleParticipant={handleToggleParticipant} onSetProtagonist={handleSetChatProtagonist} onDeleteContext={contextModal.handleDelete} onToggleContext={handleToggleContext} onDeleteLocation={locationModal.handleDelete} onToggleLocation={handleToggleLocation} onDeleteModel={deleteModel} onToggleModelLoad={toggleModelLoad} onDeleteSampler={deleteSampler} onSaveSampler={handleSaveSampler} onOpenSamplerEditor={handleOpenSamplerEditor} onDeleteStopPattern={stopModal.handleDelete} onDeleteBudgetStrategy={budgetModal.handleDelete} onActivateBudgetStrategy={handleActivateBudgetStrategy} onDeleteProfile={deleteProfile} onActivateProfile={handleActivateProfile} onDeleteExtension={deleteExtension} onToggleExtension={handleToggleExtension} onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }} onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage} onInjectCustomMessage={handleInjectCustomMessage} onInjectFirstMessage={handleInjectFirstMessage} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} onImportComplete={handleImportComplete} addToast={addToast} />
+                <AppModals
+                    modals={modals as unknown as Record<string, { isOpen: boolean; open: () => void; close: () => void }>}
+                    allChats={allChats} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allSamplers={allSamplers} allStopPatterns={allStopPatterns} allModels={allModels} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles} allExtensions={allExtensions} runningModels={runningModels} interactionData={interactionData} activeStrategy={activeStrategy} selectedModelId={selectedModelId} selectedBudgetStrategyId={selectedBudgetStrategyId} samplerToEdit={samplerToEdit} charModal={charModal} contextModal={contextModal} locationModal={locationModal} stopModal={stopModal} modelModal={modelModal} budgetModal={budgetModal} profileModal={profileModal} onSwitchChat={handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={handleNewChat} onDeleteCharacter={deleteCharacter} onLoadFullCharacter={loadFullCharacter} onToggleParticipant={handleToggleParticipant} onSetProtagonist={handleSetChatProtagonist} onDeleteContext={contextModal.handleDelete} onToggleContext={handleToggleContext} onDeleteLocation={locationModal.handleDelete} onToggleLocation={handleToggleLocation} onDeleteModel={deleteModel} onToggleModelLoad={toggleModelLoad} onDeleteSampler={deleteSampler} onSaveSampler={handleSaveSampler} onOpenSamplerEditor={handleOpenSamplerEditor} onDeleteStopPattern={stopModal.handleDelete} onDeleteBudgetStrategy={budgetModal.handleDelete} onActivateBudgetStrategy={handleActivateBudgetStrategy} onDeleteProfile={deleteProfile} onActivateProfile={handleActivateProfile} onDeleteExtension={deleteExtension} onToggleExtension={handleToggleExtension} onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }} onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage} onInjectCustomMessage={handleInjectCustomMessage} onInjectFirstMessage={handleInjectFirstMessage} onSaveCharacter={saveCharacter} onSaveContext={saveContext} onSaveLocation={saveLocation} onImportComplete={handleImportComplete} addToast={addToast}
+                />
             </div>
 
             <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />

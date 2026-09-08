@@ -1,6 +1,8 @@
 // src/services/LanguageModelEngine.ts
+import type { StreamState } from "http2";
 import { localAddress } from "../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
+import type { backend } from "../types";
 
 export interface TokenStats {
   fullText: string;
@@ -21,7 +23,7 @@ export interface StreamResult {
 
 export interface LanguageModelContext {
   apiKey?: string;
-  backend?: string;
+  backend?: backend;
   modelPath?: string;
   runtimePort?: number;
 }

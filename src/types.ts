@@ -113,8 +113,11 @@ export interface RawLocation extends RawData {
   useBase64Encoding: boolean;
 }
 
-export type backend = 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'TensorRT-LLM' | 'Ollama' | 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'OpenAI' | 'Mistral' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Other';
+export type localBackend = 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'ExLlamaV2' | 'TensorRT-LLM' | 'Ollama'
 
+export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
+
+export type backend = localBackend | cloudBackend
 export interface LanguageModel extends ObjectData {
   backend?: backend;
   contextLength: number;

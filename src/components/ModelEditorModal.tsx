@@ -1,9 +1,9 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
-import type { LanguageModel, StopPattern } from '../types';
+import type { backend, LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
-import { allBackends, cloudBackends } from '../languageModelInformation';
+import { backends, cloudBackends } from '../languageModelInformation';
 import './main.css';
 
 interface ModelEditorModalProps {
@@ -144,7 +144,7 @@ export function ModelEditorModal({
 }: ModelEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [backend, setBackend] = useState<LanguageModel['backend']>('Llama.cpp');
+    const [backend, setBackend] = useState<backend>('Llama.cpp');
     const [contextLength, setContextLength] = useState<number>(0);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
@@ -450,7 +450,7 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Backend</label>
                         <select value={backend} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
-                            {allBackends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+                            {backends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                         </select>
                     </div>
 
