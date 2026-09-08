@@ -84,7 +84,12 @@ function App() {
     // ─── Active Extensions ───────────────────────────────────────────
     const { activeIds: activeExtensionIds } = useActiveExtensions(allExtensions);
     const [activeExtensionIdsState, setActiveExtensionIdsState] = useState<string[]>(activeExtensionIds);
-    useEffect(() => { setActiveExtensionIdsState(activeExtensionIds); }, [activeExtensionIds]);
+    useEffect(() => {
+        const syncActiveExtensionIds = setTimeout(() => {
+            setActiveExtensionIdsState(activeExtensionIds);
+        }, 0);
+        return () => clearTimeout(syncActiveExtensionIds);
+    }, [activeExtensionIds]);
 
     // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
@@ -105,7 +110,7 @@ function App() {
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-    const [isInitialImageProcessed, setIsInitialImageProcessed] = useState(false);
+    const initialImageProcessedChatIdRef = useRef<string | null>(null);
 
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
@@ -274,13 +279,13 @@ function App() {
 
     // Process protagonist image on new/restored chat
     useEffect(() => {
-        if (interactionData && currentCharacter && !isInitialImageProcessed) {
-            processProtagonistImageSilently(interactionData, currentCharacter).then(() => setIsInitialImageProcessed(true));
+        if (interactionData && currentCharacter && interactionData.id !== initialImageProcessedChatIdRef.current) {
+            const chatId = interactionData.id;
+            processProtagonistImageSilently(interactionData, currentCharacter).then(() => {
+                initialImageProcessedChatIdRef.current = chatId;
+            });
         }
-    }, [interactionData?.id, currentCharacter?.id, processProtagonistImageSilently]);
-
-    // Reset image processed flag when chat changes
-    useEffect(() => { setIsInitialImageProcessed(false); }, [interactionData?.id]);
+    }, [currentCharacter, interactionData, processProtagonistImageSilently]);
 
     // Loading screen
     const loadSteps = useMemo<LoadStep[]>(() => [
