@@ -49,9 +49,11 @@ export function renderModelSubtext(
 }
 
 export function renderBudgetStrategySubtext(strategy: BudgetStrategy): React.ReactNode {
+    const totalModels = (strategy.onlineModels?.length ?? 0) + (strategy.localModels?.length ?? 0);
+
     return (
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>
-            <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Online: {strategy.switchProbability}% • Budget: ${strategy.maximumBudget}</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Models: {totalModels} • Online: {strategy.switchProbability}% • Budget: ${strategy.maximumBudget}</span>
         </span>
     );
 }
