@@ -3,6 +3,7 @@ import { deleteRawInteractionMessage, saveRawInteractionData, loadAllRawInteract
 import { deleteInteractionMessage as calculateDelete, editInteractionMessageInInteractionData } from './chatLogic';
 import type { InteractionData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { isChatMessage } from '../components/typeGuard';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentInteractionMessageIds(chatId: string): Promise<Set<string>> {
@@ -26,7 +27,7 @@ export async function markLastMessageAsPartial(currentChat: InteractionData): Pr
 
     // Only mark AI messages (not user messages) as partial
     if (lastMsg.character.id === currentChat.protagonist.id) return currentChat;
-    if (lastMsg.isPartial) return currentChat; // Already marked
+    if (!isChatMessage(lastMsg) || lastMsg.isPartial) return currentChat; // Already marked
 
     const updatedHistory = [...history];
     updatedHistory[lastIndex] = { ...lastMsg, isPartial: true };
@@ -49,7 +50,7 @@ export async function clearPartialFlag(currentChat: InteractionData, messageId: 
     if (index === -1) return currentChat;
 
     const msg = currentChat.interactionHistory[index];
-    if (!msg.isPartial) return currentChat;
+    if (!isChatMessage(msg) || !msg.isPartial) return currentChat;
 
     const updatedHistory = [...currentChat.interactionHistory];
     updatedHistory[index] = { ...msg, isPartial: false };

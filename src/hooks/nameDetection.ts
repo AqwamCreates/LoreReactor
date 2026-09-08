@@ -1,3 +1,4 @@
+import { isChatMessage } from '../components/typeGuard';
 import type { InteractionMessage } from '../types'; 
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
@@ -127,6 +128,8 @@ function detectNamePermissionSequence(
     return false;
   }
 
+  if (!isChatMessage(previousMessageBySameCharacter)) return false;
+
   // 2. Check if that previous message contained a permission question
   const wasPermissionAsked = matchesAnyPattern(
     previousMessageBySameCharacter.textContent, 
@@ -145,7 +148,7 @@ function detectNamePermissionSequence(
 }
 
 export function detectName(interactionHistory: InteractionMessage[], characterId: string, characterName: string, text: string) {
-  const nameQuestionRecentlyAsked = interactionHistory.some(msg => detectNameQuestion(msg.textContent));
+  const nameQuestionRecentlyAsked = interactionHistory.some(msg => isChatMessage(msg) && detectNameQuestion(msg.textContent));
 
   if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
 

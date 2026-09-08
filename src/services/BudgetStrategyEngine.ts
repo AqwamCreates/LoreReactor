@@ -3,6 +3,7 @@ import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageMo
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
+import { isChatMessage } from '../components/typeGuard';
 
 const engine = new LanguageModelEngine();
 
@@ -25,7 +26,7 @@ function computeComplexityScore(interactionData: InteractionData): number {
     if (history.length === 0) return 0;
 
     const recentMessages = history.slice(-20);
-    const combinedText = recentMessages.map(m => m.textContent).join('\n');
+    const combinedText = recentMessages.filter(isChatMessage).map(m => m.textContent).join('\n');
     const totalLen = combinedText.length || 1;
 
     const curlyBrackets = (combinedText.match(/[{}]/g) || []).length;
@@ -433,7 +434,7 @@ export class BudgetStrategyEngine {
 
         let numberOfTokens = 0;
         for (const m of interactionData.interactionHistory) {
-            numberOfTokens += await engine.countTokens(m.textContent);
+            if (isChatMessage(m)) numberOfTokens += await engine.countTokens(m.textContent);
         }
 
         if (numberOfTokens >= this.strategy.switchOnContextSize) return true;

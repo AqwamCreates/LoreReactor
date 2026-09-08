@@ -13,6 +13,7 @@ import { localURL } from '../configurations';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
+import { isChatMessage } from '../components/typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -24,7 +25,7 @@ function regenerateStaminaForTurn(data: InteractionData, character: Character): 
 
     const prevMsg = findPreviousInteractionMessage(data, character.id);
     if (!prevMsg) return data;
-    if (prevMsg.remainingChatStamina >= maxStamina) return data;
+    if (!isChatMessage(prevMsg) || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;;
 
     const idx = data.interactionHistory.findIndex(m => m.id === prevMsg.id);
     if (idx === -1) return data;

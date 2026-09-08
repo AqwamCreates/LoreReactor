@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
+import { isChatMessage } from '../components/typeGuard';
 
 const now = Date.now();
 
@@ -46,11 +47,11 @@ export function useAmbientNarration(
     streamingTextRef: React.MutableRefObject<string>,
 ) {
     const generateAmbientNarration = useCallback(async (data: InteractionData, _signal: AbortSignal): Promise<InteractionData | null> => {
-        const recent = data.interactionHistory.filter(m => m.character.id !== '__ambient_narrator__').slice(-8).map(m => m.textContent.toLowerCase()).join(' ');
+        const recent = data.interactionHistory.filter(m => m.character.id !== '__ambient_narrator__' && isChatMessage(m)).slice(-8).map(m => m.textContent.toLowerCase()).join(' ');
         let best: typeof AMBIENT_POOL[0] | null = null, bestScore = 0;
         for (const cat of AMBIENT_POOL) { let s = 0; for (const kw of cat.keywords) if (recent.includes(kw)) s++; if (s > bestScore) { bestScore = s; best = cat; } }
         const pool = best ? best.lines : AMBIENT_FALLBACK;
-        const recentAmbient = data.interactionHistory.filter(m => m.character.id === '__ambient_narrator__').slice(-3).map(m => m.textContent);
+        const recentAmbient = data.interactionHistory.filter(m => m.character.id === '__ambient_narrator__' && isChatMessage(m)).slice(-3).map(m => m.textContent);
         const avail = pool.filter(l => !recentAmbient.includes(l));
         const final = avail.length > 0 ? avail : pool;
         const selected = final[Math.floor(Math.random() * final.length)];

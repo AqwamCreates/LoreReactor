@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
 import { resolveModelContext } from '../utilities/modelContextResolver';
+import { isChatMessage } from '../components/typeGuard';
 
 const engine = new LanguageModelEngine();
 
@@ -28,7 +29,8 @@ export async function generateMessageSummary(
     runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
     const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
-    const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${message.textContent}\n\nSummary:`;
+    const text = isChatMessage(message) ? message.textContent : '';
+    const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
     const requestBody: any = {
         prompt,
         n_predict: maxTokens,
@@ -54,7 +56,7 @@ export async function generateMissingSummaries(
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
     const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize = history.slice(0, cutoff).filter(m => !m.textContentSummary);
+    const toSummarize = history.slice(0, cutoff).filter(m => isChatMessage(m) && !m.textContentSummary);
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, languageModelContext, maxTokens, strategy, runningModels);
@@ -77,7 +79,7 @@ async function compressChunk(
 ): Promise<string | null> {
     const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const formattedMessages = messages.map(m =>
-        `${m.character.name}: ${m.textContent}`
+        `${m.character.name}: ${isChatMessage(m) ? m.textContent : ''}`
     ).join('\n\n');
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
     const requestBody: any = {
