@@ -1,25 +1,22 @@
-import { useState, useRef, useCallback } from 'react';
+// src/hooks/useGenerationLock.ts
+import { useCallback, useRef } from 'react';
+import { useSessionStore } from '../store/useSessionStore';
 
 export function useGenerationLock() {
-    const [isLoading, setIsLoading] = useState(false);
+    const isLoading = useSessionStore(s => s.isLoading);
     const isLoadingRef = useRef(false);
 
     const acquireLock = useCallback((): boolean => {
         if (isLoadingRef.current) return false;
         isLoadingRef.current = true;
-        setIsLoading(true);
+        useSessionStore.setState({ isLoading: true });
         return true;
     }, []);
 
     const releaseLock = useCallback(() => {
         isLoadingRef.current = false;
-        setIsLoading(false);
+        useSessionStore.setState({ isLoading: false });
     }, []);
 
-    return {
-        isLoading,
-        isLoadingRef,
-        acquireLock,
-        releaseLock,
-    };
+    return { isLoading, isLoadingRef, acquireLock, releaseLock };
 }

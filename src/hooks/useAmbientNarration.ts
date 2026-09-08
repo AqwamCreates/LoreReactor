@@ -2,7 +2,6 @@
 import { useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
-import { isChatMessage } from '../typeGuard';
 import { useSessionStore } from '../store/useSessionStore';
 
 const now = Date.now();

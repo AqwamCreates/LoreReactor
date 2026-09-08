@@ -9,10 +9,6 @@ const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 
 const tokenEngine = new LanguageModelEngine();
 
-function isChatMessage(msg: any): boolean {
-    return 'textContent' in msg && typeof msg.textContent === 'string';
-}
-
 interface UseChatOperationsOptions {
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
@@ -40,7 +36,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
     const safeAutoSave = useCallback(async (data: InteractionData | null) => {
         if (!data) return;
-        const msgs = data.interactionHistory.filter(isChatMessage);
+        const msgs = data.interactionHistory.filter(m => m.kind === 'chat');
         if (msgs.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
         try { await saveRawInteractionData(data); } catch (e) { console.error('Auto-save failed:', e); }
     }, []);

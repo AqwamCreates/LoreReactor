@@ -327,22 +327,30 @@ export interface RawBudgetStrategy extends RawData {
 export interface BudgetData extends ObjectData {
   budgetSpent: number
   resetDuration: number
+  averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: number;
+  averageTimeToFirstTokenExponentialMovingAverageSmoothing: number;
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
+  modelAverageGenerationSpeedMsPerToken: Record<string, number>;
+  modelAverageTimeToFirstToken?: Record<string, number>
 }
 
 export interface RawBudgetData extends RawData {
   id?: string;
   budgetSpent: number
   resetDuration: number
+  averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: number;
+  averageTimeToFirstTokenExponentialMovingAverageSmoothing: number;
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   lastResetTimestamp: number
   budgetStrategyId: string
+  modelAverageGenerationSpeedMsPerToken?: Record<string, number>;
+  modelAverageTimeToFirstToken?: Record<string, number>
 }
 
 export type SummarizationStrategyType =

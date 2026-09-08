@@ -29,6 +29,9 @@ export interface StreamState {
 export interface StreamResult {
   text: string;
   isCompleted: boolean;
+  msPerToken?: number;
+  timeToFirstToken?: number;
+  completionTokens?: number;
 }
 
 export interface LanguageModelContext {
@@ -59,7 +62,7 @@ interface ResolvedRequest {
   body: string;
 }
 
-// ✅ Backends that don't support the `stop` parameter in OpenAI-compatible format
+// Backends that don't support the `stop` parameter in OpenAI-compatible format
 const STOP_UNSUPPORTED_BACKENDS = new Set(['Google']);
 
   /**
@@ -86,38 +89,17 @@ export class LanguageModelEngine {
 
   // ─── Token Count Cache ────────────────────────────────────────────
 
-  /**
-   * Private cache mapping a composite key (text fingerprint + model context identifier)
-   * to the resolved token count. Prevents redundant network calls when the same
-   * text is counted repeatedly across renders.
-   */
   private _tokenCache: Map<string, TokenCacheEntry> = new Map();
-
-  /**
-   * Tracks backends whose tokenize endpoints have returned errors.
-   * Once a backend fails, we skip network calls entirely and use estimates.
-   * Key format: "backend:modelPath" or "local:runtimePort".
-   */
   private _failedTokenizeBackends: Set<string> = new Set();
-
-  /** Whether the cache contents have changed since last access. */
   private _hasTokenCountChanged = false;
-
-  /**
-   * In-flight tokenize requests keyed by backend failure key.
-   * Concurrent calls for the same backend share a single promise,
-   * preventing duplicate network requests during race conditions.
-   */
   private _inFlightTokenize: Map<string, Promise<number>> = new Map();
 
-  /** Returns true if the token cache has been modified since the last call to this getter. Resets the flag on read. */
   get hasTokenCountChanged(): boolean {
     const changed = this._hasTokenCountChanged;
     this._hasTokenCountChanged = false;
     return changed;
   }
 
-  /** Builds a stable cache key from text and optional model context. */
   private buildCacheKey(text: string, modelContext?: LanguageModelContext): string {
     const ctxPart = modelContext
       ? `${modelContext.runtimePort ?? ''}:${modelContext.backend ?? ''}:${modelContext.modelPath ?? ''}`
@@ -126,7 +108,6 @@ export class LanguageModelEngine {
     return `${ctxPart}|${textFingerprint}`;
   }
 
-  /** Builds a failure-tracking key from model context. */
   private buildBackendFailureKey(modelContext?: LanguageModelContext): string | null {
     if (!modelContext) return null;
     if (modelContext.runtimePort) return `local:${modelContext.runtimePort}`;
@@ -134,7 +115,6 @@ export class LanguageModelEngine {
     return null;
   }
 
-  /** Retrieves a cached token count if the entry exists and is not stale. */
   private getCachedTokenCount(key: string): number | null {
     const entry = this._tokenCache.get(key);
     if (!entry) return null;
@@ -145,7 +125,6 @@ export class LanguageModelEngine {
     return entry.count;
   }
 
-  /** Stores a token count in the cache, evicting oldest entries if at capacity. */
   private setCachedTokenCount(key: string, count: number): void {
     if (this._tokenCache.size >= TOKEN_CACHE_MAX_SIZE && !this._tokenCache.has(key)) {
       const oldestKey = this._tokenCache.keys().next().value;
@@ -155,7 +134,6 @@ export class LanguageModelEngine {
     this._hasTokenCountChanged = true;
   }
 
-  /** Clears the entire token cache, failure set, and in-flight map. Call when switching models or invalidating state. */
   clearTokenCache(): void {
     this._tokenCache.clear();
     this._failedTokenizeBackends.clear();
@@ -300,19 +278,16 @@ export class LanguageModelEngine {
   async countTokens(text: string, modelContext?: LanguageModelContext): Promise<number> {
     const estimatedTokens = Math.ceil(text.length / 4);
 
-    // ✅ Check token cache first
     const cacheKey = this.buildCacheKey(text, modelContext);
     const cached = this.getCachedTokenCount(cacheKey);
     if (cached !== null) return cached;
 
-    // ✅ If this backend previously failed, skip straight to estimate
     const failureKey = this.buildBackendFailureKey(modelContext);
     if (failureKey && this._failedTokenizeBackends.has(failureKey)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    // ✅ Skip network call entirely for backends known to lack a tokenize endpoint
     if (modelContext?.backend && NO_TOKENIZE_BACKENDS.has(modelContext.backend)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
@@ -325,7 +300,6 @@ export class LanguageModelEngine {
 
     const { runtimePort, backend, apiKey, modelPath } = modelContext;
 
-    // ✅ Local models: use llama.cpp /tokenize endpoint
     if (runtimePort) {
       const localKey = `local:${runtimePort}`;
 
@@ -366,7 +340,6 @@ export class LanguageModelEngine {
       return count;
     }
 
-    // ✅ Cloud models: try provider-specific tokenize endpoint
     if (backend && apiKey && cloudTokenizeEndpoints[backend]) {
       const cloudKey = `${backend}:${modelPath ?? ''}`;
 
@@ -435,8 +408,6 @@ export class LanguageModelEngine {
               break;
             }
             case 'OpenRouter': {
-              // OpenRouter has no tokenize endpoint — should never reach here
-              // due to NO_TOKENIZE_BACKENDS check above, but guard defensively
               return estimatedTokens;
             }
             default:
@@ -563,6 +534,8 @@ export class LanguageModelEngine {
     let paragraphCount = 0;
     let hasReceivedNonWhitespace = false;
     let ttftReported = false;
+    let lastMsPerToken = 0;
+    let lastTimeToFirstToken = 0;
 
     if (existingText && existingText.trim().length > 0) {
       paragraphCount = (existingText.match(/\n\n/g) || []).length;
@@ -573,7 +546,13 @@ export class LanguageModelEngine {
         const { value, done } = await reader.read();
 
         if (done) {
-          return { text: fullContent.trim(), isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns) };
+          return {
+            text: fullContent.trim(),
+            isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+            msPerToken: lastMsPerToken || undefined,
+            timeToFirstToken: lastTimeToFirstToken || undefined,
+            completionTokens: newnumberOfTokens || undefined,
+          };
         }
 
         const chunk = decoder.decode(value, { stream: true });
@@ -584,7 +563,13 @@ export class LanguageModelEngine {
 
           const jsonStr = line.slice(6);
           if (jsonStr.trim() === '[DONE]') {
-            return { text: fullContent.trim(), isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns) };
+            return {
+              text: fullContent.trim(),
+              isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+              msPerToken: lastMsPerToken || undefined,
+              timeToFirstToken: lastTimeToFirstToken || undefined,
+              completionTokens: newnumberOfTokens || undefined,
+            };
           }
 
           try {
@@ -625,7 +610,13 @@ export class LanguageModelEngine {
 
               if (paragraphCount >= paragraphLimit) {
                 abortController.abort();
-                return { text: fullContent.trim(), isCompleted: true };
+                return {
+                  text: fullContent.trim(),
+                  isCompleted: true,
+                  msPerToken: lastMsPerToken || undefined,
+                  timeToFirstToken: lastTimeToFirstToken || undefined,
+                  completionTokens: newnumberOfTokens || undefined,
+                };
               }
             }
 
@@ -636,6 +627,9 @@ export class LanguageModelEngine {
             const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
             if (!ttftReported) ttftReported = true;
 
+            lastMsPerToken = msPerToken;
+            lastTimeToFirstToken = timeToFirstToken;
+
             if (callbacks?.onToken) {
               callbacks.onToken({ fullText: fullContent, msPerToken, tokensPerSecond, timeToFirstToken });
             }
@@ -644,7 +638,13 @@ export class LanguageModelEngine {
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        return { text: fullContent.trim(), isCompleted: false };
+        return {
+          text: fullContent.trim(),
+          isCompleted: false,
+          msPerToken: lastMsPerToken || undefined,
+          timeToFirstToken: lastTimeToFirstToken || undefined,
+          completionTokens: newnumberOfTokens || undefined,
+        };
       }
       throw error;
     }

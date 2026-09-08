@@ -1,13 +1,9 @@
 // src/hooks/useCinematicMode.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, InteractionData, ChatMessage } from '../types';
+import type { Character, InteractionData, ChatMessage, HistoryMessage } from '../types';
 import { getCharacterImageUrl, getLocationImageUrl } from './storage';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
-
-function isChatMessage(msg: any): msg is ChatMessage {
-    return 'textContent' in msg && typeof msg.textContent === 'string';
-}
 
 interface UseCinematicModeOptions {
     viewMode: 'ladder' | 'cinematic';
@@ -28,9 +24,10 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
-    const InteractionMessages = useMemo(() => {
+    // Filter to only chat messages using discriminated union
+    const chatMessages = useMemo(() => {
         if (!interactionData) return [];
-        return interactionData.interactionHistory.filter(isChatMessage);
+        return interactionData.interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
     }, [interactionData]);
 
     const portraitUrlCache = useMemo(() => {
@@ -43,7 +40,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             return getCharacterImageUrl(characterId, filename);
         };
 
-        for (const msg of InteractionMessages) {
+        for (const msg of chatMessages) {
             if (!cache.has(msg.id)) {
                 cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
             }
@@ -57,7 +54,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         }
 
         return cache;
-    }, [InteractionMessages, centerAvatar?.id]);
+    }, [chatMessages, centerAvatar?.id]);
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
@@ -71,8 +68,10 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         const locations = interactionData?.locations;
         if (!locations?.length) return null;
 
-        for (let i = InteractionMessages.length - 1; i >= 0; i--) {
-            const msg = InteractionMessages[i];
+        // Search backwards through full history (not just chat messages) for location changes
+        const history = interactionData.interactionHistory;
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
             if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
                 const loc = locations[msg.locationIndex];
                 if (loc?.images?.length && loc.images[0]) {
@@ -83,12 +82,12 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         }
 
         return null;
-    }, [interactionData, InteractionMessages]);
+    }, [interactionData]);
 
     // IntersectionObserver for cinematic avatar selection
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
-        if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || InteractionMessages.length === 0) {
+        if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
             const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
             return () => window.clearTimeout(resetAvatar);
         }
@@ -98,12 +97,12 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             if (best.intersectionRatio <= 0.5) return;
             const mid = best.target.getAttribute('data-message-id');
             if (!mid) return;
-            const msg = InteractionMessages.find(m => m.id === mid);
+            const msg = chatMessages.find(m => m.id === mid);
             if (!msg?.character || msg.character.id === AMBIENT_NARRATOR_ID) return;
             let avatar: Character | null = msg.character;
             if (msg.character.id === currentCharacter?.id) {
-                const ci = InteractionMessages.indexOf(msg);
-                const prev = ci > 0 ? InteractionMessages[ci - 1] : null;
+                const ci = chatMessages.indexOf(msg);
+                const prev = ci > 0 ? chatMessages[ci - 1] : null;
                 avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
             }
             setCenterAvatar(avatar);
@@ -115,8 +114,8 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         let fallbackTimer: number | undefined;
         if (!centerAvatar) {
             fallbackTimer = window.setTimeout(() => {
-                for (let i = InteractionMessages.length - 1; i >= 0; i--) {
-                    const m = InteractionMessages[i];
+                for (let i = chatMessages.length - 1; i >= 0; i--) {
+                    const m = chatMessages[i];
                     if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
                         setCenterAvatar(m.character);
                         break;
@@ -125,7 +124,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             }, 0);
         }
         return () => { obs.disconnect(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer); };
-    }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, InteractionMessages, chatHistoryRef]);
+    }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, chatMessages, chatHistoryRef]);
 
     // Reset scroll on view mode change
     useEffect(() => {
@@ -138,7 +137,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         centerAvatar, setCenterAvatar,
         lastViewedMessageIdRef,
         suppressAutoScrollRef,
-        InteractionMessages,
+        InteractionMessages: chatMessages,
         portraitUrlCache,
         streamingPortraitUrl,
         locationBackgroundUrl,

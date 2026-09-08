@@ -3,9 +3,8 @@ import { deleteRawInteractionMessage, saveRawInteractionData, loadAllRawInteract
 import { deleteInteractionMessage as calculateDelete, editInteractionMessageInInteractionData } from './chatLogic';
 import type { InteractionData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { isChatMessage } from '../typeGuard';
 
-// ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
+// Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentInteractionMessageIds(chatId: string): Promise<Set<string>> {
     const allChats = await loadAllRawInteractionDataShells();
     const points = new Set<string>();
@@ -27,7 +26,7 @@ export async function markLastMessageAsPartial(currentChat: InteractionData): Pr
 
     // Only mark AI messages (not user messages) as partial
     if (lastMsg.character.id === currentChat.protagonist.id) return currentChat;
-    if (!isChatMessage(lastMsg) || lastMsg.isPartial) return currentChat; // Already marked
+    if (lastMsg.kind !== 'chat' || lastMsg.isPartial) return currentChat;
 
     const updatedHistory = [...history];
     updatedHistory[lastIndex] = { ...lastMsg, isPartial: true };
@@ -43,14 +42,14 @@ export async function markLastMessageAsPartial(currentChat: InteractionData): Pr
 }
 
 /**
- * ✅ Clears the partial flag on a message after successful resume completion.
+ * Clears the partial flag on a message after successful resume completion.
  */
 export async function clearPartialFlag(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
     const index = currentChat.interactionHistory.findIndex(m => m.id === messageId);
     if (index === -1) return currentChat;
 
     const msg = currentChat.interactionHistory[index];
-    if (!isChatMessage(msg) || !msg.isPartial) return currentChat;
+    if (msg.kind !== 'chat' || !msg.isPartial) return currentChat;
 
     const updatedHistory = [...currentChat.interactionHistory];
     updatedHistory[index] = { ...msg, isPartial: false };
@@ -130,7 +129,7 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
         interactionHistory: currentChat.interactionHistory.slice(0, branchIndex + 1),
         parentInteractionDataId: currentChat.id,
         parentInteractionMessageId: messageId,
-        Profile: currentChat.Profile, // ✅ Preserve active profile
+        Profile: currentChat.Profile,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
     };
@@ -140,7 +139,7 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
     return branchedChat;
 }
 
-// ✅ Clone creates an independent copy with NO parent link
+// Clone creates an independent copy with NO parent link
 // Unlike branch, clone is a fully standalone chat that doesn't remember its origin
 export async function cloneChatUpToMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
     const cloneIndex = currentChat.interactionHistory.findIndex(m => m.id === messageId);
@@ -157,7 +156,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         character: { ...msg.character },
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentInteractionMessageId: null, // No parent linkage
+        parentInteractionMessageId: null,
     }));
 
     const clonedChat: InteractionData = {
@@ -168,11 +167,11 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
         locations: currentChat.locations || [],
         interactionHistory: clonedMessages,
-        Profile: currentChat.Profile, // ✅ Preserve active profile
+        Profile: currentChat.Profile,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentInteractionDataId: null,   // ✅ No parent — fully independent
-        parentInteractionMessageId: null, // ✅ No branch point — fully independent
+        parentInteractionDataId: null,
+        parentInteractionMessageId: null,
     };
 
     await saveRawInteractionData(clonedChat);

@@ -496,7 +496,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
 
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
-      images['neutral'] = (rawCharacter as any).image;
+      images.neutral = (rawCharacter as any).image;
     }
 
     return { 
@@ -568,7 +568,7 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
 
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
-      images['neutral'] = (rawCharacter as any).image;
+      images.neutral = (rawCharacter as any).image;
     }
 
     return {
@@ -916,7 +916,7 @@ export async function loadAllRawProfiles(): Promise<Profile[]> {
 
 export async function saveRawProfile(profile: Profile): Promise<void> {
     const { id, summarizationSteps, ...rawProfile } = profile;
-    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ id: _stepId, ...rest }) => rest);
+    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({...rest }) => rest);
     const payload: RawProfile = {
         ...rawProfile,
         summarizationSteps: rawSteps,
@@ -1311,6 +1311,8 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
             modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
             lastResetTimestamp: raw.lastResetTimestamp,
             budgetStrategy: strategy,
+            modelAverageGenerationSpeedMsPerToken: raw.modelAverageGenerationSpeedMsPerToken || {},
+            modelAverageTimeToFirstToken: raw.modelAverageTimeToFirstToken ||{},
             firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
         };
@@ -1327,6 +1329,8 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         description: data.description,
         budgetSpent: data.budgetSpent,
         resetDuration: data.resetDuration,
+        averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: data.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing,
+        averageTimeToFirstTokenExponentialMovingAverageSmoothing: data.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
         modelLastUsedTimestamps: data.modelLastUsedTimestamps,
         modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
         modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
