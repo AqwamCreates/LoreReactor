@@ -297,8 +297,8 @@ export function useGeneration(options: UseGenerationOptions) {
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const currentRunning = useSessionStore.getState().runningModels;
                         const rp = model.id ? currentRunning[model.id]?.port : undefined;
-                        const rep = rp || (model.parameters as any)?._runtimePort;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, rep);
+                        const rep = rp || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
                         const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) return null;
