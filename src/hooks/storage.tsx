@@ -342,7 +342,7 @@ export function resolveMemoryInteractionData(character: Character, allChats: Int
   for (const [key, mems] of Object.entries(character.memories)) {
     resolved[key] = mems.map(m => ({
       ...m,
-      interactionData: m.interactionData ?? chatMap.get((m as any)._interactionDataId) ?? undefined,
+      interactionData: m.interactionData ?? chatMap.get((m as unknown as RawMemory).interactionDataId) ?? undefined,
     }));
   }
   return { ...character, memories: resolved };
