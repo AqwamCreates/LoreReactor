@@ -1,6 +1,6 @@
 // src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, InteractionData, ChatMessage } from '../types';
+import type { Character, ChatMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 
 interface MessageBubbleProps {
