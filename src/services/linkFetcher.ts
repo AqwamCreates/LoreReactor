@@ -415,7 +415,7 @@ export async function fetchLinkContent(
         cacheTimeToLiveMs?: number;
         visitedUrls?: Set<string>;
         currentDepth?: number;
-        fetchMode?: 'full' | 'summary' | 'extract';
+        fetchMode?: linkFetchMode;
         includeImages?: boolean;
         limitLinksToSubdirectory?: boolean;
         subdirectoryScope?: string;
@@ -494,7 +494,7 @@ export async function fetchMultipleContextUrls(
     options: {
         maxDepth?: number;
         cacheTimeToLiveMs?: number;
-        fetchMode?: 'full' | 'summary' | 'extract';
+        fetchMode?: linkFetchMode;
         searchTerms?: string[];
         searchEngine?: searchEngine;
         modelContext?: LanguageModelContext;

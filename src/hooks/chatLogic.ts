@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { LanguageModelEngine, type LanguageModelContext } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack } from './storage';
 import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';
@@ -243,7 +243,7 @@ async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
     currentCharacterId: string,
-    getFilteredData: (ctxType: string, tgtType: string) => { characterIdArray: string[]; textContentArray: string[] },
+    getFilteredData: (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => { characterIdArray: string[]; textContentArray: string[] },
     runtimePort?: number,
     fetchedContentMap?: Map<string, string>,
     contextSensitivity?: number
@@ -626,7 +626,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         backend: selectedModelParams?.backend,
         modelPath: selectedModelParams?.model,
         runtimePort: runtimePort || (selectedModelParams?.parameters as Record<string, unknown>)?._runtimePort,
-    } : { runtimePort };
+    } as LanguageModelContext : { runtimePort };
 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (ctx) => {

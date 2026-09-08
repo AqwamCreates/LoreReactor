@@ -1,7 +1,7 @@
 // src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget, linkFetchMode } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -67,7 +67,7 @@ export function ContextEditorModal({
     const [urls, setUrls] = useState<string[]>([]);
     const [newUrlInput, setNewUrlInput] = useState('');
     const [linkMaxDepth, setLinkMaxDepth] = useState<number>(3);
-    const [linkFetchMode, setLinkFetchMode] = useState<string>('full');
+    const [linkFetchMode, setLinkFetchMode] = useState<linkFetchMode>('full');
     const [fetchCacheTimeToLiveMs, setFetchCacheTimeToLiveMs] = useState<number>(300000);
 
     // Search term fields
@@ -526,7 +526,7 @@ export function ContextEditorModal({
                             <>
                                 <div className="context-field-group">
                                     <label className="editor-label">Fetch Mode</label>
-                                    <select value={linkFetchMode} onChange={(e) => setLinkFetchMode(e.target.value)} className="editor-select">
+                                    <select value={linkFetchMode} onChange={(e) => setLinkFetchMode(e.target.value as linkFetchMode)} className="editor-select">
                                         <option value="full">Full — Use entire page content as-is</option>
                                         <option value="extract">Extract — Keep only structured data (headings, lists, definitions)</option>
                                         <option value="summary">Summary — Condense via LLM before injecting</option>

@@ -48,6 +48,8 @@ export interface RawSampler extends RawData {
 
 export type searchEngine = "Google" | "Bing" | "DuckDuckGo" | "Yandex" | "Baidu";
 
+export type linkFetchMode = 'full' | 'summary' | 'extract'
+
 export interface Context extends ObjectData {
   text?: string;
   images?: string[];
@@ -56,7 +58,7 @@ export interface Context extends ObjectData {
   urls?: string[];
   includeLinkImages?: boolean;
   maximumLinkDepth?: number;
-  linkFetchMode?: 'full' | 'summary' | 'extract';
+  linkFetchMode?: linkFetchMode;
   limitLinksToSubdirectory: boolean;
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
@@ -79,7 +81,7 @@ export interface RawContext extends RawData {
   urls?: string[];
   includeLinkImages?: boolean;
   maximumLinkDepth?: number;
-  linkFetchMode?: 'full' | 'summary' | 'extract';
+  linkFetchMode?: linkFetchMode;
   limitLinksToSubdirectory: boolean;
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
