@@ -175,7 +175,7 @@ export interface Character extends ObjectData {
   memoryRetentionWeight: number;
   contextSensitivity: number;
   sampler?: Sampler | undefined;
-  stopPatterns?: [StopPattern];
+  stopPatterns?: StopPattern[];
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -203,7 +203,7 @@ export interface RawCharacter extends RawData {
   memoryRetentionWeight: number;
   contextSensitivity: number;
   samplerId?: string | undefined;
-  stopPatternIds?: [number];
+  stopPatternIds?: number[];
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
