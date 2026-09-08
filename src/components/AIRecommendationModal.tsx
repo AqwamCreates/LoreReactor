@@ -11,38 +11,35 @@ import './main.css';
 type EntityType = 'Character' | 'Context' | 'Location';
 type ViewTab = 'raw' | 'Character' | 'Context' | 'Location';
 
-interface ParsedFields {
-    [key: string]: string;
+interface GeneratedCharacter {
+    name: string;
+    description?: string;
+    firstMessage?: string;
+    systemPrompt?: string;
+    thinkPrompt?: string;
+    appearancePrompt?: string;
+    dialoguePrompt?: string;
 }
 
-const FIELD_PATTERNS: { key: string; regex: RegExp }[] = [
-    { key: 'Character Name', regex: /<<<Character Name:\s*([\s\S]*?)>>>/i },
-    { key: 'Character Description', regex: /<<<Character Description:\s*([\s\S]*?)>>>/i },
-    { key: 'Character First Message', regex: /<<<Character First Message:\s*([\s\S]*?)>>>/i },
-    { key: 'Character System Prompt', regex: /<<<Character System Prompt:\s*([\s\S]*?)>>>/i },
-    { key: 'Character Think Prompt', regex: /<<<Character Think Prompt:\s*([\s\S]*?)>>>/i },
-    { key: 'Character Appearance Prompt', regex: /<<<Character Appearance Prompt:\s*([\s\S]*?)>>>/i },
-    { key: 'Character Dialogue Prompt', regex: /<<<Character Dialogue Prompt:\s*([\s\S]*?)>>>/i },
-    { key: 'Context Name', regex: /<<<Context Name:\s*([\s\S]*?)>>>/i },
-    { key: 'Context Description', regex: /<<<Context Description:\s*([\s\S]*?)>>>/i },
-    { key: 'Context Text Content', regex: /<<<Context Text Content:\s*([\s\S]*?)>>>/i },
-    { key: 'Context Regular Expression Activation Trigger', regex: /<<<Context Regular Expression Activation Trigger:\s*([\s\S]*?)>>>/i },
-    { key: 'Context Regular Expression Deactivation Trigger', regex: /<<<Context Regular Expression Deactivation Trigger:\s*([\s\S]*?)>>>/i },
-    { key: 'Location Name', regex: /<<<Location Name:\s*([\s\S]*?)>>>/i },
-    { key: 'Location Description', regex: /<<<Location Description:\s*([\s\S]*?)>>>/i },
-    { key: 'Location Text Content', regex: /<<<Location Text Content:\s*([\s\S]*?)>>>/i },
-    { key: 'Location Regular Expression Activation Trigger', regex: /<<<Location Regular Expression Activation Trigger:\s*([\s\S]*?)>>>/i },
-];
+interface GeneratedContext {
+    name: string;
+    description?: string;
+    textContent: string;
+    activationTrigger?: string;
+    deactivationTrigger?: string;
+}
 
-function parseFields(rawText: string): ParsedFields {
-    const parsed: ParsedFields = {};
-    for (const pattern of FIELD_PATTERNS) {
-        const match = rawText.match(pattern.regex);
-        if (match && match[1] && match[1].trim().length > 0) {
-            parsed[pattern.key] = match[1].trim();
-        }
-    }
-    return parsed;
+interface GeneratedLocation {
+    name: string;
+    description?: string;
+    textContent: string;
+    activationTrigger?: string;
+}
+
+interface GeneratedOutput {
+    character?: GeneratedCharacter;
+    context?: GeneratedContext;
+    location?: GeneratedLocation;
 }
 
 const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
@@ -52,6 +49,89 @@ const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
 ];
 
 const recommendationEngine = new LanguageModelEngine();
+
+function buildJsonSchema(selectedEntities: EntityType[]): string {
+    const parts: string[] = [];
+    if (selectedEntities.includes('Character')) {
+        parts.push(`  "character": {
+    "name": "string (required)",
+    "description": "string",
+    "firstMessage": "string",
+    "systemPrompt": "string",
+    "thinkPrompt": "string (optional)",
+    "appearancePrompt": "string (optional)",
+    "dialoguePrompt": "string (optional)"
+  }`);
+    }
+    if (selectedEntities.includes('Context')) {
+        parts.push(`  "context": {
+    "name": "string (required)",
+    "description": "string",
+    "textContent": "string (required)",
+    "activationTrigger": "string (regex pattern, optional)",
+    "deactivationTrigger": "string (regex pattern, optional)"
+  }`);
+    }
+    if (selectedEntities.includes('Location')) {
+        parts.push(`  "location": {
+    "name": "string (required)",
+    "description": "string",
+    "textContent": "string (required)",
+    "activationTrigger": "string (regex pattern, optional)"
+  }`);
+    }
+    return `{\n${parts.join(',\n')}\n}`;
+}
+
+function tryParseGeneratedOutput(text: string): GeneratedOutput | null {
+    // Try to extract JSON from the response (LLMs sometimes wrap it in markdown code blocks)
+    let jsonStr = text.trim();
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+
+    try {
+        const parsed = JSON.parse(jsonStr);
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        const result: GeneratedOutput = {};
+
+        if (parsed.character && typeof parsed.character === 'object' && parsed.character.name) {
+            result.character = {
+                name: String(parsed.character.name),
+                description: parsed.character.description ? String(parsed.character.description) : undefined,
+                firstMessage: parsed.character.firstMessage ? String(parsed.character.firstMessage) : undefined,
+                systemPrompt: parsed.character.systemPrompt ? String(parsed.character.systemPrompt) : undefined,
+                thinkPrompt: parsed.character.thinkPrompt ? String(parsed.character.thinkPrompt) : undefined,
+                appearancePrompt: parsed.character.appearancePrompt ? String(parsed.character.appearancePrompt) : undefined,
+                dialoguePrompt: parsed.character.dialoguePrompt ? String(parsed.character.dialoguePrompt) : undefined,
+            };
+        }
+
+        if (parsed.context && typeof parsed.context === 'object' && parsed.context.name && parsed.context.textContent) {
+            result.context = {
+                name: String(parsed.context.name),
+                description: parsed.context.description ? String(parsed.context.description) : undefined,
+                textContent: String(parsed.context.textContent),
+                activationTrigger: parsed.context.activationTrigger ? String(parsed.context.activationTrigger) : undefined,
+                deactivationTrigger: parsed.context.deactivationTrigger ? String(parsed.context.deactivationTrigger) : undefined,
+            };
+        }
+
+        if (parsed.location && typeof parsed.location === 'object' && parsed.location.name && parsed.location.textContent) {
+            result.location = {
+                name: String(parsed.location.name),
+                description: parsed.location.description ? String(parsed.location.description) : undefined,
+                textContent: String(parsed.location.textContent),
+                activationTrigger: parsed.location.activationTrigger ? String(parsed.location.activationTrigger) : undefined,
+            };
+        }
+
+        if (!result.character && !result.context && !result.location) return null;
+        return result;
+    } catch {
+        return null;
+    }
+}
 
 interface AIRecommendationModalProps {
     isOpen: boolean;
@@ -103,7 +183,7 @@ export function AIRecommendationModal({
     const [isResultOpen, setIsResultOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [streamingText, setStreamingText] = useState('');
-    const [parsedFields, setParsedFields] = useState<ParsedFields>({});
+    const [parsedOutput, setParsedOutput] = useState<GeneratedOutput | null>(null);
     const [activeTab, setActiveTab] = useState<ViewTab>('raw');
     const [resultError, setResultError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -127,7 +207,7 @@ export function AIRecommendationModal({
 
     const resetResult = useCallback(() => {
         setStreamingText('');
-        setParsedFields({});
+        setParsedOutput(null);
         setResultError(null);
         setIsGenerating(false);
         setIsSaving(false);
@@ -153,7 +233,9 @@ export function AIRecommendationModal({
         abortControllerRef.current = null;
         setIsGenerating(false);
         if (streamingText.trim()) {
-            setParsedFields(parseFields(streamingText));
+            const parsed = tryParseGeneratedOutput(streamingText);
+            setParsedOutput(parsed);
+            if (!parsed) setResultError('Stopped generation. Output was not valid JSON.');
         }
     }, [streamingText]);
 
@@ -238,33 +320,18 @@ export function AIRecommendationModal({
 
     const buildSystemPrompt = (): string => {
         const parts: string[] = [];
-        parts.push('You are a creative writing assistant for roleplay. Generate exactly ONE of each requested entity type below.');
-        parts.push('Output ONLY the requested fields using the exact format <<<Field Name: content>>>. Do not add any other text, commentary, or markdown.');
-        parts.push("You must fill in the names, system prompts and text contents. The rest of the fields are dependent on the user's request and the information given to you.");
-        parts.push("References to other characters depends on the user's requests.")
-        parts.push("You can use {{user}} to refer to the user. You must use {{char}} instead of the character's name.")
-        parts.push("You can use <<< and >>> to enforce strong boundaries.")
+        parts.push('You are a creative writing assistant for roleplay. Generate exactly ONE of each requested entity type.');
+        parts.push('You MUST output ONLY valid JSON matching the schema below. No markdown, no commentary, no explanation, no code fences.');
+        parts.push('Use {{user}} to refer to the user. Use {{char}} instead of the character\'s name in prompts and messages.');
         parts.push('');
 
         const existingBlock = buildExistingReferenceBlock();
         if (existingBlock) parts.push(existingBlock);
 
-        if (selectedEntities.includes('Character')) {
-            parts.push('CHARACTER FIELDS (generate exactly one character):');
-            parts.push('<<<Character Name: >>>', '<<<Character Description: >>>', '<<<Character First Message: >>>');
-            parts.push('<<<Character System Prompt: >>>', '<<<Character Think Prompt: >>>');
-            parts.push('<<<Character Appearance Prompt: >>>', '<<<Character Dialogue Prompt: >>>', '');
-        }
-        if (selectedEntities.includes('Context')) {
-            parts.push('CONTEXT FIELDS (generate exactly one context):');
-            parts.push('<<<Context Name: >>>', '<<<Context Description: >>>', '<<<Context Text Content: >>>');
-            parts.push('<<<Context Regular Expression Activation Trigger: >>>', '<<<Context Regular Expression Deactivation Trigger: >>>', '');
-        }
-        if (selectedEntities.includes('Location')) {
-            parts.push('LOCATION FIELDS (generate exactly one location):');
-            parts.push('<<<Location Name: >>>', '<<<Location Description: >>>', '<<<Location Text Content: >>>');
-            parts.push('<<<Location Regular Expression Activation Trigger: >>>', '');
-        }
+        parts.push('OUTPUT JSON SCHEMA:');
+        parts.push(buildJsonSchema(selectedEntities));
+        parts.push('');
+        parts.push('Fill all required fields. Omit optional fields if not applicable. Regex triggers should be valid JavaScript RegExp patterns without delimiters or flags.');
 
         return parts.join('\n');
     };
@@ -310,21 +377,21 @@ export function AIRecommendationModal({
             const systemPrompt = buildSystemPrompt();
             const userRequestPart = userPrompt.trim()
                 ? `\n\nUser Request: ${userPrompt.trim()}`
-                : '\n\nUser Request: Generate freely based on the existing entities and field templates provided above.';
+                : '\n\nUser Request: Generate freely based on the existing entities and schema provided above.';
             const fullPrompt = `${systemPrompt}${userRequestPart}${imageDescriptions}`;
 
             const modelContext = {
                 apiKey: selectedModel.apiKey,
                 backend: selectedModel.backend,
-                modelPath: (selectedModel.model || selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined,
+                modelPath: (selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined,
                 runtimePort: effectivePort,
             };
 
             const requestBody = {
                 prompt: fullPrompt,
                 n_predict: 4096,
-                temperature: 0.9,
-                top_p: 0.95,
+                temperature: 0.7,
+                top_p: 0.9,
                 stream: true,
             };
 
@@ -337,7 +404,9 @@ export function AIRecommendationModal({
                     onToken: (stats) => {
                         accumulated = stats.fullText;
                         setStreamingText(stats.fullText);
-                        setParsedFields(parseFields(stats.fullText));
+                        // Try parsing incrementally for live preview
+                        const parsed = tryParseGeneratedOutput(stats.fullText);
+                        if (parsed) setParsedOutput(parsed);
                     },
                 },
                 modelContext,
@@ -347,9 +416,13 @@ export function AIRecommendationModal({
 
             const finalText = result.text || accumulated;
             setStreamingText(finalText);
-            setParsedFields(parseFields(finalText));
 
-            if (!finalText.trim()) {
+            const parsed = tryParseGeneratedOutput(finalText);
+            setParsedOutput(parsed);
+
+            if (!parsed) {
+                setResultError('AI response was not valid JSON. Try regenerating.');
+            } else if (!finalText.trim()) {
                 setResultError('AI returned empty response.');
             }
         } catch (err) {
@@ -363,8 +436,7 @@ export function AIRecommendationModal({
     };
 
     const handleSave = async () => {
-        const fields = parsedFields;
-        if (Object.keys(fields).length === 0) { setResultError('No parsed fields to save.'); return; }
+        if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
 
         setIsSaving(true);
         setResultError(null);
@@ -372,12 +444,13 @@ export function AIRecommendationModal({
         const now = Date.now();
 
         try {
-            if (fields['Character Name']) {
-                const traitText = `${fields['Character Name'] || ''} ${fields['Character Description'] || ''} ${fields['Character System Prompt'] || ''}`;
+            if (parsedOutput.character) {
+                const c = parsedOutput.character;
+                const traitText = `${c.name || ''} ${c.description || ''} ${c.systemPrompt || ''}`;
                 const char: Character = {
-                    id: uuidv4(), name: fields['Character Name'], description: fields['Character Description'] || '',
-                    systemPrompt: fields['Character System Prompt'] || '', thinkPrompt: fields['Character Think Prompt'] || undefined,
-                    appearancePrompt: fields['Character Appearance Prompt'] || undefined, dialoguePrompt: fields['Character Dialogue Prompt'] || undefined,
+                    id: uuidv4(), name: c.name, description: c.description || '',
+                    systemPrompt: c.systemPrompt || '', thinkPrompt: c.thinkPrompt || undefined,
+                    appearancePrompt: c.appearancePrompt || undefined, dialoguePrompt: c.dialoguePrompt || undefined,
                     images: {}, sampler: allSamplers.length > 0 ? allSamplers[0] : undefined,
                     initiativeWeight: getInitiativeWeightValueFromText(traitText), chatProbability: getChatProbabilityValue(traitText),
                     maximumChatStamina: Math.round(getMaximumChatStaminaValueFromText(traitText)),
@@ -392,22 +465,24 @@ export function AIRecommendationModal({
                 };
                 if (!await onSaveCharacter(char)) throw new Error('Failed to save character.');
             }
-            if (fields['Context Name']) {
+            if (parsedOutput.context) {
+                const c = parsedOutput.context;
                 const ctx: Context = {
-                    id: uuidv4(), name: fields['Context Name'], description: fields['Context Description'] || undefined,
-                    text: fields['Context Text Content'] || '',
-                    regularExpressionActivationTrigger: fields['Context Regular Expression Activation Trigger'] || undefined,
-                    regularExpressionDeactivationTrigger: fields['Context Regular Expression Deactivation Trigger'] || undefined,
+                    id: uuidv4(), name: c.name, description: c.description || undefined,
+                    text: c.textContent,
+                    regularExpressionActivationTrigger: c.activationTrigger || undefined,
+                    regularExpressionDeactivationTrigger: c.deactivationTrigger || undefined,
                     limitLinksToSubdirectory: false,
                     useBase64Encoding: false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveContext(ctx)) throw new Error('Failed to save context.');
             }
-            if (fields['Location Name']) {
+            if (parsedOutput.location) {
+                const l = parsedOutput.location;
                 const loc: Location = {
-                    id: uuidv4(), name: fields['Location Name'], description: fields['Location Description'] || undefined,
-                    text: fields['Location Text Content'] || '',
-                    regularExpressionActivationTrigger: fields['Location Regular Expression Activation Trigger'] || undefined,
+                    id: uuidv4(), name: l.name, description: l.description || undefined,
+                    text: l.textContent,
+                    regularExpressionActivationTrigger: l.activationTrigger || undefined,
                     characterBindings: [], locationBindings: [], globalWeight: 1, characterWeights: {},
                     useBase64Encoding: false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
@@ -425,16 +500,16 @@ export function AIRecommendationModal({
 
     if (!isOpen) return null;
 
-    const hasCharacterFields = Object.keys(parsedFields).some(k => k.startsWith('Character'));
-    const hasContextFields = Object.keys(parsedFields).some(k => k.startsWith('Context'));
-    const hasLocationFields = Object.keys(parsedFields).some(k => k.startsWith('Location'));
-    const hasAnyParsed = hasCharacterFields || hasContextFields || hasLocationFields;
+    const hasCharacter = !!parsedOutput?.character;
+    const hasContext = !!parsedOutput?.context;
+    const hasLocation = !!parsedOutput?.location;
+    const hasAnyParsed = hasCharacter || hasContext || hasLocation;
     const hasOutput = streamingText.trim().length > 0;
 
     const availableTabs: ViewTab[] = ['raw'];
-    if (hasCharacterFields) availableTabs.push('Character');
-    if (hasContextFields) availableTabs.push('Context');
-    if (hasLocationFields) availableTabs.push('Location');
+    if (hasCharacter) availableTabs.push('Character');
+    if (hasContext) availableTabs.push('Context');
+    if (hasLocation) availableTabs.push('Location');
 
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
 
@@ -552,13 +627,13 @@ export function AIRecommendationModal({
                                             className={`entity-tab-btn ${effectiveTab === tab ? 'entity-tab-btn-active' : ''}`}
                                             onClick={() => setActiveTab(tab)}
                                         >
-                                            {tab === 'raw' ? '📄 Raw' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '📜 Context' : '📍 Location'}
+                                            {tab === 'raw' ? '📄 Raw JSON' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '📜 Context' : '📍 Location'}
                                         </button>
                                     ))}
                                 </div>
                             )}
 
-                            {/* Raw text view */}
+                            {/* Raw JSON view */}
                             {effectiveTab === 'raw' && (
                                 <div className="entity-raw-output">
                                     <pre className="entity-raw-pre">{streamingText || (isGenerating ? '⏳ Waiting for response...' : '')}</pre>
@@ -566,114 +641,104 @@ export function AIRecommendationModal({
                             )}
 
                             {/* Character tab */}
-                            {effectiveTab === 'Character' && hasCharacterFields && (
+                            {effectiveTab === 'Character' && parsedOutput?.character && (
                                 <div className="entity-field-list">
-                                    {parsedFields['Character Name'] && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Name</div>
-                                            <div className="entity-field-content">{parsedFields['Character Name']}</div>
-                                        </div>
-                                    )}
-                                    {parsedFields['Character Description'] && (
+                                    <div className="entity-field-block">
+                                        <div className="entity-field-title">Name</div>
+                                        <div className="entity-field-content">{parsedOutput.character.name}</div>
+                                    </div>
+                                    {parsedOutput.character.description && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Description</div>
-                                            <div className="entity-field-content">{parsedFields['Character Description']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.description}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Character First Message'] && (
+                                    {parsedOutput.character.firstMessage && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">First Message</div>
-                                            <div className="entity-field-content">{parsedFields['Character First Message']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.firstMessage}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Character System Prompt'] && (
+                                    {parsedOutput.character.systemPrompt && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">System Prompt</div>
-                                            <div className="entity-field-content">{parsedFields['Character System Prompt']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.systemPrompt}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Character Think Prompt'] && (
+                                    {parsedOutput.character.thinkPrompt && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Think Prompt</div>
-                                            <div className="entity-field-content">{parsedFields['Character Think Prompt']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.thinkPrompt}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Character Appearance Prompt'] && (
+                                    {parsedOutput.character.appearancePrompt && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Appearance</div>
-                                            <div className="entity-field-content">{parsedFields['Character Appearance Prompt']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.appearancePrompt}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Character Dialogue Prompt'] && (
+                                    {parsedOutput.character.dialoguePrompt && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Dialogue Examples</div>
-                                            <div className="entity-field-content">{parsedFields['Character Dialogue Prompt']}</div>
+                                            <div className="entity-field-content">{parsedOutput.character.dialoguePrompt}</div>
                                         </div>
                                     )}
                                 </div>
                             )}
 
                             {/* Context tab */}
-                            {effectiveTab === 'Context' && hasContextFields && (
+                            {effectiveTab === 'Context' && parsedOutput?.context && (
                                 <div className="entity-field-list">
-                                    {parsedFields['Context Name'] && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Name</div>
-                                            <div className="entity-field-content">{parsedFields['Context Name']}</div>
-                                        </div>
-                                    )}
-                                    {parsedFields['Context Description'] && (
+                                    <div className="entity-field-block">
+                                        <div className="entity-field-title">Name</div>
+                                        <div className="entity-field-content">{parsedOutput.context.name}</div>
+                                    </div>
+                                    {parsedOutput.context.description && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Description</div>
-                                            <div className="entity-field-content">{parsedFields['Context Description']}</div>
+                                            <div className="entity-field-content">{parsedOutput.context.description}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Context Text Content'] && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Content</div>
-                                            <div className="entity-field-content">{parsedFields['Context Text Content']}</div>
-                                        </div>
-                                    )}
-                                    {parsedFields['Context Regular Expression Activation Trigger'] && (
+                                    <div className="entity-field-block">
+                                        <div className="entity-field-title">Content</div>
+                                        <div className="entity-field-content">{parsedOutput.context.textContent}</div>
+                                    </div>
+                                    {parsedOutput.context.activationTrigger && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Activation Trigger</div>
-                                            <div className="entity-field-content entity-field-mono">{parsedFields['Context Regular Expression Activation Trigger']}</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedOutput.context.activationTrigger}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Context Regular Expression Deactivation Trigger'] && (
+                                    {parsedOutput.context.deactivationTrigger && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Deactivation Trigger</div>
-                                            <div className="entity-field-content entity-field-mono">{parsedFields['Context Regular Expression Deactivation Trigger']}</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedOutput.context.deactivationTrigger}</div>
                                         </div>
                                     )}
                                 </div>
                             )}
 
                             {/* Location tab */}
-                            {effectiveTab === 'Location' && hasLocationFields && (
+                            {effectiveTab === 'Location' && parsedOutput?.location && (
                                 <div className="entity-field-list">
-                                    {parsedFields['Location Name'] && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Name</div>
-                                            <div className="entity-field-content">{parsedFields['Location Name']}</div>
-                                        </div>
-                                    )}
-                                    {parsedFields['Location Description'] && (
+                                    <div className="entity-field-block">
+                                        <div className="entity-field-title">Name</div>
+                                        <div className="entity-field-content">{parsedOutput.location.name}</div>
+                                    </div>
+                                    {parsedOutput.location.description && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Description</div>
-                                            <div className="entity-field-content">{parsedFields['Location Description']}</div>
+                                            <div className="entity-field-content">{parsedOutput.location.description}</div>
                                         </div>
                                     )}
-                                    {parsedFields['Location Text Content'] && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Content</div>
-                                            <div className="entity-field-content">{parsedFields['Location Text Content']}</div>
-                                        </div>
-                                    )}
-                                    {parsedFields['Location Regular Expression Activation Trigger'] && (
+                                    <div className="entity-field-block">
+                                        <div className="entity-field-title">Content</div>
+                                        <div className="entity-field-content">{parsedOutput.location.textContent}</div>
+                                    </div>
+                                    {parsedOutput.location.activationTrigger && (
                                         <div className="entity-field-block">
                                             <div className="entity-field-title">Activation Trigger</div>
-                                            <div className="entity-field-content entity-field-mono">{parsedFields['Location Regular Expression Activation Trigger']}</div>
+                                            <div className="entity-field-content entity-field-mono">{parsedOutput.location.activationTrigger}</div>
                                         </div>
                                     )}
                                 </div>
