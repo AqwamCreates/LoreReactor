@@ -1,7 +1,7 @@
 // src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Context, Character, searchEngine } from '../types';
+import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -40,8 +40,8 @@ export function ContextEditorModal({
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
-    const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
+    const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
+    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -613,13 +613,13 @@ export function ContextEditorModal({
                         <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context</label>
-                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as 'global' | 'local' | 'previous')} className="editor-select" disabled={!regexActivationTrigger.trim()}>
+                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as regularExpressionContext)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
                                 </select>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Target</label>
-                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as 'everyone' | 'listener' | 'self')} className="editor-select" disabled={!regexActivationTrigger.trim()}>
+                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
                                 </select>
                             </div>

@@ -495,8 +495,9 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
     const memories = await hydrateMemories(rawCharacter.memories);
 
     const images: Record<string, string> = rawCharacter.images ?? {};
-    if (Object.keys(images).length === 0 && (rawCharacter as any).image) {
-      images.neutral = (rawCharacter as any).image;
+    const legacyImage = ('image' in rawCharacter && typeof rawCharacter.image === 'string') ? rawCharacter.image : undefined;
+    if (Object.keys(images).length === 0 && legacyImage) {
+      images.neutral = legacyImage;
     }
 
     return { 

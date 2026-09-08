@@ -1,6 +1,6 @@
 // src/components/StopPatternEditorModal.tsx
 import { useState, useEffect } from 'react';
-import type { StopPattern } from '../types';
+import type { regularExpressionContext, regularExpressionTarget, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
@@ -23,8 +23,8 @@ export function StopPatternEditorModal({
     const [pattern, setPattern] = useState('');
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexContext, setRegexContext] = useState<'global' | 'local' | 'previous'>('global');
-    const [regexTarget, setRegexTarget] = useState<'everyone' | 'listener' | 'self'>('everyone');
+    const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
+    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -351,7 +351,7 @@ export function StopPatternEditorModal({
                                 <label className="editor-label editor-label-small">Context</label>
                                 <select
                                     value={regexContext}
-                                    onChange={(e) => setRegexContext(e.target.value as any)}
+                                    onChange={(e) => setRegexContext(e.target.value as regularExpressionContext)}
                                     className="editor-select"
                                     disabled={!regexActivationTrigger.trim()}
                                 >
@@ -364,7 +364,7 @@ export function StopPatternEditorModal({
                                 <label className="editor-label editor-label-small">Target</label>
                                 <select
                                     value={regexTarget}
-                                    onChange={(e) => setRegexTarget(e.target.value as any)}
+                                    onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)}
                                     className="editor-select"
                                     disabled={!regexActivationTrigger.trim()}
                                 >

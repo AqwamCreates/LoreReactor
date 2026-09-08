@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType } from '../types';
+import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -102,7 +102,7 @@ function filterArrayBasedOnContext(
     characterIdArray: string[],
     textContentArray: string[],
     currentCharacterId: string,
-    contextType: 'global' | 'local' | 'previous'
+    contextType: regularExpressionContext
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
     if (length === 0) return { characterIdArray: [], textContentArray: [] };
@@ -139,7 +139,7 @@ function filterArrayBasedOnTarget(
     characterIdArray: string[],
     textContentArray: string[],
     currentCharacterId: string,
-    targetType: 'everyone' | 'listener' | 'self'
+    targetType: regularExpressionTarget
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
     if (length === 0) return { characterIdArray: [], textContentArray: [] };
@@ -604,7 +604,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const activeContextsForImages: Context[] = [];
     const fetchErrors: string[] = [];
 
-    const getFilteredData = (ctxType: 'global' | 'local' | 'previous', tgtType: 'everyone' | 'listener' | 'self') => {
+    const getFilteredData = (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => {
         if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
         if (!combinationCache[ctxType][tgtType]) {
             const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);

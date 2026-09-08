@@ -1,5 +1,8 @@
 // src/types.ts
 
+export type regularExpressionContext = 'global' | 'local' | 'previous';
+
+export type regularExpressionTarget = 'everyone' | 'listener' | 'self';
 interface ObjectData {
   id: string;
   name: string;
@@ -19,16 +22,16 @@ export interface StopPattern extends ObjectData {
   pattern: string;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
-  regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
 }
 
 export interface RawStopPattern extends RawData {
   pattern: string;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
-  regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
 }
 
 export interface Sampler extends ObjectData {
@@ -58,8 +61,8 @@ export interface Context extends ObjectData {
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
-  regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -81,8 +84,8 @@ export interface RawContext extends RawData {
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
-  regularExpressionContext?: 'global' | 'local' | 'previous';
-  regularExpressionTarget?: 'everyone' | 'listener' | 'self';
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
