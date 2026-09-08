@@ -87,17 +87,15 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
     const handleToggleExtension = useCallback(async (extId: string) => {
         if (!interactionData) return;
-        const extensionValue = Object.getOwnPropertyDescriptor(interactionData, 'extensions')?.value;
-        const currentExtensions = Array.isArray(extensionValue)
-            ? extensionValue.filter((extension): extension is Extension => typeof extension === 'object' && extension !== null && 'id' in extension && typeof extension.id === 'string')
-            : [];
-        const currentExtensionIds = currentExtensions.map(extension => extension.id);
-        const nextExtensionIds = currentExtensionIds.includes(extId)
-            ? currentExtensionIds.filter(id => id !== extId)
-            : [...currentExtensionIds, extId];
-        setInteractionData({ ...interactionData, extensions: allExtensions.filter(extension => nextExtensionIds.includes(extension.id)) });
+        // Extensions are global — read/write from localStorage directly
+        const saved = localStorage.getItem('loreReactor_activeExtensionIds');
+        const currentIds: string[] = saved ? JSON.parse(saved) : [];
+        const nextIds = currentIds.includes(extId)
+            ? currentIds.filter(id => id !== extId)
+            : [...currentIds, extId];
+        localStorage.setItem('loreReactor_activeExtensionIds', JSON.stringify(nextIds));
         addToast('Extensions updated.', 'info');
-    }, [interactionData, allExtensions, setInteractionData, addToast]);
+    }, [interactionData, addToast]);
 
     const handleActivateBudgetStrategy = useCallback((sid: string) => {
         if (selectedBudgetStrategyId === sid) {

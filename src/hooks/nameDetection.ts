@@ -1,4 +1,4 @@
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 import type { InteractionMessage } from '../types'; 
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;

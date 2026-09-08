@@ -78,7 +78,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     return (
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8, flexWrap: 'wrap' }}>
             {flags.length > 0
-                ? flags.map((f, i) => <span key={i} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>)
+                ? flags.map(f => <span key={f} style={{ fontSize: '0.65rem', background: 'var(--accent-bg)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{f}</span>)
                 : <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>No special settings</span>}
         </span>
     );

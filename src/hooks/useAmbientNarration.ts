@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const now = Date.now();
 

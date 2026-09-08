@@ -23,12 +23,6 @@ interface ImportPreview {
     cardFileName: string;
 }
 
-const DEFAULT_INITIATIVE_WEIGHT = 1.2;
-const DEFAULT_CHAT_PROBABILITY = 0.5;
-const DEFAULT_MAX_STAMINA = 4;
-const DEFAULT_NAME_SENSITIVITY = 1;
-const DEFAULT_CHAT_IMPATIENCE = 0;
-
 export function CharacterCardImportModal({
     isOpen,
     onClose,
@@ -91,7 +85,7 @@ export function CharacterCardImportModal({
 
             // Build images record with neutral + any extracted emotion images
             const images: Record<string, string> = {};
-            if (neutralFilename) images['neutral'] = neutralFilename;
+            if (neutralFilename) images.neutral = neutralFilename;
             if (extended.emotionImages) {
                 for (const [emotion, filename] of Object.entries(extended.emotionImages)) {
                     if (filename && !images[emotion]) images[emotion] = filename;

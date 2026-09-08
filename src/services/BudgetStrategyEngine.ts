@@ -3,7 +3,7 @@ import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageMo
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const engine = new LanguageModelEngine();
 

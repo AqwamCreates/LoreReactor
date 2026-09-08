@@ -1,5 +1,5 @@
 // src/hooks/characterLogic.ts
-import { isChatMessage } from "../components/typeGuard";
+import { isChatMessage } from "../typeGuard";
 import type { Character, InteractionData, InteractionMessage, Profile } from "../types";
 
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {

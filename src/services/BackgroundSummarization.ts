@@ -3,7 +3,7 @@ import type { InteractionData, BudgetStrategy, LanguageModel } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
 

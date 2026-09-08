@@ -3,7 +3,7 @@ import { deleteRawInteractionMessage, saveRawInteractionData, loadAllRawInteract
 import { deleteInteractionMessage as calculateDelete, editInteractionMessageInInteractionData } from './chatLogic';
 import type { InteractionData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 // ✅ Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentInteractionMessageIds(chatId: string): Promise<Set<string>> {

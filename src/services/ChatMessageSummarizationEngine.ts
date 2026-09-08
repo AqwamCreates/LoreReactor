@@ -1,11 +1,11 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, InteractionMessage, Context, Character, BudgetStrategy, LanguageModel } from '../types';
+import type { InteractionData, InteractionMessage, Context, Character, BudgetStrategy } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
-import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString } from '../stringList';
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString } from '../stringList';
 import { resolveModelContext } from '../utilities/modelContextResolver';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const engine = new LanguageModelEngine();
 

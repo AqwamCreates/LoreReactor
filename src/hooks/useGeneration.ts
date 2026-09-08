@@ -13,7 +13,7 @@ import { localURL } from '../configurations';
 import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from '../services/LanguageModelEngine';
 import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
-import { isChatMessage } from '../components/typeGuard';
+import { isChatMessage } from '../typeGuard';
 
 const languageModelEngine = new LanguageModelEngine();
 
