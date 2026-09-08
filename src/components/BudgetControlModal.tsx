@@ -390,7 +390,7 @@ export function BudgetControlModal({
                                             </div>
                                             <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Average Speed</span>
-                                                <span className="budget-stat-value">{aggregateStats.avgSpeed > 0 ? formatMs(aggregateStats.avgSpeed) + '/tok' : '—'}</span>
+                                                <span className="budget-stat-value">{aggregateStats.avgSpeed > 0 ? `${formatMs(aggregateStats.avgSpeed)}/tok` : '—'}</span>
                                             </div>
                                             <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Average TTFT</span>

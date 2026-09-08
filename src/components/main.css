@@ -3648,6 +3648,11 @@ BUDGET CONTROL MODAL — DEDICATED STYLES
     border-bottom: none;
 }
 
+.budget-table th:first-child,
+.budget-table td:first-child {
+    text-align: left;
+}
+
 @media (max-width: 768px) {
     .budget-stat-grid {
         grid-template-columns: 1fr;
