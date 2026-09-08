@@ -1,28 +1,30 @@
 // src/components/StreamingIndicators.tsx
 import type React from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character } from '../types';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
+import { useSessionStore } from '../store/useSessionStore';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 interface StreamingIndicatorsProps {
-    isLoading: boolean;
-    streamingCharacter: Character | null;
-    streamingText: string;
     formattedStreamingText: React.ReactNode;
     viewMode: 'ladder' | 'cinematic';
     currentCharacterId: string | undefined;
     streamingPortraitUrl: string | null;
-    interactionData: InteractionData | null;
     messagesLength: number;
     onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
 }
 
 export function StreamingIndicators({
-    isLoading, streamingCharacter, streamingText, formattedStreamingText,
+    formattedStreamingText,
     viewMode, currentCharacterId, streamingPortraitUrl,
-    interactionData, messagesLength, onAvatarClick,
+    messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
+    const isLoading = useSessionStore(s => s.isLoading);
+    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+    const streamingText = useSessionStore(s => s.streamingText);
+    const interactionData = useSessionStore(s => s.interactionData);
+
     if (!isLoading || !streamingCharacter) return null;
 
     const isNotProtagOrAmbient = streamingCharacter.id !== currentCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;

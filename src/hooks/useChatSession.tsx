@@ -120,6 +120,13 @@ export function useChatSession() {
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
     const activeStrategyIdRef = useRef<string | null>(null);
+    const interactionDataRef = useRef<InteractionData | null>(interactionData);
+    const modelRef = useRef<LanguageModel | null>(selectedModel);
+    const runningModelsRef = useRef<RunningModelStatus>({});
+
+    useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
+    useEffect(() => { modelRef.current = selectedModel; }, [selectedModel]);
+    useEffect(() => { runningModelsRef.current = runningModelsMap; }, [runningModelsMap]);
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, streamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -181,7 +188,9 @@ export function useChatSession() {
             const model = useSessionStore.getState().selectedModel;
             const models = useSessionStore.getState().runningModels;
             const port = model?.id ? models[model.id]?.port : undefined;
-            const ep = port || (model?.parameters as any)?._runtimePort;
+            const runtimeParams = model?.parameters as Record<string, unknown> | undefined;
+            const runtimePort = typeof runtimeParams?._runtimePort === 'number' ? runtimeParams._runtimePort : undefined;
+            const ep = port ?? runtimePort;
             const lmCtx = ep ? { runtimePort: ep } : undefined;
             let total = 0;
             for (const m of interactionData.interactionHistory) {
@@ -354,8 +363,13 @@ export function useChatSession() {
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData,
-                    addToast, activeStrategy: useSessionStore.getState().activeStrategy,
+                    data: ud,
+                    setData: setInteractionData,
+                    dataRef: interactionDataRef,
+                    modelRef,
+                    runningModelsRef,
+                    addToast,
+                    activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
@@ -453,8 +467,13 @@ export function useChatSession() {
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData,
-                    addToast, activeStrategy: useSessionStore.getState().activeStrategy,
+                    data: ud,
+                    setData: setInteractionData,
+                    dataRef: interactionDataRef,
+                    modelRef,
+                    runningModelsRef,
+                    addToast,
+                    activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);

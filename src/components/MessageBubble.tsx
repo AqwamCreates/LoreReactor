@@ -2,6 +2,7 @@
 import React from 'react';
 import type { Character, ChatMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
+import { useSessionStore } from '../store/useSessionStore';
 
 interface MessageBubbleProps {
     message: ChatMessage;
@@ -18,8 +19,6 @@ interface MessageBubbleProps {
     displayName: string;
     isStem: boolean;
     beforeBranch: boolean;
-    isModelReady: boolean;
-    isLoading: boolean;
     // callbacks
     onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
     onStartEditing: (id: string, text: string) => void;
@@ -50,15 +49,23 @@ export const MessageBubble = React.memo(function MessageBubble({
     message, index, viewMode, currentCharacterId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
-    isModelReady, isLoading,
     onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit, onRegenerateFromEdit,
     onResumeGeneration, onCopyText, onRegenerateFromMessage,
     onBranch, onClone, onDelete, onSetMassDelete,
     onMassDeleteConfirm, onCancelMassDelete,
     onTouchStart, onTouchEnd, onTouchMove,
     suppressNextClickRef, editTextareaRef, setEditDraft,
-    onNavigateToBranchSource
+    onNavigateToBranchSource,
 }: MessageBubbleProps) {
+    // Read generation state directly from store
+    const isModelReady = useSessionStore(s => {
+        const m = s.selectedModel;
+        if (!m) return false;
+        if (m.apiKey) return true;
+        return !!(m.id && s.runningModels[m.id]?.port);
+    });
+    const isLoading = useSessionStore(s => s.isLoading);
+
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
     const isEditing = editingId === message.id;
@@ -187,15 +194,21 @@ export const MessageBubble = React.memo(function MessageBubble({
                 </div>
             </div>
 
-        {beforeBranch && (
-            <div className="branch-separator-line clickable" onClick={onNavigateToBranchSource} title="Click to go back to source chat" style={{ cursor: 'pointer' }}>
-                <div className="branch-separator-content">
-                    <span className="branch-separator-icon">🌿</span>
-                    <span className="branch-separator-text">Conversation Branches Here</span>
-                    <span className="branch-separator-icon">🌿</span>
-                </div>
-            </div>
-        )}
+            {beforeBranch && (
+                <button
+                    type="button"
+                    className="branch-separator-line clickable"
+                    onClick={onNavigateToBranchSource}
+                    title="Click to go back to source chat"
+                    style={{ cursor: 'pointer' }}
+                >
+                    <span className="branch-separator-content">
+                        <span className="branch-separator-icon">🌿</span>
+                        <span className="branch-separator-text">Conversation Branches Here</span>
+                        <span className="branch-separator-icon">🌿</span>
+                    </span>
+                </button>
+            )}
         </React.Fragment>
     );
 });

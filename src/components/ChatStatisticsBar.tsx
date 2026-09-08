@@ -1,46 +1,39 @@
 // src/components/ChatStatisticsBar.tsx
 import type React from 'react';
 import { useState } from 'react';
+import { useSessionStore } from '../store/useSessionStore';
 
 interface ChatStatisticsBarProps {
-    generationSpeed: number;
-    timeToFirstToken: number;
-    numberOfTokens: number;
     maximumNumberOfTokens: number;
     maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens: number;
     maximumNumberOfContextTokens?: number;
     numberOfMessages: number;
     className?: string;
-    numberOfCacheInvalidations?: number;
-    numberOfRequests?: number;
-    totalCost?: number;
-    costWithoutCacheMisses?: number;
-    inputCacheHitCostPerMillion?: number;
-    inputCacheMissCostPerMillion?: number;
-    outputGenerationCostPerMillion?: number;
     budgetSpent?: number;
     maximumBudget?: number;
     timeUntilReset?: number | null;
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
-    generationSpeed = 0,  
-    timeToFirstToken = 0,                   
-    numberOfTokens = 0,
-    maximumNumberOfTokens = 65536,              
+    maximumNumberOfTokens = 65536,
     maximumNumberOfContextTokens = 0,
     maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens = 0,
-    numberOfMessages = 0,  
+    numberOfMessages = 0,
     className = '',
-    numberOfCacheInvalidations = 0,
-    numberOfRequests = 0,
-    totalCost = 0,
-    costWithoutCacheMisses = 0,
     budgetSpent,
     maximumBudget,
     timeUntilReset,
 }) => {
     const [showDetails, setShowDetails] = useState(false);
+
+    // Read session stats directly from store
+    const generationSpeed = useSessionStore(s => s.generationSpeed);
+    const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
+    const numberOfTokens = useSessionStore(s => s.numberOfTokens);
+    const numberOfCacheInvalidations = useSessionStore(s => s.numberOfCacheInvalidations);
+    const numberOfRequests = useSessionStore(s => s.numberOfRequests);
+    const totalCost = useSessionStore(s => s.totalCost);
+    const costWithoutCacheMisses = useSessionStore(s => s.costWithoutCacheMisses);
 
     // Calculate Percentage
     const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
