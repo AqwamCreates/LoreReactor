@@ -1,5 +1,6 @@
 // src/components/DataImportModal.tsx
 import { useState, useRef } from 'react';
+import type { World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import './main.css';
@@ -26,6 +27,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [selModelIds, setSelModelIds] = useState<string[]>([]);
     const [selBsIds, setSelBsIds] = useState<string[]>([]);
     const [selProfileIds, setSelProfileIds] = useState<string[]>([]);
+    const [selWorldIds, setSelWorldIds] = useState<string[]>([]);
     const [selChatIds, setSelChatIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
@@ -37,17 +39,18 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [modelSearch, setModelSearch] = useState('');
     const [bsSearch, setBsSearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
+    const [worldSearch, setWorldSearch] = useState('');
     const [chatSearch, setChatSearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
         setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]);
         setSelSamplerIds([]); setSelSpIds([]); setSelModelIds([]);
-        setSelBsIds([]); setSelProfileIds([]); setSelChatIds([]);
+        setSelBsIds([]); setSelProfileIds([]); setSelWorldIds([]); setSelChatIds([]);
         setIncludeActions(true);
         setCharSearch(''); setCtxSearch(''); setLocSearch('');
         setSamplerSearch(''); setSpSearch(''); setModelSearch('');
-        setBsSearch(''); setProfileSearch(''); setChatSearch('');
+        setBsSearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -68,15 +71,16 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             if (!validateExport(json)) { setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.'); return; }
             setParsedData(json);
             // Pre-select all items by default
-            setSelCharIds(json.characters.map(c => c.id));
-            setSelCtxIds(json.contexts.map(c => c.id));
-            setSelLocIds(json.locations.map(l => l.id));
-            setSelSamplerIds(json.samplers.map(s => s.id));
-            setSelSpIds(json.stopPatterns.map(s => s.id));
-            setSelModelIds(json.models.map(m => m.id));
-            setSelBsIds(json.budgetStrategies.map(b => b.id));
-            setSelProfileIds(json.profiles.map(p => p.id));
-            setSelChatIds(json.chats.map(c => c.id));
+            setSelCharIds(json.characters.map((c: { id: string }) => c.id));
+            setSelCtxIds(json.contexts.map((c: { id: string }) => c.id));
+            setSelLocIds(json.locations.map((l: { id: string }) => l.id));
+            setSelSamplerIds(json.samplers.map((s: { id: string }) => s.id));
+            setSelSpIds(json.stopPatterns.map((s: { id: string }) => s.id));
+            setSelModelIds(json.models.map((m: { id: string }) => m.id));
+            setSelBsIds(json.budgetStrategies.map((b: { id: string }) => b.id));
+            setSelProfileIds(json.profiles.map((p: { id: string }) => p.id));
+            setSelWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
+            setSelChatIds(json.chats.map((c: { id: string }) => c.id));
             setIncludeActions(json.interjectableActions.length > 0);
         } catch (err) { setError(`Failed to parse file: ${(err as Error).message}`); }
     };
@@ -96,6 +100,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             models: parsedData.models.filter(m => selModelIds.includes(m.id)),
             budgetStrategies: parsedData.budgetStrategies.filter(b => selBsIds.includes(b.id)),
             profiles: parsedData.profiles.filter(p => selProfileIds.includes(p.id)),
+            worlds: parsedData.worlds?.filter((w: World) => selWorldIds.includes(w.id)) ?? [],
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
             chats: parsedData.chats.filter(c => selChatIds.includes(c.id)),
         };
@@ -110,7 +115,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
 
     const totalSelected = selCharIds.length + selCtxIds.length + selLocIds.length +
         selSamplerIds.length + selSpIds.length + selModelIds.length +
-        selBsIds.length + selProfileIds.length + selChatIds.length + (includeActions ? 1 : 0);
+        selBsIds.length + selProfileIds.length + selWorldIds.length + selChatIds.length + (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -165,6 +170,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 {parsedData.locations.length > 0 && (
                                     <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selLocIds}
                                         onToggle={(id) => toggle(selLocIds, setSelLocIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
+                                )}
+                                {(parsedData.worlds?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selWorldIds}
+                                        onToggle={(id) => toggle(selWorldIds, setSelWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
                                 {parsedData.samplers.length > 0 && (
                                     <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selSamplerIds}
@@ -225,6 +234,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Characters:</strong> {importResult.counts.characters}</div>
                                     <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
+                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
                                     <div><strong>Models:</strong> {importResult.counts.models}</div>

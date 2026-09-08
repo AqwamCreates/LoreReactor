@@ -1,7 +1,7 @@
 // src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, Sampler, StopPattern, LanguageModel,
-    BudgetStrategy, Profile, InteractionData, InterjectableAction,
+    BudgetStrategy, Profile, InteractionData, InterjectableAction, World,
 } from '../types';
 import {
     loadRawCharacter, saveRawCharacter,
@@ -12,6 +12,7 @@ import {
     loadAllRawModels, saveRawModel,
     loadAllRawBudgetStrategies, saveRawBudgetStrategy,
     loadAllRawProfiles, saveRawProfile,
+    loadAllRawWorlds, saveRawWorld,
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
@@ -28,6 +29,7 @@ export interface LoreReactorExport {
     models: LanguageModel[];
     budgetStrategies: BudgetStrategy[];
     profiles: Profile[];
+    worlds: World[];
     interjectableActions: InterjectableAction[];
     chats: InteractionData[];
 }
@@ -37,7 +39,7 @@ export interface ImportResult {
     counts: {
         characters: number; contexts: number; locations: number; samplers: number;
         stopPatterns: number; models: number; budgetStrategies: number; profiles: number;
-        interjectableActions: number; chats: number;
+        worlds: number; interjectableActions: number; chats: number;
     };
     errors: string[];
 }
@@ -55,6 +57,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.models)) return false;
     if (!Array.isArray(d.budgetStrategies)) return false;
     if (!Array.isArray(d.profiles)) return false;
+    if (!Array.isArray(d.worlds)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     if (!Array.isArray(d.chats)) return false;
     return true;
@@ -72,13 +75,15 @@ export async function exportSelectedData(selection: {
     modelIds: string[];
     budgetStrategyIds: string[];
     profileIds: string[];
+    worldIds: string[];
     includeActions: boolean;
     chatIds: string[];
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
         characters: [], contexts: [], locations: [], samplers: [], stopPatterns: [],
-        models: [], budgetStrategies: [], profiles: [], interjectableActions: [], chats: [],
+        models: [], budgetStrategies: [], profiles: [], worlds: [],
+        interjectableActions: [], chats: [],
     };
 
     for (const id of selection.characterIds) {
@@ -94,7 +99,7 @@ export async function exportSelectedData(selection: {
         if (full) data.locations.push(full);
     }
 
-    // Samplers, stop patterns, models, budget strategies, profiles — filter from full lists
+    // Samplers, stop patterns, models, budget strategies, profiles, worlds — filter from full lists
     if (selection.samplerIds.length > 0) {
         const all = await loadAllRawSamplers();
         for (const s of all) { if (selection.samplerIds.includes(s.id)) data.samplers.push(s as Sampler); }
@@ -114,6 +119,10 @@ export async function exportSelectedData(selection: {
     if (selection.profileIds.length > 0) {
         const all = await loadAllRawProfiles();
         for (const p of all) { if (selection.profileIds.includes(p.id)) data.profiles.push(p as Profile); }
+    }
+    if (selection.worldIds.length > 0) {
+        const all = await loadAllRawWorlds();
+        for (const w of all) { if (selection.worldIds.includes(w.id)) data.worlds.push(w); }
     }
 
     if (selection.includeActions) {
@@ -139,7 +148,11 @@ export async function exportSelectedData(selection: {
 export async function importSelectedData(data: LoreReactorExport): Promise<ImportResult> {
     const result: ImportResult = {
         success: true,
-        counts: { characters: 0, contexts: 0, locations: 0, samplers: 0, stopPatterns: 0, models: 0, budgetStrategies: 0, profiles: 0, interjectableActions: 0, chats: 0 },
+        counts: {
+            characters: 0, contexts: 0, locations: 0, samplers: 0, stopPatterns: 0,
+            models: 0, budgetStrategies: 0, profiles: 0, worlds: 0,
+            interjectableActions: 0, chats: 0,
+        },
         errors: [],
     };
 
@@ -174,6 +187,10 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const p of data.profiles) {
         try { await saveRawProfile(p); result.counts.profiles++; }
         catch (e) { result.errors.push(`Profile "${p.name || p.id}": ${(e as Error).message}`); }
+    }
+    for (const w of data.worlds) {
+        try { await saveRawWorld(w); result.counts.worlds++; }
+        catch (e) { result.errors.push(`World "${w.name || w.id}": ${(e as Error).message}`); }
     }
     if (data.interjectableActions.length > 0) {
         try { await saveInterjectableActions(data.interjectableActions); result.counts.interjectableActions = data.interjectableActions.length; }
