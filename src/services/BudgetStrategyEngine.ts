@@ -12,9 +12,6 @@ const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 /** Tier bonus applied to models whose cache is likely still warm. */
 const CACHE_WARMTH_TIER_BONUS = 1;
 
-/** Exponential moving average smoothing factor for generation speed. Lower = more weight on history. */
-const SPEED_EMA_ALPHA = 0.3;
-
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
         cacheHitPerMillion: model.cacheHitCostPerOneMillionOfTokens ?? 0,
@@ -90,7 +87,7 @@ function applyResetIfDue(data: BudgetData): void {
     data.modelLastQuotaHitTimeStamps = {};
     data.modelLastErrorHitTimeStamps = {};
     data.lastResetTimestamp = Date.now();
-    // Don't reset generation speed — it's a persistent performance metric
+    // Don't reset speed/TTFT — they're persistent performance metrics
 }
 
 export interface RunningModelState {
@@ -140,17 +137,38 @@ export class BudgetStrategyEngine {
         return this.budgetData.modelAverageGenerationSpeedMsPerToken?.[modelId] ?? Infinity;
     }
 
-    /** Updates the rolling average generation speed for a model using EMA. */
+    /** Gets the average TTFT (ms) for a model. Returns Infinity if no data. */
+    private getModelTTFT(modelId: string): number {
+        return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Infinity;
+    }
+
+    /** Updates the rolling average generation speed for a model using configurable EMA alpha. */
     private recordGenerationSpeed(modelId: string, observedMsPerToken: number): void {
         if (!this.budgetData.modelAverageGenerationSpeedMsPerToken) {
             this.budgetData.modelAverageGenerationSpeedMsPerToken = {};
         }
+        const alpha = this.budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
         const previous = this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId];
         if (previous === undefined) {
             this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId] = observedMsPerToken;
         } else {
             this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId] =
-                (SPEED_EMA_ALPHA * observedMsPerToken) + ((1 - SPEED_EMA_ALPHA) * previous);
+                (alpha * observedMsPerToken) + ((1 - alpha) * previous);
+        }
+    }
+
+    /** Updates the rolling average TTFT for a model using configurable EMA alpha. */
+    private recordTTFT(modelId: string, observedMs: number): void {
+        if (!this.budgetData.modelAverageTimeToFirstToken) {
+            this.budgetData.modelAverageTimeToFirstToken = {};
+        }
+        const alpha = this.budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3;
+        const previous = this.budgetData.modelAverageTimeToFirstToken[modelId];
+        if (previous === undefined) {
+            this.budgetData.modelAverageTimeToFirstToken[modelId] = observedMs;
+        } else {
+            this.budgetData.modelAverageTimeToFirstToken[modelId] =
+                (alpha * observedMs) + ((1 - alpha) * previous);
         }
     }
 
@@ -209,7 +227,8 @@ export class BudgetStrategyEngine {
      * Groups by effective tier (highest first), then within each tier sorts by:
      *   1. Cache warmth (warm first)
      *   2. Generation speed (faster first — lower ms/token is better)
-     *   3. Base tier descending as tiebreaker
+     *   3. TTFT (lower first — snappier response preferred)
+     *   4. Base tier descending as tiebreaker
      */
     private selectFromPool(
         pool: LanguageModel[],
@@ -245,7 +264,12 @@ export class BudgetStrategyEngine {
                 const bSpeed = this.getModelSpeed(b.id);
                 if (aSpeed !== bSpeed) return aSpeed - bSpeed;
 
-                // 3. Base tier as tiebreaker
+                // 3. TTFT (lower = snappier = preferred)
+                const aTTFT = this.getModelTTFT(a.id);
+                const bTTFT = this.getModelTTFT(b.id);
+                if (aTTFT !== bTTFT) return aTTFT - bTTFT;
+
+                // 4. Base tier as tiebreaker
                 return this.getTier(b) - this.getTier(a);
             });
             if (candidates.length > 0) {
@@ -344,9 +368,12 @@ export class BudgetStrategyEngine {
                     primaryCtx,
                 );
 
-                // Record generation speed from observed stats
+                // Record generation speed and TTFT from observed stats
                 if (result.msPerToken && result.msPerToken > 0) {
                     this.recordGenerationSpeed(selectedModel.id, result.msPerToken);
+                }
+                if (result.timeToFirstToken && result.timeToFirstToken > 0) {
+                    this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                 }
 
                 const promptTokens = await engine.countTokens(body.prompt || '');
@@ -399,6 +426,9 @@ export class BudgetStrategyEngine {
 
                     if (result.msPerToken && result.msPerToken > 0) {
                         this.recordGenerationSpeed(selectedModel.id, result.msPerToken);
+                    }
+                    if (result.timeToFirstToken && result.timeToFirstToken > 0) {
+                        this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
                     const promptTokens = await engine.countTokens(fallbackBody.prompt || '');

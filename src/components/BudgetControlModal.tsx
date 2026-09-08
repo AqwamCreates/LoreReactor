@@ -84,8 +84,10 @@ export function BudgetControlModal({
 
     const [selectedStrategyId, setSelectedStrategyId] = useState(activeStrategy?.id || allBudgetStrategies[0]?.id || '');
     const [customResetHours, setCustomResetHours] = useState<number>(24);
-    const [manualBudgetSpent, setManualBudgetSpent] = useState<string>('');
+    const [budgetAdjustAmount, setBudgetAdjustAmount] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
+    const [speedAlpha, setSpeedAlpha] = useState<string>('');
+    const [ttftAlpha, setTtftAlpha] = useState<string>('');
 
     const selectedStrategy = useMemo(() => {
         return allBudgetStrategies.find(s => s.id === selectedStrategyId) || activeStrategy || allBudgetStrategies[0] || null;
@@ -114,7 +116,6 @@ export function BudgetControlModal({
 
     const handleCreate = async () => {
         if (!selectedStrategy) return;
-
         await runAction(
             () => createBudgetData(selectedStrategy, 24 * 60 * 60 * 1000),
             'Budget data created.',
@@ -123,7 +124,6 @@ export function BudgetControlModal({
 
     const handleStrategyChange = async () => {
         if (!selectedStrategy || !budgetData) return;
-
         await runAction(
             () => setBudgetStrategy(selectedStrategy),
             'Budget strategy updated.',
@@ -132,7 +132,6 @@ export function BudgetControlModal({
 
     const handlePresetResetDuration = async (duration: number) => {
         if (!budgetData) return;
-
         await runAction(
             () => setResetDuration(duration),
             'Reset duration updated.',
@@ -141,27 +140,69 @@ export function BudgetControlModal({
 
     const handleCustomResetDuration = async () => {
         if (!budgetData) return;
-
         const duration = Math.max(0, customResetHours) * 60 * 60 * 1000;
-
         await runAction(
             () => setResetDuration(duration),
             'Custom reset duration updated.',
         );
     };
 
-    const handleManualBudgetSpentSave = async () => {
+    const handleSetBudgetSpent = async () => {
         if (!budgetData) return;
-
-        const value = Number(manualBudgetSpent);
+        const value = Number(budgetAdjustAmount);
         if (!Number.isFinite(value) || value < 0) return;
+        await runAction(() => setBudgetSpent(value), 'Budget spent updated.');
+        setBudgetAdjustAmount('');
+    };
 
-        await runAction(
-            () => setBudgetSpent(value),
-            'Budget spent updated.',
-        );
+    const handleAddBudgetSpent = async () => {
+        if (!budgetData) return;
+        const value = Number(budgetAdjustAmount);
+        if (!Number.isFinite(value) || value <= 0) return;
+        const newSpent = Math.min(maximumBudget, budgetData.budgetSpent + value);
+        await runAction(() => setBudgetSpent(newSpent), `Added $${formatCost(value)} to budget spent.`);
+        setBudgetAdjustAmount('');
+    };
 
-        setManualBudgetSpent('');
+    const handleSubtractBudgetSpent = async () => {
+        if (!budgetData) return;
+        const value = Number(budgetAdjustAmount);
+        if (!Number.isFinite(value) || value <= 0) return;
+        const newSpent = Math.max(0, budgetData.budgetSpent - value);
+        await runAction(() => setBudgetSpent(newSpent), `Subtracted $${formatCost(value)} from budget spent.`);
+        setBudgetAdjustAmount('');
+    };
+
+    const handleSpeedAlphaSave = async () => {
+        if (!budgetData) return;
+        const value = Number(speedAlpha);
+        if (!Number.isFinite(value) || value <= 0 || value >= 1) return;
+        setIsSaving(true);
+        try {
+            const { saveRawBudgetData } = await import('../hooks/storage');
+            const updated = { ...budgetData, averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: value };
+            await saveRawBudgetData(updated);
+            await refresh();
+        } finally {
+            setIsSaving(false);
+        }
+        setSpeedAlpha('');
+    };
+
+    const handleTtftAlphaSave = async () => {
+        if (!budgetData) return;
+        const value = Number(ttftAlpha);
+        if (!Number.isFinite(value) || value <= 0 || value >= 1) return;
+        setIsSaving(true);
+        try {
+            const { saveRawBudgetData } = await import('../hooks/storage');
+            const updated = { ...budgetData, averageTimeToFirstTokenExponentialMovingAverageSmoothing: value };
+            await saveRawBudgetData(updated);
+            await refresh();
+        } finally {
+            setIsSaving(false);
+        }
+        setTtftAlpha('');
     };
 
     return (
@@ -170,13 +211,7 @@ export function BudgetControlModal({
                 <div className="modal-header">
                     <h2>Budget Control</h2>
                     <div className="modal-header-actions">
-                        <button
-                            type="button"
-                            className="close-btn close-btn-spaced"
-                            onClick={onClose}
-                        >
-                            ×
-                        </button>
+                        <button type="button" className="close-btn close-btn-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
 
@@ -189,11 +224,9 @@ export function BudgetControlModal({
                             {!budgetData && (
                                 <div className="editor-section">
                                     <span className="editor-section-title">Initialize Budget Data</span>
-
                                     <div className="entity-ref-hint" style={{ marginBottom: '8px' }}>
                                         No global budget data exists yet. Create it from a budget strategy.
                                     </div>
-
                                     <label className="editor-label editor-label-small">Budget Strategy</label>
                                     <select
                                         className="editor-input"
@@ -206,13 +239,11 @@ export function BudgetControlModal({
                                             </option>
                                         ))}
                                     </select>
-
                                     {allBudgetStrategies.length === 0 && (
                                         <div className="editor-error-message" style={{ marginTop: '8px' }}>
                                             No budget strategies exist. Create one first.
                                         </div>
                                     )}
-
                                     <div style={{ marginTop: '12px' }}>
                                         <button
                                             type="button"
@@ -232,21 +263,16 @@ export function BudgetControlModal({
                                     {/* Overview */}
                                     <div className="editor-section">
                                         <span className="editor-section-title">Overview</span>
-
                                         <div className="chat-stat-detail-row">
                                             <span className="chat-stat-detail-label">Active Strategy:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {budgetData.budgetStrategy?.name || 'Unknown'}
-                                            </span>
+                                            <span className="chat-stat-detail-value">{budgetData.budgetStrategy?.name || 'Unknown'}</span>
                                         </div>
-
                                         <div className="chat-stat-detail-row">
                                             <span className="chat-stat-detail-label">Budget Spent:</span>
                                             <span className="chat-stat-detail-value">
                                                 ${formatCost(budgetData.budgetSpent)} / ${formatCost(maximumBudget)} ({Math.round(usagePercent)}%)
                                             </span>
                                         </div>
-
                                         <div className="chat-stat-token-usage" style={{ marginTop: '8px' }}>
                                             <span className="chat-stat-context-bar" style={{ width: '100%' }}>
                                                 <span
@@ -258,119 +284,64 @@ export function BudgetControlModal({
                                                 />
                                             </span>
                                         </div>
-
                                         <div className="chat-stat-detail-row" style={{ marginTop: '8px' }}>
                                             <span className="chat-stat-detail-label">Reset Duration:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatDuration(budgetData.resetDuration)}
-                                            </span>
+                                            <span className="chat-stat-detail-value">{formatDuration(budgetData.resetDuration)}</span>
                                         </div>
-
                                         <div className="chat-stat-detail-row">
                                             <span className="chat-stat-detail-label">Next Reset:</span>
                                             <span className="chat-stat-detail-value">
                                                 {timeUntilReset === null ? 'Disabled' : timeUntilReset <= 0 ? 'Due now' : `in ${formatDuration(timeUntilReset)}`}
                                             </span>
                                         </div>
-
                                         <div className="chat-stat-detail-row">
                                             <span className="chat-stat-detail-label">Last Reset:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatTimestamp(budgetData.lastResetTimestamp)}
-                                            </span>
+                                            <span className="chat-stat-detail-value">{formatTimestamp(budgetData.lastResetTimestamp)}</span>
                                         </div>
-
                                         <div className="chat-stat-detail-row">
                                             <span className="chat-stat-detail-label">Last Updated:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatTimestamp(budgetData.lastUpdatedTimestamp)}
-                                            </span>
+                                            <span className="chat-stat-detail-value">{formatTimestamp(budgetData.lastUpdatedTimestamp)}</span>
                                         </div>
                                     </div>
 
-                                    {/* Strategy */}
+                                    {/* Model Runtime Data */}
                                     <div className="editor-section">
-                                        <span className="editor-section-title">Strategy Binding</span>
-
-                                        <label className="editor-label editor-label-small">Budget Strategy</label>
-                                        <select
-                                            className="editor-input"
-                                            value={selectedStrategyId || budgetData.budgetStrategy?.id || ''}
-                                            onChange={e => setSelectedStrategyId(e.target.value)}
-                                        >
-                                            {allBudgetStrategies.map(strategy => (
-                                                <option key={strategy.id} value={strategy.id}>
-                                                    {strategy.name} — ${formatCost(strategy.maximumBudget)}
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            <button
-                                                type="button"
-                                                className="editor-btn editor-btn-save"
-                                                disabled={!selectedStrategy || isSaving}
-                                                onClick={handleStrategyChange}
-                                            >
-                                                Apply Strategy
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                className="editor-btn editor-btn-cancel"
-                                                disabled={isSaving}
-                                                onClick={() => refresh()}
-                                            >
-                                                Refresh
-                                            </button>
+                                        <span className="editor-section-title">Model Runtime Data</span>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Used Models:</span>
+                                            <span className="chat-stat-detail-value">{countKeys(budgetData.modelLastUsedTimestamps)}</span>
                                         </div>
-                                    </div>
-
-                                    {/* Manual Budget Editing */}
-                                    <div className="editor-section">
-                                        <span className="editor-section-title">Budget Editing</span>
-
-                                        <div className="editor-row">
-                                            <div>
-                                                <label className="editor-label editor-label-small">Set Budget Spent ($)</label>
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    className="editor-input"
-                                                    placeholder={formatCost(budgetData.budgetSpent)}
-                                                    value={manualBudgetSpent}
-                                                    onChange={e => setManualBudgetSpent(e.target.value)}
-                                                />
-                                            </div>
-
-                                            <div style={{ display: 'flex', alignItems: 'end' }}>
-                                                <button
-                                                    type="button"
-                                                    className="editor-btn editor-btn-save"
-                                                    disabled={isSaving || manualBudgetSpent.trim() === ''}
-                                                    onClick={handleManualBudgetSpentSave}
-                                                >
-                                                    Save Amount
-                                                </button>
-                                            </div>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Last Model Use:</span>
+                                            <span className="chat-stat-detail-value">{formatTimestamp(latestUsed)}</span>
                                         </div>
-
-                                        <div style={{ marginTop: '10px' }}>
-                                            <button
-                                                type="button"
-                                                className="editor-btn editor-btn-cancel"
-                                                disabled={isSaving}
-                                                onClick={() => runAction(resetBudget, 'Budget reset.')}
-                                            >
-                                                Reset Budget Now
-                                            </button>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Quota Hits:</span>
+                                            <span className="chat-stat-detail-value">{countKeys(budgetData.modelLastQuotaHitTimeStamps)}</span>
+                                        </div>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Latest Quota Hit:</span>
+                                            <span className="chat-stat-detail-value">{formatTimestamp(latestQuota)}</span>
+                                        </div>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Error Hits:</span>
+                                            <span className="chat-stat-detail-value">{countKeys(budgetData.modelLastErrorHitTimeStamps)}</span>
+                                        </div>
+                                        <div className="chat-stat-detail-row">
+                                            <span className="chat-stat-detail-label">Latest Error Hit:</span>
+                                            <span className="chat-stat-detail-value">{formatTimestamp(latestError)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                                            <button type="button" className="editor-btn editor-btn-cancel" disabled={isSaving} onClick={() => runAction(clearModelLastUsedTimestamps)}>Clear Last Used</button>
+                                            <button type="button" className="editor-btn editor-btn-cancel" disabled={isSaving} onClick={() => runAction(clearQuotaTimestamps)}>Clear Quota Hits</button>
+                                            <button type="button" className="editor-btn editor-btn-cancel" disabled={isSaving} onClick={() => runAction(clearErrorTimestamps)}>Clear Error Hits</button>
+                                            <button type="button" className="editor-btn editor-btn-cancel" disabled={isSaving} onClick={() => runAction(clearAllModelTelemetry)} style={{ color: '#ff7777' }}>Clear All Telemetry</button>
                                         </div>
                                     </div>
 
                                     {/* Reset Duration */}
                                     <div className="editor-section">
                                         <span className="editor-section-title">Reset Schedule</span>
-
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
                                             {RESET_PRESETS.map(preset => (
                                                 <button
@@ -388,7 +359,6 @@ export function BudgetControlModal({
                                                 </button>
                                             ))}
                                         </div>
-
                                         <div className="editor-row">
                                             <div>
                                                 <label className="editor-label editor-label-small">Custom Duration (Hours)</label>
@@ -401,102 +371,128 @@ export function BudgetControlModal({
                                                     onChange={e => setCustomResetHours(Number(e.target.value) || 0)}
                                                 />
                                             </div>
-
                                             <div style={{ display: 'flex', alignItems: 'end' }}>
-                                                <button
-                                                    type="button"
-                                                    className="editor-btn editor-btn-save"
-                                                    disabled={isSaving}
-                                                    onClick={handleCustomResetDuration}
-                                                >
-                                                    Apply Custom
-                                                </button>
+                                                <button type="button" className="editor-btn editor-btn-save" disabled={isSaving} onClick={handleCustomResetDuration}>Apply Custom</button>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Model Telemetry */}
+                                    {/* EMA Smoothing Factors — directly below Reset Duration */}
                                     <div className="editor-section">
-                                        <span className="editor-section-title">Model Runtime Data</span>
-
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Used Models:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {countKeys(budgetData.modelLastUsedTimestamps)}
-                                            </span>
+                                        <span className="editor-section-title">Performance Tracking Sensitivity</span>
+                                        <div className="entity-ref-hint" style={{ marginBottom: '8px' }}>
+                                            Controls how quickly the engine adapts to observed model performance. Lower values weight historical data more heavily (smoother). Higher values react faster to recent changes. Must be between 0 and 1.
                                         </div>
-
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Last Model Use:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatTimestamp(latestUsed)}
-                                            </span>
+                                        <div className="editor-row">
+                                            <div>
+                                                <label className="editor-label editor-label-small">
+                                                    Generation Speed EMA α (current: {(budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    className="editor-input"
+                                                    placeholder={(budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)}
+                                                    value={speedAlpha}
+                                                    onChange={e => setSpeedAlpha(e.target.value)}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'end' }}>
+                                                <button type="button" className="editor-btn editor-btn-save" disabled={isSaving || speedAlpha.trim() === ''} onClick={handleSpeedAlphaSave}>Save</button>
+                                            </div>
                                         </div>
-
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Quota Hits:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {countKeys(budgetData.modelLastQuotaHitTimeStamps)}
-                                            </span>
+                                        <div className="editor-row" style={{ marginTop: '8px' }}>
+                                            <div>
+                                                <label className="editor-label editor-label-small">
+                                                    Time to First Token EMA α (current: {(budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    className="editor-input"
+                                                    placeholder={(budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)}
+                                                    value={ttftAlpha}
+                                                    onChange={e => setTtftAlpha(e.target.value)}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'end' }}>
+                                                <button type="button" className="editor-btn editor-btn-save" disabled={isSaving || ttftAlpha.trim() === ''} onClick={handleTtftAlphaSave}>Save</button>
+                                            </div>
                                         </div>
+                                    </div>
 
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Latest Quota Hit:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatTimestamp(latestQuota)}
-                                            </span>
+                                    {/* Strategy Binding */}
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Strategy Binding</span>
+                                        <label className="editor-label editor-label-small">Budget Strategy</label>
+                                        <select
+                                            className="editor-input"
+                                            value={selectedStrategyId || budgetData.budgetStrategy?.id || ''}
+                                            onChange={e => setSelectedStrategyId(e.target.value)}
+                                        >
+                                            {allBudgetStrategies.map(strategy => (
+                                                <option key={strategy.id} value={strategy.id}>
+                                                    {strategy.name} — ${formatCost(strategy.maximumBudget)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            <button type="button" className="editor-btn editor-btn-save" disabled={!selectedStrategy || isSaving} onClick={handleStrategyChange}>Apply Strategy</button>
+                                            <button type="button" className="editor-btn editor-btn-cancel" disabled={isSaving} onClick={() => refresh()}>Refresh</button>
                                         </div>
+                                    </div>
 
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Error Hits:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {countKeys(budgetData.modelLastErrorHitTimeStamps)}
-                                            </span>
+                                    {/* Budget Editing */}
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Budget Editing</span>
+                                        <div className="editor-row">
+                                            <div style={{ flex: 1 }}>
+                                                <label className="editor-label editor-label-small">Amount ($)</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    className="editor-input"
+                                                    placeholder="0.0000"
+                                                    value={budgetAdjustAmount}
+                                                    onChange={e => setBudgetAdjustAmount(e.target.value)}
+                                                />
+                                            </div>
                                         </div>
-
-                                        <div className="chat-stat-detail-row">
-                                            <span className="chat-stat-detail-label">Latest Error Hit:</span>
-                                            <span className="chat-stat-detail-value">
-                                                {formatTimestamp(latestError)}
-                                            </span>
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                                        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                             <button
                                                 type="button"
-                                                className="editor-btn editor-btn-cancel"
-                                                disabled={isSaving}
-                                                onClick={() => runAction(clearModelLastUsedTimestamps)}
+                                                className="editor-btn editor-btn-save"
+                                                disabled={isSaving || budgetAdjustAmount.trim() === ''}
+                                                onClick={handleAddBudgetSpent}
                                             >
-                                                Clear Last Used
+                                                Add Amount
                                             </button>
-
                                             <button
                                                 type="button"
                                                 className="editor-btn editor-btn-cancel"
-                                                disabled={isSaving}
-                                                onClick={() => runAction(clearQuotaTimestamps)}
+                                                disabled={isSaving || budgetAdjustAmount.trim() === ''}
+                                                onClick={handleSubtractBudgetSpent}
                                             >
-                                                Clear Quota Hits
+                                                Subtract Amount
                                             </button>
-
                                             <button
                                                 type="button"
-                                                className="editor-btn editor-btn-cancel"
-                                                disabled={isSaving}
-                                                onClick={() => runAction(clearErrorTimestamps)}
+                                                className="editor-btn editor-btn-save"
+                                                disabled={isSaving || budgetAdjustAmount.trim() === ''}
+                                                onClick={handleSetBudgetSpent}
+                                                style={{ borderColor: 'var(--accent)' }}
                                             >
-                                                Clear Error Hits
+                                                Set Exact Amount
                                             </button>
-
+                                        </div>
+                                        <div style={{ marginTop: '10px' }}>
                                             <button
                                                 type="button"
                                                 className="editor-btn editor-btn-cancel"
                                                 disabled={isSaving}
-                                                onClick={() => runAction(clearAllModelTelemetry)}
-                                                style={{ color: '#ff7777' }}
+                                                onClick={() => runAction(resetBudget, 'Budget reset.')}
                                             >
-                                                Clear All Telemetry
+                                                Reset Budget Now
                                             </button>
                                         </div>
                                     </div>

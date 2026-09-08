@@ -1306,6 +1306,8 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
             description: 'Persistent runtime budget tracking',
             budgetSpent: raw.budgetSpent ?? 0,
             resetDuration: raw.resetDuration,
+            averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: raw.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing,
+            averageTimeToFirstTokenExponentialMovingAverageSmoothing: raw.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
             modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
             modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
             modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
