@@ -11,14 +11,16 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { BudgetControlModal } from './BudgetControlModal';
-import { CharacterCardImportModal } from './CharacterCardImportModal';
-import { AIRecommendationModal } from './AIRecommendationModal';
+import { WorldManagerModal } from './WorldManagerModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
-import { DataExportModal } from './DataExportModal';
+import { AIRecommendationModal } from './AIRecommendationModal';
+import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
+import { DataExportModal } from './DataExportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
+import type { World } from '../types';
 import { useMemo } from 'react';
 
 interface ModalVisibility {
@@ -425,14 +427,6 @@ export function AppModals({
                     onOpenBudgetControl={modals.budgetControl.open}
                 />
             )}
-            {modals.budgetControl.isOpen && (
-                <BudgetControlModal
-                    isOpen={modals.budgetControl.isOpen}
-                    onClose={modals.budgetControl.close}
-                    allBudgetStrategies={allBudgetStrategies}
-                    activeStrategy={activeStrategy}
-                />
-            )}
             {modals.participantControl.isOpen && (
                 <ParticipantControlModal
                     isOpen={modals.participantControl.isOpen}
@@ -469,6 +463,13 @@ export function AppModals({
                     allSamplers={allSamplers}
                 />
             )}
+            {modals.importData.isOpen && (
+                <DataImportModal
+                    isOpen={modals.importData.isOpen}
+                    onClose={modals.importData.close}
+                    onImportComplete={onImportComplete}
+                />
+            )}
             {modals.exportData.isOpen && (
                 <DataExportModal
                     isOpen={modals.exportData.isOpen}
@@ -484,11 +485,12 @@ export function AppModals({
                     allChats={allChats}
                 />
             )}
-            {modals.importData.isOpen && (
-                <DataImportModal
-                    isOpen={modals.importData.isOpen}
-                    onClose={modals.importData.close}
-                    onImportComplete={onImportComplete}
+            {modals.budgetControl.isOpen && (
+                <BudgetControlModal
+                    isOpen={modals.budgetControl.isOpen}
+                    onClose={modals.budgetControl.close}
+                    allBudgetStrategies={allBudgetStrategies}
+                    activeStrategy={activeStrategy}
                 />
             )}
         </>

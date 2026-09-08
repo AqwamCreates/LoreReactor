@@ -49,12 +49,13 @@ export function useModalVisibility() {
     const [profileList, setProfileListOpen] = useState(false);
     const [samplerEditor, setSamplerEditorOpen] = useState(false);
     const [settings, setSettingsOpen] = useState(false);
-    const [budgetControl, setBudgetControlOpen] = useState(false);
+    const [worldManager, setWorldManagerOpen] = useState(false);
+    const [participantControl, setParticipantControlOpen] = useState(false);
     const [aiRecommendation, setAiRecommendationOpen] = useState(false);
     const [cardImport, setCardImportOpen] = useState(false);
-    const [exportData, setExportDataOpen] = useState(false);
     const [importData, setImportDataOpen] = useState(false);
-    const [participantControl, setParticipantControlOpen] = useState(false);
+    const [exportData, setExportDataOpen] = useState(false);
+    const [budgetControl, setBudgetControlOpen] = useState(false);
 
     const closeAll = useCallback(() => {
         setChatListOpen(false);
@@ -69,12 +70,13 @@ export function useModalVisibility() {
         setProfileListOpen(false);
         setSamplerEditorOpen(false);
         setSettingsOpen(false);
-        setBudgetControlOpen(false);
+        setWorldManagerOpen(false);
+        setParticipantControlOpen(false);
         setAiRecommendationOpen(false);
         setCardImportOpen(false);
-        setExportDataOpen(false);
         setImportDataOpen(false);
-        setParticipantControlOpen(false);
+        setExportDataOpen(false);
+        setBudgetControlOpen(false);
     }, []);
 
     // Return modals as a clean Record<string, ModalVisibility>
@@ -92,12 +94,13 @@ export function useModalVisibility() {
         profileList: createModalState(profileList, setProfileListOpen),
         samplerEditor: createModalState(samplerEditor, setSamplerEditorOpen),
         settings: createModalState(settings, setSettingsOpen),
-        budgetControl: createModalState(budgetControl, setBudgetControlOpen),
+        worldManager: createModalState(worldManager, setWorldManagerOpen),
+        participantControl: createModalState(participantControl, setParticipantControlOpen),
         aiRecommendation: createModalState(aiRecommendation, setAiRecommendationOpen),
         cardImport: createModalState(cardImport, setCardImportOpen),
-        exportData: createModalState(exportData, setExportDataOpen),
         importData: createModalState(importData, setImportDataOpen),
-        participantControl: createModalState(participantControl, setParticipantControlOpen),
+        exportData: createModalState(exportData, setExportDataOpen),
+        budgetControl: createModalState(budgetControl, setBudgetControlOpen),
     };
 
     return { modals, closeAll };

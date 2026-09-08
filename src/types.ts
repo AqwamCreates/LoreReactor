@@ -495,6 +495,13 @@ export interface InterjectableAction {
   count: number;
 }
 
+export interface World extends ObjectData {
+    characterIds: string[];
+    contextIds: string[];
+    locationIds: string[];
+    profileId?: string;
+}
+
 export interface ParsedCharacterCard {
   name: string;
   description: string;

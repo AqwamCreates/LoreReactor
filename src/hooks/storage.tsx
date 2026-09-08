@@ -88,10 +88,11 @@ const PATHS = {
   kvCaches: "/user_data/kv_caches",
   budgetStrategies: "/user_data/budget_strategies",
   profiles: "/user_data/profile_data",
+  actions: "/user_data/actions.json",
+  worlds: "/user_data/worlds"
+  budgetData: "/user_data/budget_data.json",
   webpages: "/user_data/webpage_data",
   memories: "/user_data/memory_data",
-  actions: "/user_data/actions.json",
-  budgetData: "/user_data/budget_data.json"
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -1287,6 +1288,33 @@ export async function loadInterjectableActions(): Promise<InterjectableAction[]>
 
 export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {
   await putJson(PATHS.actions, actions);
+}
+
+// --- World Repository ---
+export async function loadRawWorldManifest(): Promise<string[]> {
+    return await ensureManifest(PATHS.worlds);
+}
+
+export async function loadRawWorld(id: string): Promise<World | null> {
+    const raw = await fetchJson<World>(`${PATHS.worlds}/${id}.json`);
+    if (!raw) return null;
+    return raw;
+}
+
+export async function loadAllRawWorlds(): Promise<World[]> {
+    const ids = await loadRawWorldManifest();
+    const results = await loadInBatches(ids, loadRawWorld);
+    return results.filter((w): w is World => w !== null);
+}
+
+export async function saveRawWorld(world: World): Promise<void> {
+    await putJson(`${PATHS.worlds}/${world.id}.json`, world);
+    await updateManifest(PATHS.worlds, world.id, 'add');
+}
+
+export async function deleteRawWorld(id: string): Promise<void> {
+    await deleteResource(`${PATHS.worlds}/${id}.json`);
+    await updateManifest(PATHS.worlds, id, 'remove');
 }
 
 // --- Budget Data Repository (Global Singleton) ---
