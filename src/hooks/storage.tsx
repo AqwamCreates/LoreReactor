@@ -4,7 +4,7 @@ import type {
   Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
-  Memory, RawMemory, Location, RawLocation,
+  Memory, RawMemory, Location, RawLocation, World,
   BudgetData,
   RawBudgetData
 } from '../types';
