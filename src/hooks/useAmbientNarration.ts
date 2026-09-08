@@ -1,77 +1,93 @@
 // src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, ChatMessage } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
+import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../store/useSessionStore';
+import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
+import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
-const now = Date.now();
+const languageModelEngine = new LanguageModelEngine();
 
-const AMBIENT_NARRATOR: Character = {
-    id: '__ambient_narrator__', name: '', description: 'Ambient environment narration',
-    systemPrompt: '', initiativeWeight: 0, chatProbability: 1, maximumChatStamina: 1,
-    memories: {},
-    numberOfMessagesToDisableThinkPrompt: 0,
-    numberOfMessagesToDisableMetaThinkInstructions: 0,
-    numberOfMessagesToDisableDialoguePrompt: 0,
-    firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-} as Character;
-
-const AMBIENT_POOL: { keywords: string[]; lines: string[] }[] = [
-    { keywords: ['hello', 'hi', 'hey', 'greet', 'good morning', 'good evening', 'good night', 'howdy', 'yo', '?'], lines: ["A tentative quiet hangs in the air, waiting to be shaped.", "The space between them hums with the possibility of conversation.", "Words hover at the edge of silence, not yet committed.", "The air shifts subtly, acknowledging a presence.", "Something stirs in the stillness — an opening.", "The moment balances on the edge of beginning."] },
-    { keywords: ['night', 'dark', 'moon', 'star', 'midnight', 'dusk', 'evening', 'twilight'], lines: ["Crickets hum softly beyond the walls.", "The darkness outside presses gently against the windows.", "A cool night breeze carries distant sounds through the stillness.", "Moonlight traces pale shapes across the floor.", "The night holds its breath around them.", "Somewhere outside, an owl calls once and falls silent."] },
-    { keywords: ['morning', 'dawn', 'sunrise', 'sun', 'daybreak', 'early'], lines: ["Pale light filters through the gaps in the curtains.", "Birdsong drifts in from somewhere far away.", "The first warmth of morning touches the edges of the room.", "Dew-laden air seeps through the cracks, fresh and quiet.", "The world outside is just beginning to stir."] },
-    { keywords: ['rain', 'storm', 'thunder', 'lightning', 'pouring', 'drizzle', 'wet'], lines: ["Rain taps a steady rhythm against the glass.", "Thunder rumbles low and distant, then fades.", "Water streaks down the windows in silver threads.", "The storm mutters to itself beyond the walls.", "Each raindrop sounds impossibly loud in the quiet."] },
-    { keywords: ['room', 'inside', 'indoors', 'house', 'hall', 'chamber', 'apartment'], lines: ["The room settles into its own particular silence.", "Dust motes drift lazily through a shaft of light.", "The walls seem to absorb the quiet, holding it close.", "Something in the room creaks softly, then stills.", "The space between them feels measured and deliberate."] },
-    { keywords: ['outside', 'garden', 'forest', 'tree', 'wind', 'grass', 'field', 'path'], lines: ["Leaves rustle in a wind that carries no warmth.", "Branches sway overhead in slow, patient arcs.", "The outdoors hums with a life that doesn't need words.", "Grass bends and rises in waves of quiet motion.", "The horizon holds still, watching."] },
-    { keywords: ['footstep', 'walk', 'pace', 'approach', 'tread', 'floorboard'], lines: ["Footsteps echo faintly, then stop.", "The floor groans under shifting weight somewhere nearby.", "A measured tread passes and fades into distance.", "Each step lands carefully, as if the walker doesn't want to be heard."] },
-    { keywords: ['creak', 'groan', 'settle', 'shift', 'wood', 'old'], lines: ["Wood settles with a long, patient sigh.", "Something old shifts its weight and goes still again.", "A creak rises and dissolves into the silence.", "The structure around them breathes in its own slow way."] },
-    { keywords: ['fire', 'flame', 'hearth', 'warm', 'candle', 'ember', 'glow'], lines: ["Embers pop softly, casting brief orange light.", "The fire murmurs to itself in a language of heat.", "Warmth radiates outward in gentle, invisible waves.", "A candle flickers though nothing has moved the air."] },
-    { keywords: ['water', 'river', 'sea', 'ocean', 'wave', 'stream', 'lake', 'shore'], lines: ["Water moves endlessly in the distance, indifferent and constant.", "Waves fold over themselves in a rhythm older than memory.", "The sound of water fills the silence without breaking it.", "Current pulls at something unseen beneath the surface."] },
-    { keywords: ['crowd', 'people', 'voices', 'busy', 'market', 'street', 'city'], lines: ["Distant voices blur into a murmur that means nothing.", "Life continues somewhere else, oblivious.", "The noise of others fades to a hum, then less than a hum.", "Footsteps pass without stopping, belonging to strangers."] },
-    { keywords: ['cold', 'frost', 'ice', 'snow', 'winter', 'freeze', 'chill'], lines: ["Cold seeps in through places you can't quite find.", "Frost crystals form silently on the other side of the glass.", "The air bites at exposed skin, patient and persistent.", "Ice shifts somewhere with a sound like a whisper."] },
-    { keywords: ['book', 'page', 'read', 'paper', 'library', 'shelf', 'ink'], lines: ["Pages settle against each other with a papery sigh.", "The weight of unread words hangs quietly in the air.", "Ink and paper hold their stories in patient silence.", "A book lies open, waiting for eyes that have looked away."] },
-];
-
-const AMBIENT_FALLBACK = [
-    "A heavy silence settles over everything.", "The air grows still, thick with unspoken words.",
-    "Quiet stretches between them like a held breath.", "The moment lingers, neither comfortable nor cruel.",
-    "Stillness fills the space where words should be.", "Time seems to slow in the absence of sound.",
-    "The pause grows teeth.", "Nothing moves. Nothing breaks the stillness.",
-    "The silence has a texture now, rough and unresolved.", "A beat passes. Then another.",
-];
+const AMBIENT_SYSTEM_PROMPT = `You are an ambient narration engine for a roleplay chat. Your ONLY job is to write a single short sentence (1-2 sentences max) describing the environment, atmosphere, or sensory details of the current moment. You must NOT write dialogue, character actions, thoughts, or advance the plot. You describe only the physical space, sounds, light, temperature, weather, and mood of the setting. Write in third person, present tense. Output ONLY the narration text with no preamble, no quotes, no markdown.`;
 
 export function useAmbientNarration(
     setStreamingCharacter: (c: Character | null) => void,
     setStreamingText: (t: string) => void,
     streamingTextRef: React.MutableRefObject<string>,
 ) {
-    const generateAmbientNarration = useCallback(async (data: InteractionData, _signal: AbortSignal): Promise<InteractionData | null> => {
-        const recent = data.interactionHistory
+    const generateAmbientNarration = useCallback(async (data: InteractionData, signal: AbortSignal): Promise<InteractionData | null> => {
+        const recentMessages = data.interactionHistory
             .filter(m => m.character.id !== '__ambient_narrator__')
-            .filter(isChatMessage)
-            .slice(-8)
-            .map(m => m.textContent.toLowerCase())
-            .join(' ');
+            .filter((m): m is ChatMessage => m.kind === 'chat')
+            .slice(-8);
+
+        const recentText = recentMessages.map(m => m.textContent).join('\n');
+        const { tags, dominantMood } = detectContext(recentText);
 
         const recentAmbient = data.interactionHistory
             .filter(m => m.character.id === '__ambient_narrator__')
-            .filter(isChatMessage)
-            .slice(-3)
+            .filter((m): m is ChatMessage => m.kind === 'chat')
+            .slice(-5)
             .map(m => m.textContent);
-        let best: typeof AMBIENT_POOL[0] | null = null;
-        let bestScore = 0;
-        for (const cat of AMBIENT_POOL) { let s = 0; for (const kw of cat.keywords) if (recent.includes(kw)) s++; if (s > bestScore) { bestScore = s; best = cat; } }
-        const pool = best ? best.lines : AMBIENT_FALLBACK;
-        const avail = pool.filter(l => !recentAmbient.includes(l));
-        const final = avail.length > 0 ? avail : pool;
-        const selected = final[Math.floor(Math.random() * final.length)];
 
+        // Build context summary for the LLM
+        const tagList = [...tags].slice(0, 10).join(', ');
+        const userPrompt = `Recent conversation context:\n${recentText.slice(-2000)}\n\nDetected environmental cues: ${tagList || 'none'}\nDominant mood: ${dominantMood}\n\nWrite one ambient narration sentence for this moment. Do NOT repeat any of these previous narrations: ${recentAmbient.join(' | ')}`;
+
+        let selected: string | null = null;
+
+        // Try LLM generation
+        try {
+            const model = useSessionStore.getState().selectedModel;
+            const runningModels = useSessionStore.getState().runningModels;
+
+            if (model) {
+                const port = model.id ? runningModels[model.id]?.port : undefined;
+                const runtimePort = port || (model.parameters as any)?._runtimePort;
+
+                if (model.apiKey || runtimePort) {
+                    const lmCtx = {
+                        apiKey: model.apiKey,
+                        backend: model.backend,
+                        modelPath: model.model,
+                        runtimePort,
+                    };
+
+                    const result = await languageModelEngine.generateCompletion(
+                        {
+                            prompt: `${AMBIENT_SYSTEM_PROMPT}\n\n${userPrompt}`,
+                            n_predict: 128,
+                            temperature: 0.9,
+                            stop: ['\n\n', '\nUser:', '\nCharacter'],
+                        },
+                        lmCtx,
+                    );
+
+                    if (result.text && result.text.trim().length > 0) {
+                        // Clean up: take first 1-2 sentences only
+                        const cleaned = result.text.trim().replace(/^["']|["']$/g, '');
+                        const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
+                        selected = sentences ? sentences.slice(0, 2).join(' ').trim() : cleaned;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('LLM ambient narration failed, falling back to atomic composition:', e);
+        }
+
+        // Fallback to atomic composition if LLM failed or produced nothing
+        if (!selected || selected.length < 5) {
+            selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
+        }
+
+        // Stream the result character by character
         setStreamingCharacter(AMBIENT_NARRATOR);
-        useSessionStore.setState({ streamingCharacter: AMBIENT_NARRATOR });
         setStreamingText('');
         streamingTextRef.current = '';
 
         for (let i = 0; i < selected.length; i++) {
+            if (signal.aborted) break;
             const p = selected.substring(0, i + 1);
             streamingTextRef.current = p;
             setStreamingText(p);

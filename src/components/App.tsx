@@ -62,8 +62,7 @@ function App() {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
         resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-        generationSpeed, timeToFirstToken, numberOfMessages, numberOfTokens, maximumNumberOfTokens, startNewChat,
-        numberOfCacheInvalidations, numberOfRequests, totalCost, costWithoutCacheMisses,
+        numberOfMessages, maximumNumberOfTokens, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy, budgetData, processProtagonistImageSilently,
     } = useChatSession();

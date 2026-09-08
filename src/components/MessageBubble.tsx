@@ -57,12 +57,14 @@ export const MessageBubble = React.memo(function MessageBubble({
     suppressNextClickRef, editTextareaRef, setEditDraft,
     onNavigateToBranchSource,
 }: MessageBubbleProps) {
-    // Read generation state directly from store
+    // Read generation state directly from store — matches App.tsx logic exactly
     const isModelReady = useSessionStore(s => {
+        if (s.activeStrategy) return true;
         const m = s.selectedModel;
         if (!m) return false;
-        if (m.apiKey) return true;
-        return !!(m.id && s.runningModels[m.id]?.port);
+        if (m.apiKey && m.backend) return true;
+        const status = s.runningModels[m.id];
+        return status?.isRunning === true && status?.isIdle === true;
     });
     const isLoading = useSessionStore(s => s.isLoading);
 
@@ -153,9 +155,9 @@ export const MessageBubble = React.memo(function MessageBubble({
                     ) : (
                         <>
                             <MemoizedMessageText text={message.textContent} />
-                            {(message as ChatMessage).files?.length > 0 && (
-                                <div className="message-attachment-indicator" title={`${(message as ChatMessage).files!.length} attached file${(message as ChatMessage).files!.length !== 1 ? 's' : ''}`}>
-                                    📎 {(message as ChatMessage).files!.length}
+                            {message.files && message.files.length > 0 && (
+                                <div className="message-attachment-indicator" title={`${message.files.length} attached file${message.files.length !== 1 ? 's' : ''}`}>
+                                    📎 {message.files.length}
                                 </div>
                             )}
                             <div className="message-toolbar">

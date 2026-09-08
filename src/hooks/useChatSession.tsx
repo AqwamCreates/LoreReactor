@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, ChatMessage } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { saveRawInteractionData, loadRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
