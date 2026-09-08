@@ -1,6 +1,6 @@
 // src/hooks/useGeneration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel } from '../types';
+import type { Character, InteractionData, BudgetData } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from './storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from './chatLogic';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
@@ -14,6 +14,7 @@ import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } 
 import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { isChatMessage } from '../typeGuard';
+import { useSessionStore } from '../store/useSessionStore';
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -25,7 +26,7 @@ function regenerateStaminaForTurn(data: InteractionData, character: Character): 
 
     const prevMsg = findPreviousInteractionMessage(data, character.id);
     if (!prevMsg) return data;
-    if (!isChatMessage(prevMsg) || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;;
+    if (!isChatMessage(prevMsg) || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;
 
     const idx = data.interactionHistory.findIndex(m => m.id === prevMsg.id);
     if (idx === -1) return data;
@@ -93,9 +94,6 @@ function countParagraphs(text: string): number {
 // ─── Hook ────────────────────────────────────────────────────────────
 
 interface UseGenerationOptions {
-    selectedModelRef: React.MutableRefObject<LanguageModel | null>;
-    runningModelsMapRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>;
-    activeStrategyRef: React.MutableRefObject<BudgetStrategy | null>;
     budgetDataRef: React.MutableRefObject<BudgetData | null>;
     setBudgetData: (bd: BudgetData) => void;
     setStats: React.Dispatch<React.SetStateAction<{ numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number }>>;
@@ -111,7 +109,7 @@ interface UseGenerationOptions {
 
 export function useGeneration(options: UseGenerationOptions) {
     const {
-        selectedModelRef, runningModelsMapRef, activeStrategyRef, budgetDataRef,
+        budgetDataRef,
         setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,
@@ -121,13 +119,13 @@ export function useGeneration(options: UseGenerationOptions) {
     const handleServerResponse = useCallback(async (
         data: InteractionData, character: Character, signal: AbortSignal,
         onToken?: (text: string) => void,
-        strategy?: BudgetStrategy | null,
+        strategyOverride?: import('../types').BudgetStrategy | null,
         existingCharacterText?: string,
     ): Promise<InteractionData | null> => {
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
-        const model = selectedModelRef.current;
-        const running = runningModelsMapRef.current;
-        const strat = strategy ?? activeStrategyRef.current;
+        const model = useSessionStore.getState().selectedModel;
+        const running = useSessionStore.getState().runningModels;
+        const strat = strategyOverride ?? useSessionStore.getState().activeStrategy;
 
         const dataWithRegen = regenerateStaminaForTurn(data, character);
         const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
@@ -172,7 +170,8 @@ export function useGeneration(options: UseGenerationOptions) {
             if (strat) {
                 // ─── Budget Strategy Path ────────────────────────────
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
-                    const existing = running[modelId];
+                    const currentRunning = useSessionStore.getState().runningModels;
+                    const existing = currentRunning[modelId];
                     if (existing?.port) return existing.port;
 
                     const targetModel = strat.localModels.find(m => m.id === modelId) || strat.onlineModels.find(m => m.id === modelId);
@@ -302,7 +301,8 @@ export function useGeneration(options: UseGenerationOptions) {
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                        const rp = model.id ? running[model.id]?.port : undefined;
+                        const currentRunning = useSessionStore.getState().runningModels;
+                        const rp = model.id ? currentRunning[model.id]?.port : undefined;
                         const rep = rp || (model.parameters as any)?._runtimePort;
                         const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, rep);
                         const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
@@ -357,7 +357,7 @@ export function useGeneration(options: UseGenerationOptions) {
             return null;
         }
     }, [
-        selectedModelRef, runningModelsMapRef, activeStrategyRef, budgetDataRef,
+        budgetDataRef,
         setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,

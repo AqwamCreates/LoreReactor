@@ -1,5 +1,5 @@
 // src/hooks/useChatSession.ts
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type SetStateAction } from 'react';
 import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { saveRawInteractionData, loadRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
@@ -23,6 +23,9 @@ import { useSessionStore } from '../store/useSessionStore';
 
 const languageModelEngine = new LanguageModelEngine();
 
+type RunningModelStatus = Record<string, { isRunning: boolean; port?: number }>;
+type StatsState = { numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number };
+
 export function useChatSession() {
     // ─── Core State (dual-write with store during Phase 1) ──────────
     const [interactionData, _setInteractionData] = useState<InteractionData | null>(null);
@@ -33,8 +36,8 @@ export function useChatSession() {
     const [timeToFirstToken, _setTimeToFirstToken] = useState(0);
     const [activeStrategy, _setActiveStrategy] = useState<BudgetStrategy | null>(null);
     const [selectedModel, _setSelectedModel] = useState<LanguageModel | null>(null);
-    const [runningModelsMap, _setRunningModelsMap] = useState<Record<string, { isRunning: boolean; port?: number }>>({});
-    const [stats, _setStats] = useState({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
+    const [runningModelsMap, _setRunningModelsMap] = useState<RunningModelStatus>({});
+    const [stats, _setStats] = useState<StatsState>({ numberOfCacheInvalidations: 0, numberOfRequests: 0, totalCost: 0, costWithoutCacheMisses: 0 });
     const [numberOfTokens, _setNumberOfTokens] = useState(0);
     const [budgetData, _setBudgetData] = useState<BudgetData | null>(null);
 
@@ -79,15 +82,16 @@ export function useChatSession() {
         useSessionStore.setState({ selectedModel: model });
     }, []);
 
-    const setRunningModelsMap = useCallback((models: Record<string, { isRunning: boolean; port?: number }>) => {
+    const setRunningModelsMap = useCallback((models: RunningModelStatus) => {
         _setRunningModelsMap(models);
         useSessionStore.setState({ runningModels: models });
     }, []);
 
-    const setStats = useCallback((newStats: typeof stats) => {
-        _setStats(newStats);
-        useSessionStore.setState(newStats);
-    }, []);
+    const setStats = useCallback((newStats: SetStateAction<StatsState>) => {
+        const nextStats = typeof newStats === 'function' ? newStats(stats) : newStats;
+        _setStats(nextStats);
+        useSessionStore.setState(nextStats);
+    }, [stats]);
 
     const setNumberOfTokens = useCallback((count: number) => {
         _setNumberOfTokens(count);
@@ -99,17 +103,15 @@ export function useChatSession() {
         useSessionStore.setState({ budgetData: data });
     }, []);
 
-    // ─── Refs (kept for Phase 1, removed in Phase 2) ────────────────
+    // ─── Refs ────────────────────────────────────────────────────────
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     const chatHistoryRef = useRef<HTMLDivElement>(null);
     const selectedModelRef = useRef<LanguageModel | null>(null);
-    const runningModelsMapRef = useRef<Record<string, { isRunning: boolean; port?: number }>>({});
+    const runningModelsMapRef = useRef<RunningModelStatus>({});
     const activeStrategyRef = useRef<BudgetStrategy | null>(null);
     const budgetDataRef = useRef<BudgetData | null>(null);
     const isProcessingSilentlyRef = useRef(false);
-    const streamingCharacterRef = useRef<Character | null>(null);
-    const interactionDataRef = useRef<InteractionData | null>(null);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
     const isAtBottomRef = useRef(true);
     const previousExpressionRef = useRef<string>('neutral');
@@ -120,26 +122,30 @@ export function useChatSession() {
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, streamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { isLoading, acquireLock, releaseLock, isLoadingRef } = useGenerationLock();
-    const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, streamingCharacterRef, setStreamingText, streamingTextRef);
-    const { speakMessage } = useCharacterVoice(interactionDataRef);
-    const { processMemoryTrigger } = useMemoryTrigger(selectedModelRef, runningModelsMapRef, activeStrategyRef);
+    const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, null, setStreamingText, streamingTextRef);
+    const { speakMessage } = useCharacterVoice();
+    const { processMemoryTrigger } = useMemoryTrigger();
     const { handleServerResponse } = useGeneration({
-        selectedModelRef, runningModelsMapRef, activeStrategyRef, budgetDataRef,
-        setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
-        setCurrentCharacterExpression, previousExpressionRef,
-        throttledSetStreamingText, streamingTextRef,
-        processMemoryTrigger, addToast: useToast().addToast,
+        selectedModelRef,
+        runningModelsMapRef,
+        activeStrategyRef,
+        budgetDataRef,
+        setBudgetData,
+        setStats,
+        setGenerationSpeed,
+        setTimeToFirstToken,
+        setCurrentCharacterExpression,
+        previousExpressionRef,
+        throttledSetStreamingText,
+        streamingTextRef,
+        processMemoryTrigger,
+        addToast: useToast().addToast,
     });
 
     const { addToast } = useToast();
 
-    // ─── Ref Sync Effects (kept for Phase 1, removed in Phase 2) ────
-    useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
-    useEffect(() => { runningModelsMapRef.current = runningModelsMap; }, [runningModelsMap]);
-    useEffect(() => { activeStrategyRef.current = activeStrategy; }, [activeStrategy]);
+    // ─── Remaining Ref Sync Effects (only for refs that still exist) ─
     useEffect(() => { budgetDataRef.current = budgetData; }, [budgetData]);
-    useEffect(() => { streamingCharacterRef.current = streamingCharacter; }, [streamingCharacter]);
-    useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
 
     // ─── Mount Effects ───────────────────────────────────────────────
     useEffect(() => {
@@ -177,8 +183,9 @@ export function useChatSession() {
         if (!interactionData) { setNumberOfTokens(0); return; }
         let cancelled = false;
         (async () => {
-            const model = selectedModelRef.current;
-            const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
+            const model = useSessionStore.getState().selectedModel;
+            const models = useSessionStore.getState().runningModels;
+            const port = model?.id ? models[model.id]?.port : undefined;
             const ep = port || (model?.parameters as any)?._runtimePort;
             const lmCtx = ep ? { runtimePort: ep } : undefined;
             let total = 0;
@@ -206,10 +213,11 @@ export function useChatSession() {
 
     // ─── Helpers ─────────────────────────────────────────────────────
     const isModelReadyForGeneration = useCallback((): boolean => {
-        const m = selectedModelRef.current;
+        const m = useSessionStore.getState().selectedModel;
         if (!m) return false;
         if (m.apiKey) return true;
-        return !!(m.id && runningModelsMapRef.current[m.id]?.port);
+        const models = useSessionStore.getState().runningModels;
+        return !!(m.id && models[m.id]?.port);
     }, []);
 
     const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
@@ -244,11 +252,13 @@ export function useChatSession() {
     }, [setInteractionData, setCurrentCharacter]);
 
     const stopGeneration = useCallback(() => {
-        const t = streamingTextRef.current, c = streamingCharacterRef.current;
+        const t = streamingTextRef.current;
+        const c = useSessionStore.getState().streamingCharacter;
         const resumeId = resumingMessageIdRef.current;
+        const currentData = useSessionStore.getState().interactionData;
 
-        if (resumeId && t && t.trim().length > 0 && interactionDataRef.current) {
-            const updated = editInteractionMessageInInteractionData(interactionDataRef.current, resumeId, t);
+        if (resumeId && t && t.trim().length > 0 && currentData) {
+            const updated = editInteractionMessageInInteractionData(currentData, resumeId, t);
             const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
                 const paragraphs = (t.match(/\n\n/g) || []).length + 1;
@@ -275,8 +285,8 @@ export function useChatSession() {
         if (!interactionData || !currentCharacter) return;
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 300)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-        const d = interactionDataRef.current; if (!d) { releaseLock(); return; }
+        if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        const d = useSessionStore.getState().interactionData; if (!d) { releaseLock(); return; }
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentCharacter, actionText));
 
         const hasLocations = ud.locations && ud.locations.length > 0;
@@ -314,7 +324,7 @@ export function useChatSession() {
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         if (!interactionData || !currentCharacter || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
         setStreamingCharacter(null);
@@ -349,9 +359,9 @@ export function useChatSession() {
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData, dataRef: interactionDataRef,
-                    modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
-                    addToast, activeStrategy: activeStrategyRef.current,
+                    data: ud, setData: setInteractionData, dataRef: null,
+                    modelRef: null, runningModelsRef: null,
+                    addToast, activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
@@ -417,7 +427,7 @@ export function useChatSession() {
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         if (!interactionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
-        if (!activeStrategyRef.current && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const history = interactionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
@@ -449,9 +459,9 @@ export function useChatSession() {
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
                 runBackgroundSummarization({
-                    data: ud, setData: setInteractionData, dataRef: interactionDataRef,
-                    modelRef: selectedModelRef, runningModelsRef: runningModelsMapRef,
-                    addToast, activeStrategy: activeStrategyRef.current,
+                    data: ud, setData: setInteractionData, dataRef: null,
+                    modelRef: null, runningModelsRef: null,
+                    addToast, activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && isChatMessage(lm) && lm.character.id !== currentCharacter?.id) speakMessage(lm.textContent, lm.character);
@@ -474,7 +484,7 @@ export function useChatSession() {
         finally { isProcessingSilentlyRef.current = false; }
     }, [handleServerResponse, isModelReadyForGeneration]);
 
-    // ─── Return (unchanged — App.tsx keeps working identically) ─────
+    // ─── Return ──────────────────────────────────────────────────────
     const maxCtx = selectedModel?.contextLength || 8192;
 
     return {

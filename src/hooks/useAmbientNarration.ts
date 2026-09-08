@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
 import { isChatMessage } from '../typeGuard';
+import { useSessionStore } from '../store/useSessionStore';
 
 const now = Date.now();
 
@@ -42,7 +43,6 @@ const AMBIENT_FALLBACK = [
 
 export function useAmbientNarration(
     setStreamingCharacter: (c: Character | null) => void,
-    streamingCharacterRef: React.MutableRefObject<Character | null>,
     setStreamingText: (t: string) => void,
     streamingTextRef: React.MutableRefObject<string>,
 ) {
@@ -68,7 +68,7 @@ export function useAmbientNarration(
         const selected = final[Math.floor(Math.random() * final.length)];
 
         setStreamingCharacter(AMBIENT_NARRATOR);
-        streamingCharacterRef.current = AMBIENT_NARRATOR;
+        useSessionStore.setState({ streamingCharacter: AMBIENT_NARRATOR });
         setStreamingText('');
         streamingTextRef.current = '';
 
@@ -80,7 +80,7 @@ export function useAmbientNarration(
         }
 
         return addMessageToInteractionData(data, createChatMessage(data, AMBIENT_NARRATOR, selected));
-    }, [setStreamingCharacter, streamingCharacterRef, setStreamingText, streamingTextRef]);
+    }, [setStreamingCharacter, setStreamingText, streamingTextRef]);
 
     return { generateAmbientNarration, AMBIENT_NARRATOR };
 }

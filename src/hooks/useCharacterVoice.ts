@@ -1,21 +1,20 @@
 // src/hooks/useCharacterVoice.ts
 import { useCallback, useRef } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character } from '../types';
 import { getCharacterVoiceUrl } from './storage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
+import { useSessionStore } from '../store/useSessionStore';
 
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
 
-export function useCharacterVoice(
-    interactionDataRef: React.MutableRefObject<InteractionData | null>,
-) {
+export function useCharacterVoice() {
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     const ttsServerUrl = `${localAddress}:7860`;
 
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
-        const profile = interactionDataRef.current?.Profile;
+        const profile = useSessionStore.getState().interactionData?.Profile;
         if (profile) {
             const parts: string[] = [];
             if (profile.narrateNormalText !== false) {
@@ -65,7 +64,7 @@ export function useCharacterVoice(
                 console.warn('TTS speak failed:', e);
             }
         })();
-    }, [interactionDataRef, ttsServerUrl]);
+    }, [ttsServerUrl]);
 
     return { speakMessage };
 }

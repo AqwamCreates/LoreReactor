@@ -1,18 +1,15 @@
 // src/hooks/useMemoryTrigger.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, Memory } from '../types';
+import type { Character, InteractionData, Memory } from '../types';
 import { saveRawCharacter } from './storage';
 import { getEffectiveEnableMemoryWriting } from './characterLogic';
 import { makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { memoryWriteTrigger } from '../stringList';
 import { v4 as uuidv4 } from 'uuid';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
+import { useSessionStore } from '../store/useSessionStore';
 
-export function useMemoryTrigger(
-    selectedModelRef: React.MutableRefObject<LanguageModel | null>,
-    runningModelsMapRef: React.MutableRefObject<Record<string, { isRunning: boolean; port?: number }>>,
-    activeStrategyRef: React.MutableRefObject<BudgetStrategy | null>,
-) {
+export function useMemoryTrigger() {
     const processMemoryTrigger = useCallback(async (
         rawText: string,
         character: Character,
@@ -29,12 +26,12 @@ export function useMemoryTrigger(
         const otherParticipants = data.participants.filter(p => p.id !== character.id);
         if (otherParticipants.length === 0) return;
 
-        const model = selectedModelRef.current;
-        const port = model?.id ? runningModelsMapRef.current[model.id]?.port : undefined;
+        const model = useSessionStore.getState().selectedModel;
+        if (!model) return;
+        const models = useSessionStore.getState().runningModels;
+        const port = model?.id ? models[model.id]?.port : undefined;
         const ep = port || (model?.parameters as any)?._runtimePort;
         if (!ep && !model?.apiKey) return;
-        // Line 36: add null guard
-        if (!model) return;
         const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
 
         const effectiveRetentionWeight = (() => {
@@ -44,8 +41,8 @@ export function useMemoryTrigger(
         })();
 
         const ts = Date.now();
-        const strat = activeStrategyRef.current;
-        const running = runningModelsMapRef.current;
+        const strat = useSessionStore.getState().activeStrategy;
+        const running = useSessionStore.getState().runningModels;
 
         for (const other of otherParticipants) {
             const allRelevant = data.interactionHistory.filter(
@@ -95,7 +92,7 @@ export function useMemoryTrigger(
         }
 
         try { await saveRawCharacter(character); } catch (e) { console.warn('Failed to save character memories:', e); }
-    }, [selectedModelRef, runningModelsMapRef, activeStrategyRef]);
+    }, []);
 
     return { processMemoryTrigger };
 }
