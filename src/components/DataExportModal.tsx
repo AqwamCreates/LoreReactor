@@ -62,7 +62,7 @@ export function DataExportModal({
 
     const handleClose = () => { if (isExporting) return; reset(); onClose(); };
 
-    const toggle = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
+    const toggle = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 

@@ -319,6 +319,7 @@ export interface BudgetData extends ObjectData{
 
 export interface RawBudgetData extends RawData{
 
+  id?: string;
   budgetSpent: number
   resetDuration: number // User defined duration. It could be hourly, daily, weekly or monthly. The user can also add custom durations.
   modelLastUsedTimestamps: Record<string, number>
@@ -352,6 +353,7 @@ export interface SummarizationStep extends ObjectData {
 }
 
 export interface RawSummarizationStep extends RawData {
+  id?: string;
   strategyType: SummarizationStrategyType;
   enabled: boolean;
   order: number;
