@@ -14,6 +14,8 @@ import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } 
 import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { useSessionStore } from '../store/useSessionStore';
+import { getEffectiveEnableWebSearch, getEffectiveEnableCalculator } from './characterLogic';
+import { executeTools } from '../services/ToolExecutor'
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -47,8 +49,6 @@ async function processToolInvocations(
     character: Character,
     profile: InteractionData['Profile'],
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
-    const { getEffectiveEnableWebSearch, getEffectiveEnableCalculator } = await import('./characterLogic');
-    const { executeTools } = await import('../services/ToolExecutor');
 
     const webSearchEnabled = getEffectiveEnableWebSearch(character, profile);
     const calculatorEnabled = getEffectiveEnableCalculator(character, profile);
@@ -291,14 +291,14 @@ export function useGeneration(options: UseGenerationOptions) {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep ? [ep.toString()] : undefined);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const currentRunning = useSessionStore.getState().runningModels;
                         const rp = model.id ? currentRunning[model.id]?.port : undefined;
                         const rep = rp || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, rep ? [rep.toString()] : undefined);
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
                         const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) return null;
