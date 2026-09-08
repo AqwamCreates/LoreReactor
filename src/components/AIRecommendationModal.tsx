@@ -47,7 +47,7 @@ function parseFields(rawText: string): ParsedFields {
 
 const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
     { type: 'Character', label: 'Character', icon: '🎭' },
-    { type: 'Context', label: 'Context', icon: '🌍' },
+    { type: 'Context', label: 'Context', icon: '📜' },
     { type: 'Location', label: 'Location', icon: '📍' },
 ];
 
@@ -552,7 +552,7 @@ export function AIRecommendationModal({
                                             className={`entity-tab-btn ${effectiveTab === tab ? 'entity-tab-btn-active' : ''}`}
                                             onClick={() => setActiveTab(tab)}
                                         >
-                                            {tab === 'raw' ? '📄 Raw' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '🌍 Context' : '📍 Location'}
+                                            {tab === 'raw' ? '📄 Raw' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '📜 Context' : '📍 Location'}
                                         </button>
                                     ))}
                                 </div>

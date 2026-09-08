@@ -89,7 +89,7 @@ const PATHS = {
   budgetStrategies: "/user_data/budget_strategies",
   profiles: "/user_data/profile_data",
   actions: "/user_data/actions.json",
-  worlds: "/user_data/worlds"
+  worlds: "/user_data/worlds",
   budgetData: "/user_data/budget_data.json",
   webpages: "/user_data/webpage_data",
   memories: "/user_data/memory_data",

@@ -1,5 +1,5 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -11,7 +11,7 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { BudgetControlModal } from './BudgetControlModal';
-import { WorldManagerModal } from './WorldManagerModal';
+import { WorldEditorModal } from './WorldEditorModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
@@ -20,7 +20,6 @@ import { DataExportModal } from './DataExportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
-import type { World } from '../types';
 import { useMemo } from 'react';
 
 interface ModalVisibility {
@@ -51,6 +50,7 @@ interface AppModalsProps {
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allExtensions: Extension[];
+    allWorlds: World[];
     runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean; port?: number }>;
     samplerToEdit: Sampler | null;
     // Entity modals
@@ -61,6 +61,7 @@ interface AppModalsProps {
     modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
+    worldModal: EntityModalState<World>;
     // Callbacks
     onSwitchChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
@@ -93,15 +94,17 @@ interface AppModalsProps {
     onSaveCharacter: (c: Character) => void;
     onSaveContext: (c: Context) => void;
     onSaveLocation: (l: Location) => void;
+    onLoadWorld: (world: World) => void;
+    onDeleteWorld: (id: string) => void;
     onImportComplete: () => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export function AppModals({
     modals, allChats, allCharacters, allContexts, allLocations, allSamplers,
-    allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions,
+    allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
     runningModels, samplerToEdit, charModal, contextModal, locationModal, stopModal, modelModal,
-    budgetModal, profileModal,
+    budgetModal, profileModal, worldModal,
     onSwitchChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
     onDeleteLocation, onToggleLocation, onDeleteModel, onToggleModelLoad,
@@ -109,7 +112,8 @@ export function AppModals({
     onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
     onDeleteExtension, onToggleExtension, onUpdateInteractionData,
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
-    onSaveCharacter, onSaveContext, onSaveLocation, onImportComplete, addToast,
+    onSaveCharacter, onSaveContext, onSaveLocation, onLoadWorld, onDeleteWorld,
+    onImportComplete, addToast,
 }: AppModalsProps) {
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -224,6 +228,23 @@ export function AppModals({
                     existingLocation={locationModal.itemToEdit}
                     allCharacters={allCharacters}
                     allLocations={allLocations}
+                />
+            )}
+
+            {worldModal.isOpen && (
+                <WorldEditorModal
+                    isOpen={worldModal.isOpen}
+                    onClose={worldModal.close}
+                    onSave={worldModal.handleSave}
+                    existingWorld={worldModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allProfiles={allProfiles}
+                    currentCharacterIds={interactionData?.participants.map(p => p.id) || []}
+                    currentContextIds={interactionData?.contexts?.map(c => c.id) || []}
+                    currentLocationIds={interactionData?.locations?.map(l => l.id) || []}
+                    currentProfileId={interactionData?.Profile?.id}
                 />
             )}
 
@@ -414,6 +435,24 @@ export function AppModals({
                 />
             )}
 
+            {/* Worlds */}
+            {modals.worldManager.isOpen && (
+                <ManagerModal
+                    title="Worlds"
+                    items={allWorlds}
+                    isOpen={modals.worldManager.isOpen}
+                    onClose={modals.worldManager.close}
+                    onSelect={(w: World) => { onLoadWorld(w); modals.worldManager.close(); }}
+                    onDelete={onDeleteWorld}
+                    onCreateNew={() => worldModal.open()}
+                    renderSubtext={(w: World) =>
+                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                    }
+                    emptyMessage="No worlds saved yet."
+                    actionLabel="Delete"
+                />
+            )}
+
             {/* Settings & Tool Modals */}
             {modals.settings.isOpen && (
                 <SettingsModal
@@ -423,6 +462,7 @@ export function AppModals({
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenExportData={modals.exportData.open}
                     onOpenImportData={modals.importData.open}
+                    onOpenWorldManager={modals.worldManager.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
                 />

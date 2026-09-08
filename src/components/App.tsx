@@ -12,6 +12,7 @@ import { useModelManager } from '../hooks/useModelManager';
 import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
+import { useWorldManager } from '../hooks/useWorldManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
@@ -23,7 +24,7 @@ import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData } from '../types';
+import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -80,6 +81,7 @@ function App() {
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
+    const { worlds: allWorlds, saveWorld, deleteWorld } = useWorldManager();
 
     // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
@@ -108,6 +110,7 @@ function App() {
     const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
+    const worldModal = useEntityModal<World>(saveWorld, deleteWorld, 'World');
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { modals } = useModalVisibility();
@@ -294,7 +297,7 @@ function App() {
         { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
         { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
-        { id: 'contexts', label: 'Contexts', icon: '🌍', done: !contextsLoading },
+        { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
@@ -509,6 +512,29 @@ function App() {
         }
     }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
 
+    // ─── World loading ───────────────────────────────────────────────
+    const handleLoadWorld = useCallback(async (world: World) => {
+        if (!interactionData) return;
+        const resolvedChars = world.characterIds.map(id => allCharacters.find(c => c.id === id)).filter((c): c is Character => !!c);
+        const resolvedCtxs = world.contextIds.map(id => allContexts.find(c => c.id === id)).filter((c): c is Context => !!c);
+        const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter((l): l is Location => !!l);
+        const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
+        const updated: InteractionData = {
+            ...interactionData,
+            participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
+            contexts: resolvedCtxs,
+            locations: resolvedLocs,
+            Profile: resolvedProfile,
+            lastUpdatedTimestamp: Date.now(),
+        };
+        if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) {
+            updated.participants = [updated.protagonist, ...updated.participants];
+        }
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
+        addToast(`Loaded world "${world.name}"`, 'success');
+    }, [interactionData, allCharacters, allContexts, allLocations, allProfiles, setInteractionData, addToast]);
+
     // ─── Render ──────────────────────────────────────────────────────
     const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
 
@@ -627,7 +653,7 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
@@ -644,6 +670,7 @@ function App() {
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
+                    allWorlds={allWorlds}
                     runningModels={runningModels}
                     samplerToEdit={samplerToEdit}
                     charModal={charModal}
@@ -653,6 +680,7 @@ function App() {
                     modelModal={modelModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
+                    worldModal={worldModal}
                     onSwitchChat={handleSwitchChat}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
@@ -684,12 +712,14 @@ function App() {
                     onSaveCharacter={saveCharacter}
                     onSaveContext={saveContext}
                     onSaveLocation={saveLocation}
+                    onLoadWorld={handleLoadWorld}
+                    onDeleteWorld={deleteWorld}
                     onImportComplete={handleImportComplete}
                     addToast={addToast}
                 />
             </div>
 
-            <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
+            <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={showActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
         </>
     );
 }

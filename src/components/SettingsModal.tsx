@@ -9,12 +9,6 @@ interface SettingsItem {
 
 const SETTINGS_ITEMS: SettingsItem[] = [
     {
-        id: 'world-manager',
-        icon: '🌍',
-        label: 'Worlds',
-        description: 'Save, load, and manage named collections of characters, contexts, locations, and profiles.',
-    },
-    {
         id: 'participant-control',
         icon: '🎛️',
         label: 'Participant Control',
@@ -61,7 +55,6 @@ interface SettingsModalProps {
     onOpenImportData: () => void;
     onOpenParticipantControl: () => void;
     onOpenBudgetControl: () => void;
-    onOpenWorldManager: () => void;
 }
 
 export function SettingsModal({
@@ -73,15 +66,11 @@ export function SettingsModal({
     onOpenImportData,
     onOpenParticipantControl,
     onOpenBudgetControl,
-    onOpenWorldManager,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
         switch (id) {
-            case 'world-manager':
-                onOpenWorldManager();
-                break;
             case 'participant-control':
                 onOpenParticipantControl();
                 break;
