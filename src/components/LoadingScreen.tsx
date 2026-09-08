@@ -1,6 +1,4 @@
 // src/components/LoadingScreen.tsx
-import React from 'react';
-
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
 
 interface LoadingScreenProps {
