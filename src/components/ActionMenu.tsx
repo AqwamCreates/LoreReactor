@@ -1,5 +1,4 @@
 // src/components/ActionMenu.tsx
-import React from 'react';
 import type { Character, InterjectableAction } from '../types';
 
 interface ActionMenuProps {
