@@ -291,7 +291,7 @@ function App() {
         const remaining = Math.max(0, MIN_LOADING_SCREEN_MS - (Date.now() - loadingStartedAt));
         const hold = setTimeout(() => { setIsFadeOut(true); const fade = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); return () => clearTimeout(fade); }, remaining);
         return () => clearTimeout(hold);
-    }, [loadSteps, isInitializing, activeChatRestored, interactionData, allChats.length]);
+    }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
     useEffect(() => { chatModifiedRef.current = false; }, []);
     useEffect(() => {
