@@ -1,5 +1,4 @@
 // src/services/LanguageModelEngine.ts
-import type { StreamState } from "http2";
 import { localAddress } from "../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
 import type { backend } from "../types";
@@ -14,6 +13,17 @@ export interface TokenStats {
 export interface StreamCallbacks {
     onToken?: (state: StreamState) => void | Promise<void>;
     onFinish?: (result: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }) => void;
+}
+
+
+export interface StreamState {
+    fullText: string;
+    msPerToken: number;
+    tokensPerSecond: number;
+    timeToFirstToken: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    cacheMiss?: boolean;
 }
 
 export interface StreamResult {
