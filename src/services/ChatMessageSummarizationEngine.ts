@@ -1,11 +1,10 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, InteractionMessage, Context, Character, BudgetStrategy } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, BudgetStrategy } from '../types';
 import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString } from '../stringList';
 import { resolveModelContext } from '../utilities/modelContextResolver';
-import { isChatMessage } from '../typeGuard';
 
 const engine = new LanguageModelEngine();
 
@@ -22,14 +21,14 @@ const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat his
  * Generates a summary for a single chat message using the LLM.
  */
 export async function generateMessageSummary(
-    message: InteractionMessage,
+    message: HistoryMessage,
     languageModelContext: LanguageModelContext,
     maxTokens = 256,
     strategy?: BudgetStrategy | null,
     runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
     const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
-    const text = isChatMessage(message) ? message.textContent : '';
+    const text = message.kind === 'chat' ? message.textContent : '';
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
     const requestBody: any = {
         prompt,
@@ -56,7 +55,7 @@ export async function generateMissingSummaries(
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
     const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize = history.slice(0, cutoff).filter(m => isChatMessage(m) && !m.textContentSummary);
+    const toSummarize = history.slice(0, cutoff).filter(m => m.kind === 'chat' && !m.textContentSummary);
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, languageModelContext, maxTokens, strategy, runningModels);
@@ -71,7 +70,7 @@ export async function generateMissingSummaries(
  * Compresses a chunk of messages into a single narrative paragraph.
  */
 async function compressChunk(
-    messages: InteractionMessage[],
+    messages: HistoryMessage[],
     languageModelContext: LanguageModelContext,
     maxTokens = 512,
     strategy?: BudgetStrategy | null,
@@ -79,7 +78,7 @@ async function compressChunk(
 ): Promise<string | null> {
     const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const formattedMessages = messages.map(m =>
-        `${m.character.name}: ${isChatMessage(m) ? m.textContent : ''}`
+        `${m.character.name}: ${m.kind === 'chat' ? m.textContent : ''}`
     ).join('\n\n');
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
     const requestBody: any = {

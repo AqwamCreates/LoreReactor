@@ -1,5 +1,5 @@
-import { isChatMessage } from '../typeGuard';
-import type { InteractionMessage } from '../types'; 
+// src/hooks/nameDetection.ts
+import type { HistoryMessage } from '../types';
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
 const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
@@ -16,15 +16,12 @@ const SELF_NAME_REVEAL_PATTERNS = [
 ];
 
 const NAME_REVEAL_QUESTION_PATTERNS = [
-  // Questions (end with ?)
   /\bnames?\?/i,
   /\b(?:call|address|refer\s+to)\s+(?:you|thy|thee).*?\?/i,
   /\babout\s+(?:you|thy|thee).*?\?/i,
   /\bare\s+(?:you|thy|thee).*?\?/i,
   /\b(?:you|thy|thee)\s+are.*?\?/i,
   /\b(?:you|thy|thee)\s+go\s+by\b.*?\?/i,
-
-  // ✅ Demands/imperatives (end with ! or .)
   /\b(?:want|need|tell\s+me|give\s+me|say)\s+(?:your|ur|the|a)\s+name\b/i,
   /\b(?:what(?:'s| is))?\s*(?:your|ur)\s+name\b/i,
   /\b(?:introduce|identify)\s+(?:yourself|thyself)\b/i,
@@ -39,7 +36,6 @@ const NAME_PERMISSION_QUESTION_PATTERNS = [
   /\bi\s+go\s+by\b.*?\?/i,
 ];
 
-// Patterns indicating the user is proceeding to say their name regardless of context.
 const NAME_REVEAL_INTENT_PATTERNS = [
   /\b(?:i'll|i will|i shall|let me|i'm gonna|i am going to)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
   /\b(?:anyway|regardless|either way|in any case|fine|alright|ok),?\s*(?:i'm|i am|my name is|call me)\b/i,
@@ -106,33 +102,30 @@ function detectNameQuestion(text: string): boolean {
 }
 
 function detectNamePermissionSequence(
-  interactionHistory: InteractionMessage[], 
-  characterId: string, 
-  characterName: string, 
+  interactionHistory: HistoryMessage[],
+  characterId: string,
+  characterName: string,
   text: string
 ): boolean {
-  
   // 1. Find the previous message sent by THIS specific character.
-  let previousMessageBySameCharacter: InteractionMessage | null = null;
+  let previousMessageBySameCharacter: HistoryMessage | null = null;
 
-  // Iterate backwards from the end of history.
   for (let i = interactionHistory.length - 1; i >= 0; i--) {
     if (interactionHistory[i].character.id === characterId) {
       previousMessageBySameCharacter = interactionHistory[i];
-      break; // Stop at the first match (the most recent one).
+      break;
     }
   }
 
-  // If this character has never spoken before in this session, no sequence exists
   if (!previousMessageBySameCharacter) {
     return false;
   }
 
-  if (!isChatMessage(previousMessageBySameCharacter)) return false;
+  if (previousMessageBySameCharacter.kind !== 'chat') return false;
 
   // 2. Check if that previous message contained a permission question
   const wasPermissionAsked = matchesAnyPattern(
-    previousMessageBySameCharacter.textContent, 
+    previousMessageBySameCharacter.textContent,
     NAME_PERMISSION_QUESTION_PATTERNS
   );
 
@@ -143,12 +136,12 @@ function detectNamePermissionSequence(
   // 3. If the primer exists, check if the current text is likely the name
   const isLikelyJustAName = text.trim().split(/\s+/).length <= 3 && !/[.!?]/.test(text);
   const isDirectReveal = detectDirectNameReveal(text, characterName);
-  
+
   return isLikelyJustAName || isDirectReveal;
 }
 
-export function detectName(interactionHistory: InteractionMessage[], characterId: string, characterName: string, text: string) {
-  const nameQuestionRecentlyAsked = interactionHistory.some(msg => isChatMessage(msg) && detectNameQuestion(msg.textContent));
+export function detectName(interactionHistory: HistoryMessage[], characterId: string, characterName: string, text: string) {
+  const nameQuestionRecentlyAsked = interactionHistory.some(msg => msg.kind === 'chat' && detectNameQuestion(msg.textContent));
 
   if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
 
