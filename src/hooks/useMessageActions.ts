@@ -54,6 +54,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
 
     const handleRegenerateFromEdit = useCallback(async () => {
         if (!interactionData || !editingId) return;
+        if (!isModelReady || isLoading) return;
         try {
             const updatedData = await editMessage(interactionData, editingId, editDraft);
 
@@ -68,7 +69,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         } catch (e) {
             addToast((e as Error).message, 'error');
         }
-    }, [interactionData, editingId, editDraft, currentCharacter, setInteractionData, addToast]);
+    }, [interactionData, editingId, editDraft, currentCharacter, isModelReady, isLoading, setInteractionData, addToast]);
 
     const handleDelete = useCallback(async (id: string) => {
         if (!interactionData) return;
