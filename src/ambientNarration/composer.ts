@@ -1,67 +1,81 @@
-// src/ambientNarration/atoms.ts
+// src/ambientNarration/composer.ts
+import type { Atom } from './atoms';
+import { ATOMS, resolveAtomText } from './atoms';
 
-export interface Atom {
-    text: string;
-    tags: string[];
-    position: 'open' | 'mid' | 'close';
-    mood?: 'calm' | 'tense' | 'melancholy' | 'warm' | 'cold' | 'neutral';
+export interface DetectedContext {
+    tags: Set<string>;
+    dominantMood: string;
 }
 
-export const ATOMS: Atom[] = [
-    // ── Openers ──
-    { text: 'A quiet settles', tags: ['room', 'inside', 'silence', 'still'], position: 'open', mood: 'calm' },
-    { text: 'The air shifts', tags: ['room', 'wind', 'outside', 'change'], position: 'open', mood: 'neutral' },
-    { text: 'Something stirs', tags: ['dark', 'forest', 'outside', 'unknown'], position: 'open', mood: 'tense' },
-    { text: 'Light moves across surfaces', tags: ['light', 'fire', 'candle', 'glow', 'lamp'], position: 'open', mood: 'warm' },
-    { text: 'Cold presses in', tags: ['cold', 'frost', 'ice', 'chill', 'draft'], position: 'open', mood: 'cold' },
-    { text: 'Sound fades', tags: ['crowd', 'voices', 'busy', 'street', 'noise'], position: 'open', mood: 'melancholy' },
-    { text: 'Warmth lingers', tags: ['fire', 'hearth', 'warm', 'ember', 'room'], position: 'open', mood: 'warm' },
-    { text: 'Rain finds its rhythm', tags: ['rain', 'storm', 'water', 'drizzle'], position: 'open', mood: 'calm' },
-    { text: 'The world outside continues', tags: ['outside', 'garden', 'forest', 'field', 'grass'], position: 'open', mood: 'neutral' },
-    { text: 'Pages rest', tags: ['book', 'paper', 'library', 'shelf', 'read'], position: 'open', mood: 'calm' },
-    { text: 'Footsteps pass', tags: ['footstep', 'walk', 'hall', 'approach', 'floorboard'], position: 'open', mood: 'neutral' },
-    { text: 'Wood breathes', tags: ['creak', 'wood', 'old', 'settle', 'groan'], position: 'open', mood: 'calm' },
-    { text: 'Water moves somewhere beyond reach', tags: ['water', 'river', 'sea', 'ocean', 'stream', 'wave'], position: 'open', mood: 'melancholy' },
-    { text: 'Shadows gather at the edges', tags: ['shadow', 'dim', 'corner', 'periphery', 'depth'], position: 'open', mood: 'tense' },
-    { text: 'Brightness arrives without announcement', tags: ['light', 'glow', 'radiance', 'gleam', 'clarity'], position: 'open', mood: 'warm' },
-    { text: 'Silence thickens', tags: ['silence', 'still', 'quiet', 'pause'], position: 'open', mood: 'tense' },
-    { text: 'Dust drifts through pale light', tags: ['room', 'inside', 'dust', 'particle', 'haze'], position: 'open', mood: 'calm' },
-    { text: 'Thunder mutters and retreats', tags: ['thunder', 'storm', 'rumble', 'distance'], position: 'open', mood: 'tense' },
-    { text: 'Frost traces patterns unseen', tags: ['frost', 'ice', 'cold', 'freeze', 'crystal'], position: 'open', mood: 'cold' },
-    { text: 'Life hums just out of earshot', tags: ['crowd', 'people', 'market', 'street', 'city', 'busy'], position: 'open', mood: 'neutral' },
+export function detectContext(text: string): DetectedContext {
+    const lower = text.toLowerCase();
+    const matchedTags = new Set<string>();
+    const moodScores: Record<string, number> = { calm: 0, tense: 0, melancholy: 0, warm: 0, cold: 0, neutral: 0 };
 
-    // ── Middles ──
-    { text: ', carrying nothing and everything', tags: ['wind', 'air', 'outside', 'silence'], position: 'mid', mood: 'neutral' },
-    { text: ', as if listening', tags: ['room', 'still', 'quiet', 'attention'], position: 'mid', mood: 'tense' },
-    { text: ', indifferent to what happens here', tags: ['outside', 'world', 'rain', 'water', 'sea'], position: 'mid', mood: 'melancholy' },
-    { text: ', patient and unhurried', tags: ['slow', 'wait', 'still', 'wood', 'endure'], position: 'mid', mood: 'calm' },
-    { text: ', touching surfaces gently', tags: ['light', 'glow', 'warm', 'fire', 'soft'], position: 'mid', mood: 'warm' },
-    { text: ', finding cracks to slip through', tags: ['cold', 'wind', 'frost', 'rain', 'chill'], position: 'mid', mood: 'cold' },
-    { text: ', then dissolving into distance', tags: ['sound', 'footstep', 'voices', 'crowd', 'noise'], position: 'mid', mood: 'melancholy' },
-    { text: ', holding shape against the void', tags: ['fire', 'candle', 'ember', 'glow', 'flame'], position: 'mid', mood: 'warm' },
-    { text: ', older than anyone present', tags: ['water', 'river', 'sea', 'ocean', 'wave', 'tree', 'forest'], position: 'mid', mood: 'melancholy' },
-    { text: ', settling into familiar grooves', tags: ['wood', 'creak', 'old', 'house', 'room'], position: 'mid', mood: 'calm' },
-    { text: ', marking passage without meaning to', tags: ['rain', 'drip', 'rhythm', 'pulse', 'cycle'], position: 'mid', mood: 'neutral' },
-    { text: ', heavy with things unsaid', tags: ['silence', 'pause', 'quiet', 'still', 'tension'], position: 'mid', mood: 'tense' },
-    { text: ', softening edges that were sharp', tags: ['light', 'warm', 'glow', 'gentle', 'ease'], position: 'mid', mood: 'warm' },
-    { text: ', pressing closer than comfort allows', tags: ['cold', 'shadow', 'frost', 'ice', 'tight'], position: 'mid', mood: 'cold' },
-    { text: ', each word absorbed before it lands', tags: ['book', 'page', 'paper', 'ink', 'library'], position: 'mid', mood: 'calm' },
-    { text: ', belonging to no one', tags: ['outside', 'grass', 'field', 'path', 'wind', 'tree'], position: 'mid', mood: 'neutral' },
+    for (const atom of ATOMS) {
+        for (const tag of atom.tags) {
+            if (lower.includes(tag)) {
+                matchedTags.add(tag);
+                if (atom.mood) moodScores[atom.mood]++;
+            }
+        }
+    }
 
-    // ── Closers ──
-    { text: '. Nothing else follows.', tags: ['silence', 'still', 'quiet', 'end', 'stop'], position: 'close', mood: 'calm' },
-    { text: '. The moment holds.', tags: ['pause', 'wait', 'still', 'breath'], position: 'close', mood: 'tense' },
-    { text: '. Then even that fades.', tags: ['sound', 'footstep', 'voices', 'echo', 'fade'], position: 'close', mood: 'melancholy' },
-    { text: '. It asks for nothing in return.', tags: ['outside', 'nature', 'wind', 'tree', 'grass', 'water'], position: 'close', mood: 'neutral' },
-    { text: '. Warmth persists despite everything.', tags: ['fire', 'warm', 'hearth', 'ember', 'candle'], position: 'close', mood: 'warm' },
-    { text: '. Cold does not negotiate.', tags: ['cold', 'frost', 'ice', 'freeze', 'bite'], position: 'close', mood: 'cold' },
-    { text: '. The silence has weight now.', tags: ['silence', 'heavy', 'thick', 'pressure', 'still'], position: 'close', mood: 'tense' },
-    { text: '. Pages remember what readers forget.', tags: ['book', 'paper', 'ink', 'story', 'word'], position: 'close', mood: 'melancholy' },
-    { text: '. Water does not stop for anyone.', tags: ['water', 'river', 'sea', 'ocean', 'stream', 'current'], position: 'close', mood: 'neutral' },
-    { text: '. Light withdraws slowly.', tags: ['dim', 'fade', 'shadow', 'retreat', 'wane'], position: 'close', mood: 'melancholy' },
-    { text: '. Brightness forgives what came before.', tags: ['light', 'glow', 'radiance', 'clarity', 'renew'], position: 'close', mood: 'warm' },
-    { text: '. Rain keeps its own counsel.', tags: ['rain', 'storm', 'drizzle', 'pouring', 'wet'], position: 'close', mood: 'calm' },
-    { text: '. Wood remembers every weight it has borne.', tags: ['wood', 'creak', 'old', 'floor', 'settle'], position: 'close', mood: 'melancholy' },
-    { text: '. The city does not notice.', tags: ['crowd', 'city', 'street', 'busy', 'people'], position: 'close', mood: 'neutral' },
-    { text: '. Stillness becomes its own answer.', tags: ['still', 'quiet', 'silence', 'peace', 'calm'], position: 'close', mood: 'calm' },
-];
+    let dominantMood = 'neutral';
+    let bestScore = 0;
+    for (const [mood, score] of Object.entries(moodScores)) {
+        if (score > bestScore) { bestScore = score; dominantMood = mood; }
+    }
+
+    return { tags: matchedTags, dominantMood };
+}
+
+function pickAtom(position: 'open' | 'mid' | 'close', contextTags: Set<string>, mood: string, exclude: Set<string>): Atom | null {
+    const candidates = ATOMS.filter(a => a.position === position && !exclude.has(a.template || a.text || ''));
+    if (candidates.length === 0) return null;
+
+    const scored = candidates.map(atom => {
+        let score = 0;
+        for (const tag of atom.tags) {
+            if (contextTags.has(tag)) score += 2;
+        }
+        if (atom.mood === mood) score += 3;
+        if (atom.mood === 'neutral') score += 1;
+        score += Math.random() * 1.5;
+        return { atom, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].atom;
+}
+
+/** Fallback narration when LLM generation fails. Composes from atomic fragments. */
+export function composeFallbackSentence(contextTags: Set<string>, mood: string, recentLines: string[]): string {
+    // Track resolved strings to avoid repetition of actual output
+    const usedResolved = new Set(recentLines);
+    // Track templates to avoid picking the same template twice per composition
+    const usedTemplates = new Set<string>();
+
+    const opener = pickAtom('open', contextTags, mood, usedTemplates);
+    if (!opener) return 'Stillness fills the space between words.';
+    usedTemplates.add(opener.template || opener.text || '');
+
+    const openerText = resolveAtomText(opener);
+    usedResolved.add(openerText);
+
+    let middleText = '';
+    if (Math.random() < 0.6) {
+        const middle = pickAtom('mid', contextTags, mood, usedTemplates);
+        if (middle) {
+            usedTemplates.add(middle.template || middle.text || '');
+            middleText = resolveAtomText(middle);
+            usedResolved.add(middleText);
+        }
+    }
+
+    const closer = pickAtom('close', contextTags, mood, usedTemplates);
+    if (!closer) return `${openerText}${middleText}.`;
+
+    const closerText = resolveAtomText(closer);
+    return openerText + middleText + closerText;
+}
