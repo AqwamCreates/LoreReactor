@@ -41,6 +41,7 @@ interface MessageBubbleProps {
     suppressNextClickRef: React.MutableRefObject<boolean>;
     editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     setEditDraft: (text: string) => void;
+    onNavigateToBranchSource?: () => void;
 }
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -56,6 +57,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     onMassDeleteConfirm, onCancelMassDelete,
     onTouchStart, onTouchEnd, onTouchMove,
     suppressNextClickRef, editTextareaRef, setEditDraft,
+    onNavigateToBranchSource
 }: MessageBubbleProps) {
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
