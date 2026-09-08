@@ -337,6 +337,9 @@ export interface BudgetData extends ObjectData {
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
+  modelUsedCount: Record<string, number>
+  modelQuotaHitCount: Record<string, number>
+  modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
   modelAverageGenerationSpeedMsPerToken: Record<string, number>;
@@ -352,6 +355,9 @@ export interface RawBudgetData extends RawData {
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
+  modelUsedCount: Record<string, number>
+  modelQuotaHitCount: Record<string, number>
+  modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number
   budgetStrategyId: string
   modelAverageGenerationSpeedMsPerToken: Record<string, number>;
