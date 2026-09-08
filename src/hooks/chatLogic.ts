@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, InteractionMessage, Context, StopPattern, PromptBlockType, ChatMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -47,13 +47,6 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = new LanguageModelEngine();
 
-/**
- * Type guard: check if an InteractionMessage is a full InteractionMessage with text content.
- */
-function isChatMessage(msg: ChatMessage | InteractionMessage): msg is ChatMessage {
-    return 'textContent' in msg && typeof (msg as ChatMessage).textContent === 'string';
-}
-
 function getCurrentDateAndTimeString(): string {
     return new Date().toLocaleString('en-US', {
         weekday: 'long',
@@ -97,7 +90,7 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     return `${initialString} have no energy left to speak.${thinkEndString}${contextEndString}`;
 }
 
-export function findPreviousInteractionMessage(interactionData: InteractionData, characterId: string): InteractionMessage | null {
+export function findPreviousInteractionMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
     const interactionHistory = interactionData.interactionHistory;
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
@@ -414,10 +407,10 @@ export function createChatHistoryPrompt(
     const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
     
-    // ✅ Only include chat messages (with text) in the prompt history
-    const interactionMessagesOnly = interactionHistory.filter(isChatMessage);
+    // Only include chat messages (with text) in the prompt history
+    const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
 
-    if (interactionMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
+    if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
 
     const characterParticipantTag = getParticipantTag(character, participants);
     const protagonistParticipantTag = getParticipantTag(protagonist, participants);
@@ -430,7 +423,7 @@ export function createChatHistoryPrompt(
         .sort((a, b) => a.order - b.order);
 
     // Map to original indices in full interactionHistory for reveal tracking
-    let processedMessages = interactionMessagesOnly.map((msg) => ({
+    let processedMessages = chatMessagesOnly.map((msg) => ({
         msg,
         idx: interactionHistory.indexOf(msg),
         text: msg.textContent,
@@ -556,12 +549,12 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         return profileValue;
     })();
 
-    // ✅ Only include chat messages (with text) in prompt search space
+    // Only include chat messages (with text) in prompt search space
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
 
     for (const msg of interactionHistory) {
-        if (isChatMessage(msg)) {
+        if (msg.kind === 'chat') {
             characterIdArray.push(msg.character.id);
             textContentArray.push(msg.textContent);
         }
@@ -569,9 +562,9 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    // ✅ Count only chat messages for prompt disable thresholds
+    // Count only chat messages for prompt disable thresholds
     const numberOfMessagesByParticipant = interactionHistory.filter(
-        msg => msg.character.id === characterId && isChatMessage(msg)
+        msg => msg.character.id === characterId && msg.kind === 'chat'
     ).length;
 
     const isCacheMoreThanLevelZero = (cacheLevel > 0);
@@ -806,7 +799,6 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     if (location) {
         locationLines.push(startOfLocationLine);
 
-        // Location name and description
         const locationName = location.name || 'Unknown Location';
         const locationText = location.text?.trim();
 
@@ -1041,7 +1033,7 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
 
     if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-        const characterImagePath = await getCharacterImageUrlWithFallBack(character.images?.neutral); // Use a sentimental analysis on the protagonist's chat message here!
+        const characterImagePath = await getCharacterImageUrlWithFallBack(character.images?.neutral);
 
         if (characterImagePath) {
 
@@ -1105,10 +1097,10 @@ export async function prepareRequestBody(
         allImageData.push(...resolvedLocationImages);
     }
 
-    // ✅ Protagonist attached files from the latest user message
+    // Protagonist attached files from the latest user message
     const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
-        m => m.character.id === interactionData.protagonist.id && isChatMessage(m)
-    ) as ChatMessage | undefined;
+        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.kind === 'chat'
+    );
 
     if (lastUserMsg?.files?.length) {
         for (const fileBase64 of lastUserMsg.files) {
@@ -1188,6 +1180,7 @@ export function createInteractionMessage(
 ): InteractionMessage {
     const now = Date.now();
     return {
+        kind: 'interaction',
         id: uuidv4(),
         character: { ...character },
         remainingChatStamina: options?.remainingChatStamina,
@@ -1199,7 +1192,7 @@ export function createInteractionMessage(
 }
 
 /**
- * Create a full InteractionMessage with text content.
+ * Create a full ChatMessage with text content.
  */
 export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
     const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
@@ -1211,6 +1204,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
     const now = Date.now();
 
     return {
+        kind: 'chat',
         id: uuidv4(),
         character: { ...character },
         textContent,
@@ -1225,7 +1219,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
     };
 }
 
-export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: InteractionMessage): InteractionData {
+export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: HistoryMessage): InteractionData {
     return {
         ...interactionData,
         interactionHistory: [...interactionData.interactionHistory, newInteractionMessage],
@@ -1241,20 +1235,20 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
     return {
         ...interactionData,
         interactionHistory: interactionHistory.map((message, idx) => {
-            if (idx === index) return { ...message, textContent: newText, kvCachePath: undefined } as ChatMessage;
-            if (idx > index) return { ...message, kvCachePath: undefined } as ChatMessage;
+            if (idx === index && message.kind === 'chat') return { ...message, textContent: newText, kvCachePath: undefined };
+            if (idx > index && message.kind === 'chat') return { ...message, kvCachePath: undefined };
             return message;
         })
     };
 }
 
-export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: InteractionMessage[]; invalidatedIds: string[] } {
+export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: HistoryMessage[]; invalidatedIds: string[] } {
     const interactionHistory = interactionData.interactionHistory;
     const targetIndex = interactionHistory.findIndex(m => m.id === messageId);
     if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
     const newHistory = interactionHistory.filter(m => m.id !== messageId);
     const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex) return { ...message, kvCachePath: undefined } as ChatMessage;
+        if (idx >= targetIndex && message.kind === 'chat') return { ...message, kvCachePath: undefined };
         return message;
     });
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
