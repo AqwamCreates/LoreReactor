@@ -231,6 +231,23 @@ export function AppModals({
                 />
             )}
 
+            {/* Worlds */}
+            {modals.worldManager.isOpen && (
+                <ManagerModal
+                    title="Worlds"
+                    items={allWorlds}
+                    isOpen={modals.worldManager.isOpen}
+                    onClose={modals.worldManager.close}
+                    onSelect={(w: World) => { onLoadWorld(w); modals.worldManager.close(); }}
+                    onDelete={onDeleteWorld}
+                    onCreateNew={() => worldModal.open()}
+                    renderSubtext={(w: World) =>
+                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                    }
+                    emptyMessage="No worlds saved yet."
+                    actionLabel="Delete"
+                />
+            )}
             {worldModal.isOpen && (
                 <WorldEditorModal
                     isOpen={worldModal.isOpen}
@@ -435,24 +452,6 @@ export function AppModals({
                 />
             )}
 
-            {/* Worlds */}
-            {modals.worldManager.isOpen && (
-                <ManagerModal
-                    title="Worlds"
-                    items={allWorlds}
-                    isOpen={modals.worldManager.isOpen}
-                    onClose={modals.worldManager.close}
-                    onSelect={(w: World) => { onLoadWorld(w); modals.worldManager.close(); }}
-                    onDelete={onDeleteWorld}
-                    onCreateNew={() => worldModal.open()}
-                    renderSubtext={(w: World) =>
-                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
-                    }
-                    emptyMessage="No worlds saved yet."
-                    actionLabel="Delete"
-                />
-            )}
-
             {/* Settings & Tool Modals */}
             {modals.settings.isOpen && (
                 <SettingsModal
@@ -462,7 +461,6 @@ export function AppModals({
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenExportData={modals.exportData.open}
                     onOpenImportData={modals.importData.open}
-                    onOpenWorldManager={modals.worldManager.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
                 />

@@ -26,7 +26,6 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 }) => {
     const [showDetails, setShowDetails] = useState(false);
 
-    // Read session stats directly from store
     const generationSpeed = useSessionStore(s => s.generationSpeed);
     const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
     const numberOfTokens = useSessionStore(s => s.numberOfTokens);
@@ -35,24 +34,22 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const totalCost = useSessionStore(s => s.totalCost);
     const costWithoutCacheMisses = useSessionStore(s => s.costWithoutCacheMisses);
 
-    // Calculate Percentage
     const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
     const percentage = Math.min(100, Math.round((numberOfTokens / safeMax) * 100));
-    const isNearLimit = percentage > 80;
-    const isCritical = percentage > 95;
-    
+    const tokenColor = percentage > 95 ? '#ff4444' : percentage > 80 ? '#ffaa00' : '';
+
     const isFastEnough = generationSpeed < 110;
     const speedColor = isFastEnough ? '' : '#ff4444';
     const speedDisplay = generationSpeed < 1 ? '<1' : Math.round(generationSpeed);
     const speedIcon = isFastEnough ? '⚡' : '🐢';
 
-    const ttftDisplay = timeToFirstToken < 1000 
-        ? `${Math.round(timeToFirstToken)}ms` 
+    const ttftDisplay = timeToFirstToken < 1000
+        ? `${Math.round(timeToFirstToken)}ms`
         : `${(timeToFirstToken / 1000).toFixed(1)}s`;
-    const ttftColor = timeToFirstToken < 2000 
-        ? '' 
-        : timeToFirstToken < 4000 
-            ? '#ffaa00' 
+    const ttftColor = timeToFirstToken < 2000
+        ? ''
+        : timeToFirstToken < 4000
+            ? '#ffaa00'
             : '#ff4444';
 
     const invalidationRate = numberOfRequests > 0 ? Math.round((numberOfCacheInvalidations / numberOfRequests) * 100) : 0;
@@ -67,15 +64,11 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
         return cost.toFixed(4);
     };
 
-    const formatNumber = (num: number) => {
-        return num.toLocaleString();
-    };
+    const formatNumber = (num: number) => num.toLocaleString();
 
-    // Budget metrics
     const hasBudget = budgetSpent !== undefined && maximumBudget !== undefined && maximumBudget > 0;
     const budgetPercent = hasBudget ? Math.min(100, Math.round((budgetSpent! / maximumBudget!) * 100)) : 0;
-    const budgetIsNearLimit = budgetPercent > 80;
-    const budgetIsCritical = budgetPercent > 95;
+    const budgetColor = budgetPercent > 95 ? '#ff4444' : budgetPercent > 80 ? '#ffaa00' : '';
 
     const formatResetTime = (ms: number): string => {
         if (ms <= 0) return 'Due now';
@@ -92,13 +85,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
         return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
     };
 
-    // Determine primary cost display: budget takes priority over session cost
-    const primaryCostValue = hasBudget ? budgetSpent! : totalCost;
-    const showPrimaryCost = primaryCostValue > 0;
-
     return (
-        <div 
-            className={`chat-stats-bar ${isCritical ? 'chat-stats-critical' : isNearLimit ? 'chat-stats-warning' : ''} ${className}`}
+        <div
+            className={`chat-stats-bar ${className}`}
             onClick={() => setShowDetails(!showDetails)}
             title="Click to toggle details"
             style={{ cursor: 'pointer' }}
@@ -120,50 +109,34 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </span>
                 </div>
 
-                {/* Cache Invalidation Count (Only show if > 0) */}
+                {/* Cache Invalidation Count */}
                 {numberOfCacheInvalidations > 0 && (
                     <div className="chat-stat-item" title={`${numberOfCacheInvalidations} cache invalidations`}>
                         <span className="chat-stat-label">🔄</span>
                         <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
                     </div>
                 )}
-                
-                {/* Token Usage Bar */}
-                <div className="chat-stat-item chat-stat-token-usage" title={`${numberOfTokens} / ${maximumNumberOfTokens} tokens`}>
+
+                {/* Token Usage (no bar, colored percentage) */}
+                <div className="chat-stat-item" title={`${numberOfTokens} / ${maximumNumberOfTokens} tokens (${percentage}%)`}>
                     <span className="chat-stat-label">📊</span>
-                    <span className="chat-stat-context-bar">
-                        <span 
-                            className="chat-stat-context-fill" 
-                            style={{ width: `${percentage}%` }}
-                        />
-                    </span>
-                    <span className="chat-stat-value" style={{ fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
+                    <span className="chat-stat-value" style={{ color: tokenColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
                         {percentage}%
                     </span>
                 </div>
 
-                {/* Budget Usage Bar (when budget strategy active) */}
+                {/* Budget Usage (no bar, colored percentage) */}
                 {hasBudget && (
-                    <div className={`chat-stat-item chat-stat-token-usage ${budgetIsCritical ? 'chat-stats-critical' : budgetIsNearLimit ? 'chat-stats-warning' : ''}`}
-                        title={`Budget: $${formatCost(budgetSpent!)} / $${formatCost(maximumBudget!)}`}>
+                    <div className="chat-stat-item" title={`Budget: $${formatCost(budgetSpent!)} / $${formatCost(maximumBudget!)} (${budgetPercent}%)`}>
                         <span className="chat-stat-label">💰</span>
-                        <span className="chat-stat-context-bar">
-                            <span 
-                                className="chat-stat-context-fill" 
-                                style={{ 
-                                    width: `${budgetPercent}%`,
-                                    background: budgetIsCritical ? '#ff4444' : budgetIsNearLimit ? '#ffaa00' : undefined,
-                                }}
-                            />
-                        </span>
-                        <span className="chat-stat-value" style={{ fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
+                        <span className="chat-stat-value" style={{ color: budgetColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
                             {budgetPercent}%
                         </span>
                     </div>
                 )}
 
-                {/* Session Cost (only show when no budget, or in addition to budget) */}
-                {!hasBudget && showPrimaryCost && (
+                {/* Session Cost (only when no budget) */}
+                {!hasBudget && totalCost > 0 && (
                     <div className="chat-stat-item" title={`Session Cost: $${formatCost(totalCost)}`}>
                         <span className="chat-stat-label">💰</span>
                         <span className="chat-stat-value">${formatCost(totalCost)}</span>
@@ -173,7 +146,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 
             {showDetails && (
                 <div className="chat-stats-details">
-                    {/* --- Context & Performance --- */}
+                    {/* Context & Performance */}
                     <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Context Used:</span>
@@ -194,7 +167,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Generation Speed:</span>
                             <span className="chat-stat-detail-value" style={{ color: speedColor }}>
-                                {generationSpeed > 0 ? (1000/generationSpeed).toFixed(1) : '∞'} tokens/s
+                                {generationSpeed > 0 ? (1000 / generationSpeed).toFixed(1) : '∞'} tokens/s
                             </span>
                         </div>
                         <div className="chat-stat-detail-row">
@@ -213,12 +186,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                     </div>
 
-                    {/* --- Budget Statistics --- */}
+                    {/* Budget Statistics */}
                     {hasBudget && (
                         <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
                             <div className="chat-stat-detail-row">
                                 <span className="chat-stat-detail-label">Budget Spent:</span>
-                                <span className="chat-stat-detail-value" style={{ color: budgetIsCritical ? '#ff4444' : budgetIsNearLimit ? '#ffaa00' : '' }}>
+                                <span className="chat-stat-detail-value" style={{ color: budgetColor }}>
                                     ${formatCost(budgetSpent!)} / ${formatCost(maximumBudget!)} ({budgetPercent}%)
                                 </span>
                             </div>
@@ -233,7 +206,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                     )}
 
-                    {/* --- Cache Statistics --- */}
+                    {/* Cache Statistics */}
                     {hasCacheData && (
                         <div style={{ marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
                             <div className="chat-stat-detail-row">
@@ -253,7 +226,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         </div>
                     )}
 
-                    {/* --- Session Cost Breakdown --- */}
+                    {/* Session Cost Breakdown */}
                     {totalCost > 0 && (
                         <div>
                             <div className="chat-stat-detail-row">

@@ -75,13 +75,13 @@ function App() {
     const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
     const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
+    const { worlds: allWorlds, isLoading: worldsLoading, saveWorld, deleteWorld } = useWorldManager();
     const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
     const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
     const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
-    const { worlds: allWorlds, saveWorld, deleteWorld } = useWorldManager();
 
     // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
@@ -298,6 +298,7 @@ function App() {
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
         { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
+        { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
