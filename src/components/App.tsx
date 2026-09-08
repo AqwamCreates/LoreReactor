@@ -118,11 +118,8 @@ function App() {
         setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
     });
 
-    const interactionDataRef = useRef<InteractionData | null>(null);
-    useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
-
     useEntitySync({
-        activeChatRestored, interactionDataRef,
+        activeChatRestored,
         allCharacters, allContexts, allProfiles,
         currentCharacter, setInteractionData, setCurrentCharacter,
     });
@@ -432,7 +429,7 @@ function App() {
         if (!interactionData) return;
         const chatMessage = createChatMessage(interactionData, character, `*${character.name} enters the scene.*`);
         const updated = addMessageToInteractionData(interactionData, chatMessage);
-        setInteractionData(updated); interactionDataRef.current = updated;
+        setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Sent first message as ${character.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
@@ -440,7 +437,7 @@ function App() {
         if (!interactionData) return;
         const chatMessage = createChatMessage(interactionData, character, text);
         const updated = addMessageToInteractionData(interactionData, chatMessage);
-        setInteractionData(updated); interactionDataRef.current = updated;
+        setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Sent message as ${character.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
@@ -460,7 +457,7 @@ function App() {
             lastUpdatedTimestamp: Date.now(),
         };
         const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
-        setInteractionData(updated); interactionDataRef.current = updated;
+        setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Injected custom message as ${character.name} into LLM context`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
@@ -480,7 +477,7 @@ function App() {
             lastUpdatedTimestamp: Date.now(),
         };
         const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
-        setInteractionData(updated); interactionDataRef.current = updated;
+        setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Injected first message as ${character.name} into LLM context`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
@@ -496,7 +493,6 @@ function App() {
             const source = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
             if (source) {
                 setInteractionData(source);
-                interactionDataRef.current = source;
                 if (source.protagonist) setCurrentCharacter(source.protagonist);
                 refreshChatList();
                 addToast(`Returned to source: "${source.name}"`, 'info');
@@ -675,7 +671,7 @@ function App() {
                     onActivateProfile={handleActivateProfile}
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
-                    onUpdateInteractionData={(data) => { setInteractionData(data); interactionDataRef.current = data; saveRawInteractionData(data); }}
+                    onUpdateInteractionData={(data) => { setInteractionData(data); saveRawInteractionData(data); }}
                     onForceFirstMessage={handleForceFirstMessage}
                     onSendCustomMessage={handleSendCustomMessage}
                     onInjectCustomMessage={handleInjectCustomMessage}
