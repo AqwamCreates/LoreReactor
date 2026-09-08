@@ -7,7 +7,6 @@ interface MessageBubbleProps {
     message: ChatMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic';
-    interactionData: InteractionData;
     currentCharacterId: string | undefined;
     editingId: string | null;
     editDraft: string;
@@ -47,7 +46,7 @@ interface MessageBubbleProps {
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 export const MessageBubble = React.memo(function MessageBubble({
-    message, index, viewMode, interactionData, currentCharacterId,
+    message, index, viewMode, currentCharacterId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
     isModelReady, isLoading,

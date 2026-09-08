@@ -449,7 +449,7 @@ export function ModelEditorModal({
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Backend</label>
-                        <select value={backend} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
+                        <select value={backend ?? ""} onChange={(e) => setBackend(e.target.value as LanguageModel['backend'])} className="editor-select">
                             {backends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                         </select>
                     </div>

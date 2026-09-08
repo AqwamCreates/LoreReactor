@@ -388,7 +388,7 @@ export class LanguageModelEngine {
           switch (backend) {
             case 'Google': {
               const modelName = modelPath || 'gemini-2.5-flash';
-              url = templateUrl.replace('{model}', modelName) + `?key=${apiKey}`;
+              url = `${templateUrl.replace('{model}', modelName)}?key=${apiKey}`;
               body = JSON.stringify({ contents: [{ parts: [{ text }] }] });
               break;
             }
@@ -461,7 +461,6 @@ export class LanguageModelEngine {
             case 'Cohere': return data.tokens?.length ?? data.token_count ?? estimatedTokens;
             case 'AI21': return data.tokens?.length ?? data.count ?? estimatedTokens;
             case 'NovelAI': return data.tokens?.length ?? data.count ?? estimatedTokens;
-            case 'OpenRouter': return estimatedTokens;
             default: return estimatedTokens;
           }
         } catch {
