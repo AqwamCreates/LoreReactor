@@ -1338,6 +1338,8 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
         lastResetTimestamp: data.lastResetTimestamp,
         budgetStrategyId: data.budgetStrategy.id,
+        modelAverageGenerationSpeedMsPerToken: data.modelAverageGenerationSpeedMsPerToken,
+        modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
         firstCreatedTimestamp: data.firstCreatedTimestamp,
         lastUpdatedTimestamp: Date.now(),
     };

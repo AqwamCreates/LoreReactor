@@ -1,5 +1,5 @@
 // src/hooks/characterLogic.ts
-import type { Character, InteractionData, InteractionMessage, Profile } from "../types";
+import type { Character, InteractionData, HistoryMessage, Profile } from "../types";
 
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
     const characterValue = character[key] as number;
@@ -151,12 +151,12 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     return multiplier;
 }
 
-export function consumeChatStamina(interactionMessage: InteractionMessage, amountOfChatStaminaConsumed: number) {
-    if ((interactionMessage.kind === "interaction") || interactionMessage.remainingChatStamina === undefined) return;
+export function consumeChatStamina(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
+    if (interactionMessage.kind === "interaction" || interactionMessage.remainingChatStamina === undefined) return;
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
-export function generateChatStamina(character: Character, interactionMessage: InteractionMessage) {
+export function generateChatStamina(character: Character, interactionMessage: HistoryMessage) {
     const maximumChatStamina = character.maximumChatStamina;
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 

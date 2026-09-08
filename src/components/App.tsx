@@ -110,7 +110,7 @@ function App() {
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
-    const { modals, closeAll } = useModalVisibility();
+    const { modals } = useModalVisibility();
     const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);

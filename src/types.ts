@@ -349,7 +349,7 @@ export interface RawBudgetData extends RawData {
   modelLastErrorHitTimeStamps: Record<string, number>
   lastResetTimestamp: number
   budgetStrategyId: string
-  modelAverageGenerationSpeedMsPerToken?: Record<string, number>;
+  modelAverageGenerationSpeedMsPerToken: Record<string, number>;
   modelAverageTimeToFirstToken: Record<string, number>
 }
 
