@@ -720,7 +720,7 @@ function App() {
                 />
             </div>
 
-            <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={showActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
+            <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
         </>
     );
 }

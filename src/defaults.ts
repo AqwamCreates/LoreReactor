@@ -42,6 +42,7 @@ export const DefaultBudgetData: BudgetData = {
     modelErrorHitCount: {},
     lastResetTimestamp: now,
     budgetStrategy: {} as BudgetStrategy,
+    modelBudgetSpent: {},
     modelAverageGenerationSpeedMsPerToken: {},
     modelAverageTimeToFirstToken: {},
     firstCreatedTimestamp: now,
