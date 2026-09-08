@@ -35,7 +35,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
 
         const resolvePortrait = (characterId: string, images: Record<string, string> | undefined, expression?: string): string | null => {
             const expr = expression || 'neutral';
-            const filename = images?.[expr] || images?.neutral;
+            const filename = images?.[expr] || images?.['neutral'];
             if (!filename) return null;
             return getCharacterImageUrl(characterId, filename);
         };
@@ -65,7 +65,8 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
     }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
 
     const locationBackgroundUrl = useMemo(() => {
-        const locations = interactionData?.locations;
+        if (!interactionData) return null;
+        const locations = interactionData.locations;
         if (!locations?.length) return null;
 
         // Search backwards through full history (not just chat messages) for location changes
