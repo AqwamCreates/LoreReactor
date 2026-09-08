@@ -44,10 +44,10 @@ export function useAmbientNarration(
 
             if (model) {
                 const port = model.id ? runningModels[model.id]?.port : undefined;
-                const runtimePort = port || (model.parameters as any)?._runtimePort;
+                const runtimePort = port || (model.parameters as Record<string, unknown>)?._runtimePort;
 
                 if (model.apiKey || runtimePort) {
-                    const lmCtx = {
+                    const lmCtx: Record<string, unknown> = {
                         apiKey: model.apiKey,
                         backend: model.backend,
                         modelPath: model.model,

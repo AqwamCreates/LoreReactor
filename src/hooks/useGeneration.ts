@@ -267,7 +267,7 @@ export function useGeneration(options: UseGenerationOptions) {
                 // ─── Direct Model Path ───────────────────────────────
                 if (!model) { if (!signal.aborted) addToast('No model selected.', 'error'); return null; }
                 const port = model.id ? running[model.id]?.port : undefined;
-                const ep = port || (model.parameters as any)?._runtimePort;
+                const ep = port || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
                 if (!ep && !model.apiKey) { if (!signal.aborted) addToast('Model not ready.', 'error'); return null; }
 
                 const lmCtx: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: ep };
