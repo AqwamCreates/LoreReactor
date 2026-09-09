@@ -4,7 +4,7 @@ import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { LanguageModelEngine, type LanguageModelContext } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack } from './storage';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl } from './storage';
 import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
 import { fetchCurrentWeather } from '../services/WeatherService';
@@ -1052,7 +1052,8 @@ export async function prepareRequestBody(
             if (!context.images) return [];
             return context.images.map(async (filename) => {
                 try {
-                    const imageUrl = `/user_data/context_data/${filename}`;
+                    const imageUrl = getContextImageUrl(filename);
+                    if (!imageUrl) return null;
                     const response = await fetch(imageUrl);
                     if (!response.ok) return null;
                     const blob = await response.blob();

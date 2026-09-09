@@ -1053,7 +1053,7 @@ async function buildInteractionDataShell(
     });
     
   if (!participants.find(p => p.id === protagonist.id)) {
-    participants.unshift(protagonist);
+    participants.push(protagonist);
   }
 
   const contexts = (rawInteractionData.contextIds || [])
