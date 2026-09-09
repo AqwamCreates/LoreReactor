@@ -115,7 +115,6 @@ export function resetServerAvailability(): void {
 // --- Generic Helpers ---
 
 async function fetchJson<T>(url: string): Promise<T | null> {
-  // Browser-only mode: read from IndexedDB
   if (!(await getServerAvailable())) {
     return browserReadJson<T>(url);
   }
@@ -147,7 +146,6 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     return JSON.parse(text) as T;
   } catch (error) { 
     if ((error as Error).message.includes('Failed to fetch')) {
-      // Network error — might be offline, try browser storage
       console.warn(`Network error for ${url}, falling back to browser storage`);
       resetServerAvailability();
       return browserReadJson<T>(url);
@@ -159,7 +157,6 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
-  // Browser-only mode: write to IndexedDB
   if (!(await getServerAvailable())) {
     await browserWriteJson(url, data);
     return;
@@ -175,7 +172,6 @@ async function putJson<T>(url: string, data: T): Promise<void> {
     });
     if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
   } catch (e) {
-    // Network failure — fall back to browser storage
     if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
       console.warn(`Network error saving ${url}, falling back to browser storage`);
       resetServerAvailability();
@@ -187,7 +183,6 @@ async function putJson<T>(url: string, data: T): Promise<void> {
 }
 
 async function deleteResource(url: string): Promise<void> {
-  // Browser-only mode: delete from IndexedDB
   if (!(await getServerAvailable())) {
     await browserDeleteFile(url);
     return;
@@ -220,7 +215,6 @@ async function ensureManifest(folderPath: string): Promise<string[]> {
 
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
   try {
-    // In browser mode, list directory from IndexedDB keys
     if (!(await getServerAvailable())) {
       const entries = await browserListDirectory(folderPath);
       const ids = entries
@@ -434,7 +428,6 @@ export async function loadRawSampler(id: string): Promise<Sampler | null> {
     if (!rawSampler) return null;
     
     const stopPatternIds = rawSampler.stopPatternIds || [];
-    const stopPatternsPromises = stopPatternIds.map(sid => loadRawStopPattern(sid));
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
@@ -1128,124 +1121,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
 }
 
-// Load only the last `limit` messages (most recent first)
-export async function loadInteractionMessagesPaginated(
-    interactionData: InteractionData,
-    limit: number = 50
-): Promise<{ data: InteractionData; hasMoreAbove: boolean }> {
-    if (interactionData.interactionHistory.length > 0) {
-        return { data: interactionData, hasMoreAbove: false };
-    }
-
-    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
-    if (!rawInteractionData || !rawInteractionData.interactionIdHistory || rawInteractionData.interactionIdHistory.length === 0) {
-        return { data: interactionData, hasMoreAbove: false };
-    }
-
-    const allIds = rawInteractionData.interactionIdHistory;
-    const totalMessages = allIds.length;
-    const hasMoreAbove = totalMessages > limit;
-
-    // Take only the last `limit` IDs
-    const idsToLoad = allIds.slice(-limit);
-
-    const charMap = new Map<string, Character>();
-    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
-    for (const p of interactionData.participants) {
-        charMap.set(p.id, p);
-    }
-
-    const messagePromises = idsToLoad.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
-        if (!rawMessage) return null;
-
-        const character = charMap.get(rawMessage.characterId);
-        const { characterId, ...messageWithoutCharId } = rawMessage;
-
-        return {
-            id: messageId,
-            ...messageWithoutCharId,
-            character: character || {
-                id: characterId,
-                name: '[Unknown]',
-                images: {},
-                firstCreatedTimestamp: Date.now(),
-                lastUpdatedTimestamp: Date.now()
-            } as Character
-        };
-    });
-
-    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
-
-    return {
-        data: { ...interactionData, interactionHistory, numberOfMessages: totalMessages },
-        hasMoreAbove,
-    };
-}
-
-// Load older messages and prepend them to existing history
-export async function loadOlderMessages(
-    interactionData: InteractionData,
-    batchSize: number = 50
-): Promise<{ data: InteractionData; hasMoreAbove: boolean }> {
-    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
-    if (!rawInteractionData || !rawInteractionData.interactionIdHistory) {
-        return { data: interactionData, hasMoreAbove: false };
-    }
-
-    const allIds = rawInteractionData.interactionIdHistory;
-    const loadedCount = interactionData.interactionHistory.length;
-
-    if (loadedCount >= allIds.length) {
-        return { data: interactionData, hasMoreAbove: false };
-    }
-
-    // Figure out which IDs we haven't loaded yet
-    const loadedIds = new Set(interactionData.interactionHistory.map(m => m.id));
-    const unloadedIds = allIds.filter(id => !loadedIds.has(id));
-
-    // Take the most recent batch of unloaded IDs (closest to already-loaded messages)
-    const idsToLoad = unloadedIds.slice(-batchSize);
-    const hasMoreAbove = unloadedIds.length > batchSize;
-
-    const charMap = new Map<string, Character>();
-    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
-    for (const p of interactionData.participants) {
-        charMap.set(p.id, p);
-    }
-
-    const messagePromises = idsToLoad.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
-        if (!rawMessage) return null;
-
-        const character = charMap.get(rawMessage.characterId);
-        const { characterId, ...messageWithoutCharId } = rawMessage;
-
-        return {
-            id: messageId,
-            ...messageWithoutCharId,
-            character: character || {
-                id: characterId,
-                name: '[Unknown]',
-                images: {},
-                firstCreatedTimestamp: Date.now(),
-                lastUpdatedTimestamp: Date.now()
-            } as Character
-        };
-    });
-
-    const olderMessages = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
-
-    // Prepend older messages to existing history, maintaining chronological order
-    const mergedHistory = [...olderMessages, ...interactionData.interactionHistory];
-
-    return {
-        data: { ...interactionData, interactionHistory: mergedHistory, numberOfMessages: allIds.length },
-        hasMoreAbove,
-    };
-}
-
-/** Returns shell WITHOUT loading messages — paginated loader handles initial load. */
+/** Loads full interaction data including all messages. */
 export async function loadRawInteractionData(
   id: string,
   existingCharShells?: Character[]
@@ -1301,17 +1177,6 @@ export async function loadRawInteractionData(
   const shell = await buildInteractionDataShell(id, rawInteractionData, charMap, contextMap, locationMap, profileMap);
   if (!shell) return null;
 
-  // Return shell without loading messages — caller uses loadInteractionMessagesPaginated
-  return shell;
-}
-
-/** Internal: loads full interaction data including all messages (for branching). */
-async function loadRawInteractionDataFull(
-  id: string,
-  existingCharShells?: Character[]
-): Promise<InteractionData | null> {
-  const shell = await loadRawInteractionData(id, existingCharShells);
-  if (!shell) return null;
   return loadInteractionMessages(shell);
 }
 
@@ -1382,7 +1247,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 }
 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentInteractionMessageId: string): Promise<string> {
-  const sourceChat = await loadRawInteractionDataFull(parentInteractionDataId);
+  const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
   const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentInteractionMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");

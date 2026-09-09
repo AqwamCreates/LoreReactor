@@ -1,12 +1,15 @@
+// src/components/WorldEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { World, Character, Context, Location, Profile } from '../types';
 import { EntitySelectList } from './EntitySelectList';
+import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 interface WorldEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (world: World) => void;
+    onLoadWorld?: (world: World) => void;
     existingWorld: World | null;
     allCharacters: Character[];
     allContexts: Context[];
@@ -19,7 +22,7 @@ interface WorldEditorModalProps {
 }
 
 export function WorldEditorModal({
-    isOpen, onClose, onSave, existingWorld,
+    isOpen, onClose, onSave, onLoadWorld, existingWorld,
     allCharacters, allContexts, allLocations, allProfiles,
     currentCharacterIds, currentContextIds, currentLocationIds, currentProfileId,
 }: WorldEditorModalProps) {
@@ -32,9 +35,11 @@ export function WorldEditorModal({
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
+    const [isCloned, setIsCloned] = useState(false);
 
     useEffect(() => {
         if (!isOpen) return;
+        setIsCloned(false);
         if (existingWorld) {
             setName(existingWorld.name);
             setDescription(existingWorld.description || '');
@@ -61,21 +66,47 @@ export function WorldEditorModal({
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
+    const buildWorld = (): World | null => {
+        if (!name.trim()) return null;
+        const now = Date.now();
+        return {
+            id: (existingWorld && !isCloned) ? existingWorld.id : uuidv4(),
+            name: isCloned ? `${name.trim()} (Clone)` : name.trim(),
+            description: description.trim() || undefined,
+            characterIds: charIds,
+            contextIds: ctxIds,
+            locationIds: locIds,
+            profileId: profileId || undefined,
+            firstCreatedTimestamp: (existingWorld && !isCloned) ? existingWorld.firstCreatedTimestamp : now,
+            lastUpdatedTimestamp: now,
+        };
+    };
+
     const handleSave = () => {
-        if (!name.trim()) return;
+        const world = buildWorld();
+        if (!world) return;
+        onSave(world);
+        onClose();
+    };
+
+    const handleClone = () => {
+        setIsCloned(true);
+    };
+
+    const handleLoad = () => {
+        if (!existingWorld || !onLoadWorld) return;
         const now = Date.now();
         const world: World = {
-            id: existingWorld?.id || crypto.randomUUID(),
+            ...existingWorld,
             name: name.trim(),
             description: description.trim() || undefined,
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
             profileId: profileId || undefined,
-            firstCreatedTimestamp: existingWorld?.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: now,
         };
-        onSave(world);
+        onLoadWorld(world);
         onClose();
     };
 
@@ -88,9 +119,17 @@ export function WorldEditorModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingWorld ? 'Edit World' : 'Create New World'}</h2>
+                    <h2>{existingWorld ? (isCloned ? 'Clone World' : 'Edit World') : 'Create New World'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        {existingWorld && !isCloned && (
+                            <>
+                                {onLoadWorld && (
+                                    <button type="button" className="editor-btn editor-btn-cancel" onClick={handleLoad} style={{ borderColor: 'var(--accent)' }}>Load</button>
+                                )}
+                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>Clone</button>
+                            </>
+                        )}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={!name.trim()}>Save</button>
                     </div>
                 </div>

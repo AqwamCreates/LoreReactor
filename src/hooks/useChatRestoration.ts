@@ -1,7 +1,7 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
-import { loadRawInteractionData, loadInteractionMessagesPaginated } from './storage';
+import { loadRawInteractionData } from './storage';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
@@ -65,13 +65,14 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
 
-            // Load messages using paginated loader — only fetches last 50
-            if (!chat.interactionHistory.length && (chat.numberOfMessages ?? 0) > 0) {
+            // loadRawInteractionData already loads all messages, so interactionHistory
+            // should be populated. Only load if somehow empty but messages exist.
+            if (!fullChat.interactionHistory.length && (fullChat.numberOfMessages ?? 0) > 0) {
                 try {
-                    const result = await loadInteractionMessagesPaginated(chat, 50);
-                    fullChat = result.data;
+                    const reloaded = await loadRawInteractionData(fullChat.id, allCharacters);
+                    if (reloaded) fullChat = reloaded;
                 } catch (e) {
-                    console.warn('Failed to load chat messages for fallback:', e);
+                    console.warn('Failed to reload chat messages:', e);
                 }
             }
 
@@ -125,7 +126,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     return;
                 }
 
-                // loadRawInteractionData now returns shell WITHOUT loading messages
+                // loadRawInteractionData loads shell + all messages
                 const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
 
                 if (interactionDataResult) {

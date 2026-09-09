@@ -220,7 +220,7 @@ export function AppModals({
                     items={allWorlds}
                     isOpen={modals.worldManager.isOpen}
                     onClose={modals.worldManager.close}
-                    onSelect={(w: World) => { onLoadWorld(w); modals.worldManager.close(); }}
+                    onSelect={(w: World) => worldModal.open(w)}
                     onDelete={onDeleteWorld}
                     onCreateNew={() => worldModal.open()}
                     renderSubtext={(w: World) =>
@@ -564,6 +564,7 @@ export function AppModals({
                     isOpen={worldModal.isOpen}
                     onClose={worldModal.close}
                     onSave={worldModal.handleSave}
+                    onLoadWorld={onLoadWorld}
                     existingWorld={worldModal.itemToEdit}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
