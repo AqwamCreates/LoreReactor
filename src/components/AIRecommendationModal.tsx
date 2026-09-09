@@ -161,6 +161,15 @@ interface GeneratedOutput {
     world?: GeneratedWorldDefinition;
 }
 
+interface JsonHistoryEntry {
+    id: string;
+    timestamp: number;
+    jsonText: string;
+    parsedOutput: GeneratedOutput;
+    label: string;
+    isEdited: boolean;
+}
+
 const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
     { type: 'Character', label: 'Character', icon: '🎭' },
     { type: 'Context', label: 'Context', icon: '📜' },
@@ -170,132 +179,89 @@ const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
 ];
 
 const recommendationEngine = new LanguageModelEngine();
-
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getEffectiveSchemaEntities(selectedEntities: EntityType[]): EntityType[] {
-    const hasWorld = selectedEntities.includes('World');
-    if (!hasWorld) return selectedEntities;
-    return ['World'];
+    if (selectedEntities.includes('World')) return ['World'];
+    return selectedEntities;
 }
 
 function buildJsonSchema(effectiveEntities: EntityType[]): string {
     const parts: string[] = [];
-
     if (effectiveEntities.includes('Character')) {
         parts.push(`  "character": {
-    "name": "string (required)",
-    "description": "string",
-    "systemPrompt": "string",
-    "thinkPrompt": "string",
-    "appearancePrompt": "string",
-    "dialoguePrompt": "string",
-    "initiativeWeight": "number (0-10, default 5)",
-    "chatProbability": "number (0-1, default 0.8)",
-    "maximumChatStamina": "number (1-20, default 5)",
-    "nameSensitivity": "number (0-1, default 0.3)",
-    "chatImpatienceSensitivity": "number (0-1, default 0.2)",
-    "skipProbability": "number (0-1, default 0.1)",
-    "memoryRetentionWeight": "number (0-1, default 0.5)",
-    "contextSensitivity": "number (0-1, default 0.5)",
+    "name": "string (required)", "description": "string", "systemPrompt": "string", "thinkPrompt": "string",
+    "appearancePrompt": "string", "dialoguePrompt": "string",
+    "initiativeWeight": "number (0-10, default 5)", "chatProbability": "number (0-1, default 0.8)",
+    "maximumChatStamina": "number (1-20, default 5)", "nameSensitivity": "number (0-1, default 0.3)",
+    "chatImpatienceSensitivity": "number (0-1, default 0.2)", "skipProbability": "number (0-1, default 0.1)",
+    "memoryRetentionWeight": "number (0-1, default 0.5)", "contextSensitivity": "number (0-1, default 0.5)",
     "doNotInjectCharacterImage": "boolean (default false)",
     "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
     "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
     "numberOfMessagesToDisableDialoguePrompt": "number (default 0)",
-    "enableWebSearch": "boolean (default false)",
-    "enableCalculator": "boolean (default false)",
-    "enableMemoryWriting": "boolean (default false)",
-    "enableMemoryReading": "boolean (default false)"
+    "enableWebSearch": "boolean (default false)", "enableCalculator": "boolean (default false)",
+    "enableMemoryWriting": "boolean (default false)", "enableMemoryReading": "boolean (default false)"
   }`);
     }
-
     if (effectiveEntities.includes('Context')) {
         parts.push(`  "context": {
-    "name": "string (required)",
-    "description": "string",
-    "text": "string (required)",
-    "searchTerms": ["string array"],
-    "urls": ["string array"],
-    "includeLinkImages": "boolean (default false)",
-    "maximumLinkDepth": "number (default 1)",
+    "name": "string (required)", "description": "string", "text": "string (required)",
+    "searchTerms": ["string array"], "urls": ["string array"],
+    "includeLinkImages": "boolean (default false)", "maximumLinkDepth": "number (default 1)",
     "linkFetchMode": "'full' | 'summary' | 'extract' (default 'summary')",
-    "limitLinksToSubdirectory": "boolean (default false)",
-    "fetchCacheTimeToLiveMs": "number",
+    "limitLinksToSubdirectory": "boolean (default false)", "fetchCacheTimeToLiveMs": "number",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
     "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
-    "tokenBudget": "number (default 512)",
-    "maximumRecursionDepth": "number (default 1)",
-    "insertionDepth": "number (default 0, lower = closer to user message)",
-    "characterBindings": ["character name or ID strings"],
+    "tokenBudget": "number (default 512)", "maximumRecursionDepth": "number (default 1)",
+    "insertionDepth": "number (default 0)", "characterBindings": ["character name or ID strings"],
     "useBase64Encoding": "boolean (default false)"
   }`);
     }
-
     if (effectiveEntities.includes('Location')) {
         parts.push(`  "location": {
-    "name": "string (required)",
-    "description": "string",
-    "text": "string (required)",
+    "name": "string (required)", "description": "string", "text": "string (required)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
-    "locationBindings": ["location name or ID strings this location is reachable from"],
-    "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern for conditional access"},
-    "characterBindings": ["character name or ID strings allowed here"],
-    "globalWeight": "number (0-10, default 1)",
-    "characterWeights": {"character name or ID": weight number},
+    "locationBindings": ["location name or ID strings"],
+    "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
+    "characterBindings": ["character name or ID strings"],
+    "globalWeight": "number (0-10, default 1)", "characterWeights": {"character name or ID": weight},
     "useBase64Encoding": "boolean (default false)"
   }`);
     }
-
     if (effectiveEntities.includes('Profile')) {
         parts.push(`  "profile": {
-    "name": "string (required)",
-    "description": "string",
-    "forceNameReveal": "boolean (default false)",
-    "enableCharacterExpression": "boolean (default false)",
-    "forceNoCharacterImageInjection": "boolean (default false)",
-    "forceNoContextImageInjection": "boolean (default false)",
-    "useCurrentDateAndTime": "boolean (default false)",
-    "useWeather": "boolean (default false)",
+    "name": "string (required)", "description": "string",
+    "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
+    "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",
+    "useCurrentDateAndTime": "boolean (default false)", "useWeather": "boolean (default false)",
     "useTimeElapsed": "boolean (default false)",
     "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
     "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
     "numberOfMessagesToDisableDialoguePrompt": "number (default 0)",
     "forceEqualInitiative": "boolean (default false)",
-    "chatProbability": "number (0-1, default 0.8)",
-    "maximumChatStamina": "number (1-20, default 5)",
-    "nameSensitivity": "number (0-1, default 0.3)",
-    "chatImpatienceSensitivity": "number (0-1, default 0.2)",
-    "skipProbability": "number (0-1, default 0.1)",
-    "memoryRetentionWeight": "number (0-1, default 0.5)",
-    "contextSensitivity": "number (0-1, default 0.5)",
-    "cacheInvalidationReductionLevel": "number (0-3, default 0)",
-    "narrateNormalText": "boolean (default true)",
-    "narrateQuotedText": "boolean (default false)",
-    "narrateBoldedText": "boolean (default false)",
-    "narrateItalicizedText": "boolean (default false)",
+    "chatProbability": "number (0-1, default 0.8)", "maximumChatStamina": "number (1-20, default 5)",
+    "nameSensitivity": "number (0-1, default 0.3)", "chatImpatienceSensitivity": "number (0-1, default 0.2)",
+    "skipProbability": "number (0-1, default 0.1)", "memoryRetentionWeight": "number (0-1, default 0.5)",
+    "contextSensitivity": "number (0-1, default 0.5)", "cacheInvalidationReductionLevel": "number (0-3, default 0)",
+    "narrateNormalText": "boolean (default true)", "narrateQuotedText": "boolean (default false)",
+    "narrateBoldedText": "boolean (default false)", "narrateItalicizedText": "boolean (default false)",
     "stripThinkTokens": "boolean (default true)",
-    "enableWebSearch": "number (0 or 1, default 0)",
-    "enableCalculator": "number (0 or 1, default 0)",
-    "enableMemoryWriting": "number (0 or 1, default 0)",
-    "enableMemoryReading": "number (0 or 1, default 0)",
-    "inputStrategy": ["array of PromptBlockType: 'System Prompt' | 'Think Prompt' | 'Meta Think Instructions' | 'Appearance Prompt' | 'Dialogue Prompt' | 'Memory' | 'Chat History' | 'Context' | 'Location' | 'Fatigue Information' | 'Date And Time' | 'Weather' | 'Time Elapsed' | 'Tool Instructions' | 'Text Injection'"],
-    "summarizationSteps": [{"strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking'", "enabled": true, "order": 0, "slidingWindowSize": "number", "compressionInterval": "number", "compressionChunkSize": "number", "recursiveChunkSize": "number", "recursiveMaxDepth": "number", "maskingRelevanceThreshold": "number", "maskingKeywordWeight": "number", "summaryTokenBudget": "number", "triggerTokenThreshold": "number"}]
+    "enableWebSearch": "number (0 or 1, default 0)", "enableCalculator": "number (0 or 1, default 0)",
+    "enableMemoryWriting": "number (0 or 1, default 0)", "enableMemoryReading": "number (0 or 1, default 0)",
+    "inputStrategy": ["PromptBlockType array"],
+    "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]
   }`);
     }
-
     if (effectiveEntities.includes('World')) {
         parts.push(`  "world": {
-    "name": "string (required)",
-    "description": "string",
-    "characters": [/* array of character objects using the full character schema */],
-    "contexts": [/* array of context objects using the full context schema */],
-    "locations": [/* array of location objects using the full location schema */],
-    "profile": {/* profile object using the full profile schema, optional */}
+    "name": "string (required)", "description": "string",
+    "characters": [/* character objects */], "contexts": [/* context objects */],
+    "locations": [/* location objects */], "profile": {/* profile object, optional */}
   }`);
     }
-
     return `{\n${parts.join(',\n')}\n}`;
 }
 
@@ -303,79 +269,54 @@ function tryParseGeneratedOutput(text: string): GeneratedOutput | null {
     let jsonStr = text.trim();
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
-
     try {
         const parsed = JSON.parse(jsonStr);
         if (!parsed || typeof parsed !== 'object') return null;
-
         const result: GeneratedOutput = {};
-
-        if (parsed.character && typeof parsed.character === 'object' && parsed.character.name) {
-            result.character = parsed.character as GeneratedCharacter;
-        }
-
-        if (parsed.context && typeof parsed.context === 'object' && parsed.context.name && parsed.context.text) {
-            result.context = parsed.context as GeneratedContext;
-        }
-
-        if (parsed.location && typeof parsed.location === 'object' && parsed.location.name && parsed.location.text) {
-            result.location = parsed.location as GeneratedLocation;
-        }
-
-        if (parsed.profile && typeof parsed.profile === 'object' && parsed.profile.name) {
-            result.profile = parsed.profile as GeneratedProfile;
-        }
-
-        if (parsed.world && typeof parsed.world === 'object' && parsed.world.name && Array.isArray(parsed.world.characters)) {
-            result.world = parsed.world as GeneratedWorldDefinition;
-        }
-
+        if (parsed.character && typeof parsed.character === 'object' && parsed.character.name) result.character = parsed.character;
+        if (parsed.context && typeof parsed.context === 'object' && parsed.context.name && parsed.context.text) result.context = parsed.context;
+        if (parsed.location && typeof parsed.location === 'object' && parsed.location.name && parsed.location.text) result.location = parsed.location;
+        if (parsed.profile && typeof parsed.profile === 'object' && parsed.profile.name) result.profile = parsed.profile;
+        if (parsed.world && typeof parsed.world === 'object' && parsed.world.name && Array.isArray(parsed.world.characters)) result.world = parsed.world;
         if (!result.character && !result.context && !result.location && !result.profile && !result.world) return null;
         return result;
-    } catch {
-        return null;
-    }
+    } catch { return null; }
 }
 
-function resolveWorldCrossReferences(world: GeneratedWorldDefinition): {
-    characters: Character[];
-    contexts: Context[];
-    locations: Location[];
-    profile?: Profile;
-} {
+function deriveHistoryLabel(output: GeneratedOutput): string {
+    if (output.world) return `🌍 ${output.world.name}`;
+    if (output.character) return `🎭 ${output.character.name}`;
+    if (output.context) return `📜 ${output.context.name}`;
+    if (output.location) return `📍 ${output.location.name}`;
+    if (output.profile) return `👤 ${output.profile.name}`;
+    return 'Unknown';
+}
+
+function generatedCharacterToEntity(c: GeneratedCharacter, samplers: Sampler[]): Character {
     const now = Date.now();
-    const charNameToId = new Map<string, string>();
-
-    const characters: Character[] = world.characters.map(c => {
-        const id = uuidv4();
-        charNameToId.set(c.name, id);
-        return {
-            id, name: c.name, description: c.description || '',
-            systemPrompt: c.systemPrompt || '', thinkPrompt: c.thinkPrompt || undefined,
-            appearancePrompt: c.appearancePrompt || undefined, dialoguePrompt: c.dialoguePrompt || undefined,
-            images: {}, sampler: undefined,
-            initiativeWeight: c.initiativeWeight ?? 5, chatProbability: c.chatProbability ?? 0.8,
-            maximumChatStamina: c.maximumChatStamina ?? 5, nameSensitivity: c.nameSensitivity ?? 0.3,
-            chatImpatienceSensitivity: c.chatImpatienceSensitivity ?? 0.2,
-            skipProbability: c.skipProbability ?? 0.1, memoryRetentionWeight: c.memoryRetentionWeight ?? 0.5,
-            contextSensitivity: c.contextSensitivity ?? 0.5,
-            doNotInjectCharacterImage: c.doNotInjectCharacterImage ?? false,
-            numberOfMessagesToDisableThinkPrompt: c.numberOfMessagesToDisableThinkPrompt ?? 0,
-            numberOfMessagesToDisableMetaThinkInstructions: c.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
-            numberOfMessagesToDisableDialoguePrompt: c.numberOfMessagesToDisableDialoguePrompt ?? 0,
-            enableWebSearch: c.enableWebSearch ?? false, enableCalculator: c.enableCalculator ?? false,
-            enableMemoryWriting: c.enableMemoryWriting ?? false, enableMemoryReading: c.enableMemoryReading ?? false,
-            memories: {}, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-        };
-    });
-
-    const resolveCharRef = (ref: string): string | undefined => {
-        if (charNameToId.has(ref)) return charNameToId.get(ref);
-        if (UUID_REGEX.test(ref)) return ref;
-        return undefined;
+    return {
+        id: uuidv4(), name: c.name, description: c.description || '',
+        systemPrompt: c.systemPrompt || '', thinkPrompt: c.thinkPrompt || undefined,
+        appearancePrompt: c.appearancePrompt || undefined, dialoguePrompt: c.dialoguePrompt || undefined,
+        images: {}, sampler: samplers.length > 0 ? samplers[0] : undefined,
+        initiativeWeight: c.initiativeWeight ?? 5, chatProbability: c.chatProbability ?? 0.8,
+        maximumChatStamina: c.maximumChatStamina ?? 5, nameSensitivity: c.nameSensitivity ?? 0.3,
+        chatImpatienceSensitivity: c.chatImpatienceSensitivity ?? 0.2,
+        skipProbability: c.skipProbability ?? 0.1, memoryRetentionWeight: c.memoryRetentionWeight ?? 0.5,
+        contextSensitivity: c.contextSensitivity ?? 0.5,
+        doNotInjectCharacterImage: c.doNotInjectCharacterImage ?? false,
+        numberOfMessagesToDisableThinkPrompt: c.numberOfMessagesToDisableThinkPrompt ?? 0,
+        numberOfMessagesToDisableMetaThinkInstructions: c.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
+        numberOfMessagesToDisableDialoguePrompt: c.numberOfMessagesToDisableDialoguePrompt ?? 0,
+        enableWebSearch: c.enableWebSearch ?? false, enableCalculator: c.enableCalculator ?? false,
+        enableMemoryWriting: c.enableMemoryWriting ?? false, enableMemoryReading: c.enableMemoryReading ?? false,
+        memories: {}, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
     };
+}
 
-    const contexts: Context[] = (world.contexts || []).map(c => ({
+function generatedContextToEntity(c: GeneratedContext): Context {
+    const now = Date.now();
+    return {
         id: uuidv4(), name: c.name, description: c.description || undefined,
         text: c.text || '', searchTerms: c.searchTerms || undefined,
         urls: c.urls || undefined, includeLinkImages: c.includeLinkImages ?? false,
@@ -388,105 +329,34 @@ function resolveWorldCrossReferences(world: GeneratedWorldDefinition): {
         regularExpressionTarget: c.regularExpressionTarget ?? 'everyone',
         tokenBudget: c.tokenBudget ?? 512, maximumRecursionDepth: c.maximumRecursionDepth ?? 1,
         insertionDepth: c.insertionDepth ?? 0,
-        characterBindings: (c.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id),
-        useBase64Encoding: c.useBase64Encoding ?? false,
+        characterBindings: c.characterBindings || [], useBase64Encoding: c.useBase64Encoding ?? false,
         firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-    }));
-
-    const locNameToId = new Map<string, string>();
-    const rawLocations = world.locations || [];
-    rawLocations.forEach(l => locNameToId.set(l.name, uuidv4()));
-
-    const resolveLocRef = (ref: string): string | undefined => {
-        if (locNameToId.has(ref)) return locNameToId.get(ref);
-        if (UUID_REGEX.test(ref)) return ref;
-        return undefined;
     };
+}
 
-    const locations: Location[] = rawLocations.map(l => {
-        const id = locNameToId.get(l.name)!;
-        const resolvedLocBindings = (l.locationBindings || []).map(resolveLocRef).filter((id): id is string => !!id);
-        const resolvedLocRegexTriggers: Record<string, string> = {};
-        if (l.locationBindingRegularExpressionTriggers) {
-            for (const [ref, regex] of Object.entries(l.locationBindingRegularExpressionTriggers)) {
-                const resolvedId = resolveLocRef(ref);
-                if (resolvedId) resolvedLocRegexTriggers[resolvedId] = regex;
-            }
-        }
-        const resolvedCharBindings = (l.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id);
-        const resolvedCharWeights: Record<string, number> = {};
-        if (l.characterWeights) {
-            for (const [ref, weight] of Object.entries(l.characterWeights)) {
-                const resolvedId = resolveCharRef(ref);
-                if (resolvedId) resolvedCharWeights[resolvedId] = weight;
-            }
-        }
-        return {
-            id, name: l.name, description: l.description || undefined,
-            text: l.text || '',
-            regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined,
-            locationBindings: resolvedLocBindings,
-            locationBindingRegularExpressionTriggers: Object.keys(resolvedLocRegexTriggers).length > 0 ? resolvedLocRegexTriggers : undefined,
-            characterBindings: resolvedCharBindings,
-            globalWeight: l.globalWeight ?? 1,
-            characterWeights: resolvedCharWeights,
-            useBase64Encoding: l.useBase64Encoding ?? false,
-            firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-        };
-    });
-
-    let profile: Profile | undefined;
-    if (world.profile) {
-        const p = world.profile;
-        profile = {
-            id: uuidv4(), name: p.name, description: p.description || undefined,
-            forceNameReveal: p.forceNameReveal ?? false,
-            enableCharacterExpression: p.enableCharacterExpression ?? false,
-            forceNoCharacterImageInjection: p.forceNoCharacterImageInjection ?? false,
-            forceNoContextImageInjection: p.forceNoContextImageInjection ?? false,
-            useCurrentDateAndTime: p.useCurrentDateAndTime ?? false,
-            useWeather: p.useWeather ?? false, useTimeElapsed: p.useTimeElapsed ?? false,
-            numberOfMessagesToDisableThinkPrompt: p.numberOfMessagesToDisableThinkPrompt ?? 0,
-            numberOfMessagesToDisableMetaThinkInstructions: p.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
-            numberOfMessagesToDisableDialoguePrompt: p.numberOfMessagesToDisableDialoguePrompt ?? 0,
-            forceEqualInitiative: p.forceEqualInitiative ?? false,
-            chatProbability: p.chatProbability ?? 0.8, maximumChatStamina: p.maximumChatStamina ?? 5,
-            nameSensitivity: p.nameSensitivity ?? 0.3, chatImpatienceSensitivity: p.chatImpatienceSensitivity ?? 0.2,
-            skipProbability: p.skipProbability ?? 0.1, memoryRetentionWeight: p.memoryRetentionWeight ?? 0.5,
-            contextSensitivity: p.contextSensitivity ?? 0.5,
-            cacheInvalidationReductionLevel: p.cacheInvalidationReductionLevel ?? 0,
-            narrateNormalText: p.narrateNormalText ?? true, narrateQuotedText: p.narrateQuotedText ?? false,
-            narrateBoldedText: p.narrateBoldedText ?? false, narrateItalicizedText: p.narrateItalicizedText ?? false,
-            stripThinkTokens: p.stripThinkTokens ?? true,
-            enableWebSearch: p.enableWebSearch ?? 0, enableCalculator: p.enableCalculator ?? 0,
-            enableMemoryWriting: p.enableMemoryWriting ?? 0, enableMemoryReading: p.enableMemoryReading ?? 0,
-            inputStrategy: p.inputStrategy || ['System Prompt', 'Chat History', 'Context', 'Location'],
-            summarizationSteps: (p.summarizationSteps || []).map(s => ({
-                id: uuidv4(), strategyType: s.strategyType, enabled: s.enabled, order: s.order,
-                slidingWindowSize: s.slidingWindowSize, compressionInterval: s.compressionInterval,
-                compressionChunkSize: s.compressionChunkSize, recursiveChunkSize: s.recursiveChunkSize,
-                recursiveMaxDepth: s.recursiveMaxDepth, maskingRelevanceThreshold: s.maskingRelevanceThreshold,
-                maskingKeywordWeight: s.maskingKeywordWeight, summaryTokenBudget: s.summaryTokenBudget,
-                triggerTokenThreshold: s.triggerTokenThreshold,
-                firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-            })),
-            firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-        };
-    }
-
-    return { characters, contexts, locations, profile };
+function generatedLocationToEntity(l: GeneratedLocation): Location {
+    const now = Date.now();
+    return {
+        id: uuidv4(), name: l.name, description: l.description || undefined,
+        text: l.text || '',
+        regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined,
+        locationBindings: l.locationBindings || [],
+        locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers || undefined,
+        characterBindings: l.characterBindings || [], globalWeight: l.globalWeight ?? 1,
+        characterWeights: l.characterWeights || {}, useBase64Encoding: l.useBase64Encoding ?? false,
+        firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
+    };
 }
 
 function buildProfileFromGenerated(p: GeneratedProfile): Profile {
     const now = Date.now();
     return {
         id: uuidv4(), name: p.name, description: p.description || undefined,
-        forceNameReveal: p.forceNameReveal ?? false,
-        enableCharacterExpression: p.enableCharacterExpression ?? false,
+        forceNameReveal: p.forceNameReveal ?? false, enableCharacterExpression: p.enableCharacterExpression ?? false,
         forceNoCharacterImageInjection: p.forceNoCharacterImageInjection ?? false,
         forceNoContextImageInjection: p.forceNoContextImageInjection ?? false,
-        useCurrentDateAndTime: p.useCurrentDateAndTime ?? false,
-        useWeather: p.useWeather ?? false, useTimeElapsed: p.useTimeElapsed ?? false,
+        useCurrentDateAndTime: p.useCurrentDateAndTime ?? false, useWeather: p.useWeather ?? false,
+        useTimeElapsed: p.useTimeElapsed ?? false,
         numberOfMessagesToDisableThinkPrompt: p.numberOfMessagesToDisableThinkPrompt ?? 0,
         numberOfMessagesToDisableMetaThinkInstructions: p.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
         numberOfMessagesToDisableDialoguePrompt: p.numberOfMessagesToDisableDialoguePrompt ?? 0,
@@ -494,8 +364,7 @@ function buildProfileFromGenerated(p: GeneratedProfile): Profile {
         chatProbability: p.chatProbability ?? 0.8, maximumChatStamina: p.maximumChatStamina ?? 5,
         nameSensitivity: p.nameSensitivity ?? 0.3, chatImpatienceSensitivity: p.chatImpatienceSensitivity ?? 0.2,
         skipProbability: p.skipProbability ?? 0.1, memoryRetentionWeight: p.memoryRetentionWeight ?? 0.5,
-        contextSensitivity: p.contextSensitivity ?? 0.5,
-        cacheInvalidationReductionLevel: p.cacheInvalidationReductionLevel ?? 0,
+        contextSensitivity: p.contextSensitivity ?? 0.5, cacheInvalidationReductionLevel: p.cacheInvalidationReductionLevel ?? 0,
         narrateNormalText: p.narrateNormalText ?? true, narrateQuotedText: p.narrateQuotedText ?? false,
         narrateBoldedText: p.narrateBoldedText ?? false, narrateItalicizedText: p.narrateItalicizedText ?? false,
         stripThinkTokens: p.stripThinkTokens ?? true,
@@ -515,6 +384,33 @@ function buildProfileFromGenerated(p: GeneratedProfile): Profile {
     };
 }
 
+function resolveWorldCrossReferences(world: GeneratedWorldDefinition): { characters: Character[]; contexts: Context[]; locations: Location[]; profile?: Profile } {
+    const now = Date.now();
+    const charNameToId = new Map<string, string>();
+    const characters: Character[] = world.characters.map(c => {
+        const id = uuidv4(); charNameToId.set(c.name, id);
+        return { id, name: c.name, description: c.description || '', systemPrompt: c.systemPrompt || '', thinkPrompt: c.thinkPrompt || undefined, appearancePrompt: c.appearancePrompt || undefined, dialoguePrompt: c.dialoguePrompt || undefined, images: {}, sampler: undefined, initiativeWeight: c.initiativeWeight ?? 5, chatProbability: c.chatProbability ?? 0.8, maximumChatStamina: c.maximumChatStamina ?? 5, nameSensitivity: c.nameSensitivity ?? 0.3, chatImpatienceSensitivity: c.chatImpatienceSensitivity ?? 0.2, skipProbability: c.skipProbability ?? 0.1, memoryRetentionWeight: c.memoryRetentionWeight ?? 0.5, contextSensitivity: c.contextSensitivity ?? 0.5, doNotInjectCharacterImage: c.doNotInjectCharacterImage ?? false, numberOfMessagesToDisableThinkPrompt: c.numberOfMessagesToDisableThinkPrompt ?? 0, numberOfMessagesToDisableMetaThinkInstructions: c.numberOfMessagesToDisableMetaThinkInstructions ?? 0, numberOfMessagesToDisableDialoguePrompt: c.numberOfMessagesToDisableDialoguePrompt ?? 0, enableWebSearch: c.enableWebSearch ?? false, enableCalculator: c.enableCalculator ?? false, enableMemoryWriting: c.enableMemoryWriting ?? false, enableMemoryReading: c.enableMemoryReading ?? false, memories: {}, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+    });
+    const resolveCharRef = (ref: string): string | undefined => { if (charNameToId.has(ref)) return charNameToId.get(ref); if (UUID_REGEX.test(ref)) return ref; return undefined; };
+    const contexts: Context[] = (world.contexts || []).map(c => ({ id: uuidv4(), name: c.name, description: c.description || undefined, text: c.text || '', searchTerms: c.searchTerms || undefined, urls: c.urls || undefined, includeLinkImages: c.includeLinkImages ?? false, maximumLinkDepth: c.maximumLinkDepth ?? 1, linkFetchMode: c.linkFetchMode ?? 'summary', limitLinksToSubdirectory: c.limitLinksToSubdirectory ?? false, fetchCacheTimeToLiveMs: c.fetchCacheTimeToLiveMs || undefined, regularExpressionActivationTrigger: c.regularExpressionActivationTrigger || undefined, regularExpressionDeactivationTrigger: c.regularExpressionDeactivationTrigger || undefined, regularExpressionContext: c.regularExpressionContext ?? 'global', regularExpressionTarget: c.regularExpressionTarget ?? 'everyone', tokenBudget: c.tokenBudget ?? 512, maximumRecursionDepth: c.maximumRecursionDepth ?? 1, insertionDepth: c.insertionDepth ?? 0, characterBindings: (c.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id), useBase64Encoding: c.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now }));
+    const locNameToId = new Map<string, string>();
+    (world.locations || []).forEach(l => locNameToId.set(l.name, uuidv4()));
+    const resolveLocRef = (ref: string): string | undefined => { if (locNameToId.has(ref)) return locNameToId.get(ref); if (UUID_REGEX.test(ref)) return ref; return undefined; };
+    const locations: Location[] = (world.locations || []).map(l => {
+        const id = locNameToId.get(l.name)!;
+        const rlb = (l.locationBindings || []).map(resolveLocRef).filter((id): id is string => !!id);
+        const rlrt: Record<string, string> = {};
+        if (l.locationBindingRegularExpressionTriggers) for (const [ref, regex] of Object.entries(l.locationBindingRegularExpressionTriggers)) { const rid = resolveLocRef(ref); if (rid) rlrt[rid] = regex; }
+        const rcb = (l.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id);
+        const rcw: Record<string, number> = {};
+        if (l.characterWeights) for (const [ref, w] of Object.entries(l.characterWeights)) { const rid = resolveCharRef(ref); if (rid) rcw[rid] = w; }
+        return { id, name: l.name, description: l.description || undefined, text: l.text || '', regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+    });
+    let profile: Profile | undefined;
+    if (world.profile) profile = buildProfileFromGenerated(world.profile);
+    return { characters, contexts, locations, profile };
+}
+
 interface AIRecommendationModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -523,6 +419,10 @@ interface AIRecommendationModalProps {
     onSaveLocation: (loc: Location) => Promise<boolean>;
     onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
+    onOpenCharacterEditor?: (char: Character | null) => void;
+    onOpenContextEditor?: (ctx: Context | null) => void;
+    onOpenLocationEditor?: (loc: Location | null) => void;
+    onOpenProfileEditor?: (profile: Profile | null) => void;
     allSamplers: Sampler[];
     allCharacters: Character[];
     allContexts: Context[];
@@ -533,34 +433,32 @@ interface AIRecommendationModalProps {
 
 export function AIRecommendationModal({
     isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
+    onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenProfileEditor,
     allSamplers, allCharacters, allContexts, allLocations, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
-    const [maxTokens, setMaxTokens] = useState<number>(2048);
+    const [maxTokens, setMaxTokens] = useState(2048);
     const [error, setError] = useState<string | null>(null);
     const [showSchemaPreview, setShowSchemaPreview] = useState(false);
     const [schemaCopied, setSchemaCopied] = useState(false);
-
-    // Image injection priority list — ordered highest to lowest
-    const [imageInjectionPriority, setImageInjectionPriority] = useState<ImagePriorityItem[]>([
-        'reference', 'character', 'context', 'location'
-    ]);
+    const [imageInjectionPriority, setImageInjectionPriority] = useState<ImagePriorityItem[]>(['reference', 'character', 'context', 'location']);
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
+    const [jsonHistory, setJsonHistory] = useState<JsonHistoryEntry[]>([]);
+    const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+    const [editingJsonText, setEditingJsonText] = useState('');
+    const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
-
     const [referenceImages, setReferenceImages] = useState<File[]>([]);
     const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
     const [isUploadingImages, setIsUploadingImages] = useState(false);
     const imageInputRef = useRef<HTMLInputElement>(null);
-
     const [isResultOpen, setIsResultOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [streamingText, setStreamingText] = useState('');
@@ -571,8 +469,6 @@ export function AIRecommendationModal({
     const abortControllerRef = useRef<AbortController | null>(null);
 
     const effectiveSchemaEntities = useMemo(() => getEffectiveSchemaEntities(selectedEntities), [selectedEntities]);
-
-    // Derive injection booleans from priority list
     const injectCharacterImages = imageInjectionPriority.includes('character');
     const injectContextImages = imageInjectionPriority.includes('context');
     const injectLocationImages = imageInjectionPriority.includes('location');
@@ -582,6 +478,7 @@ export function AIRecommendationModal({
         setShowSchemaPreview(false); setSchemaCopied(false);
         setImageInjectionPriority(['reference', 'character', 'context', 'location']);
         setDragIndex(null); setDragOverIndex(null);
+        setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
         setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
         setCharSearch(''); setCtxSearch(''); setLocSearch('');
         setReferenceImages([]);
@@ -606,112 +503,38 @@ export function AIRecommendationModal({
     const handleStopGeneration = useCallback(() => {
         abortControllerRef.current?.abort(); abortControllerRef.current = null;
         setIsGenerating(false);
-        if (streamingText.trim()) {
-            const parsed = tryParseGeneratedOutput(streamingText);
-            setParsedOutput(parsed);
-            if (!parsed) setResultError('Stopped. Output was not valid JSON.');
-        }
+        if (streamingText.trim()) { const p = tryParseGeneratedOutput(streamingText); setParsedOutput(p); if (!p) setResultError('Stopped. Output was not valid JSON.'); }
     }, [streamingText]);
 
-    const toggleEntity = (type: EntityType) => {
-        setSelectedEntities(prev => prev.includes(type) ? prev.filter(e => e !== type) : [...prev, type]);
-    };
+    const toggleEntity = (type: EntityType) => setSelectedEntities(prev => prev.includes(type) ? prev.filter(e => e !== type) : [...prev, type]);
+    const toggleInOrderedList = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    const toggleImagePriorityItem = (item: ImagePriorityItem) => setImageInjectionPriority(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
+    const handleDragStart = (i: number) => setDragIndex(i);
+    const handleDragOver = (e: React.DragEvent, i: number) => { e.preventDefault(); if (dragIndex !== null && dragIndex !== i) setDragOverIndex(i); };
+    const handleDrop = (i: number) => { if (dragIndex === null || dragIndex === i) { setDragIndex(null); setDragOverIndex(null); return; } setImageInjectionPriority(prev => { const n = [...prev]; const [m] = n.splice(dragIndex, 1); n.splice(i, 0, m); return n; }); setDragIndex(null); setDragOverIndex(null); };
+    const handleDragEnd = () => { setDragIndex(null); setDragOverIndex(null); };
 
-    const toggleInOrderedList = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
-        setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-    };
+    const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) { const f = Array.from(e.target.files); setReferenceImages(prev => [...prev, ...f]); setReferenceImagePreviews(prev => [...prev, ...f.map(x => URL.createObjectURL(x))]); } e.target.value = ''; };
+    const handleRemoveReferenceImage = (i: number) => { setReferenceImages(prev => prev.filter((_, j) => j !== i)); if (!referenceImagePreviews[i].startsWith('data:image')) URL.revokeObjectURL(referenceImagePreviews[i]); setReferenceImagePreviews(prev => prev.filter((_, j) => j !== i)); };
 
-    const toggleImagePriorityItem = (item: ImagePriorityItem) => {
-        setImageInjectionPriority(prev =>
-            prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]
-        );
-    };
+    const handleCopySchema = useCallback(() => { navigator.clipboard.writeText(buildJsonSchema(effectiveSchemaEntities)).then(() => { setSchemaCopied(true); setTimeout(() => setSchemaCopied(false), 2000); }).catch(() => setError('Failed to copy.')); }, [effectiveSchemaEntities]);
 
-    const handleDragStart = (index: number) => {
-        setDragIndex(index);
-    };
+    const addToHistory = useCallback((jsonText: string, parsed: GeneratedOutput, isEdited = false) => {
+        setJsonHistory(prev => [{ id: uuidv4(), timestamp: Date.now(), jsonText, parsedOutput: parsed, label: deriveHistoryLabel(parsed), isEdited }, ...prev]);
+    }, []);
 
-    const handleDragOver = (e: React.DragEvent, index: number) => {
-        e.preventDefault();
-        if (dragIndex === null || dragIndex === index) return;
-        setDragOverIndex(index);
-    };
-
-    const handleDrop = (index: number) => {
-        if (dragIndex === null || dragIndex === index) {
-            setDragIndex(null);
-            setDragOverIndex(null);
-            return;
-        }
-        setImageInjectionPriority(prev => {
-            const next = [...prev];
-            const [moved] = next.splice(dragIndex, 1);
-            next.splice(index, 0, moved);
-            return next;
-        });
-        setDragIndex(null);
-        setDragOverIndex(null);
-    };
-
-    const handleDragEnd = () => {
-        setDragIndex(null);
-        setDragOverIndex(null);
-    };
-
-    const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.length) {
-            const files = Array.from(e.target.files);
-            setReferenceImages(prev => [...prev, ...files]);
-            setReferenceImagePreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
-        }
-        e.target.value = '';
-    };
-
-    const handleRemoveReferenceImage = (index: number) => {
-        setReferenceImages(prev => prev.filter((_, i) => i !== index));
-        if (!referenceImagePreviews[index].startsWith('data:image')) URL.revokeObjectURL(referenceImagePreviews[index]);
-        setReferenceImagePreviews(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const handleCopySchema = useCallback(() => {
-        const schema = buildJsonSchema(effectiveSchemaEntities);
-        navigator.clipboard.writeText(schema).then(() => {
-            setSchemaCopied(true);
-            setTimeout(() => setSchemaCopied(false), 2000);
-        }).catch(() => {
-            setError('Failed to copy. Manually select and copy the schema text.');
-        });
-    }, [effectiveSchemaEntities]);
+    const deleteHistoryEntry = useCallback((id: string) => { setJsonHistory(prev => prev.filter(e => e.id !== id)); if (editingHistoryId === id) { setEditingHistoryId(null); setEditingJsonText(''); } if (expandedHistoryId === id) setExpandedHistoryId(null); }, [editingHistoryId, expandedHistoryId]);
+    const startEditingHistory = useCallback((entry: JsonHistoryEntry) => { setEditingHistoryId(entry.id); setEditingJsonText(entry.jsonText); setExpandedHistoryId(entry.id); }, []);
+    const saveHistoryEdit = useCallback(() => { if (!editingHistoryId) return; const p = tryParseGeneratedOutput(editingJsonText); if (!p) { setError('Edited JSON is not valid.'); return; } setJsonHistory(prev => prev.map(e => e.id === editingHistoryId ? { ...e, jsonText: editingJsonText, parsedOutput: p, label: deriveHistoryLabel(p), isEdited: true } : e)); setEditingHistoryId(null); setEditingJsonText(''); setError(null); }, [editingHistoryId, editingJsonText]);
+    const cancelHistoryEdit = useCallback(() => { setEditingHistoryId(null); setEditingJsonText(''); }, []);
+    const loadHistoryToResult = useCallback((entry: JsonHistoryEntry) => { setStreamingText(entry.jsonText); setParsedOutput(entry.parsedOutput); setResultError(null); setIsResultOpen(true); setActiveTab('raw'); }, []);
+    const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev.trim(); const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
 
     const buildExistingReferenceBlock = (): string => {
         const parts: string[] = [];
-        if (selectedCharacterIds.length > 0) {
-            parts.push('EXISTING CHARACTERS (use these IDs in characterBindings and characterWeights):');
-            selectedCharacterIds.forEach((id, i) => {
-                const c = allCharacters.find(ch => ch.id === id);
-                if (!c) return;
-                parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.description ? ` | Description: ${c.description.substring(0, 200)}` : ''}`);
-            });
-            parts.push('');
-        }
-        if (selectedContextIds.length > 0) {
-            parts.push('EXISTING CONTEXTS:');
-            selectedContextIds.forEach((id, i) => {
-                const ctx = allContexts.find(c => c.id === id);
-                if (!ctx) return;
-                parts.push(`${i + 1}. ID: ${ctx.id} | Name: ${ctx.name}${ctx.text ? ` | Content: ${ctx.text.substring(0, 200)}` : ''}`);
-            });
-            parts.push('');
-        }
-        if (selectedLocationIds.length > 0) {
-            parts.push('EXISTING LOCATIONS (use these IDs in locationBindings and locationBindingRegularExpressionTriggers):');
-            selectedLocationIds.forEach((id, i) => {
-                const loc = allLocations.find(l => l.id === id);
-                if (!loc) return;
-                parts.push(`${i + 1}. ID: ${loc.id} | Name: ${loc.name}${loc.text ? ` | Content: ${loc.text.substring(0, 200)}` : ''}`);
-            });
-            parts.push('');
-        }
+        if (selectedCharacterIds.length > 0) { parts.push('EXISTING CHARACTERS:'); selectedCharacterIds.forEach((id, i) => { const c = allCharacters.find(ch => ch.id === id); if (c) parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.description ? ` | ${c.description.substring(0, 200)}` : ''}`); }); parts.push(''); }
+        if (selectedContextIds.length > 0) { parts.push('EXISTING CONTEXTS:'); selectedContextIds.forEach((id, i) => { const c = allContexts.find(x => x.id === id); if (c) parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.text ? ` | ${c.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
+        if (selectedLocationIds.length > 0) { parts.push('EXISTING LOCATIONS:'); selectedLocationIds.forEach((id, i) => { const l = allLocations.find(x => x.id === id); if (l) parts.push(`${i + 1}. ID: ${l.id} | Name: ${l.name}${l.text ? ` | ${l.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
         return parts.join('\n');
     };
 
@@ -721,390 +544,118 @@ export function AIRecommendationModal({
         parts.push('You are a creative writing assistant for roleplay. Generate exactly ONE of each requested entity type.');
         parts.push('You MUST output ONLY valid JSON matching the schema below. No markdown, no commentary, no code fences.');
         parts.push('Use {{user}} to refer to the user. Use {{char}} instead of character names in prompts.');
-        if (hasWorld) {
-            parts.push('For World generation: you may use EITHER entity names OR entity IDs in characterBindings, locationBindings, characterWeights, and locationBindingRegularExpressionTriggers. Existing entity IDs are provided in the reference section above. Newly generated entities within the same world should use names for cross-reference (the system resolves them to IDs automatically). Mixing is allowed.');
-            parts.push('Generate ALL sub-entities (characters, contexts, locations, profile) INSIDE the "world" object. Do NOT output them as separate top-level keys.');
-        }
+        if (hasWorld) { parts.push('For World generation: use EITHER entity names OR entity IDs in bindings. Existing IDs are in references above. New entities use names for cross-reference.'); parts.push('Generate ALL sub-entities INSIDE the "world" object only.'); }
         parts.push('');
-        const existingBlock = buildExistingReferenceBlock();
-        if (existingBlock) parts.push(existingBlock);
-        parts.push('OUTPUT JSON SCHEMA:');
-        parts.push(buildJsonSchema(effectiveSchemaEntities));
-        parts.push('');
-        parts.push('Fill all required fields. Omit optional fields if not applicable. Regex patterns should be valid JavaScript RegExp without delimiters or flags.');
+        const eb = buildExistingReferenceBlock(); if (eb) parts.push(eb);
+        parts.push('OUTPUT JSON SCHEMA:', buildJsonSchema(effectiveSchemaEntities), '');
+        parts.push('Fill all required fields. Omit optional fields if not applicable.');
         return parts.join('\n');
     };
 
     const handleGenerate = async () => {
         if (selectedEntities.length === 0) { setError('Select at least one entity type.'); return; }
         if (!selectedModel) { setError('No model selected.'); return; }
-
         const port = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
-        const runtimePort = (selectedModel.parameters && typeof selectedModel.parameters === 'object' && '_runtimePort' in selectedModel.parameters)
-            ? (selectedModel.parameters as Record<string, number>)._runtimePort : undefined;
-        const effectivePort = port || runtimePort;
-        if (!effectivePort && !selectedModel.apiKey) { setError('Model not loaded and has no API key.'); return; }
+        const rp = (selectedModel.parameters && typeof selectedModel.parameters === 'object' && '_runtimePort' in selectedModel.parameters) ? (selectedModel.parameters as Record<string, number>)._runtimePort : undefined;
+        const ep = port || rp;
+        if (!ep && !selectedModel.apiKey) { setError('Model not loaded and has no API key.'); return; }
 
-        let imageDescriptions = '';
-        const hasReferenceImages = referenceImages.length > 0;
-        if (hasReferenceImages) {
-            setIsUploadingImages(true);
-            const descriptions = referenceImages.map((f, i) => `[Reference Image ${i + 1}: ${f.name}]`);
-            imageDescriptions = `\nREFERENCE IMAGES (highest priority — use these as primary visual reference):\n${descriptions.join('\n')}\n`;
-            setIsUploadingImages(false);
-        }
+        let imgDesc = '';
+        if (referenceImages.length > 0) { setIsUploadingImages(true); imgDesc = `\nREFERENCE IMAGES:\n${referenceImages.map((f, i) => `[Image ${i + 1}: ${f.name}]`).join('\n')}\n`; setIsUploadingImages(false); }
 
-        const injectionNotes: string[] = [];
-        if (imageInjectionPriority.length > 0) {
-            injectionNotes.push('IMAGE INJECTION PRIORITY (highest to lowest):');
-            imageInjectionPriority.forEach((item, i) => {
-                injectionNotes.push(`${i + 1}. ${IMAGE_PROMPT_DESCRIPTIONS[item]}`);
-            });
-            const disabled = IMAGE_PRIORITY_ITEMS.filter(x => !imageInjectionPriority.includes(x));
-            if (disabled.length > 0) {
-                injectionNotes.push(`DISABLED (do NOT generate): ${disabled.map(d => IMAGE_PROMPT_DESCRIPTIONS[d]).join(', ')}`);
-            }
-        } else {
-            injectionNotes.push('ALL IMAGE TYPES DISABLED. Do NOT generate or reference any images.');
-        }
-
-        const injectionBlock = injectionNotes.length > 0 ? `\n${injectionNotes.join('\n')}\n` : '';
+        const injNotes: string[] = [];
+        if (imageInjectionPriority.length > 0) { injNotes.push('IMAGE INJECTION PRIORITY:'); imageInjectionPriority.forEach((item, i) => injNotes.push(`${i + 1}. ${IMAGE_PROMPT_DESCRIPTIONS[item]}`)); const dis = IMAGE_PRIORITY_ITEMS.filter(x => !imageInjectionPriority.includes(x)); if (dis.length > 0) injNotes.push(`DISABLED: ${dis.map(d => IMAGE_PROMPT_DESCRIPTIONS[d]).join(', ')}`); } else { injNotes.push('ALL IMAGE TYPES DISABLED.'); }
+        const injBlock = injNotes.length > 0 ? `\n${injNotes.join('\n')}\n` : '';
 
         setError(null); resetResult(); setIsResultOpen(true); setIsGenerating(true);
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
-
         try {
-            const systemPrompt = buildSystemPrompt();
-            const userRequestPart = userPrompt.trim()
-                ? `\n\nUser Request: ${userPrompt.trim()}`
-                : '\n\nUser Request: Generate freely based on the schema and references above.';
-            const fullPrompt = `${systemPrompt}${userRequestPart}${imageDescriptions}${injectionBlock}`;
-
-            const modelContext = {
-                apiKey: selectedModel.apiKey, backend: selectedModel.backend,
-                modelPath: (selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined,
-                runtimePort: effectivePort,
-            };
-
-            let accumulated = '';
-            const result = await recommendationEngine.generateStream(
-                { prompt: fullPrompt, n_predict: maxTokens, temperature: 0.7, top_p: 0.9, stream: true },
-                ctrl,
-                { onToken: (stats) => { accumulated = stats.fullText; setStreamingText(stats.fullText); const p = tryParseGeneratedOutput(stats.fullText); if (p) setParsedOutput(p); } },
-                modelContext, 0, undefined,
-            );
-
-            const finalText = result.text || accumulated;
-            setStreamingText(finalText);
-            const parsed = tryParseGeneratedOutput(finalText);
-            setParsedOutput(parsed);
-            if (!parsed) setResultError('AI response was not valid JSON. Try regenerating.');
-            else if (!finalText.trim()) setResultError('AI returned empty response.');
-        } catch (err) {
-            if ((err as Error).name !== 'AbortError') setResultError(`Generation failed: ${(err as Error).message}`);
-        } finally { setIsGenerating(false); abortControllerRef.current = null; }
+            const sp = buildSystemPrompt();
+            const urp = userPrompt.trim() ? `\n\nUser Request: ${userPrompt.trim()}` : '\n\nUser Request: Generate freely.';
+            const fp = `${sp}${urp}${imgDesc}${injBlock}`;
+            const mc = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: (selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined, runtimePort: ep };
+            let acc = '';
+            const res = await recommendationEngine.generateStream({ prompt: fp, n_predict: maxTokens, temperature: 0.7, top_p: 0.9, stream: true }, ctrl, { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText); if (p) setParsedOutput(p); } }, mc, 0, undefined);
+            const ft = res.text || acc; setStreamingText(ft);
+            const parsed = tryParseGeneratedOutput(ft); setParsedOutput(parsed);
+            if (!parsed) setResultError('AI response was not valid JSON.');
+            else if (!ft.trim()) setResultError('AI returned empty response.');
+            else addToHistory(ft, parsed, false);
+        } catch (err) { if ((err as Error).name !== 'AbortError') setResultError(`Generation failed: ${(err as Error).message}`); }
+        finally { setIsGenerating(false); abortControllerRef.current = null; }
     };
 
     const handleSave = async () => {
         if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
-        setIsSaving(true); setResultError(null);
-        const now = Date.now();
-
+        setIsSaving(true); setResultError(null); const now = Date.now();
         try {
-            if (parsedOutput.character) {
-                const c = parsedOutput.character;
-                const char: Character = {
-                    id: uuidv4(), name: c.name, description: c.description || '',
-                    systemPrompt: c.systemPrompt || '', thinkPrompt: c.thinkPrompt || undefined,
-                    appearancePrompt: c.appearancePrompt || undefined, dialoguePrompt: c.dialoguePrompt || undefined,
-                    images: {}, sampler: allSamplers.length > 0 ? allSamplers[0] : undefined,
-                    initiativeWeight: c.initiativeWeight ?? 5, chatProbability: c.chatProbability ?? 0.8,
-                    maximumChatStamina: c.maximumChatStamina ?? 5, nameSensitivity: c.nameSensitivity ?? 0.3,
-                    chatImpatienceSensitivity: c.chatImpatienceSensitivity ?? 0.2,
-                    skipProbability: c.skipProbability ?? 0.1, memoryRetentionWeight: c.memoryRetentionWeight ?? 0.5,
-                    contextSensitivity: c.contextSensitivity ?? 0.5,
-                    doNotInjectCharacterImage: !injectCharacterImages,
-                    numberOfMessagesToDisableThinkPrompt: c.numberOfMessagesToDisableThinkPrompt ?? 0,
-                    numberOfMessagesToDisableMetaThinkInstructions: c.numberOfMessagesToDisableMetaThinkInstructions ?? 0,
-                    numberOfMessagesToDisableDialoguePrompt: c.numberOfMessagesToDisableDialoguePrompt ?? 0,
-                    enableWebSearch: c.enableWebSearch ?? false, enableCalculator: c.enableCalculator ?? false,
-                    enableMemoryWriting: c.enableMemoryWriting ?? false, enableMemoryReading: c.enableMemoryReading ?? false,
-                    memories: {}, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-                };
-                if (!await onSaveCharacter(char)) throw new Error('Failed to save character.');
-            }
-            if (parsedOutput.context) {
-                const c = parsedOutput.context;
-                const ctx: Context = {
-                    id: uuidv4(), name: c.name, description: c.description || undefined,
-                    text: c.text || '', searchTerms: c.searchTerms || undefined,
-                    urls: c.urls || undefined, includeLinkImages: injectContextImages ? (c.includeLinkImages ?? false) : false,
-                    maximumLinkDepth: c.maximumLinkDepth ?? 1, linkFetchMode: c.linkFetchMode ?? 'summary',
-                    limitLinksToSubdirectory: c.limitLinksToSubdirectory ?? false,
-                    fetchCacheTimeToLiveMs: c.fetchCacheTimeToLiveMs || undefined,
-                    regularExpressionActivationTrigger: c.regularExpressionActivationTrigger || undefined,
-                    regularExpressionDeactivationTrigger: c.regularExpressionDeactivationTrigger || undefined,
-                    regularExpressionContext: c.regularExpressionContext ?? 'global',
-                    regularExpressionTarget: c.regularExpressionTarget ?? 'everyone',
-                    tokenBudget: c.tokenBudget ?? 512, maximumRecursionDepth: c.maximumRecursionDepth ?? 1,
-                    insertionDepth: c.insertionDepth ?? 0,
-                    characterBindings: c.characterBindings || [], useBase64Encoding: c.useBase64Encoding ?? false,
-                    firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-                };
-                if (!await onSaveContext(ctx)) throw new Error('Failed to save context.');
-            }
-            if (parsedOutput.location) {
-                const l = parsedOutput.location;
-                const loc: Location = {
-                    id: uuidv4(), name: l.name, description: l.description || undefined,
-                    text: l.text || '',
-                    regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined,
-                    locationBindings: l.locationBindings || [],
-                    locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers || undefined,
-                    characterBindings: l.characterBindings || [], globalWeight: l.globalWeight ?? 1,
-                    characterWeights: l.characterWeights || {}, useBase64Encoding: l.useBase64Encoding ?? false,
-                    firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-                };
-                if (!await onSaveLocation(loc)) throw new Error('Failed to save location.');
-            }
-            if (parsedOutput.profile) {
-                const profile = buildProfileFromGenerated(parsedOutput.profile);
-                profile.forceNoCharacterImageInjection = !injectCharacterImages;
-                profile.forceNoContextImageInjection = !injectContextImages;
-                if (!await onSaveProfile(profile)) throw new Error('Failed to save profile.');
-            }
-
+            if (parsedOutput.character) { const c = parsedOutput.character; const char = generatedCharacterToEntity(c, allSamplers); char.doNotInjectCharacterImage = !injectCharacterImages; if (!await onSaveCharacter(char)) throw new Error('Failed to save character.'); }
+            if (parsedOutput.context) { const ctx = generatedContextToEntity(parsedOutput.context); if (!injectContextImages) ctx.includeLinkImages = false; if (!await onSaveContext(ctx)) throw new Error('Failed to save context.'); }
+            if (parsedOutput.location) { const loc = generatedLocationToEntity(parsedOutput.location); if (!await onSaveLocation(loc)) throw new Error('Failed to save location.'); }
+            if (parsedOutput.profile) { const p = buildProfileFromGenerated(parsedOutput.profile); p.forceNoCharacterImageInjection = !injectCharacterImages; p.forceNoContextImageInjection = !injectContextImages; if (!await onSaveProfile(p)) throw new Error('Failed to save profile.'); }
             if (parsedOutput.world) {
                 const resolved = resolveWorldCrossReferences(parsedOutput.world);
-
-                if (!injectCharacterImages) {
-                    resolved.characters.forEach(c => { c.doNotInjectCharacterImage = true; });
-                }
-                if (resolved.profile) {
-                    resolved.profile.forceNoCharacterImageInjection = !injectCharacterImages;
-                    resolved.profile.forceNoContextImageInjection = !injectContextImages;
-                }
-
-                for (const char of resolved.characters) {
-                    if (!await onSaveCharacter(char)) throw new Error(`Failed to save character "${char.name}".`);
-                }
-                for (const ctx of resolved.contexts) {
-                    if (!await onSaveContext(ctx)) throw new Error(`Failed to save context "${ctx.name}".`);
-                }
-                for (const loc of resolved.locations) {
-                    if (!await onSaveLocation(loc)) throw new Error(`Failed to save location "${loc.name}".`);
-                }
-                if (resolved.profile) {
-                    if (!await onSaveProfile(resolved.profile)) throw new Error(`Failed to save profile "${resolved.profile.name}".`);
-                }
-
-                const world: World = {
-                    id: uuidv4(), name: parsedOutput.world.name,
-                    description: parsedOutput.world.description || undefined,
-                    characterIds: resolved.characters.map(c => c.id),
-                    contextIds: resolved.contexts.map(c => c.id),
-                    locationIds: resolved.locations.map(l => l.id),
-                    profileId: resolved.profile?.id,
-                    firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-                };
+                if (!injectCharacterImages) resolved.characters.forEach(c => { c.doNotInjectCharacterImage = true; });
+                if (resolved.profile) { resolved.profile.forceNoCharacterImageInjection = !injectCharacterImages; resolved.profile.forceNoContextImageInjection = !injectContextImages; }
+                for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
+                for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
+                for (const lo of resolved.locations) if (!await onSaveLocation(lo)) throw new Error(`Failed to save "${lo.name}".`);
+                if (resolved.profile && !await onSaveProfile(resolved.profile)) throw new Error(`Failed to save "${resolved.profile.name}".`);
+                const world: World = { id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined, characterIds: resolved.characters.map(c => c.id), contextIds: resolved.contexts.map(c => c.id), locationIds: resolved.locations.map(l => l.id), profileId: resolved.profile?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
                 if (!await onSaveWorld(world)) throw new Error('Failed to save world.');
             }
-
             resetResult(); setIsResultOpen(false);
-        } catch (err) { setResultError((err as Error).message); }
-        finally { setIsSaving(false); }
+        } catch (err) { setResultError((err as Error).message); } finally { setIsSaving(false); }
     };
 
     if (!isOpen) return null;
 
-    const hasCharacter = !!parsedOutput?.character;
-    const hasContext = !!parsedOutput?.context;
-    const hasLocation = !!parsedOutput?.location;
-    const hasProfile = !!parsedOutput?.profile;
-    const hasWorld = !!parsedOutput?.world;
-    const hasAnyParsed = hasCharacter || hasContext || hasLocation || hasProfile || hasWorld;
+    const hasChar = !!parsedOutput?.character, hasCtx = !!parsedOutput?.context, hasLoc = !!parsedOutput?.location, hasProf = !!parsedOutput?.profile, hasWorld = !!parsedOutput?.world;
+    const hasAnyParsed = hasChar || hasCtx || hasLoc || hasProf || hasWorld;
     const hasOutput = streamingText.trim().length > 0;
-
     const availableTabs: ViewTab[] = ['raw'];
-    if (hasCharacter) availableTabs.push('Character');
-    if (hasContext) availableTabs.push('Context');
-    if (hasLocation) availableTabs.push('Location');
-    if (hasProfile) availableTabs.push('Profile');
-    if (hasWorld) availableTabs.push('World');
+    if (hasChar) availableTabs.push('Character'); if (hasCtx) availableTabs.push('Context'); if (hasLoc) availableTabs.push('Location'); if (hasProf) availableTabs.push('Profile'); if (hasWorld) availableTabs.push('World');
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
-
     const disabledImageItems = IMAGE_PRIORITY_ITEMS.filter(item => !imageInjectionPriority.includes(item));
+
+    const renderFieldList = (entries: [string, unknown][], excludeKeys: string[] = []) => entries.filter(([k, v]) => v !== undefined && v !== null && !excludeKeys.includes(k)).map(([key, val]) => (
+        <div key={key} className="entity-field-block">
+            <div className="entity-field-title">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</div>
+            <div className="entity-field-content">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</div>
+        </div>
+    ));
+
+    const renderSummary = (desc?: string) => desc ? (
+        <div className="entity-field-block" style={{ borderLeft: '3px solid var(--accent)', paddingLeft: '10px', marginBottom: '12px' }}>
+            <div className="entity-field-title" style={{ opacity: 0.6, fontSize: '0.65rem' }}>AI SUMMARY</div>
+            <div className="entity-field-content" style={{ fontStyle: 'italic', opacity: 0.9 }}>{desc}</div>
+        </div>
+    ) : null;
+
+    const editBtnStyle = { fontSize: '0.7rem', padding: '4px 14px', minHeight: '28px' };
+    const worldEditBtnStyle = { fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px', justifyContent: 'flex-start' as const };
 
     return (
         <>
             {/* FORM MODAL */}
             <div className="modal-overlay" onClick={handleCloseForm}>
                 <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header">
-                        <h2>Get AI Recommendation</h2>
-                        <div className="editor-modal-actions">
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseForm} disabled={isGenerating || isUploadingImages}>Cancel</button>
-                        </div>
-                    </div>
+                    <div className="modal-header"><h2>Get AI Recommendation</h2><div className="editor-modal-actions"><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseForm} disabled={isGenerating || isUploadingImages}>Cancel</button></div></div>
                     <div className="modal-body editor-modal-body">
                         <div className="editor-section">
                             <span className="editor-section-title">Generate</span>
-                            <div className="entity-type-buttons">
-                                {ENTITY_OPTIONS.map(opt => (
-                                    <button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)}
-                                        className={`editor-btn ${selectedEntities.includes(opt.type) ? 'editor-btn-save' : 'editor-btn-cancel'} entity-type-btn`}>
-                                        {opt.icon} {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="entity-type-hint">
-                                Select entity types. When World is selected alongside other types, they are generated as part of the world (not separately).
-                            </div>
-                            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}>
-                                <button
-                                    type="button"
-                                    className={`editor-btn ${showSchemaPreview ? 'editor-btn-save' : 'editor-btn-cancel'}`}
-                                    onClick={() => setShowSchemaPreview(!showSchemaPreview)}
-                                    style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}
-                                >
-                                    {showSchemaPreview ? '🔽 Hide JSON Schema' : '📋 Show JSON Schema'}
-                                </button>
-                            </div>
-                            {showSchemaPreview && (
-                                <div style={{ marginTop: '8px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                        <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>Copy this schema to use with external AI tools (ChatGPT, Claude, etc.)</span>
-                                        <button
-                                            type="button"
-                                            className="editor-btn editor-btn-cancel"
-                                            onClick={handleCopySchema}
-                                            style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}
-                                        >
-                                            {schemaCopied ? '✅ Copied!' : '📋 Copy'}
-                                        </button>
-                                    </div>
-                                    <pre style={{
-                                        background: 'var(--social-bg)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        padding: '10px',
-                                        fontSize: '0.65rem',
-                                        fontFamily: 'monospace',
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
-                                        maxHeight: '300px',
-                                        overflowY: 'auto',
-                                        color: 'var(--text-h)',
-                                        margin: 0,
-                                    }}>{buildJsonSchema(effectiveSchemaEntities)}</pre>
-                                </div>
-                            )}
+                            <div className="entity-type-buttons">{ENTITY_OPTIONS.map(opt => (<button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)} className={`editor-btn ${selectedEntities.includes(opt.type) ? 'editor-btn-save' : 'editor-btn-cancel'} entity-type-btn`}>{opt.icon} {opt.label}</button>))}</div>
+                            <div className="entity-type-hint">Select entity types. World absorbs co-selected types.</div>
+                            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}><button type="button" className={`editor-btn ${showSchemaPreview ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setShowSchemaPreview(!showSchemaPreview)} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>{showSchemaPreview ? '🔽 Hide JSON Schema' : '📋 Show JSON Schema'}</button></div>
+                            {showSchemaPreview && <div style={{ marginTop: '8px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}><span style={{ fontSize: '0.6rem', opacity: 0.6 }}>Copy schema for external AI tools</span><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCopySchema} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>{schemaCopied ? '✅ Copied!' : '📋 Copy'}</button></div><pre style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', fontSize: '0.65rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '300px', overflowY: 'auto', color: 'var(--text-h)', margin: 0 }}>{buildJsonSchema(effectiveSchemaEntities)}</pre></div>}
                         </div>
-
-                        <div className="editor-section">
-                            <span className="editor-section-title">Reference Existing Entities (Optional)</span>
-                            <div className="entity-ref-hint">Select existing entities for consistency or integration into generated worlds. The AI receives their IDs for cross-referencing.</div>
-                            <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds}
-                                onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} />
-                            <EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds}
-                                onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} />
-                            <EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds}
-                                onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
-                        </div>
-
-                        <div className="editor-section">
-                            <label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label>
-                            <textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea"
-                                placeholder={selectedEntities.includes('World') ? "e.g., A haunted Victorian mansion with 5 NPCs, interconnected rooms, hidden passages..." : "Leave empty for free generation..."} rows={3} />
-                        </div>
-
-                        <div className="editor-section">
-                            <span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span>
-                            <div className="entity-ref-hint">Upload images as visual reference. Priority is controlled below.</div>
-                            <div className="editor-image-grid">
-                                {referenceImagePreviews.map((preview, index) => (
-                                    <div key={preview} className="editor-image-square active">
-                                        <img src={preview} alt={`Ref ${index + 1}`} />
-                                        <button type="button" onClick={() => handleRemoveReferenceImage(index)} className="editor-image-remove-btn">×</button>
-                                    </div>
-                                ))}
-                                <div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}>
-                                    <div className="context-image-placeholder">
-                                        <div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div>
-                                        <div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} />
-                        </div>
-
-                        <div className="editor-section">
-                            <span className="editor-section-title">Image Injection Priority</span>
-                            <div className="entity-ref-hint">
-                                Drag to reorder priority. Higher = takes precedence. Click × to disable an image type entirely.
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {imageInjectionPriority.map((item, index) => (
-                                    <div
-                                        key={item}
-                                        draggable
-                                        onDragStart={() => handleDragStart(index)}
-                                        onDragOver={(e) => handleDragOver(e, index)}
-                                        onDrop={() => handleDrop(index)}
-                                        onDragEnd={handleDragEnd}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '6px',
-                                            padding: '4px 8px',
-                                            background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)',
-                                            border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)',
-                                            borderRadius: '4px',
-                                            fontSize: '0.75rem',
-                                            cursor: 'grab',
-                                            opacity: dragIndex === index ? 0.5 : 1,
-                                            transition: 'border 0.15s, background 0.15s, opacity 0.15s',
-                                            userSelect: 'none',
-                                        }}
-                                    >
-                                        <span style={{ opacity: 0.3, cursor: 'grab', fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span>
-                                        <span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span>
-                                        <span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span>
-                                        <button type="button" onClick={() => toggleImagePriorityItem(item)}
-                                            className="context-character-binding-remove" title="Remove from priority">×</button>
-                                    </div>
-                                ))}
-                            </div>
-                            {disabledImageItems.length > 0 && (
-                                <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                    {disabledImageItems.map(item => (
-                                        <button key={item} type="button" onClick={() => toggleImagePriorityItem(item)}
-                                            className="editor-btn editor-btn-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>
-                                            + {IMAGE_SHORT_LABELS[item]}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="editor-section">
-                            <label className="editor-label editor-label-small">Max Tokens to Generate</label>
-                            <input
-                                type="number"
-                                className="editor-input context-input-small"
-                                min={256}
-                                max={16384}
-                                step={256}
-                                value={maxTokens}
-                                onChange={e => setMaxTokens(Math.max(256, Math.min(16384, Number(e.target.value) || 2048)))}
-                            />
-                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                Default: 2048. Increase for larger worlds or more detailed entities. Range: 256–16384.
-                            </div>
-                        </div>
-
-                        <button type="button" className="editor-btn editor-btn-save entity-generate-btn"
-                            onClick={handleGenerate} disabled={selectedEntities.length === 0 || isUploadingImages}>
-                            ✨ Generate Recommendation
-                        </button>
+                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /></div>
+                        <div className="editor-section"><label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label><textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea" placeholder={selectedEntities.includes('World') ? "e.g., A haunted Victorian mansion with 5 NPCs..." : "Leave empty for free generation..."} rows={3} /></div>
+                        <div className="editor-section"><span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span><div className="entity-ref-hint">Upload images as visual reference.</div><div className="editor-image-grid">{referenceImagePreviews.map((p, i) => (<div key={p} className="editor-image-square active"><img src={p} alt={`Ref ${i + 1}`} /><button type="button" onClick={() => handleRemoveReferenceImage(i)} className="editor-image-remove-btn">×</button></div>))}<div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}><div className="context-image-placeholder"><div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div><div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div></div></div></div><input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} /></div>
+                        <div className="editor-section"><span className="editor-section-title">Image Injection Priority</span><div className="entity-ref-hint">Drag to reorder. × to disable.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{imageInjectionPriority.map((item, index) => (<div key={item} draggable onDragStart={() => handleDragStart(index)} onDragOver={(e) => handleDragOver(e, index)} onDrop={() => handleDrop(index)} onDragEnd={handleDragEnd} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)', border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'grab', opacity: dragIndex === index ? 0.5 : 1, transition: 'border 0.15s, background 0.15s, opacity 0.15s', userSelect: 'none' }}><span style={{ opacity: 0.3, fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span><span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span><span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span><button type="button" onClick={() => toggleImagePriorityItem(item)} className="context-character-binding-remove" title="Remove">×</button></div>))}</div>{disabledImageItems.length > 0 && <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{disabledImageItems.map(item => (<button key={item} type="button" onClick={() => toggleImagePriorityItem(item)} className="editor-btn editor-btn-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>+ {IMAGE_SHORT_LABELS[item]}</button>))}</div>}</div>
+                        {jsonHistory.length > 0 && <div className="editor-section"><span className="editor-section-title">Generated Output History ({jsonHistory.length})</span><div className="entity-ref-hint">Previous generations. Edit, refine, or preview.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '400px', overflowY: 'auto' }}>{jsonHistory.map(entry => { const isEditing = editingHistoryId === entry.id; const isExpanded = expandedHistoryId === entry.id; return (<div key={entry.id} style={{ border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--social-bg)', overflow: 'hidden' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', cursor: 'pointer', background: isExpanded ? 'var(--accent-dim, rgba(255,255,255,0.03))' : undefined }} onClick={() => setExpandedHistoryId(isExpanded ? null : entry.id)}><span style={{ fontSize: '0.7rem', opacity: 0.5 }}>{isExpanded ? '▼' : '▶'}</span><span style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600 }}>{entry.label}</span>{entry.isEdited && <span style={{ fontSize: '0.55rem', background: '#f59e0b', color: '#000', padding: '1px 4px', borderRadius: '3px' }}>Edited</span>}<span style={{ fontSize: '0.6rem', opacity: 0.4 }}>{new Date(entry.timestamp).toLocaleTimeString()}</span></div>{isExpanded && <div style={{ padding: '0 8px 8px' }}>{isEditing ? <><textarea value={editingJsonText} onChange={e => setEditingJsonText(e.target.value)} className="editor-textarea" style={{ fontFamily: 'monospace', fontSize: '0.65rem', minHeight: '120px', maxHeight: '300px' }} rows={8} /><div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}><button type="button" className="editor-btn editor-btn-save" onClick={saveHistoryEdit} style={{ fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px' }}>✅ Save</button><button type="button" className="editor-btn editor-btn-cancel" onClick={cancelHistoryEdit} style={{ fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px' }}>Cancel</button></div></> : <><pre style={{ background: 'var(--bg, #000)', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px', fontSize: '0.6rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '200px', overflowY: 'auto', color: 'var(--text-h)', margin: '4px 0' }}>{entry.jsonText.length > 2000 ? entry.jsonText.substring(0, 2000) + '\n...(truncated)' : entry.jsonText}</pre><div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}><button type="button" className="editor-btn editor-btn-cancel" onClick={() => startEditingHistory(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>✏️ Edit</button><button type="button" className="editor-btn editor-btn-save" onClick={() => refineFromHistory(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>🔄 Refine</button><button type="button" className="editor-btn editor-btn-cancel" onClick={() => loadHistoryToResult(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>👁️ Preview</button><button type="button" className="editor-btn editor-btn-cancel" onClick={() => deleteHistoryEntry(entry.id)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', color: '#ef4444' }}>🗑️</button></div></>}</div>}</div>); })}</div></div>}
+                        <div className="editor-section"><label className="editor-label editor-label-small">Max Tokens</label><input type="number" className="editor-input context-input-small" min={256} max={16384} step={256} value={maxTokens} onChange={e => setMaxTokens(Math.max(256, Math.min(16384, Number(e.target.value) || 2048)))} /><div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Default: 2048. Range: 256–16384.</div></div>
+                        <button type="button" className="editor-btn editor-btn-save entity-generate-btn" onClick={handleGenerate} disabled={selectedEntities.length === 0 || isUploadingImages}>✨ Generate Recommendation</button>
                         {error && <div className="editor-error-message editor-error-centered entity-error-below">{error}</div>}
                     </div>
                 </div>
@@ -1114,118 +665,43 @@ export function AIRecommendationModal({
             {isResultOpen && (
                 <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={handleCloseResult}>
                     <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Recommendation Result</h2>
-                            <div className="editor-modal-actions">
-                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseResult} disabled={isGenerating || isSaving}>
-                                    {hasOutput ? 'Back to Form' : 'Cancel'}
-                                </button>
-                            </div>
-                        </div>
+                        <div className="modal-header"><h2>Recommendation Result</h2><div className="editor-modal-actions"><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseResult} disabled={isGenerating || isSaving}>{hasOutput ? 'Back to Form' : 'Cancel'}</button></div></div>
                         <div className="modal-body editor-modal-body">
-                            {hasAnyParsed && (
-                                <div className="entity-tab-bar">
-                                    {availableTabs.map(tab => (
-                                        <button key={tab} type="button" className={`entity-tab-btn ${effectiveTab === tab ? 'entity-tab-btn-active' : ''}`} onClick={() => setActiveTab(tab)}>
-                                            {tab === 'raw' ? '📄 Raw JSON' : tab === 'Character' ? '🎭 Character' : tab === 'Context' ? '📜 Context' : tab === 'Location' ? '📍 Location' : tab === 'Profile' ? '👤 Profile' : '🌍 World'}
-                                        </button>
-                                    ))}
+                            {hasAnyParsed && <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                {parsedOutput?.character && <button type="button" className={`editor-btn ${activeTab === 'Character' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Character')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🎭 {parsedOutput.character.name}</button>}
+                                {parsedOutput?.context && <button type="button" className={`editor-btn ${activeTab === 'Context' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Context')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📜 {parsedOutput.context.name}</button>}
+                                {parsedOutput?.location && <button type="button" className={`editor-btn ${activeTab === 'Location' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Location')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📍 {parsedOutput.location.name}</button>}
+                                {parsedOutput?.profile && <button type="button" className={`editor-btn ${activeTab === 'Profile' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {parsedOutput.profile.name}</button>}
+                                {parsedOutput?.world && <button type="button" className={`editor-btn ${activeTab === 'World' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('World')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🌍 {parsedOutput.world.name}</button>}
+                                <button type="button" className={`editor-btn ${activeTab === 'raw' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('raw')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📄 Raw JSON</button>
+                            </div>}
+
+                            {effectiveTab === 'raw' && <div className="entity-raw-output"><pre className="entity-raw-pre">{streamingText || (isGenerating ? '⏳ Waiting...' : '')}</pre></div>}
+
+                            {effectiveTab === 'Character' && parsedOutput?.character && <div className="entity-field-list">{renderSummary(parsedOutput.character.description)}{renderFieldList(Object.entries(parsedOutput.character), ['description'])}{onOpenCharacterEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(parsedOutput.character!, allSamplers))} style={editBtnStyle}>✏️ Open in Character Editor</button></div>}</div>}
+
+                            {effectiveTab === 'Context' && parsedOutput?.context && <div className="entity-field-list">{renderSummary(parsedOutput.context.description)}{renderFieldList(Object.entries(parsedOutput.context), ['description'])}{onOpenContextEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenContextEditor(generatedContextToEntity(parsedOutput.context!))} style={editBtnStyle}>✏️ Open in Context Editor</button></div>}</div>}
+
+                            {effectiveTab === 'Location' && parsedOutput?.location && <div className="entity-field-list">{renderSummary(parsedOutput.location.description)}{renderFieldList(Object.entries(parsedOutput.location), ['description'])}{onOpenLocationEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenLocationEditor(generatedLocationToEntity(parsedOutput.location!))} style={editBtnStyle}>✏️ Open in Location Editor</button></div>}</div>}
+
+                            {effectiveTab === 'Profile' && parsedOutput?.profile && <div className="entity-field-list">{renderSummary(parsedOutput.profile.description)}{renderFieldList(Object.entries(parsedOutput.profile), ['description'])}{onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.profile!))} style={editBtnStyle}>✏️ Open in Profile Editor</button></div>}</div>}
+
+                            {effectiveTab === 'World' && parsedOutput?.world && <div className="entity-field-list">
+                                {renderSummary(parsedOutput.world.description)}
+                                <div className="entity-field-block"><div className="entity-field-title">Name</div><div className="entity-field-content">{parsedOutput.world.name}</div></div>
+                                <div className="entity-field-block"><div className="entity-field-title">Characters ({parsedOutput.world.characters.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.characters.map((c, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🎭 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>
+                                {(parsedOutput.world.contexts?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Contexts ({parsedOutput.world.contexts!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.contexts!.map((c, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📜 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>}
+                                {(parsedOutput.world.locations?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput.world.locations!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.locations!.map((l, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>}
+                                {parsedOutput.world.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {parsedOutput.world.profile.name}</div>{parsedOutput.world.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{parsedOutput.world.profile.description.length > 150 ? parsedOutput.world.profile.description.substring(0, 150) + '...' : parsedOutput.world.profile.description}</div>}</div></div>}
+                                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {onOpenCharacterEditor && parsedOutput.world.characters.map((c, i) => <button key={`wc-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(c, allSamplers))} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}
+                                    {onOpenContextEditor && (parsedOutput.world.contexts || []).map((c, i) => <button key={`wx-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenContextEditor(generatedContextToEntity(c))} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}
+                                    {onOpenLocationEditor && (parsedOutput.world.locations || []).map((l, i) => <button key={`wl-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenLocationEditor(generatedLocationToEntity(l))} style={worldEditBtnStyle}>✏️ Edit 📍 {l.name}</button>)}
+                                    {onOpenProfileEditor && parsedOutput.world.profile && <button type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.world!.profile!))} style={worldEditBtnStyle}>✏️ Edit 👤 {parsedOutput.world.profile.name}</button>}
                                 </div>
-                            )}
+                            </div>}
 
-                            {effectiveTab === 'raw' && (
-                                <div className="entity-raw-output"><pre className="entity-raw-pre">{streamingText || (isGenerating ? '⏳ Waiting...' : '')}</pre></div>
-                            )}
-
-                            {effectiveTab === 'Character' && parsedOutput?.character && (
-                                <div className="entity-field-list">
-                                    {Object.entries(parsedOutput.character).map(([key, val]) => val !== undefined && val !== null && (
-                                        <div key={key} className="entity-field-block">
-                                            <div className="entity-field-title">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</div>
-                                            <div className="entity-field-content">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {effectiveTab === 'Context' && parsedOutput?.context && (
-                                <div className="entity-field-list">
-                                    {Object.entries(parsedOutput.context).map(([key, val]) => val !== undefined && val !== null && (
-                                        <div key={key} className="entity-field-block">
-                                            <div className="entity-field-title">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</div>
-                                            <div className="entity-field-content">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {effectiveTab === 'Location' && parsedOutput?.location && (
-                                <div className="entity-field-list">
-                                    {Object.entries(parsedOutput.location).map(([key, val]) => val !== undefined && val !== null && (
-                                        <div key={key} className="entity-field-block">
-                                            <div className="entity-field-title">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</div>
-                                            <div className="entity-field-content">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {effectiveTab === 'Profile' && parsedOutput?.profile && (
-                                <div className="entity-field-list">
-                                    {Object.entries(parsedOutput.profile).map(([key, val]) => val !== undefined && val !== null && (
-                                        <div key={key} className="entity-field-block">
-                                            <div className="entity-field-title">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</div>
-                                            <div className="entity-field-content">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {effectiveTab === 'World' && parsedOutput?.world && (
-                                <div className="entity-field-list">
-                                    <div className="entity-field-block">
-                                        <div className="entity-field-title">Name</div>
-                                        <div className="entity-field-content">{parsedOutput.world.name}</div>
-                                    </div>
-                                    {parsedOutput.world.description && (
-                                        <div className="entity-field-block">
-                                            <div className="entity-field-title">Description</div>
-                                            <div className="entity-field-content">{parsedOutput.world.description}</div>
-                                        </div>
-                                    )}
-                                    <div className="entity-field-block">
-                                        <div className="entity-field-title">Characters ({parsedOutput.world.characters.length})</div>
-                                        <div className="entity-field-content">{parsedOutput.world.characters.map(c => c.name).join(', ')}</div>
-                                    </div>
-                                    <div className="entity-field-block">
-                                        <div className="entity-field-title">Contexts ({parsedOutput.world.contexts?.length || 0})</div>
-                                        <div className="entity-field-content">{(parsedOutput.world.contexts || []).map(c => c.name).join(', ') || 'None'}</div>
-                                    </div>
-                                    <div className="entity-field-block">
-                                        <div className="entity-field-title">Locations ({parsedOutput.world.locations?.length || 0})</div>
-                                        <div className="entity-field-content">{(parsedOutput.world.locations || []).map(l => l.name).join(', ') || 'None'}</div>
-                                    </div>
-                                    <div className="entity-field-block">
-                                        <div className="entity-field-title">Profile</div>
-                                        <div className="entity-field-content">{parsedOutput.world.profile?.name || 'None'}</div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="entity-action-buttons">
-                                {isGenerating ? (
-                                    <button type="button" className="editor-btn editor-btn-cancel" onClick={handleStopGeneration} style={{ flex: 1 }}>⏹ Stop Generation</button>
-                                ) : (
-                                    <>
-                                        <button type="button" className="editor-btn editor-btn-cancel" onClick={resetResult} disabled={isSaving} style={{ flex: 1 }}>Regenerate</button>
-                                        {hasAnyParsed && (
-                                            <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>
-                                                {isSaving ? 'Saving...' : hasWorld ? '💾 Save World + All Entities' : '💾 Save All'}
-                                            </button>
-                                        )}
-                                    </>
-                                )}
-                            </div>
+                            <div className="entity-action-buttons">{isGenerating ? <button type="button" className="editor-btn editor-btn-cancel" onClick={handleStopGeneration} style={{ flex: 1 }}>⏹ Stop</button> : <><button type="button" className="editor-btn editor-btn-cancel" onClick={resetResult} disabled={isSaving} style={{ flex: 1 }}>Regenerate</button>{hasAnyParsed && <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>{isSaving ? 'Saving...' : hasWorld ? '💾 Save World + All' : '💾 Save All'}</button>}</>}</div>
                             {resultError && <div className="editor-error-message editor-error-centered entity-error-below">{resultError}</div>}
                         </div>
                     </div>

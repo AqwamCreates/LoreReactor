@@ -486,8 +486,12 @@ export function AppModals({
                     onSaveCharacter={async (c: Character) => { onSaveCharacter(c); return true; }}
                     onSaveContext={async (c: Context) => { onSaveContext(c); return true; }}
                     onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
-                    onSaveProfile={async (profile: Profile) => { onSaveProfile(profile); return true; }}
-                    onSaveWorld={async (world: World) => { onSaveWorld(world); return true; }}
+                    onSaveProfile={async (p: Profile) => { onSaveProfile(p); return true; }}
+                    onSaveWorld={async (w: World) => { onSaveWorld(w); return true; }}
+                    onOpenCharacterEditor={(char) => charModal.open(char)}
+                    onOpenContextEditor={(ctx) => contextModal.open(ctx)}
+                    onOpenLocationEditor={(loc) => locationModal.open(loc)}
+                    onOpenProfileEditor={(profile) => profileModal.open(profile)}
                     allSamplers={allSamplers}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
