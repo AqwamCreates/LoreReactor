@@ -448,6 +448,13 @@ function App() {
         return () => clearTimeout(hold);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
+    // Load chat list shells after initialization completes (non-blocking background load)
+    useEffect(() => {
+        if (!isInitializing && activeChatRestored) {
+            ensureChatsLoaded();
+        }
+    }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
+
     // Reset tracking refs when switching chats
     useEffect(() => {
         chatModifiedRef.current = false;
