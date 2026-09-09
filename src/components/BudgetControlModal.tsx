@@ -156,7 +156,8 @@ export function BudgetControlModal({
             const quotaHits = budgetData.modelQuotaHitCount?.[id] ?? 0;
             const errorHits = budgetData.modelErrorHitCount?.[id] ?? 0;
             const totalHits = quotaHits + errorHits;
-            const reliability = uses > 0 ? totalHits / uses : 0;
+            // Reliability is capped at 1.0 since quota hits can exceed uses due to retries
+            const reliability = uses > 0 ? Math.min(1, totalHits / uses) : 0;
             rows.push({
                 id,
                 name: nameMap.get(id) || id.substring(0, 8),
@@ -184,8 +185,10 @@ export function BudgetControlModal({
         const ttftValues = modelRows.filter(r => Number.isFinite(r.ttft) && r.ttft > 0).map(r => r.ttft);
         const avgSpeed = speedValues.length > 0 ? speedValues.reduce((a, b) => a + b, 0) / speedValues.length : 0;
         const avgTtft = ttftValues.length > 0 ? ttftValues.reduce((a, b) => a + b, 0) / ttftValues.length : 0;
-        const overallReliability = totalUses > 0 ? (totalQuotaHits + totalErrorHits) / totalUses : 0;
-        return { totalUses, totalQuotaHits, totalErrorHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability };
+        const overallReliability = totalUses > 0 ? Math.min(1, (totalQuotaHits + totalErrorHits) / totalUses) : 0;
+        const successfulCount = Math.max(0, totalUses - totalQuotaHits - totalErrorHits);
+        const successPct = totalUses > 0 ? Math.round((successfulCount / totalUses) * 100) : 0;
+        return { totalUses, totalQuotaHits, totalErrorHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability, successfulCount, successPct };
     }, [modelRows]);
 
     const sortedRows = useMemo(() => {
@@ -401,8 +404,8 @@ export function BudgetControlModal({
                                             <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Successful</span>
                                                 <span className="budget-stat-value" style={{ color: '#10b981' }}>
-                                                    {aggregateStats.totalUses - aggregateStats.totalQuotaHits - aggregateStats.totalErrorHits}
-                                                    {aggregateStats.totalUses > 0 && ` (${Math.round(((aggregateStats.totalUses - aggregateStats.totalQuotaHits - aggregateStats.totalErrorHits) / aggregateStats.totalUses) * 100)}%)`}
+                                                    {aggregateStats.successfulCount}
+                                                    {aggregateStats.totalUses > 0 && ` (${aggregateStats.successPct}%)`}
                                                 </span>
                                             </div>
                                             <div className="budget-stat-row">
@@ -456,7 +459,7 @@ export function BudgetControlModal({
                                                     </thead>
                                                     <tbody>
                                                         {sortedRows.map(row => {
-                                                            const relPct = row.uses > 0 ? Math.round((1 - row.reliability) * 100) : null;
+                                                            const relPct = row.uses > 0 ? Math.max(0, Math.round((1 - Math.min(1, row.reliability)) * 100)) : null;
                                                             const relColor = relPct === null ? undefined : relPct >= 95 ? '#10b981' : relPct >= 80 ? '#f59e0b' : '#ef4444';
                                                             return (
                                                                 <tr key={row.id}>
@@ -474,7 +477,7 @@ export function BudgetControlModal({
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Click headers to sort. Duration = total session time. Errs = quota/error. Rel% = 100 − (hits ÷ uses).</div>
+                                            <div className="budget-hint">Click headers to sort. Duration = total session time. Errs = quota/error. Rel% = 100 − min(hits ÷ uses, 1).</div>
                                         </div>
                                     )}
 

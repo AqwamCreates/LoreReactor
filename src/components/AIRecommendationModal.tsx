@@ -691,6 +691,7 @@ export function AIRecommendationModal({
         parts.push('You MUST output ONLY valid JSON matching the schema below. No markdown, no commentary, no code fences.');
         parts.push('Use {{user}} to refer to the user. Use {{char}} instead of character names in prompts.');
         parts.push('The "description" field is for UI display only. It is NOT injected into prompts or used as AI input. Write it as a short human-readable summary.');
+        parts.push('Do not make references to the existing entities at all costs and at all times unless stated otherwise.');
         if (hasWorld) {
             parts.push('For World generation: use EITHER entity names OR entity IDs in bindings. Existing IDs are in references above. New entities use names for cross-reference.');
             parts.push('Generate ALL sub-entities INSIDE the "world" object only.');

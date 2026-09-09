@@ -55,13 +55,6 @@ interface DetectedSegment {
     rawMatch: string;
 }
 
-interface CategoryConversion {
-    detected: FormatCategory;
-    label: string;
-    target: TargetFormat;
-    count: number;
-}
-
 const CATEGORY_LABELS: Record<FormatCategory, string> = {
     plain: 'Plain Text',
     italics: 'Italics',
@@ -72,25 +65,15 @@ const CATEGORY_LABELS: Record<FormatCategory, string> = {
     brackets: 'Square Brackets',
 };
 
-const TARGET_OPTIONS: { value: TargetFormat; label: string }[] = [
-    { value: 'plain', label: 'Plain Text' },
-    { value: 'italics', label: 'Italics' },
-    { value: 'parentheses', label: 'Parentheses' },
-    { value: 'brackets', label: 'Square Brackets' },
-    { value: 'quotes', label: 'Quotation Marks' },
-    { value: 'bold', label: 'Bold' },
-    { value: 'strikethrough', label: 'Strikethrough' },
-    
-];
-
-const DEFAULT_CONVERSIONS: Record<FormatCategory, TargetFormat> = {
+/** Default target for each detected category. Change these to set your preferred auto-format mappings. */
+const AUTO_FORMAT_TARGETS: Record<FormatCategory, TargetFormat> = {
     plain: 'plain',
-    italics: 'italics',
-    parentheses: 'parentheses',
-    brackets: 'brackets',
-    quotes: 'quotes',
+    italics: 'parentheses',
     bold: 'bold',
     strikethrough: 'strikethrough',
+    quotes: 'quotes',
+    parentheses: 'parentheses',
+    brackets: 'brackets',
 };
 
 function detectFormatSegments(text: string): DetectedSegment[] {
@@ -246,17 +229,14 @@ function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: 
     return wrapCoreText(seg.innerText, target);
 }
 
-function applyConversions(
-    text: string,
-    conversions: Record<FormatCategory, TargetFormat>,
-): string {
+function applyAutoFormat(text: string): string {
     const segments = detectFormatSegments(text);
     if (segments.length === 0) return text;
 
     const replacements: { start: number; end: number; replacement: string }[] = [];
 
     for (const seg of segments) {
-        const target = conversions[seg.category];
+        const target = AUTO_FORMAT_TARGETS[seg.category];
 
         if (target === seg.category) continue;
 
@@ -285,33 +265,6 @@ function applyConversions(
     return output;
 }
 
-function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversion[] {
-    const counts: Record<FormatCategory, number> = {
-        plain: 0,
-        italics: 0,
-        bold: 0,
-        strikethrough: 0,
-        quotes: 0,
-        parentheses: 0,
-        brackets: 0,
-    };
-
-    for (const seg of segments) {
-        counts[seg.category]++;
-    }
-
-    const order: FormatCategory[] = ['plain', 'italics', 'bold', 'strikethrough', 'quotes', 'parentheses', 'brackets'];
-
-    return order
-        .filter(category => counts[category] > 0)
-        .map(category => ({
-            detected: category,
-            label: CATEGORY_LABELS[category],
-            target: DEFAULT_CONVERSIONS[category],
-            count: counts[category],
-        }));
-}
-
 export const MessageBubble = React.memo(function MessageBubble({
     message, index, viewMode, currentCharacterId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
@@ -335,9 +288,10 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const isLoading = useSessionStore(s => s.isLoading);
 
-    const [showReformat, setShowReformat] = React.useState(false);
-    const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
-    const preReformatDraftRef = React.useRef<string | null>(null);
+    // Track the text as it was when editing started, so we can detect changes on blur
+    const editStartTextRef = React.useRef<string>('');
+    // Track whether auto-format has already been applied to avoid double-application
+    const autoFormatAppliedRef = React.useRef(false);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
@@ -346,79 +300,39 @@ export const MessageBubble = React.memo(function MessageBubble({
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
     const isResumingThisMessage = isLoading && message.isPartial && !isProtag;
 
+    // Snapshot text when entering edit mode
     React.useEffect(() => {
         if (isEditing) {
-            setShowReformat(false);
-            setConversions([]);
-            preReformatDraftRef.current = null;
+            editStartTextRef.current = editDraft;
+            autoFormatAppliedRef.current = false;
         }
     }, [isEditing, message.id]);
 
-    const handleOpenReformat = React.useCallback(() => {
-        preReformatDraftRef.current = editDraft;
+    // Auto-format on blur: only if text changed since edit start and format hasn't been applied yet
+    const handleBlur = React.useCallback(() => {
+        if (autoFormatAppliedRef.current) return;
 
-        const segments = detectFormatSegments(editDraft);
-        const detectedConversions = buildCategoryConversions(segments);
+        const currentText = editDraft;
+        if (currentText === editStartTextRef.current) return;
 
-        setConversions(detectedConversions);
-
-        const map: Record<FormatCategory, TargetFormat> = { ...DEFAULT_CONVERSIONS };
-        for (const conversion of detectedConversions) {
-            map[conversion.detected] = conversion.target;
+        const formatted = applyAutoFormat(currentText);
+        if (formatted !== currentText) {
+            setEditDraft(formatted);
+            autoFormatAppliedRef.current = true;
         }
-
-        const converted = applyConversions(editDraft, map);
-        if (converted !== editDraft) setEditDraft(converted);
-
-        setShowReformat(true);
     }, [editDraft, setEditDraft]);
 
-    const updateConversionTarget = React.useCallback((category: FormatCategory, target: TargetFormat) => {
-        setConversions(prev => {
-            const next = prev.map(conversion =>
-                conversion.detected === category
-                    ? { ...conversion, target }
-                    : conversion
-            );
+    // When user manually edits after auto-format was applied, allow re-formatting on next blur
+    const handleChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newText = e.target.value;
+        setEditDraft(newText);
 
-            const original = preReformatDraftRef.current;
-
-            if (original !== null) {
-                const map: Record<FormatCategory, TargetFormat> = { ...DEFAULT_CONVERSIONS };
-
-                for (const conversion of next) {
-                    map[conversion.detected] = conversion.target;
-                }
-
-                const converted = applyConversions(original, map);
-                setEditDraft(converted);
-            }
-
-            return next;
-        });
-    }, [setEditDraft]);
-
-    // Accept reformat: save immediately so the message renders with styled formatting
-    const handleAcceptReformat = React.useCallback(() => {
-        // Clear reformat state
-        preReformatDraftRef.current = null;
-        setConversions([]);
-        setShowReformat(false);
-
-        // Save the converted text — this exits edit mode and renders through MemoizedMessageText
-        onSaveEdit();
-    }, [onSaveEdit]);
-
-    const handleCancelEditing = React.useCallback(() => {
-        if (showReformat && preReformatDraftRef.current !== null) {
-            setEditDraft(preReformatDraftRef.current);
-            preReformatDraftRef.current = null;
-            setShowReformat(false);
-            setConversions([]);
+        // If user types after auto-format was applied, reset the flag so next blur can re-format
+        if (autoFormatAppliedRef.current) {
+            autoFormatAppliedRef.current = false;
+            editStartTextRef.current = newText;
         }
-
-        onCancelEditing();
-    }, [showReformat, setEditDraft, onCancelEditing]);
+    }, [setEditDraft]);
 
     if (isResumingThisMessage) return null;
 
@@ -489,130 +403,26 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                     {isEditing ? (
                         <div className="edit-mode">
-                            {showReformat ? (
-                                <>
-                                    {/* Styled preview — read-only display of converted text */}
-                                    <div
-                                        className="message-text edit-preview"
-                                        style={{
-                                            padding: '8px',
-                                            minHeight: '60px',
-                                            borderRadius: '6px',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            border: '1px solid rgba(120, 200, 255, 0.35)',
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-word',
-                                        }}
-                                    >
-                                        <MemoizedMessageText text={editDraft} />
-                                    </div>
+                            <textarea
+                                ref={editTextareaRef}
+                                value={editDraft}
+                                onChange={handleChange}
+                                onBlur={handleBlur}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        onSaveEdit();
+                                    }
 
-                                    {/* Conversion panel */}
-                                    <div
-                                        className="message-reformat-panel"
-                                        style={{
-                                            marginTop: '8px',
-                                            padding: '10px',
-                                            border: '1px solid rgba(120, 200, 255, 0.35)',
-                                            borderRadius: '8px',
-                                            background: 'rgba(0,0,0,0.18)',
-                                        }}
-                                    >
-                                        <div className="entity-ref-hint" style={{ marginBottom: '8px', fontSize: '0.85em', opacity: 0.85 }}>
-                                            Adjust target formats below. Preview updates live.
-                                        </div>
-
-                                        {conversions.length === 0 ? (
-                                            <div style={{ fontSize: '0.85em', opacity: 0.6, padding: '4px 0' }}>
-                                                No formatting detected in this message.
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                {conversions.map(conversion => (
-                                                    <div
-                                                        key={conversion.detected}
-                                                        style={{
-                                                            display: 'grid',
-                                                            gridTemplateColumns: 'minmax(220px, 1fr) 24px 220px',
-                                                            gap: '8px',
-                                                            alignItems: 'center',
-                                                        }}
-                                                    >
-                                                        <span style={{ fontSize: '0.85em', opacity: 0.9 }}>
-                                                            {conversion.label}
-                                                            <span style={{ opacity: 0.5, marginLeft: '6px' }}>×{conversion.count}</span>
-                                                        </span>
-
-                                                        <span style={{ opacity: 0.5, textAlign: 'center' }}>→</span>
-
-                                                        <select
-                                                            className="editor-input"
-                                                            value={conversion.target}
-                                                            onChange={e => updateConversionTarget(conversion.detected, e.target.value as TargetFormat)}
-                                                            style={{
-                                                                width: '220px',
-                                                                minWidth: '220px',
-                                                                maxWidth: '220px',
-                                                            }}
-                                                        >
-                                                            {TARGET_OPTIONS.map(option => (
-                                                                <option key={option.value} value={option.value}>
-                                                                    {option.label}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-                                            <button
-                                                type="button"
-                                                className="edit-btn edit-btn-save"
-                                                onClick={handleAcceptReformat}
-                                                title="Save with formatting applied"
-                                            >
-                                                Accept Reformat
-                                            </button>
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    {/* Raw textarea for normal editing */}
-                                    <textarea
-                                        ref={editTextareaRef}
-                                        value={editDraft}
-                                        onChange={e => setEditDraft(e.target.value)}
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                onSaveEdit();
-                                            }
-
-                                            if (e.key === 'Escape') handleCancelEditing();
-                                        }}
-                                        className="edit-textarea"
-                                    />
-
-                                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
-                                        <button
-                                            type="button"
-                                            className="edit-btn edit-btn-cancel"
-                                            onClick={handleOpenReformat}
-                                            title="Detect and convert message formatting"
-                                        >
-                                            Reformat
-                                        </button>
-                                    </div>
-                                </>
-                            )}
+                                    if (e.key === 'Escape') onCancelEditing();
+                                }}
+                                className="edit-textarea"
+                            />
 
                             <div className="edit-actions">
                                 <button
                                     type="button"
-                                    onClick={handleCancelEditing}
+                                    onClick={onCancelEditing}
                                     className="edit-btn edit-btn-cancel"
                                 >
                                     Cancel
