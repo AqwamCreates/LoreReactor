@@ -10,24 +10,12 @@ export function LoadingScreen({ steps, isFadeOut }: LoadingScreenProps) {
     const done = steps.filter(s => s.done).length;
     const current = steps.find(s => !s.done);
 
-    const mid = Math.ceil(steps.length / 2);
-    const renderTopRow = [...steps.slice(0, mid)];
-    const renderBottomRow = steps.slice(mid);
-
     return (
         <div className={`loading-screen ${isFadeOut ? 'fade-out' : ''}`}>
             <div className="loading-screen-title">⚛️ LoreReactor</div>
 
-            <div className="loading-screen-row loading-screen-row-top">
-                {renderTopRow.map(step => (
-                    <div key={step.id} title={step.label} className={`loading-step-icon ${step.done ? 'done' : ''}`}>
-                        {step.icon}
-                    </div>
-                ))}
-            </div>
-
-            <div className="loading-screen-row loading-screen-row-bottom">
-                {renderBottomRow.map(step => (
+            <div className="loading-screen-grid">
+                {steps.map(step => (
                     <div key={step.id} title={step.label} className={`loading-step-icon ${step.done ? 'done' : ''}`}>
                         {step.icon}
                     </div>

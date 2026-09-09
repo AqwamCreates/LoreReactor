@@ -460,7 +460,7 @@ function App() {
         chatModifiedRef.current = false;
         previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
         streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: null };
-    }, [interactionData?.id]);
+    }, [interactionData?.interactionHistory?.length]);
 
     // Auto-save: mark modified when chat has content, save when message count changes
     useEffect(() => {
