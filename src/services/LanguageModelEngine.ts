@@ -650,3 +650,30 @@ export class LanguageModelEngine {
     }
   }
 }
+
+// ─── Singleton Accessor ──────────────────────────────────────────────
+
+let _instance: LanguageModelEngine | null = null;
+
+/**
+ * Returns the shared LanguageModelEngine instance.
+ * All token caches, failed backend tracking, and in-flight deduplication
+ * are shared across all callers through this single instance.
+ */
+export function getLanguageModelEngine(): LanguageModelEngine {
+    if (!_instance) {
+        _instance = new LanguageModelEngine();
+    }
+    return _instance;
+}
+
+/**
+ * Resets the singleton instance. Intended ONLY for test teardown.
+ * Never call this in production code.
+ */
+export function _resetLanguageModelEngineForTesting(): void {
+    if (_instance) {
+        _instance.clearTokenCache();
+    }
+    _instance = null;
+}
