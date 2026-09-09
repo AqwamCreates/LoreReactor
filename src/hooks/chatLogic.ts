@@ -1000,7 +1000,7 @@ export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
     existingCharacterText: string,
-    protagonistImageBase64s?: string[],
+    protagonistFileBase64s?: string[],
     runtimePort?: number
 ):  Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
@@ -1041,8 +1041,8 @@ export async function prepareRequestBody(
         // Character image — use current expression with fallback to neutral
         if (!character.doNotInjectCharacterImage) {
             const characterMessage = findPreviousInteractionMessage(interactionData, character.id)
-            const currentCharacterExpression = characterMessage?.characterExpression
-            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, currentCharacterExpression);
+            const characterExpression = characterMessage?.characterExpression
+            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
 
             if (characterImagePath) {
                 const characterImageBase64 = await getImageBase64(characterImagePath);
@@ -1059,18 +1059,22 @@ export async function prepareRequestBody(
         // Protagonist image — use current expression with fallback to neutral
         const protagonist = interactionData.protagonist;
         if (protagonist && !protagonist.doNotInjectCharacterImage) {
-            if (protagonistImageBase64s) {
-                    
-                const rawData = protagonistImageBase64s[0].includes(',') ? protagonistImageBase64s[0].split(',')[1] : protagonistImageBase64s[0];
-                const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id)
-                let protagonistString = getParticipantTag(character, interactionData.participants)
-                if (protagonistMessage){
-                    const isNameRevealed = protagonistMessage.isNameRevealed
-                    if (isNameRevealed) protagonistString = `${protagonistString} (${protagonist.name})`
+            const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id);
+            const protagonistExpression = protagonistMessage?.characterExpression;
+            const protagonistImagePath = await getCharacterImageUrlWithFallBack(protagonist.id, protagonistExpression);
+
+            if (protagonistImagePath) {
+                const protagonistImageBase64 = await getImageBase64(protagonistImagePath);
+
+                if (protagonistImageBase64) {
+                    const rawData = protagonistImageBase64.includes(',') ? protagonistImageBase64.split(',')[1] : protagonistImageBase64;
+                    let protagonistString = getParticipantTag(protagonist, interactionData.participants);
+                    if (protagonistMessage?.isNameRevealed) {
+                        protagonistString = `${protagonistString} (${protagonist.name})`;
                 }
-                allImageData.push({ data: rawData, id: imageIdCounter++ });
-                const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first"
-                initialPrompt = `${prompt}${contextStartString}${thinkStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${thinkEndString}${contextEndString}`;
+                    allImageData.push({ data: rawData, id: imageIdCounter++ });
+                    const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
+                    initialPrompt = `${initialPrompt}${contextStartString}${thinkStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${thinkEndString}${contextEndString}`;
             }
         }
     }

@@ -362,7 +362,7 @@ export class BudgetStrategyEngine {
         character: Character,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
-        userImagesBase64?: string[],
+        userFilesBase64?: string[],
     ): Promise<string> {
         const useOnline = await this.shouldUseOnline(interactionData);
 
@@ -417,7 +417,7 @@ export class BudgetStrategyEngine {
             const sessionStart = Date.now();
 
             try {
-                const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
+                const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, runtimePort);
 
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                 let result;
@@ -496,7 +496,7 @@ export class BudgetStrategyEngine {
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, fallbackPort);
+                    const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, fallbackPort);
 
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result;
@@ -577,7 +577,7 @@ export class BudgetStrategyEngine {
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: freeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, freePort);
+                    const { body: freeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, freePort);
 
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result;
