@@ -17,7 +17,7 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
-import { getDelayedDisplayName } from '../hooks/immersionLogic';
+import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
@@ -56,6 +56,67 @@ type BudgetStrategyWithRawModelIds = BudgetStrategy & {
     _rawOnlineModelIds?: string[];
     _rawLocalModelIds?: string[];
 };
+
+/**
+ * Finds the safe boundary in text where no incomplete markdown patterns exist.
+ * Returns the index up to which text can be safely formatted without risking
+ * mid-pattern splits (unclosed *, **, `, ```, etc.)
+ */
+function findSafeFormatBoundary(text: string): number {
+    if (text.length === 0) return 0;
+
+    // Check for unclosed triple backticks (code blocks)
+    const tripleBacktickCount = (text.match(/```/g) || []).length;
+    if (tripleBacktickCount % 2 !== 0) {
+        // Unclosed code block — find the last ``` and treat everything after as unsafe
+        const lastIdx = text.lastIndexOf('```');
+        return lastIdx >= 0 ? lastIdx : 0;
+    }
+
+    // Check for unclosed double backticks
+    const doubleBacktickCount = (text.match(/``/g) || []).length;
+    if (doubleBacktickCount % 2 !== 0) {
+        const lastIdx = text.lastIndexOf('``');
+        return lastIdx >= 0 ? lastIdx : 0;
+    }
+
+    // Check for unclosed single backticks (inline code)
+    const singleBacktickCount = (text.match(/`/g) || []).length;
+    if (singleBacktickCount % 2 !== 0) {
+        const lastIdx = text.lastIndexOf('`');
+        return lastIdx >= 0 ? lastIdx : 0;
+    }
+
+    // Check for unclosed double asterisks (bold)
+    const doubleAsteriskCount = (text.match(/\*\*/g) || []).length;
+    if (doubleAsteriskCount % 2 !== 0) {
+        const lastIdx = text.lastIndexOf('**');
+        return lastIdx >= 0 ? lastIdx : 0;
+    }
+
+    // Check for unclosed single asterisks (italic) — but not inside **
+    // Strip all ** first, then count remaining *
+    const strippedOfBold = text.replace(/\*\*/g, '');
+    const singleAsteriskCount = (strippedOfBold.match(/\*/g) || []).length;
+    if (singleAsteriskCount % 2 !== 0) {
+        // Find last standalone * (not part of **)
+        let lastSafe = text.length;
+        for (let i = text.length - 1; i >= 0; i--) {
+            if (text[i] === '*') {
+                // Check it's not part of **
+                const isDouble = (i > 0 && text[i - 1] === '*') || (i < text.length - 1 && text[i + 1] === '*');
+                if (!isDouble) {
+                    lastSafe = i;
+                    break;
+                }
+            }
+        }
+        return lastSafe;
+    }
+
+    // All patterns are balanced — entire text is safe
+    return text.length;
+}
 
 function App() {
     // ─── Session Hook ────────────────────────────────────────────────
@@ -201,6 +262,70 @@ function App() {
         suppressNextClickRef,
     } = useMessageToolbar({ chatHistoryRef });
 
+    // ─── Display Name Cache ──────────────────────────────────────────
+    const displayNameCache = useDisplayNameCache(interactionData);
+
+    // ─── Incremental Streaming Text Formatting ───────────────────────
+    const streamFormatCacheRef = useRef<{ rawPrefix: string; formattedPrefix: string }>({ rawPrefix: '', formattedPrefix: '' });
+
+    const formattedStreamingText = useMemo(() => {
+        if (!streamingText) {
+            streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: '' };
+            return '';
+        }
+
+        const cache = streamFormatCacheRef.current;
+
+        // If streaming text starts with cached prefix, do incremental formatting
+        if (streamingText.startsWith(cache.rawPrefix) && cache.rawPrefix.length > 0) {
+            const newRawTail = streamingText.slice(cache.rawPrefix.length);
+
+            if (newRawTail.length === 0) {
+                // No new content
+                return cache.formattedPrefix;
+            }
+
+            // Find safe boundary in the new tail
+            const safeLen = findSafeFormatBoundary(newRawTail);
+
+            if (safeLen === 0) {
+                // Entire new tail is unsafe (e.g., starts with unclosed pattern)
+                // Re-parse everything from scratch to be safe
+                const fullFormatted = formatMessageText(streamingText);
+                streamFormatCacheRef.current = { rawPrefix: streamingText, formattedPrefix: fullFormatted };
+                return fullFormatted;
+            }
+
+            // Format only the safe portion of new text
+            const safeNewRaw = newRawTail.slice(0, safeLen);
+            const unsafeNewRaw = newRawTail.slice(safeLen);
+
+            // We need to format the safe new portion in context of what came before.
+            // Concatenate cached formatted prefix + safe new raw, parse that segment,
+            // then append unsafe tail as plain text.
+            const combinedForParse = cache.formattedPrefix + safeNewRaw;
+            const parsedCombined = formatMessageText(combinedForParse);
+
+            // The result includes re-parsed cached prefix + newly formatted safe tail.
+            // Append unsafe tail as-is (will be properly formatted next tick).
+            const result = parsedCombined + unsafeNewRaw;
+
+            // Update cache: the safe boundary extends into the raw text
+            const newSafeRawPrefix = streamingText.slice(0, cache.rawPrefix.length + safeLen);
+            streamFormatCacheRef.current = {
+                rawPrefix: newSafeRawPrefix,
+                formattedPrefix: parsedCombined,
+            };
+
+            return result;
+        }
+
+        // Text doesn't extend cached prefix (new generation or reset) — full parse
+        const fullFormatted = formatMessageText(streamingText);
+        streamFormatCacheRef.current = { rawPrefix: streamingText, formattedPrefix: fullFormatted };
+        return fullFormatted;
+    }, [streamingText]);
+
     // ─── Derived Values ──────────────────────────────────────────────
     const isModelLoading = useMemo(() => {
         if (!selectedModelId) return false;
@@ -212,7 +337,6 @@ function App() {
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
     const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
-    const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
 
     const maximumNumberOfContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
@@ -328,6 +452,8 @@ function App() {
     useEffect(() => {
         chatModifiedRef.current = false;
         previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
+        // Reset streaming format cache on chat switch
+        streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: '' };
     }, [interactionData?.id]);
 
     // Auto-save: mark modified when chat has content, save when message count changes
@@ -702,7 +828,7 @@ function App() {
                         {displayMessages.map((message, renderIndex) => {
                             const index = viewMode === 'cinematic' ? InteractionMessages.length - 1 - renderIndex : renderIndex;
                             if (!message.character) return null;
-                            const dn = getDelayedDisplayName(interactionData, index, message.character.id);
+                            const dn = resolveDisplayNameFromCache(displayNameCache, index, message.character.id);
                             const stem = isStemMessage(message.id);
                             const branchOffIndex = interactionData.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1;
                             const beforeBranch = !!(interactionData.parentInteractionMessageId && index === branchOffIndex);

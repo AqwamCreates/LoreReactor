@@ -21,7 +21,6 @@ export function useEntitySync(options: UseEntitySyncOptions) {
     } = options;
 
     const initialSyncSkippedRef = useRef(false);
-    // Track known participant IDs to prevent accidental drops during stale character list states
     const knownParticipantIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
@@ -36,46 +35,63 @@ export function useEntitySync(options: UseEntitySyncOptions) {
             for (const p of currentChat.participants) knownParticipantIdsRef.current.add(p.id);
         }
 
+        // Build O(1) lookup maps instead of repeated .find() calls
+        const charMap = new Map<string, Character>();
+        for (const c of allCharacters) charMap.set(c.id, c);
+
+        const contextMap = new Map<string, Context>();
+        for (const c of allContexts) contextMap.set(c.id, c);
+
+        const profileMap = new Map<string, Profile>();
+        for (const p of allProfiles) profileMap.set(p.id, p);
+
         let changed = false;
         const updated = { ...currentChat };
 
         // Sync protagonist — never remove, only update if fresher version exists
-        const freshProtag = allCharacters.find(c => c.id === currentChat.protagonist?.id);
+        const freshProtag = charMap.get(currentChat.protagonist?.id ?? '');
         if (freshProtag && freshProtag.lastUpdatedTimestamp !== currentChat.protagonist?.lastUpdatedTimestamp) {
             updated.protagonist = freshProtag; changed = true;
         }
-        // If protagonist not found in allCharacters, KEEP the existing one (don't replace/drop)
 
         // Sync participants — NEVER filter out participants that aren't in allCharacters.
         // Only update participants that have a fresher version available.
+        let participantsChanged = false;
         const freshParticipants = currentChat.participants.map(p => {
-            const fresh = allCharacters.find(c => c.id === p.id);
-            if (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) return fresh;
-            return p; // Keep existing even if not in allCharacters (may be temporarily missing)
+            const fresh = charMap.get(p.id);
+            if (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) {
+                participantsChanged = true;
+                return fresh;
+            }
+            return p;
         });
 
         // Track any new participants added externally
         for (const p of freshParticipants) knownParticipantIdsRef.current.add(p.id);
 
-        if (freshParticipants.some((p, i) => p !== currentChat.participants[i])) {
+        if (participantsChanged) {
             updated.participants = freshParticipants; changed = true;
         }
 
         // Sync contexts — same defensive approach: update but never drop
         if (currentChat.contexts?.length) {
+            let contextsChanged = false;
             const freshContexts = currentChat.contexts.map(ctx => {
-                const fresh = allContexts.find(c => c.id === ctx.id);
-                if (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) return fresh;
+                const fresh = contextMap.get(ctx.id);
+                if (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) {
+                    contextsChanged = true;
+                    return fresh;
+                }
                 return ctx;
             });
-            if (freshContexts.some((c, i) => c !== currentChat.contexts?.[i])) {
+            if (contextsChanged) {
                 updated.contexts = freshContexts; changed = true;
             }
         }
 
         // Sync profile
         if (currentChat.Profile) {
-            const freshProfile = allProfiles.find(p => p.id === currentChat.Profile?.id);
+            const freshProfile = profileMap.get(currentChat.Profile.id);
             if (freshProfile && freshProfile.lastUpdatedTimestamp !== currentChat.Profile.lastUpdatedTimestamp) {
                 updated.Profile = freshProfile; changed = true;
             }
@@ -83,7 +99,7 @@ export function useEntitySync(options: UseEntitySyncOptions) {
 
         // Sync current character
         if (currentCharacter) {
-            const freshCurrent = allCharacters.find(c => c.id === currentCharacter.id);
+            const freshCurrent = charMap.get(currentCharacter.id);
             if (freshCurrent && freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
                 setCurrentCharacter(freshCurrent);
             }
