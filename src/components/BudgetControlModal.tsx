@@ -105,7 +105,6 @@ export function BudgetControlModal({
         resetBudget,
         setBudgetSpent,
         setResetDuration,
-        setBudgetStrategy,
         clearModelLastUsedTimestamps,
         clearQuotaTimestamps,
         clearErrorTimestamps,
@@ -115,7 +114,6 @@ export function BudgetControlModal({
         refresh,
     } = useBudgetDataManager();
 
-    const [selectedStrategyId, setSelectedStrategyId] = useState(activeStrategy?.id || allBudgetStrategies[0]?.id || '');
     const [customResetHours, setCustomResetHours] = useState<number>(24);
     const [budgetAdjustAmount, setBudgetAdjustAmount] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
@@ -124,11 +122,30 @@ export function BudgetControlModal({
     const [sortField, setSortField] = useState<SortField>('uses');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-    const selectedStrategy = useMemo(() => {
-        return allBudgetStrategies.find(s => s.id === selectedStrategyId) || activeStrategy || allBudgetStrategies[0] || null;
-    }, [allBudgetStrategies, selectedStrategyId, activeStrategy]);
+    // Always use the active strategy from props — no local override
+    const currentStrategy = activeStrategy ?? null;
 
-    const maximumBudget = budgetData?.budgetStrategy?.maximumBudget ?? selectedStrategy?.maximumBudget ?? 0;
+    // Build a set of model IDs that belong to the active strategy
+    const strategyModelIds = useMemo(() => {
+        const ids = new Set<string>();
+        if (currentStrategy) {
+            for (const m of currentStrategy.onlineModels) ids.add(m.id);
+            for (const m of currentStrategy.localModels) ids.add(m.id);
+        }
+        return ids;
+    }, [currentStrategy]);
+
+    // Build a name map from the active strategy's models
+    const strategyNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        if (currentStrategy) {
+            for (const m of currentStrategy.onlineModels) map.set(m.id, m.name);
+            for (const m of currentStrategy.localModels) map.set(m.id, m.name);
+        }
+        return map;
+    }, [currentStrategy]);
+
+    const maximumBudget = budgetData?.budgetStrategy?.maximumBudget ?? currentStrategy?.maximumBudget ?? 0;
     const usagePercent = budgetData ? getBudgetUsagePercent() : 0;
     const timeUntilReset = budgetData ? getTimeUntilReset() : null;
 
@@ -138,30 +155,22 @@ export function BudgetControlModal({
 
     const modelRows = useMemo<ModelRow[]>(() => {
         if (!budgetData) return [];
-        const allModelIds = new Set<string>();
-        if (budgetData.budgetStrategy?.onlineModels) budgetData.budgetStrategy.onlineModels.forEach(m => allModelIds.add(m.id));
-        if (budgetData.budgetStrategy?.localModels) budgetData.budgetStrategy.localModels.forEach(m => allModelIds.add(m.id));
-        Object.keys(budgetData.modelUsedCount || {}).forEach(id => allModelIds.add(id));
-        Object.keys(budgetData.modelAverageGenerationSpeedMsPerToken || {}).forEach(id => allModelIds.add(id));
-        Object.keys(budgetData.modelBudgetSpent || {}).forEach(id => allModelIds.add(id));
-        Object.keys(budgetData.modelTotalSessionDuration || {}).forEach(id => allModelIds.add(id));
 
-        const nameMap = new Map<string, string>();
-        if (budgetData.budgetStrategy?.onlineModels) budgetData.budgetStrategy.onlineModels.forEach(m => nameMap.set(m.id, m.name));
-        if (budgetData.budgetStrategy?.localModels) budgetData.budgetStrategy.localModels.forEach(m => nameMap.set(m.id, m.name));
+        // Only include models that are in the active strategy
+        // If no active strategy, show nothing
+        if (strategyModelIds.size === 0) return [];
 
         const rows: ModelRow[] = [];
-        for (const id of allModelIds) {
+        for (const id of strategyModelIds) {
             const uses = budgetData.modelUsedCount?.[id] ?? 0;
             const quotaHits = budgetData.modelQuotaHitCount?.[id] ?? 0;
             const errorHits = budgetData.modelErrorHitCount?.[id] ?? 0;
             const totalHits = quotaHits + errorHits;
-            // Reliability is capped at 1.0 since quota hits can exceed uses due to retries
             const reliability = uses > 0 ? Math.min(1, totalHits / uses) : 0;
             rows.push({
                 id,
-                name: nameMap.get(id) || id.substring(0, 8),
-                speed: budgetData.modelAverageGenerationSpeedMsPerToken?.[id] ?? Number.POSITIVE_INFINITY,
+                name: strategyNameMap.get(id) || id.substring(0, 8),
+                speed: budgetData.modelAverageLatencyMsPerToken?.[id] ?? Number.POSITIVE_INFINITY,
                 ttft: budgetData.modelAverageTimeToFirstToken?.[id] ?? Number.POSITIVE_INFINITY,
                 uses,
                 quotaHits,
@@ -173,7 +182,7 @@ export function BudgetControlModal({
             });
         }
         return rows;
-    }, [budgetData]);
+    }, [budgetData, strategyModelIds, strategyNameMap]);
 
     const aggregateStats = useMemo(() => {
         const totalUses = modelRows.reduce((sum, r) => sum + r.uses, 0);
@@ -232,13 +241,8 @@ export function BudgetControlModal({
     };
 
     const handleCreate = async () => {
-        if (!selectedStrategy) return;
-        await runAction(() => createBudgetData(selectedStrategy, 24 * 60 * 60 * 1000));
-    };
-
-    const handleStrategyChange = async () => {
-        if (!selectedStrategy || !budgetData) return;
-        await runAction(() => setBudgetStrategy(selectedStrategy));
+        if (!currentStrategy) return;
+        await runAction(() => createBudgetData(currentStrategy, 24 * 60 * 60 * 1000));
     };
 
     const handlePresetResetDuration = async (duration: number) => {
@@ -285,7 +289,7 @@ export function BudgetControlModal({
         setIsSaving(true);
         try {
             const { saveRawBudgetData } = await import('../hooks/storage');
-            const updated = { ...budgetData, averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: value };
+            const updated = { ...budgetData, averageLatencyMsPerTokenExponentialMovingAverageSmoothing: value };
             await saveRawBudgetData(updated);
             await refresh();
         } finally { setIsSaving(false); }
@@ -335,22 +339,16 @@ export function BudgetControlModal({
                                 <div className="budget-section">
                                     <span className="budget-section-title">Initialize Budget Data</span>
                                     <div className="budget-hint" style={{ marginBottom: '8px' }}>
-                                        No global budget data exists yet. Create it from a budget strategy.
+                                        No global budget data exists yet. Activate a budget strategy first, then create budget data from it.
                                     </div>
-                                    <div className="budget-control-row">
-                                        <div className="budget-control-field">
-                                            <label className="budget-control-label">Budget Strategy</label>
-                                            <select className="budget-control-select" value={selectedStrategyId} onChange={e => setSelectedStrategyId(e.target.value)}>
-                                                {allBudgetStrategies.map(strategy => (
-                                                    <option key={strategy.id} value={strategy.id}>{strategy.name} — ${formatCost(strategy.maximumBudget)}</option>
-                                                ))}
-                                            </select>
+                                    {currentStrategy ? (
+                                        <div style={{ marginBottom: '8px', padding: '8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.75rem' }}>
+                                            Active strategy: <strong>{currentStrategy.name}</strong> — ${formatCost(currentStrategy.maximumBudget)}
                                         </div>
-                                    </div>
-                                    {allBudgetStrategies.length === 0 && (
-                                        <div className="editor-error-message" style={{ marginTop: '4px', fontSize: '0.7rem' }}>No budget strategies exist. Create one first.</div>
+                                    ) : (
+                                        <div className="editor-error-message" style={{ marginTop: '4px', fontSize: '0.7rem' }}>No active budget strategy. Activate one from the Budget Strategies manager first.</div>
                                     )}
-                                    <button type="button" className="budget-btn budget-btn-primary" disabled={!selectedStrategy || isSaving} onClick={handleCreate} style={{ marginTop: '8px' }}>
+                                    <button type="button" className="budget-btn budget-btn-primary" disabled={!currentStrategy || isSaving} onClick={handleCreate} style={{ marginTop: '8px' }}>
                                         Create Budget Data
                                     </button>
                                 </div>
@@ -477,7 +475,14 @@ export function BudgetControlModal({
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Click headers to sort. Duration = total session time. Errs = quota/error. Rel% = 100 − min(hits ÷ uses, 1).</div>
+                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − min(hits ÷ uses, 1).</div>
+                                        </div>
+                                    )}
+
+                                    {/* No models in strategy message */}
+                                    {modelRows.length === 0 && currentStrategy && (
+                                        <div className="budget-section">
+                                            <div className="budget-hint">No models in the active strategy. Add models to the strategy to see performance data.</div>
                                         </div>
                                     )}
 
@@ -552,8 +557,8 @@ export function BudgetControlModal({
                                         </div>
                                         <div className="budget-control-row">
                                             <div className="budget-control-field">
-                                                <label className="budget-control-label">Speed α (current: {(budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})</label>
-                                                <input type="text" inputMode="decimal" className="budget-control-input" placeholder={(budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)} value={speedAlpha} onChange={e => setSpeedAlpha(e.target.value)} />
+                                                <label className="budget-control-label">Speed α (current: {(budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})</label>
+                                                <input type="text" inputMode="decimal" className="budget-control-input" placeholder={(budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)} value={speedAlpha} onChange={e => setSpeedAlpha(e.target.value)} />
                                             </div>
                                             <button type="button" className="budget-btn budget-btn-primary budget-btn-action" disabled={isSaving || speedAlpha.trim() === ''} onClick={handleSpeedAlphaSave}>Save</button>
                                         </div>
@@ -582,25 +587,6 @@ export function BudgetControlModal({
                                         </div>
                                         <div style={{ marginTop: '10px' }}>
                                             <button type="button" className="budget-btn budget-btn-danger" disabled={isSaving} onClick={() => runAction(resetBudget)}>Reset Budget Now</button>
-                                        </div>
-                                    </div>
-
-                                    {/* Strategy Binding — bottom */}
-                                    <div className="budget-section">
-                                        <span className="budget-section-title">Budget Strategy</span>
-                                        <div className="budget-control-row">
-                                            <div className="budget-control-field">
-                                                <label className="budget-control-label">Budget Strategy</label>
-                                                <select className="budget-control-select" value={selectedStrategyId || budgetData.budgetStrategy?.id || ''} onChange={e => setSelectedStrategyId(e.target.value)}>
-                                                    {allBudgetStrategies.map(strategy => (
-                                                        <option key={strategy.id} value={strategy.id}>{strategy.name} — ${formatCost(strategy.maximumBudget)}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="budget-btn-group" style={{ marginTop: '8px' }}>
-                                            <button type="button" className="budget-btn budget-btn-primary" disabled={!selectedStrategy || isSaving} onClick={handleStrategyChange}>Apply Strategy</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => refresh()}>Refresh</button>
                                         </div>
                                     </div>
                                 </>

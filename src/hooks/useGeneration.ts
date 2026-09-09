@@ -95,7 +95,7 @@ function countParagraphs(text: string): number {
 interface UseGenerationOptions {
     setBudgetData: (bd: import('../types').BudgetData) => void;
     setStats: React.Dispatch<React.SetStateAction<{ numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number }>>;
-    setGenerationSpeed: (speed: number) => void;
+    setLatency: (speed: number) => void;
     setTimeToFirstToken: (ttft: number) => void;
     setCurrentCharacterExpression: (expr: string) => void;
     previousExpressionRef: React.MutableRefObject<string>;
@@ -107,7 +107,7 @@ interface UseGenerationOptions {
 
 export function useGeneration(options: UseGenerationOptions) {
     const {
-        setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
+        setBudgetData, setStats, setLatency, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,
         processMemoryTrigger, addToast,
@@ -140,7 +140,7 @@ export function useGeneration(options: UseGenerationOptions) {
                 lastRawLength: { value: number },
             ): StreamCallbacks => ({
                 onToken: async (s) => {
-                    setGenerationSpeed(s.msPerToken);
+                    setLatency(s.msPerToken);
                     if (s.timeToFirstToken > 0) setTimeToFirstToken(s.timeToFirstToken);
 
                     const newChunk = s.fullText.slice(lastRawLength.value);
@@ -351,7 +351,7 @@ export function useGeneration(options: UseGenerationOptions) {
             return null;
         }
     }, [
-        setBudgetData, setStats, setGenerationSpeed, setTimeToFirstToken,
+        setBudgetData, setStats, setLatency, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
         throttledSetStreamingText, streamingTextRef,
         processMemoryTrigger, addToast,

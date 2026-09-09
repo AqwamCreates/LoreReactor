@@ -41,7 +41,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 }) => {
     const [showDetails, setShowDetails] = useState(false);
 
-    const generationSpeed = useSessionStore(s => s.generationSpeed);
+    const latency = useSessionStore(s => s.latency);
     const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
     const numberOfTokens = useSessionStore(s => s.numberOfTokens);
     const numberOfCacheInvalidations = useSessionStore(s => s.numberOfCacheInvalidations);
@@ -54,9 +54,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const percentage = Math.min(100, Math.round((numberOfTokens / safeMax) * 100));
     const tokenColor = percentage > 95 ? '#ff4444' : percentage > 80 ? '#ffaa00' : '';
 
-    const isFastEnough = generationSpeed < 110;
+    const isFastEnough = latency < 110;
     const speedColor = isFastEnough ? '' : '#ff4444';
-    const speedDisplay = generationSpeed < 1 ? '<1' : Math.round(generationSpeed);
+    const speedDisplay = latency < 1 ? '<1' : Math.round(latency);
     const speedIcon = isFastEnough ? '⚡' : '🐢';
 
     const ttftDisplay = timeToFirstToken < 1000
@@ -127,8 +127,8 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
             style={{ cursor: 'pointer' }}
         >
             <div className="chat-stats-items">
-                {/* Generation Speed */}
-                <div className="chat-stat-item" title={`Generation Speed: ${generationSpeed.toFixed(2)} ms/token`}>
+                {/* Latency */}
+                <div className="chat-stat-item" title={`Latency: ${latency.toFixed(2)} ms/token`}>
                     <span className="chat-stat-label">{speedIcon}</span>
                     <span className="chat-stat-speed-value" style={{ color: speedColor }}>
                         {speedDisplay}ms
@@ -199,9 +199,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             </div>
                         )}
                         <div className="chat-stat-detail-row">
-                            <span className="chat-stat-detail-label">Generation Speed:</span>
+                            <span className="chat-stat-detail-label">Latency:</span>
                             <span className="chat-stat-detail-value" style={{ color: speedColor }}>
-                                {generationSpeed > 0 ? (1000 / generationSpeed).toFixed(1) : '∞'} tokens/s
+                                {latency > 0 ? (1000 / latency).toFixed(1) : '∞'} tokens/s
                             </span>
                         </div>
                         <div className="chat-stat-detail-row">

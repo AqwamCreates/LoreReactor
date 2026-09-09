@@ -31,7 +31,7 @@ export function useChatSession() {
     const currentCharacter = useSessionStore(s => s.currentCharacter);
     const streamingCharacter = useSessionStore(s => s.streamingCharacter);
     const currentCharacterExpression = useSessionStore(s => s.currentCharacterExpression);
-    const generationSpeed = useSessionStore(s => s.generationSpeed);
+    const latency = useSessionStore(s => s.latency);
     const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
     const selectedModel = useSessionStore(s => s.selectedModel);
@@ -62,8 +62,8 @@ export function useChatSession() {
         useSessionStore.setState({ currentCharacterExpression: expr });
     }, []);
 
-    const setGenerationSpeed = useCallback((speed: number) => {
-        useSessionStore.setState({ generationSpeed: speed });
+    const setLatency = useCallback((speed: number) => {
+        useSessionStore.setState({ latency: speed });
     }, []);
 
     const setTimeToFirstToken = useCallback((time: number) => {
@@ -124,7 +124,7 @@ export function useChatSession() {
     const { handleServerResponse } = useGeneration({
         setBudgetData,
         setStats,
-        setGenerationSpeed,
+        setLatency,
         setTimeToFirstToken,
         setCurrentCharacterExpression,
         previousExpressionRef,
@@ -278,8 +278,8 @@ export function useChatSession() {
         abortControllerRef.current = null;
         releaseLock();
         resetStream();
-        setGenerationSpeed(0);
-    }, [releaseLock, resetStream, setGenerationSpeed, setInteractionData, streamingTextRef]);
+        setLatency(0);
+    }, [releaseLock, resetStream, setLatency, setInteractionData, streamingTextRef]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -309,7 +309,7 @@ export function useChatSession() {
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
         setStreamingCharacter(targetChar);
-        setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
+        setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
@@ -321,7 +321,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setGenerationSpeed, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage]);
+    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage]);
 
     const sendMessage = useCallback(async (text: string, files?: File[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -332,7 +332,7 @@ export function useChatSession() {
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
         setStreamingCharacter(null);
-        setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
+        setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
             const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
@@ -376,7 +376,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Send failed:', e); addToast(`Send failed: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
+    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
 
     const resumeGeneration = useCallback(async (messageId: string) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -397,7 +397,7 @@ export function useChatSession() {
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         setStreamingText(existingText); streamingTextRef.current = existingText;
         setStreamingCharacter(char);
-        setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
+        setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
 
         try {
             const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText);
@@ -429,7 +429,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setGenerationSpeed, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData]);
+    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -453,7 +453,7 @@ export function useChatSession() {
 
         resetStream();
         setStreamingCharacter(null);
-        setGenerationSpeed(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
+        setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         const preCount = td.interactionHistory.length;
         try {
@@ -480,7 +480,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setGenerationSpeed, setTimeToFirstToken]);
+    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
@@ -501,7 +501,7 @@ export function useChatSession() {
         isLoading, streamingText, streamingCharacter, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef,
-        generationSpeed, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
+        latency, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
         numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy, budgetData,

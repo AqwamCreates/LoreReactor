@@ -334,7 +334,7 @@ export interface RawBudgetStrategy extends RawData {
 export interface BudgetData extends ObjectData {
   budgetSpent: number
   resetDuration: number
-  averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: number;
+  averageLatencyMsPerTokenExponentialMovingAverageSmoothing: number;
   averageTimeToFirstTokenExponentialMovingAverageSmoothing: number;
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
@@ -345,7 +345,7 @@ export interface BudgetData extends ObjectData {
   lastResetTimestamp: number
   budgetStrategy: BudgetStrategy
   modelBudgetSpent: Record<string, number>
-  modelAverageGenerationSpeedMsPerToken: Record<string, number>;
+  modelAverageLatencyMsPerToken: Record<string, number>;
   modelAverageTimeToFirstToken: Record<string, number>
   modelTotalSessionDuration: Record<string, number>
 }
@@ -354,7 +354,7 @@ export interface RawBudgetData extends RawData {
   id?: string;
   budgetSpent: number
   resetDuration: number
-  averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing: number;
+  averageLatencyMsPerTokenExponentialMovingAverageSmoothing: number;
   averageTimeToFirstTokenExponentialMovingAverageSmoothing: number;
   modelLastUsedTimestamps: Record<string, number>
   modelLastQuotaHitTimeStamps: Record<string, number>
@@ -365,7 +365,7 @@ export interface RawBudgetData extends RawData {
   lastResetTimestamp: number
   budgetStrategyId: string
   modelBudgetSpent: Record<string, number>
-  modelAverageGenerationSpeedMsPerToken: Record<string, number>;
+  modelAverageLatencyMsPerToken: Record<string, number>;
   modelAverageTimeToFirstToken: Record<string, number>
   modelTotalSessionDuration: Record<string, number>
 }

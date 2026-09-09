@@ -22,7 +22,7 @@ interface SessionState {
     budgetData: BudgetData | null;
 
     // Stats
-    generationSpeed: number;
+    latency: number;
     timeToFirstToken: number;
     numberOfCacheInvalidations: number;
     numberOfRequests: number;
@@ -48,7 +48,7 @@ export const useSessionStore = create<SessionState>()(() => ({
     runningModels: {},
     activeStrategy: null,
     budgetData: null,
-    generationSpeed: 0,
+    latency: 0,
     timeToFirstToken: 0,
     numberOfCacheInvalidations: 0,
     numberOfRequests: 0,

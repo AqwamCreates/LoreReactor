@@ -121,7 +121,7 @@ export class BudgetStrategyEngine {
     }
 
     private getModelSpeed(modelId: string): number {
-        return this.budgetData.modelAverageGenerationSpeedMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
+        return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
 
     private getModelTTFT(modelId: string): number {
@@ -145,16 +145,39 @@ export class BudgetStrategyEngine {
         return avgDurationSeconds < threshold;
     }
 
-    private recordGenerationSpeed(modelId: string, observedMsPerToken: number): void {
-        if (!this.budgetData.modelAverageGenerationSpeedMsPerToken) {
-            this.budgetData.modelAverageGenerationSpeedMsPerToken = {};
+    private computeCompositeQuality(modelId: string): number {
+        const speed = this.getModelSpeed(modelId);
+        const ttft = this.getModelTTFT(modelId);
+        const totalDuration = this.getModelQualityScore(modelId);
+        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        const quotaHits = this.budgetData.modelQuotaHitCount?.[modelId] ?? 0;
+        const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;
+
+        // Speed factor: lower ms/token = better
+        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 1;
+
+        // TTFT factor: lower = better
+        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 1;
+
+        // Average session duration factor
+        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 1;
+
+        // Reliability factor
+        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 1;
+
+        return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
+    }
+
+    private recordLatency(modelId: string, observedMsPerToken: number): void {
+        if (!this.budgetData.modelAverageLatencyMsPerToken) {
+            this.budgetData.modelAverageLatencyMsPerToken = {};
         }
-        const alpha = this.budgetData.averageGenerationSpeedMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
-        const previous = this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId];
+        const alpha = this.budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
+        const previous = this.budgetData.modelAverageLatencyMsPerToken[modelId];
         if (previous === undefined) {
-            this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId] = observedMsPerToken;
+            this.budgetData.modelAverageLatencyMsPerToken[modelId] = observedMsPerToken;
         } else {
-            this.budgetData.modelAverageGenerationSpeedMsPerToken[modelId] =
+            this.budgetData.modelAverageLatencyMsPerToken[modelId] =
                 (alpha * observedMsPerToken) + ((1 - alpha) * previous);
         }
     }
@@ -222,11 +245,6 @@ export class BudgetStrategyEngine {
         return false;
     }
 
-    /**
-     * Creates a timeout abort controller linked to the parent signal.
-     * If fallbackOnTimeoutInSeconds > 0, aborts after that many seconds.
-     * Caller MUST call cleanup() when done to prevent leaks.
-     */
     private createTimeoutController(parentSignal: AbortSignal): { controller: AbortController; cleanup: () => void } {
         const timeoutSeconds = this.strategy.fallbackOnTimeoutInSeconds;
         const controller = new AbortController();
@@ -279,37 +297,13 @@ export class BudgetStrategyEngine {
                 const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
                 if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
 
-                // 2. Quality score (higher total session duration = preferred)
-                const aQuality = this.getModelQualityScore(a.id);
-                const bQuality = this.getModelQualityScore(b.id);
-                if (aQuality !== bQuality) return bQuality - aQuality;
+                // 2. Composite quality score
+                const scoreA = this.computeCompositeQuality(a.id);
+                const scoreB = this.computeCompositeQuality(b.id);
+                if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
 
-                // 3. Generation speed (lower ms/token = faster = preferred)
-                const aSpeed = this.getModelSpeed(a.id);
-                const bSpeed = this.getModelSpeed(b.id);
-                if (aSpeed !== bSpeed) return aSpeed - bSpeed;
-
-                // 4. TTFT (lower = snappier = preferred)
-                const aTTFT = this.getModelTTFT(a.id);
-                const bTTFT = this.getModelTTFT(b.id);
-                if (aTTFT !== bTTFT) return aTTFT - bTTFT;
-
-                // 5. Reliability (lower error rate = more stable = preferred)
-                const aUsed = this.budgetData.modelUsedCount?.[a.id] ?? 0;
-                const bUsed = this.budgetData.modelUsedCount?.[b.id] ?? 0;
-                const aErrors = (this.budgetData.modelQuotaHitCount?.[a.id] ?? 0) + (this.budgetData.modelErrorHitCount?.[a.id] ?? 0);
-                const bErrors = (this.budgetData.modelQuotaHitCount?.[b.id] ?? 0) + (this.budgetData.modelErrorHitCount?.[b.id] ?? 0);
-                const aReliability = aUsed > 0 ? aErrors / aUsed : 0;
-                const bReliability = bUsed > 0 ? bErrors / bUsed : 0;
-                if (aReliability !== bReliability) return aReliability - bReliability;
-
-                // 6. Recency (more recently used = warmer cache = preferred)
-                const aLastUsed = this.budgetData.modelLastUsedTimestamps?.[a.id] ?? 0;
-                const bLastUsed = this.budgetData.modelLastUsedTimestamps?.[b.id] ?? 0;
-                if (aLastUsed !== bLastUsed) return bLastUsed - aLastUsed;
-
-                // 7. Base tier as final tiebreaker
-                return this.getTier(b) - this.getTier(a);
+                // 3. Random jitter for equal scores
+                return Math.random() - 0.5;
             });
             if (candidates.length > 0) {
                 return candidates[0];
@@ -404,7 +398,6 @@ export class BudgetStrategyEngine {
             try {
                 const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, runtimePort);
 
-                // Wrap with timeout controller
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                 let result;
                 try {
@@ -416,7 +409,6 @@ export class BudgetStrategyEngine {
                     );
                 } catch (e) {
                     cleanupTimeout();
-                    // Check if it was our timeout (not the parent abort)
                     if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
                         const sessionDuration = Date.now() - sessionStart;
                         this.recordSessionDuration(selectedModel.id, sessionDuration);
@@ -430,13 +422,11 @@ export class BudgetStrategyEngine {
                     cleanupTimeout();
                 }
 
-                // Record session duration
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(selectedModel.id, sessionDuration);
 
-                // Record generation speed and TTFT from observed stats
                 if (result.msPerToken && result.msPerToken > 0) {
-                    this.recordGenerationSpeed(selectedModel.id, result.msPerToken);
+                    this.recordLatency(selectedModel.id, result.msPerToken);
                 }
                 if (result.timeToFirstToken && result.timeToFirstToken > 0) {
                     this.recordTTFT(selectedModel.id, result.timeToFirstToken);
@@ -487,7 +477,6 @@ export class BudgetStrategyEngine {
                 try {
                     const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, fallbackPort);
 
-                    // Wrap with timeout controller
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result;
                     try {
@@ -512,12 +501,11 @@ export class BudgetStrategyEngine {
                         cleanupTimeout();
                     }
 
-                    // Record session duration
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
                     if (result.msPerToken && result.msPerToken > 0) {
-                        this.recordGenerationSpeed(selectedModel.id, result.msPerToken);
+                        this.recordLatency(selectedModel.id, result.msPerToken);
                     }
                     if (result.timeToFirstToken && result.timeToFirstToken > 0) {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
