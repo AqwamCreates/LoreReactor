@@ -12,43 +12,45 @@ const STORAGE_KEY_ACTION_CASE = 'loreReactor_actionCase';
 const STORAGE_KEY_ACTION_PUNCTUATION = 'loreReactor_actionPunctuation';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
-    let raw = `${label} ${targetName}`;
+    let result = label;
 
     switch (casing) {
         case 'first':
-            raw = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+            result = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
             break;
         case 'pascal':
-            raw = raw.replace(/\b\w/g, c => c.toUpperCase());
+            result = result.replace(/\b\w/g, c => c.toUpperCase());
             break;
         case 'lower':
-            raw = raw.toLowerCase();
+            result = result.toLowerCase();
+            break;
+    }
+
+    result = `${result} ${targetName}`
+
+    switch (punctuation) {
+        case '.':
+            result += '.';
+            break;
+        case '-':
+            result += '-';
+            break;
+        case 'none':
             break;
     }
 
     switch (wrap) {
         case '*':
-            raw = `*${raw}*`;
+            result = `*${result}*`;
             break;
         case '()':
-            raw = `(${raw})`;
+            result = `(${result})`;
             break;
         case 'none':
             break;
     }
 
-    switch (punctuation) {
-        case '.':
-            raw += '.';
-            break;
-        case '-':
-            raw += '-';
-            break;
-        case 'none':
-            break;
-    }
-
-    return raw;
+    return result;
 }
 
 interface UseActionMenuOptions {

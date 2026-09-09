@@ -1,7 +1,7 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
-import { loadRawInteractionData, loadInteractionMessages, loadInteractionMessagesPaginated } from './storage';
+import { loadRawInteractionData, loadInteractionMessagesPaginated } from './storage';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
@@ -65,9 +65,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
 
+            // Load messages using paginated loader — only fetches last 50
             if (!chat.interactionHistory.length && (chat.numberOfMessages ?? 0) > 0) {
                 try {
-                    fullChat = await loadInteractionMessagesPaginated(chat);
+                    const result = await loadInteractionMessagesPaginated(chat, 50);
+                    fullChat = result.data;
                 } catch (e) {
                     console.warn('Failed to load chat messages for fallback:', e);
                 }
@@ -123,14 +125,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     return;
                 }
 
+                // loadRawInteractionData now returns shell WITHOUT loading messages
                 const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
 
                 if (interactionDataResult) {
-                    let fullChat = interactionDataResult;
-                    if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.interactionHistory.length === 0) {
-                        try { fullChat = await loadInteractionMessagesPaginated(interactionDataResult); } catch (e) { console.warn('Failed to load chat messages, using shell:', e); }
-                    }
-                    await activateChat(fullChat as InteractionData);
+                    await activateChat(interactionDataResult);
                 } else {
                     console.warn('Active chat not found, falling back.');
                     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
