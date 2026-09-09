@@ -6,7 +6,8 @@ import type {
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData,
-  RawBudgetData
+  RawBudgetData,
+  HistoryMessage
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -1126,6 +1127,123 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is InteractionMessage => m !== null);
 
     return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
+}
+
+// Load only the last `limit` messages (most recent first)
+export async function loadInteractionMessagesPaginated(
+    interactionData: InteractionData,
+    limit: number = 50
+): Promise<{ data: InteractionData; hasMoreAbove: boolean }> {
+    if (interactionData.interactionHistory.length > 0) {
+        return { data: interactionData, hasMoreAbove: false };
+    }
+
+    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
+    if (!rawInteractionData || !rawInteractionData.interactionIdHistory || rawInteractionData.interactionIdHistory.length === 0) {
+        return { data: interactionData, hasMoreAbove: false };
+    }
+
+    const allIds = rawInteractionData.interactionIdHistory;
+    const totalMessages = allIds.length;
+    const hasMoreAbove = totalMessages > limit;
+
+    // Take only the last `limit` IDs
+    const idsToLoad = allIds.slice(-limit);
+
+    const charMap = new Map<string, Character>();
+    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
+    for (const p of interactionData.participants) {
+        charMap.set(p.id, p);
+    }
+
+    const messagePromises = idsToLoad.map(async (messageId) => {
+        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+        if (!rawMessage) return null;
+
+        const character = charMap.get(rawMessage.characterId);
+        const { characterId, ...messageWithoutCharId } = rawMessage;
+
+        return {
+            id: messageId,
+            ...messageWithoutCharId,
+            character: character || {
+                id: characterId,
+                name: '[Unknown]',
+                images: {},
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now()
+            } as Character
+        };
+    });
+
+    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
+
+    return {
+        data: { ...interactionData, interactionHistory, numberOfMessages: totalMessages },
+        hasMoreAbove,
+    };
+}
+
+// Load older messages and prepend them to existing history
+export async function loadOlderMessages(
+    interactionData: InteractionData,
+    batchSize: number = 50
+): Promise<{ data: InteractionData; hasMoreAbove: boolean }> {
+    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
+    if (!rawInteractionData || !rawInteractionData.interactionIdHistory) {
+        return { data: interactionData, hasMoreAbove: false };
+    }
+
+    const allIds = rawInteractionData.interactionIdHistory;
+    const loadedCount = interactionData.interactionHistory.length;
+
+    if (loadedCount >= allIds.length) {
+        return { data: interactionData, hasMoreAbove: false };
+    }
+
+    // Figure out which IDs we haven't loaded yet
+    const loadedIds = new Set(interactionData.interactionHistory.map(m => m.id));
+    const unloadedIds = allIds.filter(id => !loadedIds.has(id));
+
+    // Take the most recent batch of unloaded IDs (closest to already-loaded messages)
+    const idsToLoad = unloadedIds.slice(-batchSize);
+    const hasMoreAbove = unloadedIds.length > batchSize;
+
+    const charMap = new Map<string, Character>();
+    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
+    for (const p of interactionData.participants) {
+        charMap.set(p.id, p);
+    }
+
+    const messagePromises = idsToLoad.map(async (messageId) => {
+        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+        if (!rawMessage) return null;
+
+        const character = charMap.get(rawMessage.characterId);
+        const { characterId, ...messageWithoutCharId } = rawMessage;
+
+        return {
+            id: messageId,
+            ...messageWithoutCharId,
+            character: character || {
+                id: characterId,
+                name: '[Unknown]',
+                images: {},
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now()
+            } as Character
+        };
+    });
+
+    const olderMessages = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
+
+    // Prepend older messages to existing history, maintaining chronological order
+    const mergedHistory = [...olderMessages, ...interactionData.interactionHistory];
+
+    return {
+        data: { ...interactionData, interactionHistory: mergedHistory, numberOfMessages: allIds.length },
+        hasMoreAbove,
+    };
 }
 
 export async function loadRawInteractionData(

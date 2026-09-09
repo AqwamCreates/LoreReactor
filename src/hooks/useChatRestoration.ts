@@ -1,7 +1,7 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
-import { loadRawInteractionData, loadInteractionMessages } from './storage';
+import { loadRawInteractionData, loadInteractionMessages, loadInteractionMessagesPaginated } from './storage';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
@@ -67,7 +67,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
             if (!chat.interactionHistory.length && (chat.numberOfMessages ?? 0) > 0) {
                 try {
-                    fullChat = await loadInteractionMessages(chat);
+                    fullChat = await loadInteractionMessagesPaginated(chat);
                 } catch (e) {
                     console.warn('Failed to load chat messages for fallback:', e);
                 }
@@ -128,7 +128,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 if (interactionDataResult) {
                     let fullChat = interactionDataResult;
                     if (fullChat.numberOfMessages && fullChat.numberOfMessages > 0 && fullChat.interactionHistory.length === 0) {
-                        try { fullChat = await loadInteractionMessages(interactionDataResult); } catch (e) { console.warn('Failed to load chat messages, using shell:', e); }
+                        try { fullChat = await loadInteractionMessagesPaginated(interactionDataResult); } catch (e) { console.warn('Failed to load chat messages, using shell:', e); }
                     }
                     await activateChat(fullChat as InteractionData);
                 } else {

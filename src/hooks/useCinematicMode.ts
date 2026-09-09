@@ -12,12 +12,15 @@ interface UseCinematicModeOptions {
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
+    /** Only observe these message IDs (from virtualization) */
+    renderedMessageIds?: Set<string>;
 }
 
 export function useCinematicMode(options: UseCinematicModeOptions) {
     const {
         viewMode, interactionData, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
+        renderedMessageIds,
     } = options;
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
@@ -69,7 +72,6 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         const locations = interactionData.locations;
         if (!locations?.length) return null;
 
-        // Search backwards through full history (not just chat messages) for location changes
         const history = interactionData.interactionHistory;
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
@@ -86,12 +88,14 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
     }, [interactionData]);
 
     // IntersectionObserver for cinematic avatar selection
+    // Now scoped to only rendered message elements
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
             const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
             return () => window.clearTimeout(resetAvatar);
         }
+
         const opts = { root: chatHistoryElement, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
         const obs = new IntersectionObserver(entries => {
             const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
@@ -111,7 +115,16 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             (best.target as HTMLElement).classList.add('is-active');
             lastViewedMessageIdRef.current = mid;
         }, opts);
-        for (const el of chatHistoryElement.querySelectorAll('[data-message-id]')) obs.observe(el);
+
+        // Only observe elements that are actually in the DOM (virtualized subset)
+        const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
+        for (const el of elements) {
+            const id = el.getAttribute('data-message-id');
+            if (!renderedMessageIds || (id && renderedMessageIds.has(id))) {
+                obs.observe(el);
+            }
+        }
+
         let fallbackTimer: number | undefined;
         if (!centerAvatar) {
             fallbackTimer = window.setTimeout(() => {
@@ -124,8 +137,9 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
                 }
             }, 0);
         }
+
         return () => { obs.disconnect(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer); };
-    }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, chatMessages, chatHistoryRef]);
+    }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, chatMessages, chatHistoryRef, renderedMessageIds]);
 
     // Reset scroll on view mode change
     useEffect(() => {

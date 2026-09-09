@@ -15,7 +15,7 @@ import { useProfileManager } from '../hooks/useProfileManager';
 import { useWorldManager } from '../hooks/useWorldManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
+import { saveRawInteractionData, loadRawInteractionData, loadOlderMessages } from '../hooks/storage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getDelayedDisplayName } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -122,6 +122,11 @@ function App() {
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const initialImageProcessedChatIdRef = useRef<string | null>(null);
 
+    // ─── Pagination State ────────────────────────────────────────────
+    const [hasMoreAbove, setHasMoreAbove] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+    const loadOlderObserverRef = useRef<IntersectionObserver | null>(null);
+
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
         allCharacters, allChats, loadFullCharacter,
@@ -213,6 +218,7 @@ function App() {
     const isMassActive = massDeleteId !== null;
     const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
     const formattedStreamingText = useMemo(() => formatMessageText(streamingText), [streamingText]);
+    const hiddenAboveCount = interactionData ? Math.max(0, (interactionData.numberOfMessages ?? 0) - InteractionMessages.length) : 0;
 
     const maximumNumberOfContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
@@ -292,6 +298,23 @@ function App() {
         }
     }, [currentCharacter, interactionData, processProtagonistImageSilently]);
 
+    // Reset pagination state when switching chats
+    useEffect(() => {
+        setHasMoreAbove(false);
+        setIsLoadingOlder(false);
+    }, [interactionData?.id]);
+
+    // Derive hasMoreAbove from loaded vs total message count
+    useEffect(() => {
+        if (!interactionData) {
+            setHasMoreAbove(false);
+            return;
+        }
+        const total = interactionData.numberOfMessages ?? 0;
+        const loaded = interactionData.interactionHistory?.length ?? 0;
+        setHasMoreAbove(loaded < total);
+    }, [interactionData?.numberOfMessages, interactionData?.interactionHistory?.length, interactionData?.id]);
+
     // Loading screen
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
@@ -339,16 +362,13 @@ function App() {
         const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
         const hasContent = nonProtagParticipants.length > 0 || currentCount > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile;
 
-        // Mark as modified if chat has any meaningful content
         if (!chatModifiedRef.current && hasContent) {
             chatModifiedRef.current = true;
         }
 
-        // Save when message count changes (new messages added or removed)
         if (chatModifiedRef.current && currentCount !== previousMessageCountRef.current) {
             previousMessageCountRef.current = currentCount;
             saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
-            // Ensure chat appears in list
             if (!allChats.some(c => c.id === interactionData.id)) {
                 refreshChatList();
             }
@@ -422,6 +442,62 @@ function App() {
         const ci = InteractionMessages.findIndex(m => m.id === mid);
         return ci !== -1 && ci <= bi;
     };
+
+    const handleLoadOlderMessages = useCallback(async () => {
+        if (!interactionData || isLoadingOlder || !hasMoreAbove) return;
+        setIsLoadingOlder(true);
+        try {
+            const result = await loadOlderMessages(interactionData, 50);
+            setInteractionData(result.data);
+        } catch (e) {
+            console.error('Failed to load older messages:', e);
+            addToast('Failed to load older messages.', 'error');
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [interactionData, isLoadingOlder, hasMoreAbove, setInteractionData, addToast]);
+
+    // Sentinel ref callback for IntersectionObserver-based auto-loading
+    const sentinelRef = useCallback((el: HTMLDivElement | null) => {
+        // Clean up previous observer
+        if (loadOlderObserverRef.current) {
+            loadOlderObserverRef.current.disconnect();
+            loadOlderObserverRef.current = null;
+        }
+
+        if (!el || !hasMoreAbove || isLoadingOlder || !interactionData) return;
+
+        const root = chatHistoryRef.current;
+        if (!root) return;
+
+        const obs = new IntersectionObserver(
+            (entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting) {
+                        handleLoadOlderMessages();
+                    }
+                }
+            },
+            {
+                root,
+                rootMargin: '200px 0px 0px 0px',
+                threshold: 0,
+            }
+        );
+
+        obs.observe(el);
+        loadOlderObserverRef.current = obs;
+    }, [hasMoreAbove, isLoadingOlder, interactionData, chatHistoryRef, handleLoadOlderMessages]);
+
+    // Cleanup observer on unmount
+    useEffect(() => {
+        return () => {
+            if (loadOlderObserverRef.current) {
+                loadOlderObserverRef.current.disconnect();
+                loadOlderObserverRef.current = null;
+            }
+        };
+    }, []);
 
     const toggleViewMode = () => {
         const container = chatHistoryRef.current;
@@ -601,6 +677,21 @@ function App() {
                     </div></div></header>
 
                     <div className="chat-history" ref={chatHistoryRef}>
+                        {/* Invisible sentinel — triggers auto-load when scrolled near top */}
+                        {hasMoreAbove && (
+                            <div
+                                ref={sentinelRef}
+                                style={{ height: '1px', width: '100%' }}
+                            />
+                        )}
+
+                        {/* Loading indicator while fetching older messages */}
+                        {isLoadingOlder && (
+                            <div style={{ textAlign: 'center', padding: '8px', opacity: 0.5, fontSize: '0.8em' }}>
+                                Loading older messages...
+                            </div>
+                        )}
+
                         {viewMode === 'cinematic' && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
@@ -611,6 +702,7 @@ function App() {
                                 onAvatarClick={handleAvatarClick}
                             />
                         )}
+
                         {displayMessages.map((message, renderIndex) => {
                             const index = viewMode === 'cinematic' ? InteractionMessages.length - 1 - renderIndex : renderIndex;
                             if (!message.character) return null;
@@ -660,6 +752,7 @@ function App() {
                                 />
                             );
                         })}
+
                         {viewMode === 'ladder' && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
@@ -670,6 +763,7 @@ function App() {
                                 onAvatarClick={handleAvatarClick}
                             />
                         )}
+
                         {InteractionMessages.length === 0 && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
