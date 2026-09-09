@@ -1,6 +1,5 @@
 // src/App.tsx
-import type React from 'react';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -68,7 +67,6 @@ function findSafeFormatBoundary(text: string): number {
     // Check for unclosed triple backticks (code blocks)
     const tripleBacktickCount = (text.match(/```/g) || []).length;
     if (tripleBacktickCount % 2 !== 0) {
-        // Unclosed code block — find the last ``` and treat everything after as unsafe
         const lastIdx = text.lastIndexOf('```');
         return lastIdx >= 0 ? lastIdx : 0;
     }
@@ -95,15 +93,12 @@ function findSafeFormatBoundary(text: string): number {
     }
 
     // Check for unclosed single asterisks (italic) — but not inside **
-    // Strip all ** first, then count remaining *
     const strippedOfBold = text.replace(/\*\*/g, '');
     const singleAsteriskCount = (strippedOfBold.match(/\*/g) || []).length;
     if (singleAsteriskCount % 2 !== 0) {
-        // Find last standalone * (not part of **)
         let lastSafe = text.length;
         for (let i = text.length - 1; i >= 0; i--) {
             if (text[i] === '*') {
-                // Check it's not part of **
                 const isDouble = (i > 0 && text[i - 1] === '*') || (i < text.length - 1 && text[i + 1] === '*');
                 if (!isDouble) {
                     lastSafe = i;
@@ -132,7 +127,7 @@ function App() {
     const { addToast } = useToast();
 
     // ─── Manager Hooks ───────────────────────────────────────────────
-    const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList } = useChatListManager();
+    const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList, ensureLoaded: ensureChatsLoaded } = useChatListManager();
     const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
     const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
@@ -266,12 +261,12 @@ function App() {
     const displayNameCache = useDisplayNameCache(interactionData);
 
     // ─── Incremental Streaming Text Formatting ───────────────────────
-    const streamFormatCacheRef = useRef<{ rawPrefix: string; formattedPrefix: string }>({ rawPrefix: '', formattedPrefix: '' });
+    const streamFormatCacheRef = useRef<{ rawPrefix: string; formattedPrefix: React.ReactNode }>({ rawPrefix: '', formattedPrefix: null });
 
-    const formattedStreamingText = useMemo(() => {
+    const formattedStreamingText = useMemo((): React.ReactNode => {
         if (!streamingText) {
-            streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: '' };
-            return '';
+            streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: null };
+            return null;
         }
 
         const cache = streamFormatCacheRef.current;
@@ -281,7 +276,6 @@ function App() {
             const newRawTail = streamingText.slice(cache.rawPrefix.length);
 
             if (newRawTail.length === 0) {
-                // No new content
                 return cache.formattedPrefix;
             }
 
@@ -289,8 +283,7 @@ function App() {
             const safeLen = findSafeFormatBoundary(newRawTail);
 
             if (safeLen === 0) {
-                // Entire new tail is unsafe (e.g., starts with unclosed pattern)
-                // Re-parse everything from scratch to be safe
+                // Entire new tail is unsafe — re-parse everything
                 const fullFormatted = formatMessageText(streamingText);
                 streamFormatCacheRef.current = { rawPrefix: streamingText, formattedPrefix: fullFormatted };
                 return fullFormatted;
@@ -300,24 +293,31 @@ function App() {
             const safeNewRaw = newRawTail.slice(0, safeLen);
             const unsafeNewRaw = newRawTail.slice(safeLen);
 
-            // We need to format the safe new portion in context of what came before.
-            // Concatenate cached formatted prefix + safe new raw, parse that segment,
-            // then append unsafe tail as plain text.
-            const combinedForParse = cache.formattedPrefix + safeNewRaw;
-            const parsedCombined = formatMessageText(combinedForParse);
+            // Parse the safe new portion in isolation
+            const parsedNewSegment = formatMessageText(safeNewRaw);
 
-            // The result includes re-parsed cached prefix + newly formatted safe tail.
-            // Append unsafe tail as-is (will be properly formatted next tick).
-            const result = parsedCombined + unsafeNewRaw;
+            // Combine cached formatted prefix + newly formatted segment
+            const combinedFormatted = React.createElement(React.Fragment, null,
+                cache.formattedPrefix,
+                parsedNewSegment,
+            );
 
-            // Update cache: the safe boundary extends into the raw text
+            // Update cache
             const newSafeRawPrefix = streamingText.slice(0, cache.rawPrefix.length + safeLen);
             streamFormatCacheRef.current = {
                 rawPrefix: newSafeRawPrefix,
-                formattedPrefix: parsedCombined,
+                formattedPrefix: combinedFormatted,
             };
 
-            return result;
+            // If there's an unsafe tail, append it as plain text
+            if (unsafeNewRaw.length > 0) {
+                return React.createElement(React.Fragment, null,
+                    combinedFormatted,
+                    React.createElement('span', { className: 'fmt-normal' }, unsafeNewRaw),
+                );
+            }
+
+            return combinedFormatted;
         }
 
         // Text doesn't extend cached prefix (new generation or reset) — full parse
@@ -452,8 +452,7 @@ function App() {
     useEffect(() => {
         chatModifiedRef.current = false;
         previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
-        // Reset streaming format cache on chat switch
-        streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: '' };
+        streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: null };
     }, [interactionData?.id]);
 
     // Auto-save: mark modified when chat has content, save when message count changes
@@ -490,7 +489,6 @@ function App() {
     const lastCountedMessageIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
-        // Cancel any pending calculation
         if (tokenCountTimerRef.current) {
             clearTimeout(tokenCountTimerRef.current);
             tokenCountTimerRef.current = null;
@@ -512,7 +510,6 @@ function App() {
             return;
         }
 
-        // Debounce by 500ms to avoid thrashing during streaming
         tokenCountTimerRef.current = setTimeout(async () => {
             const abort = new AbortController();
             tokenCountAbortRef.current = abort;
@@ -533,7 +530,6 @@ function App() {
                     runtimePort
                 } : undefined;
 
-                // Only count messages that are new or changed since last calculation
                 const prevCountedIds = lastCountedMessageIdsRef.current;
                 const currentMessageIds = new Set<string>();
                 let hasNewMessages = false;
@@ -546,16 +542,12 @@ function App() {
                 }
 
                 if (!hasNewMessages && prevCountedIds.size === currentMessageIds.size) {
-                    // No changes — skip recalculation
                     return;
                 }
 
-                // Count only new/uncounted messages incrementally
                 const engine = new LanguageModelEngine();
                 for (const msg of InteractionMessages) {
                     if (abort.signal.aborted) return;
-
-                    // Skip already-counted messages
                     if (prevCountedIds.has(msg.id)) continue;
 
                     if (msg.character && msg.textContent) {
@@ -570,7 +562,6 @@ function App() {
                     }
                 }
 
-                // Update tracked IDs
                 lastCountedMessageIdsRef.current = currentMessageIds;
 
                 if (!abort.signal.aborted) {
@@ -954,6 +945,7 @@ function App() {
                     onDeleteWorld={deleteWorld}
                     onImportComplete={handleImportComplete}
                     addToast={addToast}
+                    ensureChatsLoaded={ensureChatsLoaded}
                 />
             </div>
 

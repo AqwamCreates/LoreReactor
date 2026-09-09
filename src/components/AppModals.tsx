@@ -20,7 +20,7 @@ import { DataExportModal } from './DataExportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 interface ModalVisibility {
     isOpen: boolean;
@@ -100,6 +100,8 @@ interface AppModalsProps {
     onDeleteWorld: (id: string) => void;
     onImportComplete: () => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+    // Lazy loading
+    ensureChatsLoaded: () => void;
 }
 
 export function AppModals({
@@ -116,6 +118,7 @@ export function AppModals({
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
     onLoadWorld, onDeleteWorld, onImportComplete, addToast,
+    ensureChatsLoaded,
 }: AppModalsProps) {
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -123,12 +126,17 @@ export function AppModals({
     const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
 
     // Save redirect callbacks for AI recommendation refinement flow.
-    // When set, the editor's onSave is redirected to update the AI recommendation
-    // output instead of persisting to storage. Cleared when the editor closes.
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((c: Character) => void) | null>(null);
     const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((c: Context) => void) | null>(null);
     const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((l: Location) => void) | null>(null);
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((p: Profile) => void) | null>(null);
+
+    // Lazy-load chat shells when chat list modal opens
+    useEffect(() => {
+        if (modals.chatList.isOpen) {
+            ensureChatsLoaded();
+        }
+    }, [modals.chatList.isOpen, ensureChatsLoaded]);
 
     return (
         <>
@@ -489,8 +497,6 @@ export function AppModals({
             )}
 
             {/* ─── Editor Modals (highest z-priority via DOM order) ─── */}
-            {/* These render LAST so they naturally stack on top of everything else, */}
-            {/* including the AI Recommendation modal. No z-index needed. */}
 
             {/* Character Editor */}
             {charModal.isOpen && (
