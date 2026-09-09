@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory } from '../types';
 import { LanguageModelEngine } from '../services/LanguageModelEngine';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, uploadCharacterVoice } from '../hooks/storage';
+import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
@@ -157,7 +157,7 @@ export function CharacterEditorModal({
             const imgs = existingCharacter.images ?? {};
             setEmotionImages(imgs);
             const neutralFilename = imgs.neutral;
-            setImagePreview(neutralFilename ? `/user_data/character_images/${existingCharacter.id}/${neutralFilename}` : null);
+            setImagePreview(neutralFilename ? getCharacterImageUrl(existingCharacter.id, neutralFilename) : null);
             setImageFile(null);
             setPendingCharacterId(null);
 
@@ -559,7 +559,7 @@ export function CharacterEditorModal({
                 onSave={(updatedImages) => {
                     setEmotionImages(updatedImages);
                     const neutral = updatedImages.neutral;
-                    if (neutral) { setImagePreview(`/user_data/character_images/${effectiveCharacterId}/${neutral}`); setImageFile(null); }
+                    if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
                     else if (!imageFile) { setImagePreview(null); }
                 }}
             />

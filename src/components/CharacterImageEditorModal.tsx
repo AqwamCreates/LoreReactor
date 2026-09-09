@@ -1,7 +1,7 @@
 // src/components/CharacterImageEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { uploadCharacterImage } from '../hooks/storage';
+import { uploadCharacterImage, getCharacterImageUrl } from '../hooks/storage';
 import './main.css';
 
 const EMOTION_LABELS = [
@@ -39,10 +39,6 @@ export function CharacterImageEditorModal({
             setLocalImages({ ...images });
         }
     }, [isOpen, images]);
-
-    const getImageUrl = (filename: string): string => {
-        return `/user_data/character_images/${characterId}/${filename}`;
-    };
 
     const handleFileChange = async (emotion: string, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -100,7 +96,7 @@ export function CharacterImageEditorModal({
                     <div className="editor-image-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px' }}>
                         {sortedEmotions.map(emotion => {
                             const filename = localImages[emotion];
-                            const previewUrl = filename ? getImageUrl(filename) : null;
+                            const previewUrl = filename ? getCharacterImageUrl(characterId, filename) : null;
                             const isUploading = uploadingEmotion === emotion;
 
                             return (
