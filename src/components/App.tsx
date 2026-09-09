@@ -311,6 +311,7 @@ function App() {
     const [isFadeOut, setIsFadeOut] = useState(false);
     const loadingStartedAtRef = useRef<number | null>(null);
     const chatModifiedRef = useRef(false);
+    const previousMessageCountRef = useRef<number>(0);
 
     useEffect(() => {
         if (!isInitializing) return;
@@ -323,16 +324,35 @@ function App() {
         return () => clearTimeout(hold);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    useEffect(() => { chatModifiedRef.current = false; }, []);
+    // Reset tracking refs when switching chats
     useEffect(() => {
-        if (!interactionData || !interactionData.id || chatModifiedRef.current) return;
+        chatModifiedRef.current = false;
+        previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
+    }, [interactionData?.id]);
+
+    // Auto-save: mark modified when chat has content, save when message count changes
+    useEffect(() => {
+        if (!interactionData || !interactionData.id) return;
+
+        const currentCount = interactionData.interactionHistory?.length ?? 0;
         const protagId = interactionData.protagonist?.id;
         const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
-        if (nonProtagParticipants.length > 0 || InteractionMessages.length > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile) chatModifiedRef.current = true;
-    }, [interactionData, InteractionMessages]);
-    useEffect(() => {
-        if (!interactionData || !interactionData.id || !chatModifiedRef.current) return;
-        if (!allChats.some(c => c.id === interactionData.id)) { saveRawInteractionData(interactionData).catch(e => console.error('Failed to save new chat:', e)); refreshChatList(); }
+        const hasContent = nonProtagParticipants.length > 0 || currentCount > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile;
+
+        // Mark as modified if chat has any meaningful content
+        if (!chatModifiedRef.current && hasContent) {
+            chatModifiedRef.current = true;
+        }
+
+        // Save when message count changes (new messages added or removed)
+        if (chatModifiedRef.current && currentCount !== previousMessageCountRef.current) {
+            previousMessageCountRef.current = currentCount;
+            saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
+            // Ensure chat appears in list
+            if (!allChats.some(c => c.id === interactionData.id)) {
+                refreshChatList();
+            }
+        }
     }, [interactionData, allChats, refreshChatList]);
 
     // Textarea auto-resize

@@ -154,16 +154,16 @@ export class BudgetStrategyEngine {
         const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;
 
         // Speed factor: lower ms/token = better
-        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 1;
+        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 0;
 
         // TTFT factor: lower = better
-        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 1;
+        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 0;
 
         // Average session duration factor
-        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 1;
+        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 0;
 
         // Reliability factor
-        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 1;
+        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 0;
 
         return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
     }
