@@ -358,34 +358,124 @@ function App() {
     useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
     useEffect(() => { if (!editTextareaRef.current || !editingId) return; editTextareaRef.current.style.height = 'auto'; editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`; });
 
-    // Max tokens calculation
+    // Max tokens calculation — debounced, incremental
+    const tokenCountAbortRef = useRef<AbortController | null>(null);
+    const tokenCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastCountedMessageIdsRef = useRef<Set<string>>(new Set());
+
     useEffect(() => {
-        if (InteractionMessages.length === 0 || !interactionData?.participants) return;
-        let isCancelled = false;
-        (async () => {
-            if (activeStrategy) {
-                if (!isCancelled) setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
-                return;
-            }
-            const participantCounts: Record<string, number> = {};
-            for (const p of interactionData.participants) participantCounts[p.id] = 0;
-            if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) participantCounts[interactionData.protagonist.id] = 0;
-            const selectedModel = allModels.find(m => m.id === selectedModelId);
-            const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
-            const modelContext = selectedModel ? { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: typeof selectedModel.parameters?.modelPath === 'string' ? selectedModel.parameters.modelPath : undefined, runtimePort } : undefined;
-            for (const msg of InteractionMessages) {
-                if (msg.character && msg.textContent) {
-                    const charId = msg.character.id;
-                    if (participantCounts[charId] !== undefined || charId === '__ambient_narrator__') {
-                        const tokens = await new LanguageModelEngine().countTokens(msg.textContent, modelContext);
-                        if (participantCounts[charId] !== undefined) participantCounts[charId] += tokens;
+        // Cancel any pending calculation
+        if (tokenCountTimerRef.current) {
+            clearTimeout(tokenCountTimerRef.current);
+            tokenCountTimerRef.current = null;
+        }
+        if (tokenCountAbortRef.current) {
+            tokenCountAbortRef.current.abort();
+            tokenCountAbortRef.current = null;
+        }
+
+        if (InteractionMessages.length === 0 || !interactionData?.participants) {
+            setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
+            lastCountedMessageIdsRef.current.clear();
+            return;
+        }
+
+        if (activeStrategy) {
+            setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
+            lastCountedMessageIdsRef.current.clear();
+            return;
+        }
+
+        // Debounce by 500ms to avoid thrashing during streaming
+        tokenCountTimerRef.current = setTimeout(async () => {
+            const abort = new AbortController();
+            tokenCountAbortRef.current = abort;
+
+            try {
+                const participantCounts: Record<string, number> = {};
+                for (const p of interactionData.participants) participantCounts[p.id] = 0;
+                if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) {
+                    participantCounts[interactionData.protagonist.id] = 0;
+                }
+
+                const selectedModel = allModels.find(m => m.id === selectedModelId);
+                const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
+                const modelContext = selectedModel ? {
+                    apiKey: selectedModel.apiKey,
+                    backend: selectedModel.backend,
+                    modelPath: typeof selectedModel.parameters?.modelPath === 'string' ? selectedModel.parameters.modelPath : undefined,
+                    runtimePort
+                } : undefined;
+
+                // Only count messages that are new or changed since last calculation
+                const prevCountedIds = lastCountedMessageIdsRef.current;
+                const currentMessageIds = new Set<string>();
+                let hasNewMessages = false;
+
+                for (const msg of InteractionMessages) {
+                    currentMessageIds.add(msg.id);
+                    if (!prevCountedIds.has(msg.id)) {
+                        hasNewMessages = true;
                     }
                 }
+
+                if (!hasNewMessages && prevCountedIds.size === currentMessageIds.size) {
+                    // No changes — skip recalculation
+                    return;
+                }
+
+                // Count only new/uncounted messages incrementally
+                const engine = new LanguageModelEngine();
+                for (const msg of InteractionMessages) {
+                    if (abort.signal.aborted) return;
+
+                    // Skip already-counted messages
+                    if (prevCountedIds.has(msg.id)) continue;
+
+                    if (msg.character && msg.textContent) {
+                        const charId = msg.character.id;
+                        if (participantCounts[charId] !== undefined || charId === '__ambient_narrator__') {
+                            const tokens = await engine.countTokens(msg.textContent, modelContext);
+                            if (abort.signal.aborted) return;
+                            if (participantCounts[charId] !== undefined) {
+                                participantCounts[charId] += tokens;
+                            }
+                        }
+                    }
+                }
+
+                // Update tracked IDs
+                lastCountedMessageIdsRef.current = currentMessageIds;
+
+                if (!abort.signal.aborted) {
+                    setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(
+                        Math.max(...Object.values(participantCounts), 0)
+                    );
+                }
+            } catch (e) {
+                if ((e as Error).name !== 'AbortError') {
+                    console.error('Token counting failed:', e);
+                }
             }
-            if (!isCancelled) setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(Math.max(...Object.values(participantCounts), 0));
-        })();
-        return () => { isCancelled = true; };
+        }, 500);
+
+        return () => {
+            if (tokenCountTimerRef.current) {
+                clearTimeout(tokenCountTimerRef.current);
+                tokenCountTimerRef.current = null;
+            }
+            if (tokenCountAbortRef.current) {
+                tokenCountAbortRef.current.abort();
+                tokenCountAbortRef.current = null;
+            }
+        };
     }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
+
+    // Reset token counting state when switching chats
+    useEffect(() => {
+        lastCountedMessageIdsRef.current.clear();
+        setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
+    }, [interactionData?.id]);
 
     // ─── Callbacks ───────────────────────────────────────────────────
     const fileInputRef = useRef<HTMLInputElement>(null);
