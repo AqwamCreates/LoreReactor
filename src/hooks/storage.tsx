@@ -435,7 +435,7 @@ export async function loadRawSampler(id: string): Promise<Sampler | null> {
     
     const stopPatternIds = rawSampler.stopPatternIds || [];
     const stopPatternsPromises = stopPatternIds.map(sid => loadRawStopPattern(sid));
-    const stopPatternsResults = await Promise.all(stopPatternsPromises);
+    const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
     return { 
@@ -802,7 +802,6 @@ export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy 
           maximumBudget: rawStrategy.maximumBudget,
           firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp || Date.now(),
           lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp || Date.now(),
-          // Preserve raw IDs for reconciliation when models load later
           _rawOnlineModelIds: rawStrategy.onlineModelIds || [],
           _rawLocalModelIds: rawStrategy.localModelIds || [],
       };
@@ -1246,6 +1245,7 @@ export async function loadOlderMessages(
     };
 }
 
+/** Returns shell WITHOUT loading messages — paginated loader handles initial load. */
 export async function loadRawInteractionData(
   id: string,
   existingCharShells?: Character[]
@@ -1301,6 +1301,17 @@ export async function loadRawInteractionData(
   const shell = await buildInteractionDataShell(id, rawInteractionData, charMap, contextMap, locationMap, profileMap);
   if (!shell) return null;
 
+  // Return shell without loading messages — caller uses loadInteractionMessagesPaginated
+  return shell;
+}
+
+/** Internal: loads full interaction data including all messages (for branching). */
+async function loadRawInteractionDataFull(
+  id: string,
+  existingCharShells?: Character[]
+): Promise<InteractionData | null> {
+  const shell = await loadRawInteractionData(id, existingCharShells);
+  if (!shell) return null;
   return loadInteractionMessages(shell);
 }
 
@@ -1371,7 +1382,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 }
 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentInteractionMessageId: string): Promise<string> {
-  const sourceChat = await loadRawInteractionData(parentInteractionDataId);
+  const sourceChat = await loadRawInteractionDataFull(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
   const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentInteractionMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
