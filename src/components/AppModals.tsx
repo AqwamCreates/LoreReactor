@@ -20,7 +20,7 @@ import { DataExportModal } from './DataExportModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 interface ModalVisibility {
     isOpen: boolean;
@@ -122,6 +122,14 @@ export function AppModals({
     const selectedModelId = useSessionStore(s => s.selectedModel?.id ?? null);
     const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
 
+    // Save redirect callbacks for AI recommendation refinement flow.
+    // When set, the editor's onSave is redirected to update the AI recommendation
+    // output instead of persisting to storage. Cleared when the editor closes.
+    const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((c: Character) => void) | null>(null);
+    const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((c: Context) => void) | null>(null);
+    const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((l: Location) => void) | null>(null);
+    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((p: Profile) => void) | null>(null);
+
     return (
         <>
             {/* Chat Sessions */}
@@ -167,8 +175,18 @@ export function AppModals({
             {charModal.isOpen && (
                 <CharacterEditorModal
                     isOpen={charModal.isOpen}
-                    onClose={charModal.close}
-                    onSave={charModal.handleSave}
+                    onClose={() => {
+                        setAiCharacterSaveRedirect(null);
+                        charModal.close();
+                    }}
+                    onSave={(c: Character) => {
+                        if (aiCharacterSaveRedirect) {
+                            aiCharacterSaveRedirect(c);
+                            addToast('Applied character changes to AI recommendation.', 'success');
+                        } else {
+                            charModal.handleSave(c);
+                        }
+                    }}
                     existingCharacter={charModal.itemToEdit}
                     allSamplers={allSamplers}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
@@ -197,8 +215,18 @@ export function AppModals({
             {contextModal.isOpen && (
                 <ContextEditorModal
                     isOpen={contextModal.isOpen}
-                    onClose={contextModal.close}
-                    onSave={contextModal.handleSave}
+                    onClose={() => {
+                        setAiContextSaveRedirect(null);
+                        contextModal.close();
+                    }}
+                    onSave={(c: Context) => {
+                        if (aiContextSaveRedirect) {
+                            aiContextSaveRedirect(c);
+                            addToast('Applied context changes to AI recommendation.', 'success');
+                        } else {
+                            contextModal.handleSave(c);
+                        }
+                    }}
                     existingContext={contextModal.itemToEdit}
                     allCharacters={allCharacters}
                 />
@@ -225,8 +253,18 @@ export function AppModals({
             {locationModal.isOpen && (
                 <LocationEditorModal
                     isOpen={locationModal.isOpen}
-                    onClose={locationModal.close}
-                    onSave={locationModal.handleSave}
+                    onClose={() => {
+                        setAiLocationSaveRedirect(null);
+                        locationModal.close();
+                    }}
+                    onSave={(l: Location) => {
+                        if (aiLocationSaveRedirect) {
+                            aiLocationSaveRedirect(l);
+                            addToast('Applied location changes to AI recommendation.', 'success');
+                        } else {
+                            locationModal.handleSave(l);
+                        }
+                    }}
                     existingLocation={locationModal.itemToEdit}
                     allCharacters={allCharacters}
                     allLocations={allLocations}
@@ -429,8 +467,18 @@ export function AppModals({
             {profileModal.isOpen && (
                 <ProfileEditorModal
                     isOpen={profileModal.isOpen}
-                    onClose={profileModal.close}
-                    onSave={profileModal.handleSave}
+                    onClose={() => {
+                        setAiProfileSaveRedirect(null);
+                        profileModal.close();
+                    }}
+                    onSave={(p: Profile) => {
+                        if (aiProfileSaveRedirect) {
+                            aiProfileSaveRedirect(p);
+                            addToast('Applied profile changes to AI recommendation.', 'success');
+                        } else {
+                            profileModal.handleSave(p);
+                        }
+                    }}
                     existingProfile={profileModal.itemToEdit}
                 />
             )}
@@ -488,10 +536,22 @@ export function AppModals({
                     onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
                     onSaveProfile={async (p: Profile) => { onSaveProfile(p); return true; }}
                     onSaveWorld={async (w: World) => { onSaveWorld(w); return true; }}
-                    onOpenCharacterEditor={(char) => charModal.open(char)}
-                    onOpenContextEditor={(ctx) => contextModal.open(ctx)}
-                    onOpenLocationEditor={(loc) => locationModal.open(loc)}
-                    onOpenProfileEditor={(profile) => profileModal.open(profile)}
+                    onOpenCharacterEditor={(char, onApplyToRecommendation) => {
+                        setAiCharacterSaveRedirect(() => onApplyToRecommendation);
+                        charModal.open(char ?? undefined);
+                    }}
+                    onOpenContextEditor={(ctx, onApplyToRecommendation) => {
+                        setAiContextSaveRedirect(() => onApplyToRecommendation);
+                        contextModal.open(ctx ?? undefined);
+                    }}
+                    onOpenLocationEditor={(loc, onApplyToRecommendation) => {
+                        setAiLocationSaveRedirect(() => onApplyToRecommendation);
+                        locationModal.open(loc ?? undefined);
+                    }}
+                    onOpenProfileEditor={(profile, onApplyToRecommendation) => {
+                        setAiProfileSaveRedirect(() => onApplyToRecommendation);
+                        profileModal.open(profile ?? undefined);
+                    }}
                     allSamplers={allSamplers}
                     allCharacters={allCharacters}
                     allContexts={allContexts}

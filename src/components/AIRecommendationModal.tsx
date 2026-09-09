@@ -314,6 +314,24 @@ function generatedCharacterToEntity(c: GeneratedCharacter, samplers: Sampler[]):
     };
 }
 
+function characterEntityToGenerated(c: Character): GeneratedCharacter {
+    return {
+        name: c.name, description: c.description || undefined,
+        systemPrompt: c.systemPrompt || undefined, thinkPrompt: c.thinkPrompt,
+        appearancePrompt: c.appearancePrompt, dialoguePrompt: c.dialoguePrompt,
+        initiativeWeight: c.initiativeWeight, chatProbability: c.chatProbability,
+        maximumChatStamina: c.maximumChatStamina, nameSensitivity: c.nameSensitivity,
+        chatImpatienceSensitivity: c.chatImpatienceSensitivity, skipProbability: c.skipProbability,
+        memoryRetentionWeight: c.memoryRetentionWeight, contextSensitivity: c.contextSensitivity,
+        doNotInjectCharacterImage: c.doNotInjectCharacterImage,
+        numberOfMessagesToDisableThinkPrompt: c.numberOfMessagesToDisableThinkPrompt,
+        numberOfMessagesToDisableMetaThinkInstructions: c.numberOfMessagesToDisableMetaThinkInstructions,
+        numberOfMessagesToDisableDialoguePrompt: c.numberOfMessagesToDisableDialoguePrompt,
+        enableWebSearch: c.enableWebSearch, enableCalculator: c.enableCalculator,
+        enableMemoryWriting: c.enableMemoryWriting, enableMemoryReading: c.enableMemoryReading,
+    };
+}
+
 function generatedContextToEntity(c: GeneratedContext): Context {
     const now = Date.now();
     return {
@@ -334,6 +352,21 @@ function generatedContextToEntity(c: GeneratedContext): Context {
     };
 }
 
+function contextEntityToGenerated(c: Context): GeneratedContext {
+    return {
+        name: c.name, description: c.description, text: c.text,
+        searchTerms: c.searchTerms, urls: c.urls, includeLinkImages: c.includeLinkImages,
+        maximumLinkDepth: c.maximumLinkDepth, linkFetchMode: c.linkFetchMode,
+        limitLinksToSubdirectory: c.limitLinksToSubdirectory, fetchCacheTimeToLiveMs: c.fetchCacheTimeToLiveMs,
+        regularExpressionActivationTrigger: c.regularExpressionActivationTrigger,
+        regularExpressionDeactivationTrigger: c.regularExpressionDeactivationTrigger,
+        regularExpressionContext: c.regularExpressionContext, regularExpressionTarget: c.regularExpressionTarget,
+        tokenBudget: c.tokenBudget, maximumRecursionDepth: c.maximumRecursionDepth,
+        insertionDepth: c.insertionDepth, characterBindings: c.characterBindings,
+        useBase64Encoding: c.useBase64Encoding,
+    };
+}
+
 function generatedLocationToEntity(l: GeneratedLocation): Location {
     const now = Date.now();
     return {
@@ -345,6 +378,17 @@ function generatedLocationToEntity(l: GeneratedLocation): Location {
         characterBindings: l.characterBindings || [], globalWeight: l.globalWeight ?? 1,
         characterWeights: l.characterWeights || {}, useBase64Encoding: l.useBase64Encoding ?? false,
         firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
+    };
+}
+
+function locationEntityToGenerated(l: Location): GeneratedLocation {
+    return {
+        name: l.name, description: l.description, text: l.text,
+        regularExpressionActivationTrigger: l.regularExpressionActivationTrigger,
+        locationBindings: l.locationBindings,
+        locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers,
+        characterBindings: l.characterBindings, globalWeight: l.globalWeight,
+        characterWeights: l.characterWeights, useBase64Encoding: l.useBase64Encoding,
     };
 }
 
@@ -384,6 +428,39 @@ function buildProfileFromGenerated(p: GeneratedProfile): Profile {
     };
 }
 
+function profileEntityToGenerated(p: Profile): GeneratedProfile {
+    return {
+        name: p.name, description: p.description,
+        forceNameReveal: p.forceNameReveal, enableCharacterExpression: p.enableCharacterExpression,
+        forceNoCharacterImageInjection: p.forceNoCharacterImageInjection,
+        forceNoContextImageInjection: p.forceNoContextImageInjection,
+        useCurrentDateAndTime: p.useCurrentDateAndTime, useWeather: p.useWeather,
+        useTimeElapsed: p.useTimeElapsed,
+        numberOfMessagesToDisableThinkPrompt: p.numberOfMessagesToDisableThinkPrompt,
+        numberOfMessagesToDisableMetaThinkInstructions: p.numberOfMessagesToDisableMetaThinkInstructions,
+        numberOfMessagesToDisableDialoguePrompt: p.numberOfMessagesToDisableDialoguePrompt,
+        forceEqualInitiative: p.forceEqualInitiative,
+        chatProbability: p.chatProbability, maximumChatStamina: p.maximumChatStamina,
+        nameSensitivity: p.nameSensitivity, chatImpatienceSensitivity: p.chatImpatienceSensitivity,
+        skipProbability: p.skipProbability, memoryRetentionWeight: p.memoryRetentionWeight,
+        contextSensitivity: p.contextSensitivity, cacheInvalidationReductionLevel: p.cacheInvalidationReductionLevel,
+        narrateNormalText: p.narrateNormalText, narrateQuotedText: p.narrateQuotedText,
+        narrateBoldedText: p.narrateBoldedText, narrateItalicizedText: p.narrateItalicizedText,
+        stripThinkTokens: p.stripThinkTokens,
+        enableWebSearch: p.enableWebSearch, enableCalculator: p.enableCalculator,
+        enableMemoryWriting: p.enableMemoryWriting, enableMemoryReading: p.enableMemoryReading,
+        inputStrategy: p.inputStrategy,
+        summarizationSteps: p.summarizationSteps?.map(s => ({
+            strategyType: s.strategyType, enabled: s.enabled, order: s.order,
+            slidingWindowSize: s.slidingWindowSize, compressionInterval: s.compressionInterval,
+            compressionChunkSize: s.compressionChunkSize, recursiveChunkSize: s.recursiveChunkSize,
+            recursiveMaxDepth: s.recursiveMaxDepth, maskingRelevanceThreshold: s.maskingRelevanceThreshold,
+            maskingKeywordWeight: s.maskingKeywordWeight, summaryTokenBudget: s.summaryTokenBudget,
+            triggerTokenThreshold: s.triggerTokenThreshold,
+        })),
+    };
+}
+
 function resolveWorldCrossReferences(world: GeneratedWorldDefinition): { characters: Character[]; contexts: Context[]; locations: Location[]; profile?: Profile } {
     const now = Date.now();
     const charNameToId = new Map<string, string>();
@@ -419,10 +496,10 @@ interface AIRecommendationModalProps {
     onSaveLocation: (loc: Location) => Promise<boolean>;
     onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
-    onOpenCharacterEditor?: (char: Character | null) => void;
-    onOpenContextEditor?: (ctx: Context | null) => void;
-    onOpenLocationEditor?: (loc: Location | null) => void;
-    onOpenProfileEditor?: (profile: Profile | null) => void;
+    onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
+    onOpenContextEditor?: (ctx: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
+    onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
+    onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     allSamplers: Sampler[];
     allCharacters: Character[];
     allContexts: Context[];
@@ -529,6 +606,73 @@ export function AIRecommendationModal({
     const cancelHistoryEdit = useCallback(() => { setEditingHistoryId(null); setEditingJsonText(''); }, []);
     const loadHistoryToResult = useCallback((entry: JsonHistoryEntry) => { setStreamingText(entry.jsonText); setParsedOutput(entry.parsedOutput); setResultError(null); setIsResultOpen(true); setActiveTab('raw'); }, []);
     const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev.trim(); const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
+
+    /** Update parsedOutput and streamingText when an entity is refined via the editor modal. */
+    const applyRefinedCharacter = useCallback((refined: Character, worldIndex?: number) => {
+        setParsedOutput(prev => {
+            if (!prev) return prev;
+            const gen = characterEntityToGenerated(refined);
+            if (worldIndex !== undefined && prev.world) {
+                const chars = [...prev.world.characters];
+                chars[worldIndex] = gen;
+                const next: GeneratedOutput = { ...prev, world: { ...prev.world, characters: chars } };
+                setStreamingText(JSON.stringify(next, null, 2));
+                return next;
+            }
+            const next: GeneratedOutput = { ...prev, character: gen };
+            setStreamingText(JSON.stringify(next, null, 2));
+            return next;
+        });
+    }, []);
+
+    const applyRefinedContext = useCallback((refined: Context, worldIndex?: number) => {
+        setParsedOutput(prev => {
+            if (!prev) return prev;
+            const gen = contextEntityToGenerated(refined);
+            if (worldIndex !== undefined && prev.world) {
+                const ctxs = [...(prev.world.contexts || [])];
+                ctxs[worldIndex] = gen;
+                const next: GeneratedOutput = { ...prev, world: { ...prev.world, contexts: ctxs } };
+                setStreamingText(JSON.stringify(next, null, 2));
+                return next;
+            }
+            const next: GeneratedOutput = { ...prev, context: gen };
+            setStreamingText(JSON.stringify(next, null, 2));
+            return next;
+        });
+    }, []);
+
+    const applyRefinedLocation = useCallback((refined: Location, worldIndex?: number) => {
+        setParsedOutput(prev => {
+            if (!prev) return prev;
+            const gen = locationEntityToGenerated(refined);
+            if (worldIndex !== undefined && prev.world) {
+                const locs = [...(prev.world.locations || [])];
+                locs[worldIndex] = gen;
+                const next: GeneratedOutput = { ...prev, world: { ...prev.world, locations: locs } };
+                setStreamingText(JSON.stringify(next, null, 2));
+                return next;
+            }
+            const next: GeneratedOutput = { ...prev, location: gen };
+            setStreamingText(JSON.stringify(next, null, 2));
+            return next;
+        });
+    }, []);
+
+    const applyRefinedProfile = useCallback((refined: Profile, isWorldProfile = false) => {
+        setParsedOutput(prev => {
+            if (!prev) return prev;
+            const gen = profileEntityToGenerated(refined);
+            if (isWorldProfile && prev.world) {
+                const next: GeneratedOutput = { ...prev, world: { ...prev.world, profile: gen } };
+                setStreamingText(JSON.stringify(next, null, 2));
+                return next;
+            }
+            const next: GeneratedOutput = { ...prev, profile: gen };
+            setStreamingText(JSON.stringify(next, null, 2));
+            return next;
+        });
+    }, []);
 
     const buildExistingReferenceBlock = (): string => {
         const parts: string[] = [];
@@ -678,13 +822,13 @@ export function AIRecommendationModal({
 
                             {effectiveTab === 'raw' && <div className="entity-raw-output"><pre className="entity-raw-pre">{streamingText || (isGenerating ? '⏳ Waiting...' : '')}</pre></div>}
 
-                            {effectiveTab === 'Character' && parsedOutput?.character && <div className="entity-field-list">{renderSummary(parsedOutput.character.description)}{renderFieldList(Object.entries(parsedOutput.character), ['description'])}{onOpenCharacterEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(parsedOutput.character!, allSamplers))} style={editBtnStyle}>✏️ Open in Character Editor</button></div>}</div>}
+                            {effectiveTab === 'Character' && parsedOutput?.character && <div className="entity-field-list">{renderSummary(parsedOutput.character.description)}{renderFieldList(Object.entries(parsedOutput.character), ['description'])}{onOpenCharacterEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(parsedOutput.character!, allSamplers), (c) => applyRefinedCharacter(c))} style={editBtnStyle}>✏️ Open in Character Editor</button></div>}</div>}
 
-                            {effectiveTab === 'Context' && parsedOutput?.context && <div className="entity-field-list">{renderSummary(parsedOutput.context.description)}{renderFieldList(Object.entries(parsedOutput.context), ['description'])}{onOpenContextEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenContextEditor(generatedContextToEntity(parsedOutput.context!))} style={editBtnStyle}>✏️ Open in Context Editor</button></div>}</div>}
+                            {effectiveTab === 'Context' && parsedOutput?.context && <div className="entity-field-list">{renderSummary(parsedOutput.context.description)}{renderFieldList(Object.entries(parsedOutput.context), ['description'])}{onOpenContextEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenContextEditor(generatedContextToEntity(parsedOutput.context!), (c) => applyRefinedContext(c))} style={editBtnStyle}>✏️ Open in Context Editor</button></div>}</div>}
 
-                            {effectiveTab === 'Location' && parsedOutput?.location && <div className="entity-field-list">{renderSummary(parsedOutput.location.description)}{renderFieldList(Object.entries(parsedOutput.location), ['description'])}{onOpenLocationEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenLocationEditor(generatedLocationToEntity(parsedOutput.location!))} style={editBtnStyle}>✏️ Open in Location Editor</button></div>}</div>}
+                            {effectiveTab === 'Location' && parsedOutput?.location && <div className="entity-field-list">{renderSummary(parsedOutput.location.description)}{renderFieldList(Object.entries(parsedOutput.location), ['description'])}{onOpenLocationEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenLocationEditor(generatedLocationToEntity(parsedOutput.location!), (l) => applyRefinedLocation(l))} style={editBtnStyle}>✏️ Open in Location Editor</button></div>}</div>}
 
-                            {effectiveTab === 'Profile' && parsedOutput?.profile && <div className="entity-field-list">{renderSummary(parsedOutput.profile.description)}{renderFieldList(Object.entries(parsedOutput.profile), ['description'])}{onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.profile!))} style={editBtnStyle}>✏️ Open in Profile Editor</button></div>}</div>}
+                            {effectiveTab === 'Profile' && parsedOutput?.profile && <div className="entity-field-list">{renderSummary(parsedOutput.profile.description)}{renderFieldList(Object.entries(parsedOutput.profile), ['description'])}{onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.profile!), (p) => applyRefinedProfile(p))} style={editBtnStyle}>✏️ Open in Profile Editor</button></div>}</div>}
 
                             {effectiveTab === 'World' && parsedOutput?.world && <div className="entity-field-list">
                                 {renderSummary(parsedOutput.world.description)}
@@ -694,10 +838,10 @@ export function AIRecommendationModal({
                                 {(parsedOutput.world.locations?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput.world.locations!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.locations!.map((l, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>}
                                 {parsedOutput.world.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {parsedOutput.world.profile.name}</div>{parsedOutput.world.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{parsedOutput.world.profile.description.length > 150 ? parsedOutput.world.profile.description.substring(0, 150) + '...' : parsedOutput.world.profile.description}</div>}</div></div>}
                                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {onOpenCharacterEditor && parsedOutput.world.characters.map((c, i) => <button key={`wc-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(c, allSamplers))} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}
-                                    {onOpenContextEditor && (parsedOutput.world.contexts || []).map((c, i) => <button key={`wx-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenContextEditor(generatedContextToEntity(c))} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}
-                                    {onOpenLocationEditor && (parsedOutput.world.locations || []).map((l, i) => <button key={`wl-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenLocationEditor(generatedLocationToEntity(l))} style={worldEditBtnStyle}>✏️ Edit 📍 {l.name}</button>)}
-                                    {onOpenProfileEditor && parsedOutput.world.profile && <button type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.world!.profile!))} style={worldEditBtnStyle}>✏️ Edit 👤 {parsedOutput.world.profile.name}</button>}
+                                    {onOpenCharacterEditor && parsedOutput.world.characters.map((c, i) => <button key={`wc-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(c, allSamplers), (refined) => applyRefinedCharacter(refined, i))} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}
+                                    {onOpenContextEditor && (parsedOutput.world.contexts || []).map((c, i) => <button key={`wx-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenContextEditor(generatedContextToEntity(c), (refined) => applyRefinedContext(refined, i))} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}
+                                    {onOpenLocationEditor && (parsedOutput.world.locations || []).map((l, i) => <button key={`wl-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenLocationEditor(generatedLocationToEntity(l), (refined) => applyRefinedLocation(refined, i))} style={worldEditBtnStyle}>✏️ Edit 📍 {l.name}</button>)}
+                                    {onOpenProfileEditor && parsedOutput.world.profile && <button type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenProfileEditor(buildProfileFromGenerated(parsedOutput.world!.profile!), (refined) => applyRefinedProfile(refined, true))} style={worldEditBtnStyle}>✏️ Edit 👤 {parsedOutput.world.profile.name}</button>}
                                 </div>
                             </div>}
 
