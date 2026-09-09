@@ -15,7 +15,8 @@ import { ToolInvocationParser } from '../services/ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { useSessionStore } from '../store/useSessionStore';
 import { getEffectiveEnableWebSearch, getEffectiveEnableCalculator } from './characterLogic';
-import { executeTools } from '../services/ToolExecutor'
+import { executeTools } from '../services/ToolExecutor';
+import { buildModelLoadArguments } from './modelLoadArguments';
 
 const languageModelEngine = new LanguageModelEngine();
 
@@ -186,19 +187,7 @@ export function useGeneration(options: UseGenerationOptions) {
 
                     try {
                         const modelPath = targetModel.model || '';
-                        const params = targetModel.parameters || {};
-                        const args: string[] = ['-c', targetModel.contextLength.toString()];
-                        const ngl = params.gpu_layers !== undefined ? Number(params.gpu_layers) : 99;
-                        args.push('-ngl', String(ngl));
-                        if (targetModel.mmproj) args.push('--mmproj', String(targetModel.mmproj).trim());
-                        if (targetModel.lora) args.push('--lora', String(targetModel.lora).trim());
-                        if (params.cache_type_k) args.push('-ctk', String(params.cache_type_k));
-                        if (params.cache_type_v) args.push('-ctv', String(params.cache_type_v));
-                        if (params.batch_size && Number(params.batch_size) !== 1024) args.push('-b', String(params.batch_size));
-                        if (params.ubatch_size && Number(params.ubatch_size) !== 1024) args.push('-ub', String(params.ubatch_size));
-                        if (params.threads && Number(params.threads) > 0) args.push('-t', String(params.threads));
-                        const extraFlags = params.extra_flags ? String(params.extra_flags).trim() : '';
-                        if (extraFlags) args.push(...extraFlags.split(/\s+/));
+                        const args = buildModelLoadArguments(targetModel);
 
                         const res = await fetch(`${localURL}/models/load`, {
                             method: 'POST',
