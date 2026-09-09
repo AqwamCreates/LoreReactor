@@ -445,17 +445,33 @@ function App() {
 
     const handleLoadOlderMessages = useCallback(async () => {
         if (!interactionData || isLoadingOlder || !hasMoreAbove) return;
+        
+        // Capture scroll state before loading
+        const container = chatHistoryRef.current;
+        const prevScrollHeight = container?.scrollHeight ?? 0;
+        const prevScrollTop = container?.scrollTop ?? 0;
+        
         setIsLoadingOlder(true);
         try {
             const result = await loadOlderMessages(interactionData, 50);
             setInteractionData(result.data);
+            
+            // After React renders the new messages, restore scroll position
+            // so the user stays at the same visual location
+            requestAnimationFrame(() => {
+                if (container) {
+                    const newScrollHeight = container.scrollHeight;
+                    const heightDiff = newScrollHeight - prevScrollHeight;
+                    container.scrollTop = prevScrollTop + heightDiff;
+                }
+            });
         } catch (e) {
             console.error('Failed to load older messages:', e);
             addToast('Failed to load older messages.', 'error');
         } finally {
             setIsLoadingOlder(false);
         }
-    }, [interactionData, isLoadingOlder, hasMoreAbove, setInteractionData, addToast]);
+    }, [interactionData, isLoadingOlder, hasMoreAbove, setInteractionData, addToast, chatHistoryRef]);
 
     // Sentinel ref callback for IntersectionObserver-based auto-loading
     const sentinelRef = useCallback((el: HTMLDivElement | null) => {
