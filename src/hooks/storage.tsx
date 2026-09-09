@@ -7,7 +7,6 @@ import type {
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData,
   RawBudgetData,
-  HistoryMessage
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -275,7 +274,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize: number = 5): Promise<(T | null)[]> {
+async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize = 5): Promise<(T | null)[]> {
   const results: (T | null)[] = [];
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize);
