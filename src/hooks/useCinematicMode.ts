@@ -16,6 +16,13 @@ interface UseCinematicModeOptions {
     renderedMessageIds?: Set<string>;
 }
 
+function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string): string | null {
+    const expr = expression || 'neutral';
+    const filename = images?.[expr] || images?.neutral;
+    if (!filename) return null;
+    return getCharacterImageUrl(characterId, filename);
+}
+
 export function useCinematicMode(options: UseCinematicModeOptions) {
     const {
         viewMode, interactionData, currentCharacter,
@@ -33,62 +40,49 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         return interactionData.interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
     }, [interactionData]);
 
+    // Portrait URL cache — memoized so it only rebuilds when chatMessages
+    // or centerAvatar changes. During streaming, interactionData keeps the
+    // same identity so chatMessages stays stable and this is skipped entirely.
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
 
-        const resolvePortrait = (characterId: string, images: Record<string, string> | undefined, expression?: string): string | null => {
-            const expr = expression || 'neutral';
-            const filename = images?.[expr] || images?.['neutral'];
-            if (!filename) return null;
-            return getCharacterImageUrl(characterId, filename);
-        };
-
         for (const msg of chatMessages) {
-            if (!cache.has(msg.id)) {
-                cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
-            }
+            cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
         }
 
         if (centerAvatar) {
             const key = `cinematic:${centerAvatar.id}`;
-            if (!cache.has(key)) {
-                cache.set(key, resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral'));
-            }
+            cache.set(key, resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral'));
         }
 
         return cache;
-    }, [chatMessages, centerAvatar?.id]);
+    }, [chatMessages, centerAvatar]);
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
         const expr = currentCharacterExpression || 'neutral';
-        const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.['neutral'];
+        const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.neutral;
         if (!filename) return null;
         return getCharacterImageUrl(streamingCharacter.id, filename);
-    }, [streamingCharacter?.id, streamingCharacter?.images, currentCharacterExpression]);
+    }, [streamingCharacter, currentCharacterExpression]);
 
-    const locationBackgroundUrl = useMemo(() => {
-        if (!interactionData) return null;
-        const locations = interactionData.locations;
-        if (!locations?.length) return null;
-
+    const locationBackgroundUrl = (() => {
+        if (!interactionData?.locations?.length) return null;
         const history = interactionData.interactionHistory;
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
             if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
-                const loc = locations[msg.locationIndex];
+                const loc = interactionData.locations[msg.locationIndex];
                 if (loc?.images?.length && loc.images[0]) {
                     return getLocationImageUrl(loc.images[0]);
                 }
                 return null;
             }
         }
-
         return null;
-    }, [interactionData]);
+    })();
 
     // IntersectionObserver for cinematic avatar selection
-    // Now scoped to only rendered message elements
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
@@ -116,7 +110,6 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             lastViewedMessageIdRef.current = mid;
         }, opts);
 
-        // Only observe elements that are actually in the DOM (virtualized subset)
         const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
         for (const el of elements) {
             const id = el.getAttribute('data-message-id');
