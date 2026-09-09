@@ -1002,7 +1002,7 @@ export async function prepareRequestBody(
     existingCharacterText: string,
     protagonistFileBase64s?: string[],
     runtimePort?: number
-):  Promise<{ body: any; fetchErrors: string[] }> {
+): Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
     let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
@@ -1028,20 +1028,20 @@ export async function prepareRequestBody(
 
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
-    const allImageData: { data: string; id: number }[] = [];
+    const filesBase64: { data: string; id: number }[] = [];
 
     let imageIdCounter = 1;
 
-    let initialPrompt = ""
+    let initialPrompt = "";
 
     if (!forceNoCharacterImageInjection) {
 
-        let isCharacterImageInjected = false
+        let isCharacterImageInjected = false;
 
         // Character image — use current expression with fallback to neutral
         if (!character.doNotInjectCharacterImage) {
-            const characterMessage = findPreviousInteractionMessage(interactionData, character.id)
-            const characterExpression = characterMessage?.characterExpression
+            const characterMessage = findPreviousInteractionMessage(interactionData, character.id);
+            const characterExpression = characterMessage?.characterExpression;
             const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
 
             if (characterImagePath) {
@@ -1049,14 +1049,14 @@ export async function prepareRequestBody(
 
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
-                    allImageData.push({ data: rawData, id: imageIdCounter++ });
+                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
                     initialPrompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}`;
-                    isCharacterImageInjected = true
+                    isCharacterImageInjected = true;
                 }
             }
         }
 
-        // Protagonist image — use current expression with fallback to neutral
+        // Protagonist image — use expression from last message with fallback to neutral
         const protagonist = interactionData.protagonist;
         if (protagonist && !protagonist.doNotInjectCharacterImage) {
             const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id);
@@ -1071,10 +1071,19 @@ export async function prepareRequestBody(
                     let protagonistString = getParticipantTag(protagonist, interactionData.participants);
                     if (protagonistMessage?.isNameRevealed) {
                         protagonistString = `${protagonistString} (${protagonist.name})`;
-                }
-                    allImageData.push({ data: rawData, id: imageIdCounter++ });
+                    }
+                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
                     const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
                     initialPrompt = `${initialPrompt}${contextStartString}${thinkStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${thinkEndString}${contextEndString}`;
+                }
+            }
+        }
+
+        // Protagonist attached files from current turn
+        if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
+            for (let i = 0; i < protagonistFileBase64s.length; i++) {
+                const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
+                filesBase64.push({ data: rawData, id: imageIdCounter++ });
             }
         }
     }
@@ -1103,7 +1112,7 @@ export async function prepareRequestBody(
             });
         });
         const resolvedImages = (await Promise.all(imagePromises)).filter(img => img !== null);
-        allImageData.push(...resolvedImages);
+        filesBase64.push(...resolvedImages);
     }
 
     // Location images
@@ -1127,10 +1136,10 @@ export async function prepareRequestBody(
             }
         });
         const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
-        allImageData.push(...resolvedLocationImages);
+        filesBase64.push(...resolvedLocationImages);
     }
 
-    // Protagonist attached files from the latest user message
+    // Protagonist attached files from the latest stored user message
     const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
         (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.kind === 'chat'
     );
@@ -1138,14 +1147,11 @@ export async function prepareRequestBody(
     if (lastUserMsg?.files?.length) {
         for (const fileBase64 of lastUserMsg.files) {
             const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
-            allImageData.push({ data: rawData, id: imageIdCounter++ });
+            filesBase64.push({ data: rawData, id: imageIdCounter++ });
         }
     }
 
-    const fullPrompt = `${initialPrompt}${prompt}`
-
-    // Legacy direct base64 pass-through (from sendMessage file uploads in current turn)
-    // Note: protagonistImageBase64s parameter removed — protagonist image now handled above via expression-aware lookup
+    const fullPrompt = `${initialPrompt}${prompt}`;
 
     const body: any = {
         ...otherParams,
@@ -1155,7 +1161,7 @@ export async function prepareRequestBody(
         stop: uniqueStops,
     };
 
-    if (allImageData.length > 0) body.image_data = allImageData;
+    if (filesBase64.length > 0) body.image_data = filesBase64;
 
     return { body, fetchErrors };
 }
