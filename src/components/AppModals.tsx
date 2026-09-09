@@ -132,6 +132,8 @@ export function AppModals({
 
     return (
         <>
+            {/* ─── Manager Lists (non-editor, lower z-priority) ─── */}
+
             {/* Chat Sessions */}
             {modals.chatList.isOpen && (
                 <ManagerModal
@@ -150,7 +152,7 @@ export function AppModals({
                 />
             )}
 
-            {/* Characters */}
+            {/* Characters List */}
             {modals.charList.isOpen && (
                 <ManagerModal
                     title="Characters"
@@ -172,29 +174,8 @@ export function AppModals({
                     activeSpecialActionId={interactionData?.protagonist?.id}
                 />
             )}
-            {charModal.isOpen && (
-                <CharacterEditorModal
-                    isOpen={charModal.isOpen}
-                    onClose={() => {
-                        setAiCharacterSaveRedirect(null);
-                        charModal.close();
-                    }}
-                    onSave={(c: Character) => {
-                        if (aiCharacterSaveRedirect) {
-                            aiCharacterSaveRedirect(c);
-                            addToast('Applied character changes to AI recommendation.', 'success');
-                        } else {
-                            charModal.handleSave(c);
-                        }
-                    }}
-                    existingCharacter={charModal.itemToEdit}
-                    allSamplers={allSamplers}
-                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
-                    runningModels={runningModels}
-                />
-            )}
 
-            {/* Contexts */}
+            {/* Contexts List */}
             {modals.contextList.isOpen && (
                 <ManagerModal
                     title="Contexts"
@@ -212,27 +193,8 @@ export function AppModals({
                     onToggleOrder={onToggleContext}
                 />
             )}
-            {contextModal.isOpen && (
-                <ContextEditorModal
-                    isOpen={contextModal.isOpen}
-                    onClose={() => {
-                        setAiContextSaveRedirect(null);
-                        contextModal.close();
-                    }}
-                    onSave={(c: Context) => {
-                        if (aiContextSaveRedirect) {
-                            aiContextSaveRedirect(c);
-                            addToast('Applied context changes to AI recommendation.', 'success');
-                        } else {
-                            contextModal.handleSave(c);
-                        }
-                    }}
-                    existingContext={contextModal.itemToEdit}
-                    allCharacters={allCharacters}
-                />
-            )}
 
-            {/* Locations */}
+            {/* Locations List */}
             {modals.locationList.isOpen && (
                 <ManagerModal
                     title="Locations"
@@ -250,28 +212,8 @@ export function AppModals({
                     onToggleOrder={onToggleLocation}
                 />
             )}
-            {locationModal.isOpen && (
-                <LocationEditorModal
-                    isOpen={locationModal.isOpen}
-                    onClose={() => {
-                        setAiLocationSaveRedirect(null);
-                        locationModal.close();
-                    }}
-                    onSave={(l: Location) => {
-                        if (aiLocationSaveRedirect) {
-                            aiLocationSaveRedirect(l);
-                            addToast('Applied location changes to AI recommendation.', 'success');
-                        } else {
-                            locationModal.handleSave(l);
-                        }
-                    }}
-                    existingLocation={locationModal.itemToEdit}
-                    allCharacters={allCharacters}
-                    allLocations={allLocations}
-                />
-            )}
 
-            {/* Worlds */}
+            {/* Worlds List */}
             {modals.worldManager.isOpen && (
                 <ManagerModal
                     title="Worlds"
@@ -288,24 +230,8 @@ export function AppModals({
                     actionLabel="Delete"
                 />
             )}
-            {worldModal.isOpen && (
-                <WorldEditorModal
-                    isOpen={worldModal.isOpen}
-                    onClose={worldModal.close}
-                    onSave={worldModal.handleSave}
-                    existingWorld={worldModal.itemToEdit}
-                    allCharacters={allCharacters}
-                    allContexts={allContexts}
-                    allLocations={allLocations}
-                    allProfiles={allProfiles}
-                    currentCharacterIds={interactionData?.participants.map(p => p.id) || []}
-                    currentContextIds={interactionData?.contexts?.map(c => c.id) || []}
-                    currentLocationIds={interactionData?.locations?.map(l => l.id) || []}
-                    currentProfileId={interactionData?.Profile?.id}
-                />
-            )}
 
-            {/* Models */}
+            {/* Models List */}
             {useMemo(() => {
                 if (!modals.modelList.isOpen) return null;
                 
@@ -350,17 +276,8 @@ export function AppModals({
                     />
                 );
             }, [modals.modelList.isOpen, modals.modelList.close, allModels, modelModal, onDeleteModel, runningModels, selectedModelId, activeStrategy, onToggleModelLoad])}
-            {modelModal.isOpen && (
-                <ModelEditorModal
-                    isOpen={modelModal.isOpen}
-                    onClose={modelModal.close}
-                    onSave={modelModal.handleSave}
-                    existingModel={modelModal.itemToEdit}
-                    allStopPatterns={allStopPatterns}
-                />
-            )}
 
-            {/* Samplers */}
+            {/* Samplers List */}
             {modals.samplerList.isOpen && (
                 <ManagerModal
                     title="Samplers"
@@ -375,17 +292,8 @@ export function AppModals({
                     actionLabel="Delete"
                 />
             )}
-            {modals.samplerEditor.isOpen && (
-                <SamplerEditorModal
-                    isOpen={modals.samplerEditor.isOpen}
-                    onClose={() => { modals.samplerEditor.close(); }}
-                    onSave={onSaveSampler}
-                    existingSampler={samplerToEdit}
-                    allStopPatterns={allStopPatterns}
-                />
-            )}
 
-            {/* Stop Patterns */}
+            {/* Stop Patterns List */}
             {modals.stopList.isOpen && (
                 <ManagerModal
                     title="Stop Patterns"
@@ -405,16 +313,8 @@ export function AppModals({
                     orderedListMode={false}
                 />
             )}
-            {stopModal.isOpen && (
-                <StopPatternEditorModal
-                    isOpen={stopModal.isOpen}
-                    onClose={stopModal.close}
-                    onSave={stopModal.handleSave}
-                    existingStopPattern={stopModal.itemToEdit}
-                />
-            )}
 
-            {/* Budget Strategies */}
+            {/* Budget Strategies List */}
             {modals.budgetStrategyList.isOpen && (
                 <ManagerModal
                     title="Budget Strategies"
@@ -434,17 +334,8 @@ export function AppModals({
                     specialActionTooltip={(s: BudgetStrategy) => selectedBudgetStrategyId === s.id ? `Deactivate ${s.name}` : `Activate ${s.name}`}
                 />
             )}
-            {budgetModal.isOpen && (
-                <BudgetStrategyEditorModal
-                    isOpen={budgetModal.isOpen}
-                    onClose={budgetModal.close}
-                    onSave={budgetModal.handleSave}
-                    existingStrategy={budgetModal.itemToEdit}
-                    allModels={allModels}
-                />
-            )}
 
-            {/* Profiles */}
+            {/* Profiles List */}
             {modals.profileList.isOpen && (
                 <ManagerModal
                     title="Profiles"
@@ -464,26 +355,8 @@ export function AppModals({
                     specialActionTooltip={(p: Profile) => interactionData?.Profile?.id === p.id ? `Deactivate ${p.name}` : `Activate ${p.name}`}
                 />
             )}
-            {profileModal.isOpen && (
-                <ProfileEditorModal
-                    isOpen={profileModal.isOpen}
-                    onClose={() => {
-                        setAiProfileSaveRedirect(null);
-                        profileModal.close();
-                    }}
-                    onSave={(p: Profile) => {
-                        if (aiProfileSaveRedirect) {
-                            aiProfileSaveRedirect(p);
-                            addToast('Applied profile changes to AI recommendation.', 'success');
-                        } else {
-                            profileModal.handleSave(p);
-                        }
-                    }}
-                    existingProfile={profileModal.itemToEdit}
-                />
-            )}
 
-            {/* Extensions */}
+            {/* Extensions List */}
             {modals.extList.isOpen && (
                 <ManagerModal
                     title="Extensions"
@@ -502,7 +375,9 @@ export function AppModals({
                 />
             )}
 
-            {/* Settings & Tool Modals */}
+            {/* ─── Tool / Utility Modals (mid z-priority) ─── */}
+
+            {/* Settings */}
             {modals.settings.isOpen && (
                 <SettingsModal
                     isOpen={modals.settings.isOpen}
@@ -515,6 +390,8 @@ export function AppModals({
                     onOpenBudgetControl={modals.budgetControl.open}
                 />
             )}
+
+            {/* Participant Control */}
             {modals.participantControl.isOpen && (
                 <ParticipantControlModal
                     isOpen={modals.participantControl.isOpen}
@@ -527,6 +404,8 @@ export function AppModals({
                     onInjectFirstMessage={onInjectFirstMessage}
                 />
             )}
+
+            {/* AI Recommendation */}
             {modals.aiRecommendation.isOpen && (
                 <AIRecommendationModal
                     isOpen={modals.aiRecommendation.isOpen}
@@ -560,6 +439,8 @@ export function AppModals({
                     runningModels={runningModels}
                 />
             )}
+
+            {/* Character Card Import */}
             {modals.cardImport.isOpen && (
                 <CharacterCardImportModal
                     isOpen={modals.cardImport.isOpen}
@@ -569,6 +450,8 @@ export function AppModals({
                     allSamplers={allSamplers}
                 />
             )}
+
+            {/* Data Import */}
             {modals.importData.isOpen && (
                 <DataImportModal
                     isOpen={modals.importData.isOpen}
@@ -576,6 +459,8 @@ export function AppModals({
                     onImportComplete={onImportComplete}
                 />
             )}
+
+            {/* Data Export */}
             {modals.exportData.isOpen && (
                 <DataExportModal
                     isOpen={modals.exportData.isOpen}
@@ -592,12 +477,165 @@ export function AppModals({
                     allChats={allChats}
                 />
             )}
+
+            {/* Budget Control */}
             {modals.budgetControl.isOpen && (
                 <BudgetControlModal
                     isOpen={modals.budgetControl.isOpen}
                     onClose={modals.budgetControl.close}
                     allBudgetStrategies={allBudgetStrategies}
                     activeStrategy={activeStrategy}
+                />
+            )}
+
+            {/* ─── Editor Modals (highest z-priority via DOM order) ─── */}
+            {/* These render LAST so they naturally stack on top of everything else, */}
+            {/* including the AI Recommendation modal. No z-index needed. */}
+
+            {/* Character Editor */}
+            {charModal.isOpen && (
+                <CharacterEditorModal
+                    isOpen={charModal.isOpen}
+                    onClose={() => {
+                        setAiCharacterSaveRedirect(null);
+                        charModal.close();
+                    }}
+                    onSave={(c: Character) => {
+                        if (aiCharacterSaveRedirect) {
+                            aiCharacterSaveRedirect(c);
+                            addToast('Applied character changes to AI recommendation.', 'success');
+                        } else {
+                            charModal.handleSave(c);
+                        }
+                    }}
+                    existingCharacter={charModal.itemToEdit}
+                    allSamplers={allSamplers}
+                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+                    runningModels={runningModels}
+                />
+            )}
+
+            {/* Context Editor */}
+            {contextModal.isOpen && (
+                <ContextEditorModal
+                    isOpen={contextModal.isOpen}
+                    onClose={() => {
+                        setAiContextSaveRedirect(null);
+                        contextModal.close();
+                    }}
+                    onSave={(c: Context) => {
+                        if (aiContextSaveRedirect) {
+                            aiContextSaveRedirect(c);
+                            addToast('Applied context changes to AI recommendation.', 'success');
+                        } else {
+                            contextModal.handleSave(c);
+                        }
+                    }}
+                    existingContext={contextModal.itemToEdit}
+                    allCharacters={allCharacters}
+                />
+            )}
+
+            {/* Location Editor */}
+            {locationModal.isOpen && (
+                <LocationEditorModal
+                    isOpen={locationModal.isOpen}
+                    onClose={() => {
+                        setAiLocationSaveRedirect(null);
+                        locationModal.close();
+                    }}
+                    onSave={(l: Location) => {
+                        if (aiLocationSaveRedirect) {
+                            aiLocationSaveRedirect(l);
+                            addToast('Applied location changes to AI recommendation.', 'success');
+                        } else {
+                            locationModal.handleSave(l);
+                        }
+                    }}
+                    existingLocation={locationModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allLocations={allLocations}
+                />
+            )}
+
+            {/* World Editor */}
+            {worldModal.isOpen && (
+                <WorldEditorModal
+                    isOpen={worldModal.isOpen}
+                    onClose={worldModal.close}
+                    onSave={worldModal.handleSave}
+                    existingWorld={worldModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allProfiles={allProfiles}
+                    currentCharacterIds={interactionData?.participants.map(p => p.id) || []}
+                    currentContextIds={interactionData?.contexts?.map(c => c.id) || []}
+                    currentLocationIds={interactionData?.locations?.map(l => l.id) || []}
+                    currentProfileId={interactionData?.Profile?.id}
+                />
+            )}
+
+            {/* Model Editor */}
+            {modelModal.isOpen && (
+                <ModelEditorModal
+                    isOpen={modelModal.isOpen}
+                    onClose={modelModal.close}
+                    onSave={modelModal.handleSave}
+                    existingModel={modelModal.itemToEdit}
+                    allStopPatterns={allStopPatterns}
+                />
+            )}
+
+            {/* Sampler Editor */}
+            {modals.samplerEditor.isOpen && (
+                <SamplerEditorModal
+                    isOpen={modals.samplerEditor.isOpen}
+                    onClose={() => { modals.samplerEditor.close(); }}
+                    onSave={onSaveSampler}
+                    existingSampler={samplerToEdit}
+                    allStopPatterns={allStopPatterns}
+                />
+            )}
+
+            {/* Stop Pattern Editor */}
+            {stopModal.isOpen && (
+                <StopPatternEditorModal
+                    isOpen={stopModal.isOpen}
+                    onClose={stopModal.close}
+                    onSave={stopModal.handleSave}
+                    existingStopPattern={stopModal.itemToEdit}
+                />
+            )}
+
+            {/* Budget Strategy Editor */}
+            {budgetModal.isOpen && (
+                <BudgetStrategyEditorModal
+                    isOpen={budgetModal.isOpen}
+                    onClose={budgetModal.close}
+                    onSave={budgetModal.handleSave}
+                    existingStrategy={budgetModal.itemToEdit}
+                    allModels={allModels}
+                />
+            )}
+
+            {/* Profile Editor */}
+            {profileModal.isOpen && (
+                <ProfileEditorModal
+                    isOpen={profileModal.isOpen}
+                    onClose={() => {
+                        setAiProfileSaveRedirect(null);
+                        profileModal.close();
+                    }}
+                    onSave={(p: Profile) => {
+                        if (aiProfileSaveRedirect) {
+                            aiProfileSaveRedirect(p);
+                            addToast('Applied profile changes to AI recommendation.', 'success');
+                        } else {
+                            profileModal.handleSave(p);
+                        }
+                    }}
+                    existingProfile={profileModal.itemToEdit}
                 />
             )}
         </>

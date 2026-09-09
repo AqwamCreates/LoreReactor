@@ -190,7 +190,8 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     const parts: string[] = [];
     if (effectiveEntities.includes('Character')) {
         parts.push(`  "character": {
-    "name": "string (required)", "description": "string", "systemPrompt": "string", "thinkPrompt": "string",
+    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "systemPrompt": "string", "thinkPrompt": "string",
     "appearancePrompt": "string", "dialoguePrompt": "string",
     "initiativeWeight": "number (0-10, default 5)", "chatProbability": "number (0-1, default 0.8)",
     "maximumChatStamina": "number (1-20, default 5)", "nameSensitivity": "number (0-1, default 0.3)",
@@ -206,7 +207,8 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     }
     if (effectiveEntities.includes('Context')) {
         parts.push(`  "context": {
-    "name": "string (required)", "description": "string", "text": "string (required)",
+    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "text": "string (required)",
     "searchTerms": ["string array"], "urls": ["string array"],
     "includeLinkImages": "boolean (default false)", "maximumLinkDepth": "number (default 1)",
     "linkFetchMode": "'full' | 'summary' | 'extract' (default 'summary')",
@@ -222,7 +224,8 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     }
     if (effectiveEntities.includes('Location')) {
         parts.push(`  "location": {
-    "name": "string (required)", "description": "string", "text": "string (required)",
+    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "text": "string (required)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "locationBindings": ["location name or ID strings"],
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
@@ -233,7 +236,7 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     }
     if (effectiveEntities.includes('Profile')) {
         parts.push(`  "profile": {
-    "name": "string (required)", "description": "string",
+    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
     "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
     "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",
     "useCurrentDateAndTime": "boolean (default false)", "useWeather": "boolean (default false)",
@@ -257,7 +260,7 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     }
     if (effectiveEntities.includes('World')) {
         parts.push(`  "world": {
-    "name": "string (required)", "description": "string",
+    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
     "characters": [/* character objects */], "contexts": [/* context objects */],
     "locations": [/* location objects */], "profile": {/* profile object, optional */}
   }`);
@@ -607,7 +610,6 @@ export function AIRecommendationModal({
     const loadHistoryToResult = useCallback((entry: JsonHistoryEntry) => { setStreamingText(entry.jsonText); setParsedOutput(entry.parsedOutput); setResultError(null); setIsResultOpen(true); setActiveTab('raw'); }, []);
     const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev.trim(); const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
 
-    /** Update parsedOutput and streamingText when an entity is refined via the editor modal. */
     const applyRefinedCharacter = useCallback((refined: Character, worldIndex?: number) => {
         setParsedOutput(prev => {
             if (!prev) return prev;
@@ -688,7 +690,27 @@ export function AIRecommendationModal({
         parts.push('You are a creative writing assistant for roleplay. Generate exactly ONE of each requested entity type.');
         parts.push('You MUST output ONLY valid JSON matching the schema below. No markdown, no commentary, no code fences.');
         parts.push('Use {{user}} to refer to the user. Use {{char}} instead of character names in prompts.');
-        if (hasWorld) { parts.push('For World generation: use EITHER entity names OR entity IDs in bindings. Existing IDs are in references above. New entities use names for cross-reference.'); parts.push('Generate ALL sub-entities INSIDE the "world" object only.'); }
+        parts.push('The "description" field is for UI display only. It is NOT injected into prompts or used as AI input. Write it as a short human-readable summary.');
+        if (hasWorld) {
+            parts.push('For World generation: use EITHER entity names OR entity IDs in bindings. Existing IDs are in references above. New entities use names for cross-reference.');
+            parts.push('Generate ALL sub-entities INSIDE the "world" object only.');
+            const exclusions: string[] = [];
+            if (!selectedEntities.includes('Character')) exclusions.push('characters');
+            if (!selectedEntities.includes('Context')) exclusions.push('contexts');
+            if (!selectedEntities.includes('Location')) exclusions.push('locations');
+            if (!selectedEntities.includes('Profile')) exclusions.push('profile');
+            if (exclusions.length > 0) {
+                parts.push(`Do NOT generate the following inside the world object: ${exclusions.join(', ')}. Omit those keys entirely.`);
+            }
+        } else {
+            const allTypes: EntityType[] = ['Character', 'Context', 'Location', 'Profile'];
+            const notSelected = allTypes.filter(t => !selectedEntities.includes(t));
+            if (notSelected.length > 0) {
+                const keyMap: Record<string, string> = { Character: 'character', Context: 'context', Location: 'location', Profile: 'profile' };
+                const excludedKeys = notSelected.map(t => `"${keyMap[t]}"`);
+                parts.push(`Do NOT include these top-level keys in your output: ${excludedKeys.join(', ')}. Only generate the entity types shown in the schema.`);
+            }
+        }
         parts.push('');
         const eb = buildExistingReferenceBlock(); if (eb) parts.push(eb);
         parts.push('OUTPUT JSON SCHEMA:', buildJsonSchema(effectiveSchemaEntities), '');
@@ -771,7 +793,7 @@ export function AIRecommendationModal({
 
     const renderSummary = (desc?: string) => desc ? (
         <div className="entity-field-block" style={{ borderLeft: '3px solid var(--accent)', paddingLeft: '10px', marginBottom: '12px' }}>
-            <div className="entity-field-title" style={{ opacity: 0.6, fontSize: '0.65rem' }}>AI SUMMARY</div>
+            <div className="entity-field-title" style={{ opacity: 0.6, fontSize: '0.65rem' }}>AI SUMMARY (display only)</div>
             <div className="entity-field-content" style={{ fontStyle: 'italic', opacity: 0.9 }}>{desc}</div>
         </div>
     ) : null;
@@ -807,7 +829,7 @@ export function AIRecommendationModal({
 
             {/* RESULT MODAL */}
             {isResultOpen && (
-                <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={handleCloseResult}>
+                <div className="modal-overlay" onClick={handleCloseResult}>
                     <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header"><h2>Recommendation Result</h2><div className="editor-modal-actions"><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCloseResult} disabled={isGenerating || isSaving}>{hasOutput ? 'Back to Form' : 'Cancel'}</button></div></div>
                         <div className="modal-body editor-modal-body">
