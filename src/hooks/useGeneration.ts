@@ -1,6 +1,6 @@
 // src/hooks/useGeneration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, ChatMessage } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from './storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from './chatLogic';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
@@ -90,6 +90,14 @@ function countParagraphs(text: string): number {
     return (text.match(/\n\n/g) || []).length + 1;
 }
 
+function getProtagonistFileBase64s(data: InteractionData): string[] | undefined {
+    const lastUserMsg = [...data.interactionHistory].reverse().find(
+        (m): m is ChatMessage => m.character.id === data.protagonist.id && m.kind === 'chat'
+    );
+    if (lastUserMsg?.files?.length) return lastUserMsg.files;
+    return undefined;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────
 
 interface UseGenerationOptions {
@@ -126,6 +134,7 @@ export function useGeneration(options: UseGenerationOptions) {
 
         const dataWithRegen = regenerateStaminaForTurn(data, character);
         const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
+        const protagonistFileBase64s = getProtagonistFileBase64s(dataWithRegen);
 
         try {
             let rawText: string;
@@ -291,14 +300,14 @@ export function useGeneration(options: UseGenerationOptions) {
                 while (true) {
                     if (signal.aborted) return null;
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, protagonistFileBase64s, ep);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const currentRunning = useSessionStore.getState().runningModels;
                         const rp = model.id ? currentRunning[model.id]?.port : undefined;
                         const rep = rp || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, ep);
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, protagonistFileBase64s, ep);
                         const rc: LanguageModelContext = { apiKey: model.apiKey, backend: model.backend, modelPath: model.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) return null;
