@@ -84,6 +84,16 @@ function applyResetIfDue(data: BudgetData): void {
     data.lastResetTimestamp = Date.now();
 }
 
+/**
+ * Returns true if a model is free (all pricing fields are zero or undefined).
+ */
+function isFreeModel(model: LanguageModel): boolean {
+    const pricing = buildPricing(model);
+    return pricing.cacheHitPerMillion <= 0 &&
+           pricing.cacheMissPerMillion <= 0 &&
+           pricing.outputPerMillion <= 0;
+}
+
 export interface RunningModelState {
     isRunning: boolean;
     port?: number;
@@ -313,6 +323,17 @@ export class BudgetStrategyEngine {
         return null;
     }
 
+    /**
+     * Selects a free model from the combined online + local pools.
+     * Used when budget is exhausted to keep the conversation going at no cost.
+     */
+    private selectFreeModel(failedIds: Set<string>): LanguageModel | null {
+        const allModels = [...this.strategy.onlineModels, ...this.strategy.localModels];
+        const freeModels = allModels.filter(m => isFreeModel(m));
+        if (freeModels.length === 0) return null;
+        return this.selectFromPool(freeModels, failedIds);
+    }
+
     private recordSuccess(modelId: string, cost: number): void {
         this.budgetData.budgetSpent += cost;
         this.budgetData.modelLastUsedTimestamps[modelId] = Date.now();
@@ -531,6 +552,81 @@ export class BudgetStrategyEngine {
                     fallbackFailedSet.add(selectedModel.id);
                     this.recordQuotaError(selectedModel.id);
                     console.warn(`Fallback model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) also hit quota/rate limit, rotating.`);
+                }
+            }
+        }
+
+        // ─── Both pools exhausted — try free models as last resort ───
+        if (!abortController.signal.aborted) {
+            const allFailedIds = new Set([...this.failedOnlineIds, ...this.failedLocalIds]);
+
+            while (true) {
+                const freeModel = this.selectFreeModel(allFailedIds);
+                if (!freeModel) break;
+
+                const loaded = await this.ensureModelLoaded(freeModel);
+                if (!loaded) {
+                    allFailedIds.add(freeModel.id);
+                    this.recordError(freeModel.id);
+                    console.warn(`Free model ${freeModel.name} could not be loaded, skipping.`);
+                    continue;
+                }
+
+                const freeCtx = this.buildModelContext(freeModel);
+                const freePort = freeCtx.runtimePort;
+                const sessionStart = Date.now();
+
+                try {
+                    const { body: freeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userImagesBase64, freePort);
+
+                    const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
+                    let result;
+                    try {
+                        result = await engine.generateStream(
+                            freeBody,
+                            timeoutCtrl,
+                            wrappedCallbacks,
+                            freeCtx,
+                        );
+                    } catch (e) {
+                        cleanupTimeout();
+                        if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
+                            const sessionDuration = Date.now() - sessionStart;
+                            this.recordSessionDuration(freeModel.id, sessionDuration);
+                            allFailedIds.add(freeModel.id);
+                            this.recordError(freeModel.id);
+                            console.warn(`Free model ${freeModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
+                            continue;
+                        }
+                        throw e;
+                    } finally {
+                        cleanupTimeout();
+                    }
+
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(freeModel.id, sessionDuration);
+
+                    if (result.msPerToken && result.msPerToken > 0) {
+                        this.recordLatency(freeModel.id, result.msPerToken);
+                    }
+                    if (result.timeToFirstToken && result.timeToFirstToken > 0) {
+                        this.recordTTFT(freeModel.id, result.timeToFirstToken);
+                    }
+
+                    // Free model — record success with $0 cost
+                    this.recordSuccess(freeModel.id, 0);
+                    console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
+
+                    return accumulatedPartialText + result.text;
+                } catch (e) {
+                    if (abortController.signal.aborted) throw e;
+
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(freeModel.id, sessionDuration);
+
+                    allFailedIds.add(freeModel.id);
+                    this.recordError(freeModel.id);
+                    console.warn(`Free model ${freeModel.name} failed, trying next free model.`);
                 }
             }
         }
