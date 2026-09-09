@@ -475,7 +475,7 @@ export function BudgetControlModal({
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − min(hits ÷ uses, 1).</div>
+                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − (hits ÷ uses).</div>
                                         </div>
                                     )}
 
