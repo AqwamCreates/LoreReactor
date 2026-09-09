@@ -1002,7 +1002,7 @@ export async function prepareRequestBody(
     existingCharacterText: string,
     protagonistImageBase64s?: string[],
     runtimePort?: number
-): Promise<{ body: any; fetchErrors: string[] }> {
+):  Promise<{ body: any; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
     let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
@@ -1032,17 +1032,45 @@ export async function prepareRequestBody(
 
     let imageIdCounter = 1;
 
-    if (!forceNoCharacterImageInjection && !character.doNotInjectCharacterImage) {
-        const characterImagePath = await getCharacterImageUrlWithFallBack(character.images?.neutral);
+    let initialPrompt = ""
 
-        if (characterImagePath) {
+    if (!forceNoCharacterImageInjection) {
 
-            const characterImageBase64 = await getImageBase64(characterImagePath);
+        let isCharacterImageInjected = false
 
-            if (characterImageBase64) {
-                const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
+        // Character image — use current expression with fallback to neutral
+        if (!character.doNotInjectCharacterImage) {
+            const characterMessage = findPreviousInteractionMessage(interactionData, character.id)
+            const currentCharacterExpression = characterMessage?.characterExpression
+            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, currentCharacterExpression);
+
+            if (characterImagePath) {
+                const characterImageBase64 = await getImageBase64(characterImagePath);
+
+                if (characterImageBase64) {
+                    const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
+                    allImageData.push({ data: rawData, id: imageIdCounter++ });
+                    initialPrompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}`;
+                    isCharacterImageInjected = true
+                }
+            }
+        }
+
+        // Protagonist image — use current expression with fallback to neutral
+        const protagonist = interactionData.protagonist;
+        if (protagonist && !protagonist.doNotInjectCharacterImage) {
+            if (protagonistImageBase64s) {
+                    
+                const rawData = protagonistImageBase64s[0].includes(',') ? protagonistImageBase64s[0].split(',')[1] : protagonistImageBase64s[0];
+                const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id)
+                let protagonistString = getParticipantTag(character, interactionData.participants)
+                if (protagonistMessage){
+                    const isNameRevealed = protagonistMessage.isNameRevealed
+                    if (isNameRevealed) protagonistString = `${protagonistString} (${protagonist.name})`
+                }
                 allImageData.push({ data: rawData, id: imageIdCounter++ });
-                prompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}${prompt}`;
+                const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first"
+                initialPrompt = `${prompt}${contextStartString}${thinkStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${thinkEndString}${contextEndString}`;
             }
         }
     }
@@ -1110,17 +1138,14 @@ export async function prepareRequestBody(
         }
     }
 
+    const fullPrompt = `${initialPrompt}${prompt}`
+
     // Legacy direct base64 pass-through (from sendMessage file uploads in current turn)
-    if (protagonistImageBase64s && protagonistImageBase64s.length > 0) {
-        for (const base64 of protagonistImageBase64s) {
-            const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-            allImageData.push({ data: rawData, id: imageIdCounter++ });
-        }
-    }
+    // Note: protagonistImageBase64s parameter removed — protagonist image now handled above via expression-aware lookup
 
     const body: any = {
         ...otherParams,
-        prompt,
+        prompt: fullPrompt,
         n_predict: sampler?.maximumNumberOfTokens ?? 512,
         stream: true,
         stop: uniqueStops,

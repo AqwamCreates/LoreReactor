@@ -1,6 +1,7 @@
 // src/components/ParticipantControlModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
+import { getCurrentLocationIndex } from '../hooks/locationLogic';
 import './main.css';
 
 interface ParticipantControlModalProps {
@@ -25,17 +26,22 @@ export function ParticipantControlModal({
     onInjectFirstMessage,
 }: ParticipantControlModalProps) {
     const [staminaOverrides, setStaminaOverrides] = useState<Record<string, number>>({});
+    const [locationOverrides, setLocationOverrides] = useState<Record<string, number | ''>>({});
     const [selectedCharId, setSelectedCharId] = useState<string>('');
     const [customMessageText, setCustomMessageText] = useState('');
 
     useEffect(() => {
         if (isOpen && interactionData) {
-            const overrides: Record<string, number> = {};
+            const staminaOv: Record<string, number> = {};
+            const locationOv: Record<string, number | ''> = {};
             for (const p of interactionData.participants) {
                 const lastMsg = [...interactionData.interactionHistory].reverse().find(m => m.character.id === p.id);
-                overrides[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
+                staminaOv[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
+                const locIdx = getCurrentLocationIndex(interactionData, p);
+                locationOv[p.id] = locIdx !== undefined ? locIdx : '';
             }
-            setStaminaOverrides(overrides);
+            setStaminaOverrides(staminaOv);
+            setLocationOverrides(locationOv);
             setSelectedCharId('');
             setCustomMessageText('');
         }
@@ -47,16 +53,16 @@ export function ParticipantControlModal({
         setStaminaOverrides(prev => ({ ...prev, [charId]: value }));
     };
 
-    const applyStaminaOverrides = () => {
+    const handleLocationChange = (charId: string, value: string) => {
+        setLocationOverrides(prev => ({ ...prev, [charId]: value === '' ? '' : Number(value) }));
+    };
+
+    const applyOverrides = () => {
         if (!interactionData) return;
 
-        const updatedHistory = interactionData.interactionHistory.map(msg => {
-            if (staminaOverrides[msg.character.id] !== undefined) {
-                return { ...msg, remainingChatStamina: staminaOverrides[msg.character.id] };
-            }
-            return msg;
-        });
+        const updatedHistory = [...interactionData.interactionHistory];
 
+        // Apply stamina overrides to latest message per character
         const lastMsgIndices: Record<string, number> = {};
         for (let i = 0; i < updatedHistory.length; i++) {
             lastMsgIndices[updatedHistory[i].character.id] = i;
@@ -65,6 +71,17 @@ export function ParticipantControlModal({
             const idx = lastMsgIndices[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = { ...updatedHistory[idx], remainingChatStamina: stamina };
+            }
+        }
+
+        // Apply location overrides to latest message per character
+        for (const [charId, locIdx] of Object.entries(locationOverrides)) {
+            const idx = lastMsgIndices[charId];
+            if (idx !== undefined) {
+                updatedHistory[idx] = {
+                    ...updatedHistory[idx],
+                    locationIndex: locIdx === '' ? undefined : locIdx,
+                };
             }
         }
 
@@ -112,6 +129,8 @@ export function ParticipantControlModal({
         onInjectFirstMessage(char);
         onClose();
     };
+
+    const locations = interactionData.locations ?? [];
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -229,15 +248,50 @@ export function ParticipantControlModal({
                                 );
                             })}
                         </div>
-
-                        <button
-                            type="button"
-                            className="editor-btn editor-btn-save participant-control-apply-btn"
-                            onClick={applyStaminaOverrides}
-                        >
-                            Apply Stamina Overrides
-                        </button>
                     </div>
+
+                    {/* Location Overrides */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Location</span>
+                        <div className="entity-ref-hint">
+                            Override the current location for each participant. This sets the locationIndex on their latest message, controlling which location context is active for them.
+                        </div>
+
+                        <div className="participant-control-stamina-list">
+                            {interactionData.participants.map(p => {
+                                const currentLoc = locationOverrides[p.id];
+
+                                return (
+                                    <div key={p.id} className="participant-control-stamina-row">
+                                        <span className="participant-control-stamina-name">{p.name}</span>
+                                        <div className="participant-control-stamina-input-group">
+                                            <label className="participant-control-stamina-label">Location:</label>
+                                            <select
+                                                value={currentLoc === undefined ? '' : String(currentLoc)}
+                                                onChange={e => handleLocationChange(p.id, e.target.value)}
+                                                className="editor-select participant-control-stamina-input"
+                                                style={{ minWidth: '140px' }}
+                                            >
+                                                <option value="">None</option>
+                                                {locations.map((loc, idx) => (
+                                                    <option key={loc.id} value={String(idx)}>{loc.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Apply Button */}
+                    <button
+                        type="button"
+                        className="editor-btn editor-btn-save participant-control-apply-btn"
+                        onClick={applyOverrides}
+                    >
+                        Apply Overrides
+                    </button>
                 </div>
             </div>
         </div>
