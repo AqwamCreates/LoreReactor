@@ -274,7 +274,9 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>, batchSize = 5): Promise<(T | null)[]> {
+async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>): Promise<(T | null)[]> {
+  const numberOfIds = ids.length
+  const batchSize = Math.cbrt(numberOfIds)
   const results: (T | null)[] = [];
   for (let i = 0; i < ids.length; i += batchSize) {
     const batch = ids.slice(i, i + batchSize);
