@@ -7,7 +7,6 @@ const INITIAL_EXTENSIONS: Extension[] = [
     { id: 'ext_2', name: 'TTS Reader', description: 'Read aloud using browser speech', extensionType: 'Accessibility', firstCreatedTimestamp: now, lastUpdatedTimestamp: now},
     { id: 'ext_3', name: 'Scene Illustrator', description: 'Generate images from scene descriptions', extensionType: 'Image Generation API', firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
     { id: 'ext_4', name: 'Light Mode Toggle', description: 'Force light mode for this session', extensionType: 'Extra', firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-    { id: 'ext_5', name: 'Sentiment Analysis', description: 'Tag messages with emotional context', extensionType: 'Extra', firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
 ];
 
 export function useExtensionManager() {
