@@ -43,10 +43,18 @@ export function LocationEditorModal({
     const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
 
+    // Background image regex triggers and weights (keyed by image index)
+    const [bgImageRegexTriggers, setBgImageRegexTriggers] = useState<Record<number, string>>({});
+    const [bgImageWeights, setBgImageWeights] = useState<Record<number, number>>({});
+
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string> }>({});
+    // Per-image regex test state
+    const [bgImageTestTexts, setBgImageTestTexts] = useState<Record<number, string>>({});
+    const [bgImageTestResults, setBgImageTestResults] = useState<Record<number, boolean | null>>({});
+
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string> }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textNumberOfTokens, setTextNumberOfTokens] = useState(0);
@@ -90,6 +98,8 @@ export function LocationEditorModal({
                 setGlobalWeight(existingLocation.globalWeight ?? 1);
                 setCharacterWeights(existingLocation.characterWeights ?? {});
                 setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
+                setBgImageRegexTriggers(existingLocation.backgroundImageRegularExpressionActivationTriggers ?? {});
+                setBgImageWeights(existingLocation.backgroundImageWeights ?? {});
             } else {
                 setName('');
                 setDescription('');
@@ -103,15 +113,19 @@ export function LocationEditorModal({
                 setGlobalWeight(1);
                 setCharacterWeights({});
                 setUseBase64Encoding(false);
+                setBgImageRegexTriggers({});
+                setBgImageWeights({});
             }
             setErrors({});
             setActivationTestText('');
             setActivationTestResult(null);
+            setBgImageTestTexts({});
+            setBgImageTestResults({});
         }
     }, [isOpen, existingLocation]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string> } = {};
+        const newErrors: { name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string> } = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasText = text.trim().length > 0;
@@ -135,6 +149,15 @@ export function LocationEditorModal({
         }
         if (Object.keys(bindingRegexErrors).length > 0) newErrors.bindingRegex = bindingRegexErrors;
 
+        // Validate background image regex triggers
+        const bgImageRegexErrors: Record<number, string> = {};
+        for (const [idxStr, pattern] of Object.entries(bgImageRegexTriggers)) {
+            if (pattern.trim()) {
+                try { new RegExp(pattern); } catch (e) { bgImageRegexErrors[Number(idxStr)] = 'Invalid regex'; }
+            }
+        }
+        if (Object.keys(bgImageRegexErrors).length > 0) newErrors.bgImageRegex = bgImageRegexErrors;
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -147,6 +170,21 @@ export function LocationEditorModal({
         } catch (e) {
             setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
+        }
+    };
+
+    const handleTestBgImageRegex = (index: number) => {
+        const pattern = bgImageRegexTriggers[index];
+        const testText = bgImageTestTexts[index];
+        if (!pattern?.trim() || !testText?.trim()) {
+            setBgImageTestResults(prev => ({ ...prev, [index]: null }));
+            return;
+        }
+        try {
+            const regex = new RegExp(pattern);
+            setBgImageTestResults(prev => ({ ...prev, [index]: regex.test(testText) }));
+        } catch {
+            setBgImageTestResults(prev => ({ ...prev, [index]: null }));
         }
     };
 
@@ -167,6 +205,44 @@ export function LocationEditorModal({
             URL.revokeObjectURL(imagePreviews[index]);
         }
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
+
+        // Clean up bg image settings for removed index and shift higher indices down
+        setBgImageRegexTriggers(prev => {
+            const next: Record<number, string> = {};
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
+            return next;
+        });
+        setBgImageWeights(prev => {
+            const next: Record<number, number> = {};
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
+            return next;
+        });
+        setBgImageTestTexts(prev => {
+            const next: Record<number, string> = {};
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
+            return next;
+        });
+        setBgImageTestResults(prev => {
+            const next: Record<number, boolean | null> = {};
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
+            return next;
+        });
     };
 
     const buildLocationFromForm = async (isNewClone: boolean): Promise<Location | null> => {
@@ -198,11 +274,14 @@ export function LocationEditorModal({
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
+            backgroundImageRegularExpressionActivationTriggers: Object.keys(bgImageRegexTriggers).length > 0 ? bgImageRegexTriggers : {},
+            backgroundImageWeights: Object.keys(bgImageWeights).length > 0 ? bgImageWeights : {},
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
             locationBindingRegularExpressionTriggers: Object.keys(locationBindingRegexTriggers).length > 0 ? locationBindingRegexTriggers : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
             globalWeight: globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
+            locationDistances: existingLocation?.locationDistances ?? {},
             useBase64Encoding,
             firstCreatedTimestamp: isNewClone ? now : (existingLocation?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -233,7 +312,6 @@ export function LocationEditorModal({
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
     const getLocationById = (id: string) => allLocations.find(l => l.id === id);
 
-    // Filter out self-reference from available location bindings
     const availableLocationsForBinding = allLocations.filter(l => l.id !== existingLocation?.id);
 
     return (
@@ -287,6 +365,111 @@ export function LocationEditorModal({
                         {errors.images && <div className="editor-error-message">{errors.images}</div>}
                     </div>
 
+                    {/* Background Image Settings — only show when images exist */}
+                    {imagePreviews.length > 0 && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Background Image Settings</span>
+                            <div className="context-binding-hint">Configure per-image sampling weights and optional regex triggers. When the user enters this location, an image is randomly sampled by weight. If a regex trigger matches the user's message, it will display that image as background.</div>
+
+                            {imagePreviews.map((preview, index) => {
+                                const currentWeight = bgImageWeights[index] ?? 1;
+                                const currentRegex = bgImageRegexTriggers[index] ?? '';
+                                const hasRegexError = errors.bgImageRegex?.[index];
+                                const testText = bgImageTestTexts[index] ?? '';
+                                const testResult = bgImageTestResults[index] ?? null;
+                                return (
+                                    <div key={index} style={{ marginBottom: '10px', padding: '8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                            <img src={preview} alt={`Image ${index + 1}`} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', flex: 1 }}>Image {index + 1}</span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                            <div style={{ flex: '0 0 auto' }}>
+                                                <label className="editor-label editor-label-small">Weight</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    value={currentWeight}
+                                                    onChange={(e) => {
+                                                        const val = Math.max(0, Number(e.target.value) || 0);
+                                                        setBgImageWeights(prev => ({ ...prev, [index]: val }));
+                                                    }}
+                                                    className="editor-input context-input-small"
+                                                    style={{ width: '70px' }}
+                                                />
+                                            </div>
+
+                                            <div style={{ flex: 1, minWidth: '150px' }}>
+                                                <label className="editor-label editor-label-small">Regex Trigger (optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={currentRegex}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setBgImageRegexTriggers(prev => {
+                                                            const next = { ...prev };
+                                                            if (val.trim()) next[index] = val;
+                                                            else delete next[index];
+                                                            return next;
+                                                        });
+                                                        setBgImageTestResults(prev => ({ ...prev, [index]: null }));
+                                                        if (errors.bgImageRegex) {
+                                                            setErrors(prev => {
+                                                                const next = { ...prev, bgImageRegex: { ...(prev.bgImageRegex || {}) } };
+                                                                if (next.bgImageRegex) {
+                                                                    delete next.bgImageRegex[index];
+                                                                    if (Object.keys(next.bgImageRegex).length === 0) delete next.bgImageRegex;
+                                                                }
+                                                                return next;
+                                                            });
+                                                        }
+                                                    }}
+                                                    className={`editor-input context-mono-input ${hasRegexError ? 'error' : ''}`}
+                                                    placeholder="No trigger (sampled by weight)"
+                                                    style={{ fontSize: '0.7rem' }}
+                                                />
+                                                {hasRegexError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasRegexError}</div>}
+                                            </div>
+                                        </div>
+
+                                        {/* Regex test row for this image */}
+                                        {currentRegex.trim() && (
+                                            <div style={{ marginTop: '6px' }}>
+                                                <div className="context-test-row">
+                                                    <input
+                                                        type="text"
+                                                        value={testText}
+                                                        onChange={(e) => {
+                                                            setBgImageTestTexts(prev => ({ ...prev, [index]: e.target.value }));
+                                                            setBgImageTestResults(prev => ({ ...prev, [index]: null }));
+                                                        }}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestBgImageRegex(index); } }}
+                                                        className="editor-input context-test-input"
+                                                        placeholder="Test user message..."
+                                                        style={{ fontSize: '0.7rem' }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTestBgImageRegex(index)}
+                                                        className="editor-btn editor-btn-save context-test-btn"
+                                                        disabled={!testText.trim()}
+                                                    >Test</button>
+                                                </div>
+                                                {testResult !== null && (
+                                                    <div className={`context-test-result ${testResult ? 'editor-success-message' : 'editor-error-message'}`} style={{ fontSize: '0.6rem' }}>
+                                                        {testResult ? '✅ Matches!' : '❌ No match'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
                     <div className="editor-section">
                         <span className="editor-section-title">Movement Trigger</span>
 
@@ -296,7 +479,7 @@ export function LocationEditorModal({
                                 <input type="text" value={regexActivationTrigger} onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/enters? (the )?forest|walks? into trees/i" />
                                 {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Characters move to this location when their message matches this pattern.
+                                    The user moves to this location when their message matches this pattern.
                                 </div>
                             </div>
                         </div>
@@ -317,11 +500,11 @@ export function LocationEditorModal({
                         )}
                     </div>
 
-                    {/* Location Bindings (above Character Bindings) */}
+                    {/* Location Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Location Bindings</span>
                         <div className="context-field-group">
-                            <div className="context-binding-hint">Characters can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
+                            <div className="context-binding-hint">The user can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
                             <div className="context-character-binding-list">
                                 {locationBindings.map(id => {
                                     const loc = getLocationById(id);
@@ -343,11 +526,10 @@ export function LocationEditorModal({
                             </select>
                         </div>
 
-                        {/* Conditional Regex Triggers per Location Binding */}
                         {locationBindings.length > 0 && (
                             <div className="context-field-group" style={{ marginTop: '8px' }}>
                                 <span className="editor-label editor-label-small">Conditional Access Triggers</span>
-                                <div className="context-binding-hint">Optional regex per binding. If set, the connection only works when recent messages match. Leave empty for unconditional access.</div>
+                                <div className="context-binding-hint">Optional regex per binding. If set, the connection only works when the user's recent messages match. Leave empty for unconditional access.</div>
                                 {locationBindings.map(id => {
                                     const loc = getLocationById(id);
                                     if (!loc) return null;
@@ -388,7 +570,7 @@ export function LocationEditorModal({
                         )}
                     </div>
 
-                    {/* Character Bindings (below Location Bindings) */}
+                    {/* Character Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Character Bindings</span>
                         <div className="context-field-group">
