@@ -3,11 +3,11 @@ import { useState, useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, loadInteractionMessages } from './storage';
 import { clearFetchCache } from '../services/linkFetcher';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 
-const tokenEngine = new LanguageModelEngine();
+const tokenEngine = getLanguageModelEngine();
 
 interface UseChatOperationsOptions {
     interactionData: InteractionData | null;

@@ -1,12 +1,9 @@
 // src/services/ChatMessageSummarizationEngine.ts
 import type { InteractionData, HistoryMessage, Context, Character, BudgetStrategy } from '../types';
-import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString } from '../stringList';
-import { resolveModelContext } from '../utilities/modelContextResolver';
-
-const engine = new LanguageModelEngine();
 
 const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
 const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
@@ -18,26 +15,24 @@ const COMPRESS_CHUNK_PROMPT = "You are a narrative compressor for roleplay chat 
 const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.";
 
 /**
- * Generates a summary for a single chat message using the LLM.
+ * Generates a summary for a single chat message using the budget-aware engine.
  */
 export async function generateMessageSummary(
     message: HistoryMessage,
-    languageModelContext: LanguageModelContext,
     maxTokens = 256,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
-    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const text = message.kind === 'chat' ? message.textContent : '';
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
         prompt,
         n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n', '\nMessage from'],
     };
-    const result = await engine.generateCompletion(requestBody, ctx);
-    return result.text || null;
+
+    const bse = getBudgetStrategyEngine();
+    const { text: result } = await bse.generateCompletion(requestBody);
+    return result || null;
 }
 
 /**
@@ -47,10 +42,7 @@ export async function generateMessageSummary(
 export async function generateMissingSummaries(
     interactionData: InteractionData,
     windowSize: number,
-    languageModelContext: LanguageModelContext,
     maxTokens = 256,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
@@ -58,7 +50,7 @@ export async function generateMissingSummaries(
     const toSummarize = history.slice(0, cutoff).filter(m => m.kind === 'chat' && !m.textContentSummary);
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, languageModelContext, maxTokens, strategy, runningModels);
+        const summary = await generateMessageSummary(msg, maxTokens);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -71,38 +63,32 @@ export async function generateMissingSummaries(
  */
 async function compressChunk(
     messages: HistoryMessage[],
-    languageModelContext: LanguageModelContext,
     maxTokens = 512,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
-    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const formattedMessages = messages.map(m =>
         `${m.character.name}: ${m.kind === 'chat' ? m.textContent : ''}`
     ).join('\n\n');
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
         prompt,
         n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n\n'],
     };
-    const result = await engine.generateCompletion(requestBody, ctx);
-    return result.text || null;
+
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
 
 /**
  * Creates a character-specific memory entry.
  */
 export async function makeCharacterMemory(
-    interactionData: InteractionData, 
+    interactionData: InteractionData,
     character: Character,
-    languageModelContext: LanguageModelContext, 
     maxTokens = 512,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context | null> {
-    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     const history = interactionData.interactionHistory;
     if (history.length === 0) return null;
 
@@ -114,7 +100,7 @@ export async function makeCharacterMemory(
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    const {chatHistoryPrompt} = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
+    const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
 
     const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
 
@@ -123,23 +109,24 @@ export async function makeCharacterMemory(
     const promptLines = [systemPrompt, thinkPrompt, startOfMemoryLine, chatHistoryPrompt, endOfMemoryLine, perspectiveInstruction, memoryInjection];
 
     const prompt = promptLines.join('\n\n');
-    
-    const requestBody: any = {
+
+    const requestBody: Record<string, unknown> = {
         prompt,
         n_predict: maxTokens,
         temperature: 1,
         stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
     };
 
-    const result = await engine.generateCompletion(requestBody, ctx);
-    if (!result.text) return null;
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    if (!text) return null;
 
     const now = Date.now();
     return {
         id: `memory-${character.id}-${uuidv4()}`,
         name: `[Memory] ${character.name}'s Perspective`,
         description: `Character-specific memory for ID: ${character.id}`,
-        text: result.text.trim(),
+        text: text.trim(),
         isAutoGenerated: true,
         useBase64Encoding: false,
         insertionDepth: 0,
@@ -157,10 +144,7 @@ export async function generatePeriodicCompression(
     interactionData: InteractionData,
     compressionInterval: number,
     compressionChunkSize: number,
-    languageModelContext: LanguageModelContext,
     maxTokens: number = 512,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
@@ -182,7 +166,7 @@ export async function generatePeriodicCompression(
         if (compressedRanges.has(rangeKey)) continue;
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, languageModelContext, maxTokens, strategy, runningModels);
+        const compressed = await compressChunk(chunk, maxTokens);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -205,24 +189,22 @@ export async function generatePeriodicCompression(
  */
 async function mergeSummaries(
     summaries: string[],
-    languageModelContext: LanguageModelContext,
     maxTokens = 512,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<string | null> {
-    const ctx = resolveModelContext(languageModelContext, strategy, runningModels);
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0];
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
         prompt,
         n_predict: maxTokens,
         temperature: 1,
         stop: ['\n\n\n'],
     };
-    const result = await engine.generateCompletion(requestBody, ctx);
-    return result.text || null;
+
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
 
 /**
@@ -232,10 +214,7 @@ export async function generateRecursiveSummary(
     interactionData: InteractionData,
     chunkSize: number,
     maxDepth: number,
-    languageModelContext: LanguageModelContext,
     maxTokens = 1024,
-    strategy?: BudgetStrategy | null,
-    runningModels?: Record<string, { isRunning: boolean; port?: number }>,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
@@ -253,7 +232,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, history.length);
         const chunk = history.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, languageModelContext, maxTokens, strategy, runningModels);
+        const compressed = await compressChunk(chunk, maxTokens);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
@@ -280,7 +259,7 @@ export async function generateRecursiveSummary(
         const nextLayerSummaries: string[] = [];
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, languageModelContext, maxTokens, strategy, runningModels);
+            const merged = await mergeSummaries(batch, maxTokens);
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
@@ -301,7 +280,7 @@ export async function generateRecursiveSummary(
     }
 
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, languageModelContext, maxTokens, strategy, runningModels);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,

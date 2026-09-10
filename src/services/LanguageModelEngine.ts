@@ -90,7 +90,7 @@ export class LanguageModelEngine {
   // ─── Token Count Cache ────────────────────────────────────────────
 
   private _tokenCache: Map<string, TokenCacheEntry> = new Map();
-  private _failedTokenizeBackends: Set<string> = new Set();
+  private failedTokenizeBackends: Set<string> = new Set();
   private _hasTokenCountChanged = false;
   private _inFlightTokenize: Map<string, Promise<number>> = new Map();
 
@@ -136,7 +136,7 @@ export class LanguageModelEngine {
 
   clearTokenCache(): void {
     this._tokenCache.clear();
-    this._failedTokenizeBackends.clear();
+    this.failedTokenizeBackends.clear();
     this._inFlightTokenize.clear();
     this._hasTokenCountChanged = true;
   }
@@ -283,7 +283,7 @@ export class LanguageModelEngine {
     if (cached !== null) return cached;
 
     const failureKey = this.buildBackendFailureKey(modelContext);
-    if (failureKey && this._failedTokenizeBackends.has(failureKey)) {
+    if (failureKey && this.failedTokenizeBackends.has(failureKey)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
@@ -320,14 +320,14 @@ export class LanguageModelEngine {
           });
           if (!res.ok) {
             if (res.status === 404 || res.status >= 500) {
-              this._failedTokenizeBackends.add(localKey);
+              this.failedTokenizeBackends.add(localKey);
             }
             return estimatedTokens;
           }
           const data = await res.json();
           return data.tokens?.length ?? estimatedTokens;
         } catch {
-          this._failedTokenizeBackends.add(localKey);
+          this.failedTokenizeBackends.add(localKey);
           return estimatedTokens;
         } finally {
           this._inFlightTokenize.delete(localKey);
@@ -417,7 +417,7 @@ export class LanguageModelEngine {
           const res = await fetch(url, { method: 'POST', headers, body });
           if (!res.ok) {
             if (res.status === 404 || res.status >= 500) {
-              this._failedTokenizeBackends.add(cloudKey);
+              this.failedTokenizeBackends.add(cloudKey);
             }
             return estimatedTokens;
           }
@@ -435,7 +435,7 @@ export class LanguageModelEngine {
             default: return estimatedTokens;
           }
         } catch {
-          this._failedTokenizeBackends.add(cloudKey);
+          this.failedTokenizeBackends.add(cloudKey);
           return estimatedTokens;
         } finally {
           this._inFlightTokenize.delete(cloudKey);
@@ -653,7 +653,7 @@ export class LanguageModelEngine {
 
 // ─── Singleton Accessor ──────────────────────────────────────────────
 
-let _instance: LanguageModelEngine | null = null;
+let instance: LanguageModelEngine | null = null;
 
 /**
  * Returns the shared LanguageModelEngine instance.
@@ -661,19 +661,19 @@ let _instance: LanguageModelEngine | null = null;
  * are shared across all callers through this single instance.
  */
 export function getLanguageModelEngine(): LanguageModelEngine {
-    if (!_instance) {
-        _instance = new LanguageModelEngine();
-    }
-    return _instance;
+    if (instance) return instance;
+    const engine = new LanguageModelEngine();
+    instance = engine;
+    return engine;
 }
 
 /**
  * Resets the singleton instance. Intended ONLY for test teardown.
  * Never call this in production code.
  */
-export function _resetLanguageModelEngineForTesting(): void {
-    if (_instance) {
-        _instance.clearTokenCache();
+export function reset()(): void {
+    if (instance) {
+        instance.clearTokenCache();
     }
-    _instance = null;
+    instance = null;
 }

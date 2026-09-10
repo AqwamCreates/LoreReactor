@@ -3,7 +3,7 @@ import type React from 'react';
 import { useState, useRef, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, Sampler, LanguageModel, Profile, World, PromptBlockType, SummarizationStrategyType } from '../types';
 import { EntitySelectList } from './EntitySelectList';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
@@ -178,7 +178,7 @@ const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
     { type: 'World', label: 'World', icon: '🌍' },
 ];
 
-const recommendationEngine = new LanguageModelEngine();
+const recommendationEngine = getLanguageModelEngine();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getEffectiveSchemaEntities(selectedEntities: EntityType[]): EntityType[] {

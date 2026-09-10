@@ -1,11 +1,10 @@
 // src/services/BackgroundSummarization.ts
 import type { InteractionData, BudgetStrategy } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
-import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { getLanguageModelEngine } from './LanguageModelEngine';
+import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
 import { useSessionStore } from '../store/useSessionStore';
-
-const languageModelEngine = new LanguageModelEngine();
 
 interface BackgroundSummarizationContext {
     data: InteractionData;
@@ -21,9 +20,11 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
         const model = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
         const ctxLen = model?.contextLength || 8192;
+        const engine = getLanguageModelEngine();
+
         let tokens = 0;
         for (const m of data.interactionHistory) {
-            if (m.kind === 'chat') tokens += await languageModelEngine.countTokens(m.textContent);
+            if (m.kind === 'chat') tokens += await engine.countTokens(m.textContent);
         }
 
         const triggered = checkTriggerThreshold(data, tokens, ctxLen);
@@ -31,23 +32,22 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
 
         addToast(`Running ${triggered.strategyType}...`, 'info');
 
-        const port = model?.id ? runningModels[model.id]?.port : undefined;
-        const effectivePort = port || (model?.parameters as Record<string, unknown>)?._runtimePort;
-        const lmCtx: LanguageModelContext = {
-            apiKey: model?.apiKey,
-            backend: model?.backend,
-            modelPath: model?.model,
-            runtimePort: effectivePort as number,
-        };
-        if (!effectivePort && !model?.apiKey) return;
+        // Ensure BudgetStrategyEngine singleton is initialized for summarization
+        const budgetData = useSessionStore.getState().budgetData;
+        const strat = activeStrategy ?? useSessionStore.getState().activeStrategy;
 
-        const strat = activeStrategy ?? null;
+        if (strat && budgetData) {
+            const bse = getBudgetStrategyEngine();
+            bse.setStrategy(strat);
+            bse.setBudgetData(budgetData);
+            bse.setRunningModels(runningModels);
+        }
 
         let updated = data;
 
         if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Sliding Window Replace' && s.enabled)?.summaryTokenBudget ?? 256;
-            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, lmCtx, budget, strat, runningModels);
+            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, budget);
             if (summaries.size > 0) {
                 updated = {
                     ...updated,
@@ -62,13 +62,13 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
 
         if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Periodic Compression' && s.enabled)?.summaryTokenBudget ?? 512;
-            const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, lmCtx, budget, strat, runningModels);
+            const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, budget);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
 
         if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Recursive Summary' && s.enabled)?.summaryTokenBudget ?? 1024;
-            const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, lmCtx, budget, strat, runningModels);
+            const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, budget);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
 

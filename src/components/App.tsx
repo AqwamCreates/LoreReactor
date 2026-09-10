@@ -19,7 +19,10 @@ import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLog
 import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
+import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
@@ -345,13 +348,52 @@ function App() {
         return total;
     }, [interactionData]);
 
+    // ─── Budget Strategy Engine Local Model Loader ───────────────────
+    const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
+        const existing = runningModels[modelId];
+        if (existing?.port) return existing.port;
+
+        const targetModel =
+            activeStrategy?.localModels.find(m => m.id === modelId) ||
+            activeStrategy?.onlineModels.find(m => m.id === modelId) ||
+            allModels.find(m => m.id === modelId);
+
+        if (!targetModel) return null;
+
+        // Cloud models do not need local loading.
+        if (targetModel.apiKey && targetModel.backend) return null;
+
+        try {
+            const modelPath = targetModel.model || '';
+            const args = buildModelLoadArguments(targetModel);
+
+            const response = await fetch(`${localURL}/models/load`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: targetModel.id,
+                    modelPath,
+                    args,
+                }),
+            });
+
+            if (!response.ok) return null;
+
+            const responseData = await response.json();
+            return responseData.port ?? null;
+        } catch (error) {
+            console.warn(`Auto-load of model ${targetModel.name} failed:`, error);
+            return null;
+        }
+    }, [runningModels, activeStrategy, allModels]);
+
     // ─── Effects ─────────────────────────────────────────────────────
     useEffect(() => {
         const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
         if (enabled) sentimentEngine.initialize(); else sentimentEngine.unload();
     }, [interactionData?.Profile?.enableCharacterExpression]);
 
-    useEffect(() => { void selectedModelId; void runningModels; new LanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
+    useEffect(() => { void selectedModelId; void runningModels; getLanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
     useEffect(() => { if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id); else localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT); }, [interactionData?.id]);
     useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
 
@@ -405,6 +447,26 @@ function App() {
         if (freshLocalModels.length !== activeStrategy.localModels.length || freshLocalModels.some((m, i) => m.id !== activeStrategy.localModels[i]?.id)) { updatedStrat.localModels = freshLocalModels; stratChanged = true; }
         if (stratChanged) setActiveBudgetStrategy(updatedStrat);
     }, [activeStrategy, allModels, setActiveBudgetStrategy]);
+
+    // BudgetStrategyEngine singleton sync
+    useEffect(() => {
+        if (!activeStrategy || !budgetData) return;
+
+        try {
+            const budgetStrategyEngine = getBudgetStrategyEngine();
+            budgetStrategyEngine.setStrategy(activeStrategy);
+            budgetStrategyEngine.setBudgetData(budgetData);
+            budgetStrategyEngine.setRunningModels(runningModels);
+            budgetStrategyEngine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
+        } catch {
+            initializeBudgetStrategyEngine(
+                activeStrategy,
+                budgetData,
+                runningModels,
+                loadLocalModelForBudgetStrategyEngine,
+            );
+        }
+    }, [activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine]);
 
     // Process protagonist image on new/restored chat
     useEffect(() => {
@@ -552,7 +614,7 @@ function App() {
                     return;
                 }
 
-                const engine = new LanguageModelEngine();
+                const engine = getLanguageModelEngine();
                 for (const msg of InteractionMessages) {
                     if (abort.signal.aborted) return;
                     if (prevCountedIds.has(msg.id)) continue;
@@ -663,7 +725,7 @@ function App() {
 
     const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); modals.samplerList.close(); modals.samplerEditor.open(); };
     const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); modals.samplerEditor.close(); setSamplerToEdit(null); };
-    const handleImportComplete = useCallback(() => { new LanguageModelEngine().clearTokenCache(); refreshChatList(); }, [refreshChatList]);
+    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); refreshChatList(); }, [refreshChatList]);
 
     const handleForceFirstMessage = useCallback(async (character: Character) => {
         if (!interactionData) return;

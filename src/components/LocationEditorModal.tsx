@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import type { Location, Character } from '../types';
 import { uploadLocationImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import './main.css';
 
-const tokenEngine = new LanguageModelEngine();
+const tokenEngine = getLanguageModelEngine();
 
 interface LocationEditorModalProps {
     isOpen: boolean;

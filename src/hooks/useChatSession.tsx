@@ -10,7 +10,7 @@ import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationL
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useThrottledStream } from './useThrottledStream';
 import { useGenerationLock } from './useGenerationLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -20,7 +20,7 @@ import { useGeneration } from './useGeneration';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
 import { useSessionStore } from '../store/useSessionStore';
 
-const languageModelEngine = new LanguageModelEngine();
+const languageModelEngine = getLanguageModelEngine();
 
 type RunningModelStatus = Record<string, { isRunning: boolean; port?: number }>;
 type StatsState = { numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number };

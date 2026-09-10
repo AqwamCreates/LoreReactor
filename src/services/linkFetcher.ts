@@ -1,5 +1,5 @@
 // src/services/linkFetcher.ts
-import { LanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { getLanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
 import type { linkFetchMode, searchEngine } from '../types';
@@ -9,7 +9,7 @@ const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_PROXY_URL = '/api/web/fetch';
 
-const tokenEngine = new LanguageModelEngine()
+const tokenEngine = getLanguageModelEngine()
 
 interface FetchResult {
     url: string;

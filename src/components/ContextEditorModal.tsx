@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget, linkFetchMode } from '../types';
 import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
-import { LanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import './main.css';
 
-const tokenEngine = new LanguageModelEngine();
+const tokenEngine = getLanguageModelEngine();
 
 interface ContextEditorModalProps {
     isOpen: boolean;
