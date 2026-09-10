@@ -997,7 +997,7 @@ export async function prepareRequestBody(
     existingCharacterText: string,
     protagonistFileBase64s?: string[],
     runtimePort?: number
-): Promise<{ body: any; fetchErrors: string[] }> {
+): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
     let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);

@@ -1,5 +1,5 @@
 // src/utilities/modelContextResolver.ts
-import type { BudgetStrategy, LanguageModel } from '../types';
+import type { BudgetStrategy, LanguageModel, backend } from '../types';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
 
 /**
@@ -71,7 +71,7 @@ export function resolveModelContextFromSamplerParameters(
     }
 
     const apiKey = selectedModel.apiKey as string | undefined;
-    const backend = selectedModel.backend as string | undefined;
+    const backend = selectedModel.backend as backend | undefined;
     const modelPath = selectedModel.model as string | undefined;
     const runtimePort = runtimePortOverride
         ?? (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;

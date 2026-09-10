@@ -1,5 +1,6 @@
 // src/components/ChatInput.tsx
 import React from 'react';
+import type { BudgetStrategy } from '../types';
 
 interface ChatInputProps {
     inputText: string;
@@ -12,7 +13,7 @@ interface ChatInputProps {
     isModelLoading: boolean;
     modelStatusMessage: string;
     currentCharacterName: string | undefined;
-    activeStrategy: any;
+    activeStrategy?: BudgetStrategy;
     selectedModelId: string | null;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;

@@ -62,7 +62,7 @@ export function WorldEditorModal({
 
     if (!isOpen) return null;
 
-    const toggleInList = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
+    const toggleInList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 

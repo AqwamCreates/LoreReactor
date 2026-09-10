@@ -6,7 +6,6 @@ import { getEffectiveEnableMemoryWriting } from './characterLogic';
 import { makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { memoryWriteTrigger } from '../stringList';
 import { v4 as uuidv4 } from 'uuid';
-import type { LanguageModelContext } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
 export function useMemoryTrigger() {

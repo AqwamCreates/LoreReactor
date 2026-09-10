@@ -156,7 +156,7 @@ export function SamplerEditorModal({
                 setDescription(existingSampler.description || '');
 
                 // Restore parameter values
-                const loadedParams: any = {};
+                const loadedParams = {} as SamplerParameters;
                 for (const key of Object.keys(DEFAULT_PARAMETERS)) {
                     const defaultValue = DEFAULT_PARAMETERS[key];
                     if (

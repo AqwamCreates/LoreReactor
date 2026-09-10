@@ -255,20 +255,21 @@ export class GenerationOrchestrator {
                 bse.setLoadLocalModel(loadLocalModel);
 
                 // Load or initialize budget data
-                let bd = finalBudgetData;
+                let bd: BudgetData | null = finalBudgetData;
                 if (!bd) {
                     try { bd = await loadRawBudgetData(); } catch (e) { console.warn('Failed to load budget data:', e); }
                     if (!bd) {
-                        bd = { ...DefaultBudgetData, budgetStrategy: strat };
+                        const newBd: BudgetData = { ...DefaultBudgetData, budgetStrategy: strat };
                         try {
-                            await saveRawBudgetData(bd);
+                            await saveRawBudgetData(newBd);
+                            bd = newBd;
                         } catch (e) {
                             console.error('Failed to create budget data:', e);
                             return { error: { message: 'Failed to initialize budget tracking', type: 'budget' } };
                         }
                     }
                 }
-                bse.setBudgetData(bd!);
+                bse.setBudgetData(bd);
 
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();

@@ -1,6 +1,6 @@
 // src/services/BudgetStrategyEngine.ts
 import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageModel } from '../types';
-import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
+import { getLanguageModelEngine, type StreamCallbacks, type StreamResult } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { buildContextFromModel } from '../utilities/modelContextResolver';
@@ -245,7 +245,7 @@ export class BudgetStrategyEngine {
                     this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                 }
 
-                const promptTokens = await this.engine.countTokens(body.prompt || '');
+                const promptTokens = await this.engine.countTokens((body.prompt as string) || '');
                 const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
@@ -291,7 +291,7 @@ export class BudgetStrategyEngine {
                     const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, fallbackPort);
 
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
-                    let result;
+                    let result: StreamResult;
                     try {
                         result = await this.engine.generateStream(
                             fallbackBody,
@@ -324,7 +324,7 @@ export class BudgetStrategyEngine {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
-                    const promptTokens = await this.engine.countTokens(fallbackBody.prompt || '');
+                    const promptTokens = await this.engine.countTokens((fallbackBody.prompt as string) || '');;
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);

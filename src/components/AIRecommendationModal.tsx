@@ -423,7 +423,7 @@ function buildProfileFromGenerated(p: GeneratedProfile): Profile {
         enableMemoryWriting: p.enableMemoryWriting ?? 0, enableMemoryReading: p.enableMemoryReading ?? 0,
         inputStrategy: p.inputStrategy || ['System Prompt', 'Chat History', 'Context', 'Location'],
         summarizationSteps: (p.summarizationSteps || []).map(s => ({
-            id: uuidv4(), strategyType: s.strategyType, enabled: s.enabled, order: s.order,
+            id: uuidv4(), name: s.strategyType, strategyType: s.strategyType, enabled: s.enabled, order: s.order,
             slidingWindowSize: s.slidingWindowSize, compressionInterval: s.compressionInterval,
             compressionChunkSize: s.compressionChunkSize, recursiveChunkSize: s.recursiveChunkSize,
             recursiveMaxDepth: s.recursiveMaxDepth, maskingRelevanceThreshold: s.maskingRelevanceThreshold,
@@ -591,7 +591,7 @@ export function AIRecommendationModal({
     }, [streamingText]);
 
     const toggleEntity = (type: EntityType) => setSelectedEntities(prev => prev.includes(type) ? prev.filter(e => e !== type) : [...prev, type]);
-    const toggleInOrderedList = (ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    const toggleInOrderedList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     const toggleImagePriorityItem = (item: ImagePriorityItem) => setImageInjectionPriority(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
     const handleDragStart = (i: number) => setDragIndex(i);
     const handleDragOver = (e: React.DragEvent, i: number) => { e.preventDefault(); if (dragIndex !== null && dragIndex !== i) setDragOverIndex(i); };

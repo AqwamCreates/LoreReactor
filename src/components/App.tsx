@@ -682,7 +682,7 @@ function App() {
         if (!interactionData) return;
         const resolvedChars = world.characterIds.map(id => allCharacters.find(c => c.id === id)).filter((c): c is Character => !!c);
         const resolvedCtxs = world.contextIds.map(id => allContexts.find(c => c.id === id)).filter((c): c is Context => !!c);
-        const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter((l): l is Location => !!l);
+                const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter(l => l !== undefined);
         const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
         const updated: InteractionData = {
             ...interactionData,
@@ -823,7 +823,7 @@ function App() {
 
                     <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
-                    <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
+                    <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
 
                 <AppModals
