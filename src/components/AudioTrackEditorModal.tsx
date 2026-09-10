@@ -1,5 +1,4 @@
 // src/components/AudioTrackEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory } from '../types';
 import { uploadAudioTrack, getAudioTrackUrl } from '../hooks/storage';
@@ -158,7 +157,6 @@ export function AudioTrackEditorModal({
             previewAudioRef.current.onended = () => setIsPreviewPlaying(false);
             previewAudioRef.current.onerror = () => {
                 setIsPreviewPlaying(false);
-                addToast?.('Failed to play audio preview.', 'error');
             };
         } else {
             previewAudioRef.current.src = previewUrl;

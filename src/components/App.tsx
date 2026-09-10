@@ -180,7 +180,7 @@ function App() {
     });
 
     const {
-        handleToggleParticipant, handleToggleContext, handleToggleLocation,
+        handleToggleParticipant, handleToggleContext, handleToggleLocation, handleToggleAudioTrack,
         handleSetChatProtagonist, handleToggleExtension,
         handleActivateBudgetStrategy, handleActivateProfile,
     } = useEntityToggles({
@@ -870,7 +870,7 @@ function App() {
                     onDeleteLocation={locationModal.handleDelete}
                     onToggleLocation={handleToggleLocation}
                     onDeleteAudioTrack={audioTrackModal.handleDelete}
-                    onToggleAudioTrack={() => {}}
+                    onToggleAudioTrack={handleToggleAudioTrack}
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
                     onDeleteSampler={deleteSampler}
