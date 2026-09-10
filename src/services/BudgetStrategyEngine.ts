@@ -1,10 +1,18 @@
 // src/services/BudgetStrategyEngine.ts
 import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageModel } from '../types';
-import { LanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
+import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
+import { buildContextFromModel } from '../utilities/modelContextResolver';
 
-const engine = new LanguageModelEngine();
+// ─── Types ───────────────────────────────────────────────────────────
+
+export interface RunningModelState {
+    isRunning: boolean;
+    port?: number;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
@@ -46,7 +54,6 @@ function computeComplexityScore(interactionData: InteractionData): number {
         hashMarks + dashes + tabs + carriageReturns + carets + slashes + atSigns;
 
     const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
-
     return Math.round(syntaxDensity * 100);
 }
 
@@ -84,9 +91,6 @@ function applyResetIfDue(data: BudgetData): void {
     data.lastResetTimestamp = Date.now();
 }
 
-/**
- * Returns true if a model is free (all pricing fields are zero or undefined).
- */
 function isFreeModel(model: LanguageModel): boolean {
     const pricing = buildPricing(model);
     return pricing.cacheHitPerMillion <= 0 &&
@@ -94,10 +98,7 @@ function isFreeModel(model: LanguageModel): boolean {
            pricing.outputPerMillion <= 0;
 }
 
-export interface RunningModelState {
-    isRunning: boolean;
-    port?: number;
-}
+// ─── Engine ──────────────────────────────────────────────────────────
 
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
@@ -106,6 +107,7 @@ export class BudgetStrategyEngine {
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private failedOnlineIds = new Set<string>();
     private failedLocalIds = new Set<string>();
+    private engine = getLanguageModelEngine();
 
     constructor(
         strategy: BudgetStrategy,
@@ -120,242 +122,32 @@ export class BudgetStrategyEngine {
         applyResetIfDue(this.budgetData);
     }
 
-    private getTier(model: LanguageModel): number {
-        return this.strategy.modelCostTiers?.[model.id] ?? 0;
+    // ─── Setters ─────────────────────────────────────────────────────
+
+    setStrategy(strategy: BudgetStrategy): void {
+        this.strategy = strategy;
+        this.failedOnlineIds.clear();
+        this.failedLocalIds.clear();
     }
 
-    private isInQuotaCooldown(modelId: string): boolean {
-        const lastQuotaHit = this.budgetData.modelLastQuotaHitTimeStamps[modelId];
-        if (!lastQuotaHit) return false;
-        return (Date.now() - lastQuotaHit) < 60_000;
+    setBudgetData(budgetData: BudgetData): void {
+        this.budgetData = budgetData;
+        applyResetIfDue(this.budgetData);
     }
 
-    private getModelSpeed(modelId: string): number {
-        return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
+    setRunningModels(runningModels: Record<string, RunningModelState>): void {
+        this.runningModels = runningModels;
     }
 
-    private getModelTTFT(modelId: string): number {
-        return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY;
-    }
-
-    private getModelQualityScore(modelId: string): number {
-        return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
-    }
-
-    private isBelowQualityThreshold(modelId: string): boolean {
-        const threshold = this.strategy.fallbackOnQualityThreshold;
-        if (!threshold || threshold <= 0) return false;
-
-        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
-        if (usedCount < 3) return false;
-
-        const totalDuration = this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
-        const avgDurationSeconds = (totalDuration / usedCount) / 1000;
-
-        return avgDurationSeconds < threshold;
-    }
-
-    private computeCompositeQuality(modelId: string): number {
-        const speed = this.getModelSpeed(modelId);
-        const ttft = this.getModelTTFT(modelId);
-        const totalDuration = this.getModelQualityScore(modelId);
-        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
-        const quotaHits = this.budgetData.modelQuotaHitCount?.[modelId] ?? 0;
-        const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;
-
-        // Speed factor: lower ms/token = better
-        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 0;
-
-        // TTFT factor: lower = better
-        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 0;
-
-        // Average session duration factor
-        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 0;
-
-        // Reliability factor
-        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 0;
-
-        return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
-    }
-
-    private recordLatency(modelId: string, observedMsPerToken: number): void {
-        if (!this.budgetData.modelAverageLatencyMsPerToken) {
-            this.budgetData.modelAverageLatencyMsPerToken = {};
-        }
-        const alpha = this.budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
-        const previous = this.budgetData.modelAverageLatencyMsPerToken[modelId];
-        if (previous === undefined) {
-            this.budgetData.modelAverageLatencyMsPerToken[modelId] = observedMsPerToken;
-        } else {
-            this.budgetData.modelAverageLatencyMsPerToken[modelId] =
-                (alpha * observedMsPerToken) + ((1 - alpha) * previous);
-        }
-    }
-
-    private recordTTFT(modelId: string, observedMs: number): void {
-        if (!this.budgetData.modelAverageTimeToFirstToken) {
-            this.budgetData.modelAverageTimeToFirstToken = {};
-        }
-        const alpha = this.budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3;
-        const previous = this.budgetData.modelAverageTimeToFirstToken[modelId];
-        if (previous === undefined) {
-            this.budgetData.modelAverageTimeToFirstToken[modelId] = observedMs;
-        } else {
-            this.budgetData.modelAverageTimeToFirstToken[modelId] =
-                (alpha * observedMs) + ((1 - alpha) * previous);
-        }
-    }
-
-    private recordSessionDuration(modelId: string, durationMs: number): void {
-        if (!this.budgetData.modelTotalSessionDuration) {
-            this.budgetData.modelTotalSessionDuration = {};
-        }
-        this.budgetData.modelTotalSessionDuration[modelId] =
-            (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
-    }
-
-    private buildModelContext(model: LanguageModel): LanguageModelContext {
-        const isCloud = !!model.apiKey && model.backend;
-        const running = this.runningModels[model.id];
-        const runtimePort = isCloud ? undefined : (running?.port || (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined);
-
-        return {
-            apiKey: model.apiKey,
-            backend: model.backend,
-            modelPath: model.model,
-            runtimePort,
-        };
-    }
-
-    private isModelReady(model: LanguageModel): boolean {
-        const isCloud = !!model.apiKey && model.backend;
-        if (isCloud) return true;
-        const running = this.runningModels[model.id];
-        return !!(running?.port || (model.parameters as Record<string, unknown>)?._runtimePort);
-    }
-
-    private async ensureModelLoaded(model: LanguageModel): Promise<boolean> {
-        if (this.isModelReady(model)) return true;
-        const isCloud = !!model.apiKey && model.backend;
-        if (isCloud) return true;
-        if (!this.loadLocalModel) return false;
-
-        try {
-            const port = await this.loadLocalModel(model.id);
-            if (port) {
-                this.runningModels = {
-                    ...this.runningModels,
-                    [model.id]: { isRunning: true, port },
-                };
-                return true;
-            }
-        } catch (e) {
-            console.warn(`Failed to auto-load model ${model.name}:`, e);
-        }
-        return false;
-    }
-
-    private createTimeoutController(parentSignal: AbortSignal): { controller: AbortController; cleanup: () => void } {
-        const timeoutSeconds = this.strategy.fallbackOnTimeoutInSeconds;
-        const controller = new AbortController();
-
-        const onParentAbort = () => controller.abort();
-        parentSignal.addEventListener('abort', onParentAbort);
-
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        if (timeoutSeconds > 0) {
-            timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
-        }
-
-        return {
-            controller,
-            cleanup: () => {
-                if (timeoutId !== undefined) clearTimeout(timeoutId);
-                parentSignal.removeEventListener('abort', onParentAbort);
-            },
-        };
-    }
-
-    private selectFromPool(
-        pool: LanguageModel[],
-        failedIds: Set<string>,
-        maxTier?: number,
-    ): LanguageModel | null {
-        if (pool.length === 0) return null;
-
-        const tierGroups = new Map<number, LanguageModel[]>();
-        for (const model of pool) {
-            if (failedIds.has(model.id)) continue;
-            if (this.isInQuotaCooldown(model.id)) continue;
-            const tier = this.getTier(model);
-            if (maxTier !== undefined && tier > maxTier) continue;
-            if (!tierGroups.has(tier)) tierGroups.set(tier, []);
-            const tierModels = tierGroups.get(tier);
-            if (tierModels) tierModels.push(model);
-        }
-
-        if (tierGroups.size === 0) return null;
-
-        const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
-
-        for (const tier of sortedTiers) {
-            const candidates = tierGroups.get(tier);
-            if (!candidates) continue;
-            candidates.sort((a, b) => {
-                // 1. Quality threshold gate
-                const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
-                const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
-                if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
-
-                // 2. Composite quality score
-                const scoreA = this.computeCompositeQuality(a.id);
-                const scoreB = this.computeCompositeQuality(b.id);
-                if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
-
-                // 3. Random jitter for equal scores
-                return Math.random() - 0.5;
-            });
-            if (candidates.length > 0) {
-                return candidates[0];
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Selects a free model from the combined online + local pools.
-     * Used when budget is exhausted to keep the conversation going at no cost.
-     */
-    private selectFreeModel(failedIds: Set<string>): LanguageModel | null {
-        const allModels = [...this.strategy.onlineModels, ...this.strategy.localModels];
-        const freeModels = allModels.filter(m => isFreeModel(m));
-        if (freeModels.length === 0) return null;
-        return this.selectFromPool(freeModels, failedIds);
-    }
-
-    private recordSuccess(modelId: string, cost: number): void {
-        this.budgetData.budgetSpent += cost;
-        this.budgetData.modelLastUsedTimestamps[modelId] = Date.now();
-        this.budgetData.modelUsedCount[modelId] = (this.budgetData.modelUsedCount?.[modelId] ?? 0) + 1;
-        this.budgetData.lastUpdatedTimestamp = Date.now();
-    }
-
-    private recordQuotaError(modelId: string): void {
-        this.budgetData.modelLastQuotaHitTimeStamps[modelId] = Date.now();
-        this.budgetData.modelQuotaHitCount[modelId] = (this.budgetData.modelQuotaHitCount?.[modelId] ?? 0) + 1;
-        this.budgetData.lastUpdatedTimestamp = Date.now();
-    }
-
-    private recordError(modelId: string): void {
-        this.budgetData.modelLastErrorHitTimeStamps[modelId] = Date.now();
-        this.budgetData.modelErrorHitCount[modelId] = (this.budgetData.modelErrorHitCount?.[modelId] ?? 0) + 1;
-        this.budgetData.lastUpdatedTimestamp = Date.now();
+    setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void {
+        this.loadLocalModel = loadLocalModel;
     }
 
     getBudgetData(): BudgetData {
         return this.budgetData;
     }
+
+    // ─── Streaming Generation ────────────────────────────────────────
 
     async generateStream(
         interactionData: InteractionData,
@@ -411,7 +203,7 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            const primaryCtx = this.buildModelContext(selectedModel);
+            const primaryCtx = buildContextFromModel(selectedModel, this.runningModels);
             const pricing = buildPricing(selectedModel);
             const runtimePort = primaryCtx.runtimePort;
             const sessionStart = Date.now();
@@ -422,7 +214,7 @@ export class BudgetStrategyEngine {
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                 let result;
                 try {
-                    result = await engine.generateStream(
+                    result = await this.engine.generateStream(
                         body,
                         timeoutCtrl,
                         wrappedCallbacks,
@@ -453,8 +245,8 @@ export class BudgetStrategyEngine {
                     this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                 }
 
-                const promptTokens = await engine.countTokens(body.prompt || '');
-                const completionTokens = await engine.countTokens(result.text);
+                const promptTokens = await this.engine.countTokens(body.prompt || '');
+                const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
@@ -490,7 +282,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                const fallbackCtx = this.buildModelContext(selectedModel);
+                const fallbackCtx = buildContextFromModel(selectedModel, this.runningModels);
                 const fallbackPricing = buildPricing(selectedModel);
                 const fallbackPort = fallbackCtx.runtimePort;
                 const sessionStart = Date.now();
@@ -501,7 +293,7 @@ export class BudgetStrategyEngine {
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result;
                     try {
-                        result = await engine.generateStream(
+                        result = await this.engine.generateStream(
                             fallbackBody,
                             timeoutCtrl,
                             wrappedCallbacks,
@@ -532,8 +324,8 @@ export class BudgetStrategyEngine {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
-                    const promptTokens = await engine.countTokens(fallbackBody.prompt || '');
-                    const completionTokens = await engine.countTokens(result.text);
+                    const promptTokens = await this.engine.countTokens(fallbackBody.prompt || '');
+                    const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
@@ -572,7 +364,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                const freeCtx = this.buildModelContext(freeModel);
+                const freeCtx = buildContextFromModel(freeModel, this.runningModels);
                 const freePort = freeCtx.runtimePort;
                 const sessionStart = Date.now();
 
@@ -582,7 +374,7 @@ export class BudgetStrategyEngine {
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result;
                     try {
-                        result = await engine.generateStream(
+                        result = await this.engine.generateStream(
                             freeBody,
                             timeoutCtrl,
                             wrappedCallbacks,
@@ -613,7 +405,6 @@ export class BudgetStrategyEngine {
                         this.recordTTFT(freeModel.id, result.timeToFirstToken);
                     }
 
-                    // Free model — record success with $0 cost
                     this.recordSuccess(freeModel.id, 0);
                     console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
 
@@ -640,22 +431,420 @@ export class BudgetStrategyEngine {
         throw exhaustedError;
     }
 
-    private async shouldUseOnline(interactionData: InteractionData): Promise<boolean> {
+    // ─── Non-Streaming Completion ────────────────────────────────────
+
+    /**
+     * Budget-aware non-streaming completion. Uses the same pool selection,
+     * fallback rotation, and stats tracking as generateStream().
+     * Intended for summarization engines and other background tasks.
+     */
+    async generateCompletion(
+        requestBody: Record<string, unknown>,
+        abortSignal?: AbortSignal,
+    ): Promise<{ text: string; modelId: string }> {
+        this.failedOnlineIds.clear();
+        this.failedLocalIds.clear();
+
+        // For completions, prefer local/cheaper models by default
+        const useOnline = await this.shouldUseOnline(undefined);
+        const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
+        const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
+        const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
+        const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
+
+        // ─── Try primary pool ───
+        while (true) {
+            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet);
+            if (!selectedModel) break;
+
+            if (abortSignal?.aborted) throw new Error('Aborted');
+
+            const loaded = await this.ensureModelLoaded(selectedModel);
+            if (!loaded) {
+                primaryFailedSet.add(selectedModel.id);
+                this.recordError(selectedModel.id);
+                continue;
+            }
+
+            const ctx = buildContextFromModel(selectedModel, this.runningModels);
+            const pricing = buildPricing(selectedModel);
+            const sessionStart = Date.now();
+
+            try {
+                const result = await this.engine.generateCompletion(requestBody, ctx);
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(selectedModel.id, sessionDuration);
+
+                const promptTokens = await this.engine.countTokens((requestBody.prompt as string) || '');
+                const completionTokens = await this.engine.countTokens(result.text);
+                const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+                this.recordSuccess(selectedModel.id, cost.totalCost);
+
+                return { text: result.text, modelId: selectedModel.id };
+            } catch (e) {
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(selectedModel.id, sessionDuration);
+
+                if (!isQuotaError(e)) {
+                    this.recordError(selectedModel.id);
+                    throw e;
+                }
+
+                primaryFailedSet.add(selectedModel.id);
+                this.recordQuotaError(selectedModel.id);
+            }
+        }
+
+        // ─── Fallback pool ───
+        if (this.strategy.fallbackOnLocalFailure) {
+            while (true) {
+                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet);
+                if (!selectedModel) break;
+
+                if (abortSignal?.aborted) throw new Error('Aborted');
+
+                const loaded = await this.ensureModelLoaded(selectedModel);
+                if (!loaded) {
+                    fallbackFailedSet.add(selectedModel.id);
+                    this.recordError(selectedModel.id);
+                    continue;
+                }
+
+                const ctx = buildContextFromModel(selectedModel, this.runningModels);
+                const pricing = buildPricing(selectedModel);
+                const sessionStart = Date.now();
+
+                try {
+                    const result = await this.engine.generateCompletion(requestBody, ctx);
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+
+                    const promptTokens = await this.engine.countTokens((requestBody.prompt as string) || '');
+                    const completionTokens = await this.engine.countTokens(result.text);
+                    const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+                    this.recordSuccess(selectedModel.id, cost.totalCost);
+
+                    return { text: result.text, modelId: selectedModel.id };
+                } catch (e) {
+                    const sessionDuration = Date.now() - sessionStart;
+                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+
+                    if (!isQuotaError(e)) {
+                        this.recordError(selectedModel.id);
+                        throw e;
+                    }
+
+                    fallbackFailedSet.add(selectedModel.id);
+                    this.recordQuotaError(selectedModel.id);
+                }
+            }
+        }
+
+        // ─── Free models ───
+        const allFailedIds = new Set([...this.failedOnlineIds, ...this.failedLocalIds]);
+        while (true) {
+            const freeModel = this.selectFreeModel(allFailedIds);
+            if (!freeModel) break;
+
+            if (abortSignal?.aborted) throw new Error('Aborted');
+
+            const loaded = await this.ensureModelLoaded(freeModel);
+            if (!loaded) {
+                allFailedIds.add(freeModel.id);
+                this.recordError(freeModel.id);
+                continue;
+            }
+
+            const ctx = buildContextFromModel(freeModel, this.runningModels);
+            const sessionStart = Date.now();
+
+            try {
+                const result = await this.engine.generateCompletion(requestBody, ctx);
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(freeModel.id, sessionDuration);
+                this.recordSuccess(freeModel.id, 0);
+
+                return { text: result.text, modelId: freeModel.id };
+            } catch (e) {
+                const sessionDuration = Date.now() - sessionStart;
+                this.recordSessionDuration(freeModel.id, sessionDuration);
+                allFailedIds.add(freeModel.id);
+                this.recordError(freeModel.id);
+            }
+        }
+
+        throw new Error('All models exhausted for completion request.');
+    }
+
+    // ─── Pool Selection ──────────────────────────────────────────────
+
+    private getTier(model: LanguageModel): number {
+        return this.strategy.modelCostTiers?.[model.id] ?? 0;
+    }
+
+    private isInQuotaCooldown(modelId: string): boolean {
+        const lastQuotaHit = this.budgetData.modelLastQuotaHitTimeStamps[modelId];
+        if (!lastQuotaHit) return false;
+        return (Date.now() - lastQuotaHit) < 60_000;
+    }
+
+    private getModelSpeed(modelId: string): number {
+        return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
+    }
+
+    private getModelTTFT(modelId: string): number {
+        return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY;
+    }
+
+    private getModelQualityScore(modelId: string): number {
+        return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
+    }
+
+    private isBelowQualityThreshold(modelId: string): boolean {
+        const threshold = this.strategy.fallbackOnQualityThreshold;
+        if (!threshold || threshold <= 0) return false;
+
+        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        if (usedCount < 3) return false;
+
+        const totalDuration = this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
+        const avgDurationSeconds = (totalDuration / usedCount) / 1000;
+
+        return avgDurationSeconds < threshold;
+    }
+
+    private computeCompositeQuality(modelId: string): number {
+        const speed = this.getModelSpeed(modelId);
+        const ttft = this.getModelTTFT(modelId);
+        const totalDuration = this.getModelQualityScore(modelId);
+        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        const quotaHits = this.budgetData.modelQuotaHitCount?.[modelId] ?? 0;
+        const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;
+
+        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 0;
+        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 0;
+        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 0;
+        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 0;
+
+        return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
+    }
+
+    private selectFromPool(
+        pool: LanguageModel[],
+        failedIds: Set<string>,
+        maxTier?: number,
+    ): LanguageModel | null {
+        if (pool.length === 0) return null;
+
+        const tierGroups = new Map<number, LanguageModel[]>();
+        for (const model of pool) {
+            if (failedIds.has(model.id)) continue;
+            if (this.isInQuotaCooldown(model.id)) continue;
+            const tier = this.getTier(model);
+            if (maxTier !== undefined && tier > maxTier) continue;
+            if (!tierGroups.has(tier)) tierGroups.set(tier, []);
+            const tierModels = tierGroups.get(tier);
+            if (tierModels) tierModels.push(model);
+        }
+
+        if (tierGroups.size === 0) return null;
+
+        const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
+
+        for (const tier of sortedTiers) {
+            const candidates = tierGroups.get(tier);
+            if (!candidates) continue;
+            candidates.sort((a, b) => {
+                const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
+                const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
+                if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
+
+                const scoreA = this.computeCompositeQuality(a.id);
+                const scoreB = this.computeCompositeQuality(b.id);
+                if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+
+                return Math.random() - 0.5;
+            });
+            if (candidates.length > 0) {
+                return candidates[0];
+            }
+        }
+
+        return null;
+    }
+
+    private selectFreeModel(failedIds: Set<string>): LanguageModel | null {
+        const allModels = [...this.strategy.onlineModels, ...this.strategy.localModels];
+        const freeModels = allModels.filter(m => isFreeModel(m));
+        if (freeModels.length === 0) return null;
+        return this.selectFromPool(freeModels, failedIds);
+    }
+
+    // ─── Stats Recording ─────────────────────────────────────────────
+
+    private recordSuccess(modelId: string, cost: number): void {
+        this.budgetData.budgetSpent += cost;
+        this.budgetData.modelLastUsedTimestamps[modelId] = Date.now();
+        this.budgetData.modelUsedCount[modelId] = (this.budgetData.modelUsedCount?.[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    private recordQuotaError(modelId: string): void {
+        this.budgetData.modelLastQuotaHitTimeStamps[modelId] = Date.now();
+        this.budgetData.modelQuotaHitCount[modelId] = (this.budgetData.modelQuotaHitCount?.[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    private recordError(modelId: string): void {
+        this.budgetData.modelLastErrorHitTimeStamps[modelId] = Date.now();
+        this.budgetData.modelErrorHitCount[modelId] = (this.budgetData.modelErrorHitCount?.[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    private recordLatency(modelId: string, observedMsPerToken: number): void {
+        if (!this.budgetData.modelAverageLatencyMsPerToken) {
+            this.budgetData.modelAverageLatencyMsPerToken = {};
+        }
+        const alpha = this.budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
+        const previous = this.budgetData.modelAverageLatencyMsPerToken[modelId];
+        if (previous === undefined) {
+            this.budgetData.modelAverageLatencyMsPerToken[modelId] = observedMsPerToken;
+        } else {
+            this.budgetData.modelAverageLatencyMsPerToken[modelId] =
+                (alpha * observedMsPerToken) + ((1 - alpha) * previous);
+        }
+    }
+
+    private recordTTFT(modelId: string, observedMs: number): void {
+        if (!this.budgetData.modelAverageTimeToFirstToken) {
+            this.budgetData.modelAverageTimeToFirstToken = {};
+        }
+        const alpha = this.budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3;
+        const previous = this.budgetData.modelAverageTimeToFirstToken[modelId];
+        if (previous === undefined) {
+            this.budgetData.modelAverageTimeToFirstToken[modelId] = observedMs;
+        } else {
+            this.budgetData.modelAverageTimeToFirstToken[modelId] =
+                (alpha * observedMs) + ((1 - alpha) * previous);
+        }
+    }
+
+    private recordSessionDuration(modelId: string, durationMs: number): void {
+        if (!this.budgetData.modelTotalSessionDuration) {
+            this.budgetData.modelTotalSessionDuration = {};
+        }
+        this.budgetData.modelTotalSessionDuration[modelId] =
+            (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
+    }
+
+    // ─── Model Loading ───────────────────────────────────────────────
+
+    private isModelReady(model: LanguageModel): boolean {
+        const isCloud = !!model.apiKey && !!model.backend;
+        if (isCloud) return true;
+        const running = this.runningModels[model.id];
+        return !!(running?.port || (model.parameters as Record<string, unknown>)?._runtimePort);
+    }
+
+    private async ensureModelLoaded(model: LanguageModel): Promise<boolean> {
+        if (this.isModelReady(model)) return true;
+        const isCloud = !!model.apiKey && !!model.backend;
+        if (isCloud) return true;
+        if (!this.loadLocalModel) return false;
+
+        try {
+            const port = await this.loadLocalModel(model.id);
+            if (port) {
+                this.runningModels = {
+                    ...this.runningModels,
+                    [model.id]: { isRunning: true, port },
+                };
+                return true;
+            }
+        } catch (e) {
+            console.warn(`Failed to auto-load model ${model.name}:`, e);
+        }
+        return false;
+    }
+
+    private createTimeoutController(parentSignal: AbortSignal): { controller: AbortController; cleanup: () => void } {
+        const timeoutSeconds = this.strategy.fallbackOnTimeoutInSeconds;
+        const controller = new AbortController();
+
+        const onParentAbort = () => controller.abort();
+        parentSignal.addEventListener('abort', onParentAbort);
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        if (timeoutSeconds > 0) {
+            timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+        }
+
+        return {
+            controller,
+            cleanup: () => {
+                if (timeoutId !== undefined) clearTimeout(timeoutId);
+                parentSignal.removeEventListener('abort', onParentAbort);
+            },
+        };
+    }
+
+    // ─── Online vs Local Decision ────────────────────────────────────
+
+    private async shouldUseOnline(interactionData?: InteractionData): Promise<boolean> {
         if (this.strategy.onlineModels.length === 0) return false;
         if (this.strategy.localModels.length === 0) return true;
         if (this.budgetData.budgetSpent >= this.strategy.maximumBudget) return false;
 
-        let numberOfTokens = 0;
-        for (const m of interactionData.interactionHistory) {
-            if (m.kind === 'chat') numberOfTokens += await engine.countTokens(m.textContent);
+        if (interactionData) {
+            let numberOfTokens = 0;
+            for (const m of interactionData.interactionHistory) {
+                if (m.kind === 'chat') numberOfTokens += await this.engine.countTokens(m.textContent);
+            }
+
+            if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
+
+            const complexityScore = computeComplexityScore(interactionData);
+            if (complexityScore !== undefined && complexityScore >= this.strategy.switchOnComplexityScore) return true;
         }
-
-        if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
-
-        const complexityScore = computeComplexityScore(interactionData);
-        if (complexityScore !== undefined && complexityScore >= this.strategy.switchOnComplexityScore) return true;
 
         const roll = Math.random() * 100;
         return roll < this.strategy.switchProbability;
     }
+}
+
+// ─── Singleton Accessor ──────────────────────────────────────────────
+
+let instance: BudgetStrategyEngine | null = null;
+
+/**
+ * Returns the shared BudgetStrategyEngine instance.
+ * All stats tracking, budget accounting, and model rotation state
+ * are shared across generation and summarization through this single instance.
+ */
+export function getBudgetStrategyEngine(): BudgetStrategyEngine {
+    if (!instance) {
+        throw new Error('BudgetStrategyEngine not initialized. Call initializeBudgetStrategyEngine() first.');
+    }
+    return instance;
+}
+
+/**
+ * Creates and stores the singleton BudgetStrategyEngine instance.
+ * Call once during app initialization or when the user selects a budget strategy.
+ */
+export function initializeBudgetStrategyEngine(
+    strategy: BudgetStrategy,
+    budgetData: BudgetData,
+    runningModels: Record<string, RunningModelState>,
+    loadLocalModel?: (id: string) => Promise<number | null>,
+): BudgetStrategyEngine {
+    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, loadLocalModel);
+    return instance;
+}
+
+/**
+ * Resets the singleton instance. Intended ONLY for test teardown.
+ */
+export function reset(): void {
+    instance = null;
 }

@@ -1,0 +1,23 @@
+const resumeCondition  = false
+
+const currentModelContextData = something
+
+while (stopCondition){
+
+    if (budgetEngine) {
+
+        currentModelContextData = budgetEngine.nextModel()
+
+    }
+
+    LanguageModel.generate(currentModelContextData)
+
+    if (budgetEngine){
+
+        budgetEngine.reportSuccess()
+
+    }
+
+    if (streamingComplete) resumeCondition = false
+
+}
