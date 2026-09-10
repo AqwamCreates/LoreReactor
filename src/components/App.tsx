@@ -383,12 +383,12 @@ function App() {
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
-        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocksLoading },
+        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, promptBlocksLoading, budgetLoading, profilesLoading, chatsLoading]);
+    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, promptBlocksLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -865,13 +865,15 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenPromptBlocks={modals.promptBlockList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
 
                 <AppModals
+                    // Modals & data
                     modals={modals}
+                    runningModels={runningModels}
                     allChats={allChats}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
@@ -885,7 +887,7 @@ function App() {
                     allExtensions={allExtensions}
                     allWorlds={allWorlds}
                     allPromptBlocks={allPromptBlocks}
-                    runningModels={runningModels}
+                    // Entity modals
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
@@ -897,32 +899,52 @@ function App() {
                     profileModal={profileModal}
                     worldModal={worldModal}
                     promptBlockModal={promptBlockModal}
+                    // Chat callbacks
                     onSwitchChat={handleSwitchChat}
                     onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
                     onRenameChat={handleRenameChat}
+                    // Character callbacks
                     onDeleteCharacter={deleteCharacter}
                     onLoadFullCharacter={loadFullCharacter}
                     onToggleParticipant={handleToggleParticipant}
                     onSetProtagonist={handleSetChatProtagonist}
+                    onSaveCharacter={saveCharacter}
+                    // Context callbacks
                     onDeleteContext={contextModal.handleDelete}
                     onToggleContext={handleToggleContext}
+                    onSaveContext={saveContext}
+                    // Location callbacks
                     onDeleteLocation={locationModal.handleDelete}
                     onToggleLocation={handleToggleLocation}
+                    onSaveLocation={saveLocation}
+                    // Audio track callbacks
                     onDeleteAudioTrack={audioTrackModal.handleDelete}
                     onToggleAudioTrack={handleToggleAudioTrack}
+                    onSaveAudioTrack={saveAudioTrack}
+                    // Model callbacks
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
+                    // Sampler callbacks
                     onDeleteSampler={samplerModal.handleDelete}
+                    // Stop pattern callbacks
                     onDeleteStopPattern={stopModal.handleDelete}
+                    // Budget strategy callbacks
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
+                    // Profile callbacks
                     onDeleteProfile={deleteProfile}
-                    onSaveProfile={saveProfile}
                     onActivateProfile={handleActivateProfile}
+                    onSaveProfile={saveProfile}
+                    // Extension callbacks
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
+                    // World callbacks
+                    onSaveWorld={saveWorld}
+                    onLoadWorld={handleLoadWorld}
+                    onDeleteWorld={deleteWorld}
+                    // Interaction data callbacks
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);
                         setInteractionData(withLocations);
@@ -932,13 +954,7 @@ function App() {
                     onSendCustomMessage={handleSendCustomMessage}
                     onInjectCustomMessage={handleInjectCustomMessage}
                     onInjectFirstMessage={handleInjectFirstMessage}
-                    onSaveCharacter={saveCharacter}
-                    onSaveContext={saveContext}
-                    onSaveLocation={saveLocation}
-                    onSaveAudioTrack={saveAudioTrack}
-                    onSaveWorld={saveWorld}
-                    onLoadWorld={handleLoadWorld}
-                    onDeleteWorld={deleteWorld}
+                    // General callbacks
                     onImportComplete={handleImportComplete}
                     addToast={addToast}
                     ensureChatsLoaded={ensureChatsLoaded}

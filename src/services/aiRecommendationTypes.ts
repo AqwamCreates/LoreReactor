@@ -1,10 +1,10 @@
 // src/services/aiRecommendationTypes.ts
-import type { Character, Context, Location, AudioTrack, Profile, PromptBlock, PromptBlockType, SummarizationStrategyType } from '../types';
+import type { Character, Context, Location, AudioTrack, PromptBlock, Profile } from '../types';
 
-export type EntityType = 'Character' | 'Context' | 'Location' | 'Profile' | 'PromptBlock' | 'World';
-export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'Profile' | 'PromptBlock' | 'World';
+export type EntityType = 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'Profile' | 'World';
+export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'Profile' | 'World';
 
-export const IMAGE_PRIORITY_ITEMS = ['reference', 'character', 'context', 'location'] as const;
+export const IMAGE_PRIORITY_ITEMS = ['reference', 'character', 'context', 'location', 'promptBlock'] as const;
 export type ImagePriorityItem = typeof IMAGE_PRIORITY_ITEMS[number];
 
 export const IMAGE_LABELS: Record<ImagePriorityItem, string> = {
@@ -12,6 +12,7 @@ export const IMAGE_LABELS: Record<ImagePriorityItem, string> = {
     character: '🎭 Character Images',
     context: '📜 Context Images',
     location: '📍 Location Images',
+    promptBlock: '🧱 Prompt Block Images',
 };
 
 export const IMAGE_SHORT_LABELS: Record<ImagePriorityItem, string> = {
@@ -19,6 +20,7 @@ export const IMAGE_SHORT_LABELS: Record<ImagePriorityItem, string> = {
     character: '🎭 Character',
     context: '📜 Context',
     location: '📍 Location',
+    promptBlock: '🧱 Prompt Block',
 };
 
 export const IMAGE_PROMPT_DESCRIPTIONS: Record<ImagePriorityItem, string> = {
@@ -26,14 +28,16 @@ export const IMAGE_PROMPT_DESCRIPTIONS: Record<ImagePriorityItem, string> = {
     character: 'Character portrait/appearance details',
     context: 'Context visual descriptions',
     location: 'Location scenery/atmosphere visuals',
+    promptBlock: 'Prompt block visual content',
 };
 
 export const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[] = [
     { type: 'Character', label: 'Character', icon: '🎭' },
     { type: 'Context', label: 'Context', icon: '📜' },
     { type: 'Location', label: 'Location', icon: '📍' },
-    { type: 'Profile', label: 'Profile', icon: '👤' },
+    { type: 'AudioTrack', label: 'Audio Track', icon: '🔊' },
     { type: 'PromptBlock', label: 'Prompt Block', icon: '🧱' },
+    { type: 'Profile', label: 'Profile', icon: '👤' },
     { type: 'World', label: 'World', icon: '🌍' },
 ];
 
@@ -57,8 +61,8 @@ export interface GeneratedOutput {
         characters: Character[];
         contexts: Context[];
         locations: Location[];
-        audioTracks?: AudioTrack[];
-        promptBlocks?: PromptBlock[];
+        audioTracks: AudioTrack[];
+        promptBlocks: PromptBlock[];
         profile?: Profile;
     };
 }

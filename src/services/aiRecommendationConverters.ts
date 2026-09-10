@@ -230,13 +230,13 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
                 characters: Array.isArray(w.characters) ? w.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, samplers)) : [],
                 contexts: Array.isArray(w.contexts) ? w.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c)) : [],
                 locations: Array.isArray(w.locations) ? w.locations.map((l: Record<string, unknown>) => fillLocationDefaults(l)) : [],
-                audioTracks: Array.isArray(w.audioTracks) ? w.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t)) : undefined,
-                promptBlocks: Array.isArray(w.promptBlocks) ? w.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b)) : undefined,
+                audioTracks: Array.isArray(w.audioTracks) ? w.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t)) : [],
+                promptBlocks: Array.isArray(w.promptBlocks) ? w.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b)) : [],
                 profile: w.profile && typeof w.profile === 'object' ? fillProfileDefaults(w.profile as Record<string, unknown>) : undefined,
             };
         }
 
-        if (!result.characters && !result.contexts && !result.locations && !result.promptBlocks && !result.profile && !result.world) return null;
+        if (!result.characters && !result.contexts && !result.locations && !result.audioTracks && !result.promptBlocks && !result.profile && !result.world) return null;
         return result;
     } catch { return null; }
 }
@@ -246,6 +246,7 @@ export function deriveHistoryLabel(output: GeneratedOutput): string {
     if (output.characters?.length) return `🎭 ${output.characters[0].name}${output.characters.length > 1 ? ` +${output.characters.length - 1}` : ''}`;
     if (output.contexts?.length) return `📜 ${output.contexts[0].name}${output.contexts.length > 1 ? ` +${output.contexts.length - 1}` : ''}`;
     if (output.locations?.length) return `📍 ${output.locations[0].name}${output.locations.length > 1 ? ` +${output.locations.length - 1}` : ''}`;
+    if (output.audioTracks?.length) return `🔊 ${output.audioTracks[0].name}${output.audioTracks.length > 1 ? ` +${output.audioTracks.length - 1}` : ''}`;
     if (output.promptBlocks?.length) return `🧱 ${output.promptBlocks[0].name}${output.promptBlocks.length > 1 ? ` +${output.promptBlocks.length - 1}` : ''}`;
     if (output.profile) return `👤 ${output.profile.name}`;
     return 'Unknown';
@@ -295,6 +296,7 @@ export function resolveWorldCrossReferences(
                 if (rid) rlrt[rid] = regex;
             }
         }
+        const rcb = (l.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id);
         const rcw: Record<string, number> = {};
         for (const [ref, w] of Object.entries(l.characterWeights)) {
             const rid = resolveCharRef(ref);
@@ -310,19 +312,26 @@ export function resolveWorldCrossReferences(
             images: injectLocationImages ? l.images : [],
             locationBindings: rlb,
             locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined,
+            characterBindings: rcb,
             characterWeights: rcw,
             locationDistances: rld,
         };
     });
 
-    // Resolve audio tracks — match existing by name/filename or keep generated
-    const audioTracks: AudioTrack[] = (world.audioTracks || []).map(t => {
+    // Resolve audio tracks — match existing by name/filename, resolve bindings
+    const audioTracks: AudioTrack[] = world.audioTracks.map(t => {
         const existing = allAudioTracks.find(at => at.name === t.name || at.filename === t.filename);
-        return existing || t;
+        if (existing) return existing;
+        return {
+            ...t,
+            locationBindings: (t.locationBindings ?? []).map(resolveLocRef).filter((id): id is string => !!id),
+            contextBindings: (t.contextBindings ?? []).map(resolveCtxRef).filter((id): id is string => !!id),
+            characterBindings: (t.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id),
+        };
     });
 
     // Resolve prompt block bindings
-    const promptBlocks: PromptBlock[] = (world.promptBlocks || []).map(b => ({
+    const promptBlocks: PromptBlock[] = world.promptBlocks.map(b => ({
         ...b,
         characterBindings: (b.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id),
         contextBindings: (b.contextBindings ?? []).map(resolveCtxRef).filter((id): id is string => !!id),

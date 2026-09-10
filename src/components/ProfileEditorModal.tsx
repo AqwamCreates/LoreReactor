@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
-import { useState, useEffect, type CSSProperties } from 'react';
-import type { Profile, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
+import { useState, useEffect, useMemo, type CSSProperties } from 'react';
+import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
 
@@ -9,6 +9,7 @@ interface ProfileEditorModalProps {
     onClose: () => void;
     onSave: (profile: Profile) => void;
     existingProfile?: Profile | null;
+    allPromptBlocks?: PromptBlock[];
 }
 
 const ALL_BLOCK_TYPES: PromptBlockType[] = [
@@ -18,7 +19,7 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Tool Instructions', 'Text Injection',
 ];
 
-const DEFAULT_STRATEGY: PromptBlockType[] = [...ALL_BLOCK_TYPES];
+const DEFAULT_STRATEGY: (PromptBlockType | string)[] = [...ALL_BLOCK_TYPES];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
     'No injection.',
@@ -41,11 +42,16 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
-        { id: `step-${crypto.uuidv4()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.uuidv4()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, compressionInterval: 20, compressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.uuidv4()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveChunkSize: 10, recursiveMaxDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.uuidv4()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, compressionInterval: 20, compressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveChunkSize: 10, recursiveMaxDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
     ];
+}
+
+/** Check if a string is a built-in PromptBlockType */
+function isBuiltInBlockType(value: string): value is PromptBlockType {
+    return (ALL_BLOCK_TYPES as string[]).includes(value);
 }
 
 // ─── Shared Styles ───────────────────────────────────────────────────
@@ -98,7 +104,7 @@ function ProfileCheckbox({
 // ─── Main Component ──────────────────────────────────────────────────
 
 export function ProfileEditorModal({
-    isOpen, onClose, onSave, existingProfile,
+    isOpen, onClose, onSave, existingProfile, allPromptBlocks = [],
 }: ProfileEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -133,13 +139,27 @@ export function ProfileEditorModal({
     const [narrateQuotedText, setNarrateQuotedText] = useState(false);
     const [narrateBoldedText, setNarrateBoldedText] = useState(false);
     const [narrateItalicizedText, setNarrateItalicizedText] = useState(false);
-    const [inputStrategy, setInputStrategy] = useState<PromptBlockType[]>([...DEFAULT_STRATEGY]);
+    const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>([...DEFAULT_STRATEGY]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>([]);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+
+    // Build lookup maps for prompt block display
+    const promptBlockById = useMemo(() => {
+        const map = new Map<string, PromptBlock>();
+        for (const pb of allPromptBlocks) map.set(pb.id, pb);
+        return map;
+    }, [allPromptBlocks]);
+
+    /** Resolve a strategy entry to a display label */
+    const getBlockLabel = (entry: PromptBlockType | string): string => {
+        if (isBuiltInBlockType(entry)) return entry;
+        const pb = promptBlockById.get(entry);
+        return pb ? `🧱 ${pb.name}` : `🧱 (Unknown Block)`;
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -225,7 +245,7 @@ export function ProfileEditorModal({
             narrateNormalText, narrateQuotedText, narrateBoldedText, narrateItalicizedText,
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
-                ...s, id: s.id || `step-${crypto.uuidv4()}`, order: i,
+                ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
                 firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
             })),
             firstCreatedTimestamp: existingProfile?.firstCreatedTimestamp || now,
@@ -235,13 +255,13 @@ export function ProfileEditorModal({
 
     const handleSubmit = () => {
         if (!validate()) return;
-        onSave(buildProfile(existingProfile?.id || crypto.uuidv4(), name.trim()));
+        onSave(buildProfile(existingProfile?.id || crypto.randomUUID(), name.trim()));
         onClose();
     };
 
     const handleClone = () => {
         if (!validate()) return;
-        onSave(buildProfile(crypto.uuidv4(), `${name.trim()} (Clone)`));
+        onSave(buildProfile(crypto.randomUUID(), `${name.trim()} (Clone)`));
         onClose();
     };
 
@@ -271,9 +291,15 @@ export function ProfileEditorModal({
         [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
         setInputStrategy(newOrder);
     };
-    const addBlock = (blockType: PromptBlockType) => { if (!inputStrategy.includes(blockType)) setInputStrategy(prev => [...prev, blockType]); };
+    const addBlock = (blockEntry: PromptBlockType | string) => {
+        if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]);
+    };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
-    const missingBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
+
+    // Missing built-in blocks that aren't in the strategy
+    const missingBuiltInBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
+    // Prompt blocks not yet in the strategy
+    const availablePromptBlocks = allPromptBlocks.filter(pb => !inputStrategy.includes(pb.id));
 
     // --- Summarization step drag handlers ---
     const handleStepDragStart = (e: React.DragEvent, index: number) => {
@@ -306,7 +332,7 @@ export function ProfileEditorModal({
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
         const newStep: SummarizationStep = {
-            id: `step-${crypto.uuidv4()}`, name: strategyType, strategyType, enabled: true,
+            id: `step-${crypto.randomUUID()}`, name: strategyType, strategyType, enabled: true,
             order: summarizationSteps.length, summaryTokenBudget: 512, triggerTokenThreshold: 0,
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
@@ -474,14 +500,14 @@ export function ProfileEditorModal({
                             <span>Prompt Block Order</span>
                             <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
                         </div>
-                        <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled.</div>
+                        <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {inputStrategy.map((blockType, index) => (
-                                <div key={`${blockType}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}>
+                            {inputStrategy.map((blockEntry, index) => (
+                                <div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}>
                                     <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
                                     <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {blockType}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
                                         <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
@@ -492,11 +518,16 @@ export function ProfileEditorModal({
                             ))}
                         </div>
 
-                        {missingBlocks.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                                <select onChange={(e) => { const val = e.target.value as PromptBlockType; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="">
-                                    <option value="" disabled>+ Add a missing block</option>
-                                    {missingBlocks.map(b => <option key={b} value={b}>{b}</option>)}
+                        {(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (
+                            <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                <select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}>
+                                    <option value="" disabled>+ Add a block</option>
+                                    {missingBuiltInBlocks.length > 0 && <optgroup label="Built-in Blocks">
+                                        {missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}
+                                    </optgroup>}
+                                    {availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">
+                                        {availablePromptBlocks.map(pb => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}
+                                    </optgroup>}
                                 </select>
                             </div>
                         )}

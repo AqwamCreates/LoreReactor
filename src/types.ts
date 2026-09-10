@@ -547,7 +547,8 @@ export interface World extends ObjectData {
     characterIds: string[];
     contextIds: string[];
     locationIds: string[];
-    audioTrackIds: string[]
+    audioTrackIds: string[];
+    promptBlockIds: string[]
     profileId?: string;
 }
 

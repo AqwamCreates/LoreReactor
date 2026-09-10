@@ -69,68 +69,101 @@ interface AppModalsProps {
     profileModal: EntityModalState<Profile>;
     worldModal: EntityModalState<World>;
     promptBlockModal: EntityModalState<PromptBlock>;
-    // Callbacks
+    // Chat callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
     onRenameChat: (id: string, name: string) => void;
+    // Character callbacks
     onDeleteCharacter: (id: string) => void;
     onLoadFullCharacter: (id: string) => Promise<Character | null>;
     onToggleParticipant: (id: string) => void;
     onSetProtagonist: (id: string) => void;
+    onSaveCharacter: (c: Character) => void;
+    // Context callbacks
     onDeleteContext: (id: string) => void;
     onToggleContext: (id: string) => void;
+    onSaveContext: (c: Context) => void;
+    // Location callbacks
     onDeleteLocation: (id: string) => void;
     onToggleLocation: (id: string) => void;
+    onSaveLocation: (l: Location) => void;
+    // Audio track callbacks
     onDeleteAudioTrack: (id: string) => void;
     onToggleAudioTrack: (id: string) => void;
+    onSaveAudioTrack: (t: AudioTrack) => void;
+    // Model callbacks
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
+    // Sampler callbacks
     onDeleteSampler: (id: string) => void;
+    // Stop pattern callbacks
     onDeleteStopPattern: (id: string) => void;
+    // Budget strategy callbacks
     onDeleteBudgetStrategy: (id: string) => void;
     onActivateBudgetStrategy: (id: string) => void;
+    // Profile callbacks
     onDeleteProfile: (id: string) => void;
     onActivateProfile: (id: string) => void;
+    onSaveProfile: (p: Profile) => void;
+    // Extension callbacks
     onDeleteExtension: (id: string) => void;
     onToggleExtension: (id: string) => void;
+    // World callbacks
+    onSaveWorld: (w: World) => void;
+    onLoadWorld: (world: World) => void;
+    onDeleteWorld: (id: string) => void;
+    // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
     onSendCustomMessage: (c: Character, t: string) => void;
     onInjectCustomMessage: (c: Character, t: string) => void;
     onInjectFirstMessage: (c: Character) => void;
-    onSaveCharacter: (c: Character) => void;
-    onSaveContext: (c: Context) => void;
-    onSaveLocation: (l: Location) => void;
-    onSaveAudioTrack: (t: AudioTrack) => void;
-    onSaveProfile: (p: Profile) => void;
-    onSaveWorld: (w: World) => void;
-    onLoadWorld: (world: World) => void;
-    onDeleteWorld: (id: string) => void;
+    // General callbacks
     onImportComplete: () => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    // Lazy loading
     ensureChatsLoaded: () => void;
 }
 
 export function AppModals({
-    modals, allChats, allCharacters, allContexts, allLocations, allAudioTracks, allSamplers,
-    allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
-    allPromptBlocks, runningModels,
-    charModal, contextModal, locationModal, audioTrackModal, samplerModal, stopModal, modelModal,
-    budgetModal, profileModal, worldModal, promptBlockModal,
-    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat, onDeleteCharacter, onLoadFullCharacter,
-    onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
-    onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
+    // Modals & data
+    modals, runningModels,
+    allChats, allCharacters, allContexts, allLocations, allAudioTracks,
+    allSamplers, allStopPatterns, allModels, allBudgetStrategies,
+    allProfiles, allExtensions, allWorlds, allPromptBlocks,
+    // Entity modals
+    charModal, contextModal, locationModal, audioTrackModal,
+    samplerModal, stopModal, modelModal, budgetModal,
+    profileModal, worldModal, promptBlockModal,
+    // Chat callbacks
+    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat,
+    // Character callbacks
+    onDeleteCharacter, onLoadFullCharacter, onToggleParticipant, onSetProtagonist, onSaveCharacter,
+    // Context callbacks
+    onDeleteContext, onToggleContext, onSaveContext,
+    // Location callbacks
+    onDeleteLocation, onToggleLocation, onSaveLocation,
+    // Audio track callbacks
+    onDeleteAudioTrack, onToggleAudioTrack, onSaveAudioTrack,
+    // Model callbacks
     onDeleteModel, onToggleModelLoad,
-    onDeleteSampler, onDeleteStopPattern,
-    onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
-    onDeleteExtension, onToggleExtension, onUpdateInteractionData,
-    onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
-    onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld,
-    onLoadWorld, onDeleteWorld, onImportComplete, addToast,
-    ensureChatsLoaded,
+    // Sampler callbacks
+    onDeleteSampler,
+    // Stop pattern callbacks
+    onDeleteStopPattern,
+    // Budget strategy callbacks
+    onDeleteBudgetStrategy, onActivateBudgetStrategy,
+    // Profile callbacks
+    onDeleteProfile, onActivateProfile, onSaveProfile,
+    // Extension callbacks
+    onDeleteExtension, onToggleExtension,
+    // World callbacks
+    onSaveWorld, onLoadWorld, onDeleteWorld,
+    // Interaction data callbacks
+    onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
+    // General callbacks
+    onImportComplete, addToast, ensureChatsLoaded,
 }: AppModalsProps) {
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -484,6 +517,7 @@ export function AppModals({
                     onSaveCharacter={async (c: Character) => { onSaveCharacter(c); return true; }}
                     onSaveContext={async (c: Context) => { onSaveContext(c); return true; }}
                     onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
+                    onSaveAudioTrack={async (t: AudioTrack) => { onSaveAudioTrack(t); return true; }}
                     onSaveProfile={async (p: Profile) => { onSaveProfile(p); return true; }}
                     onSaveWorld={async (w: World) => { onSaveWorld(w); return true; }}
                     onSavePromptBlock={async (b: PromptBlock) => { promptBlockModal.handleSave(b); return true; }}
@@ -499,9 +533,15 @@ export function AppModals({
                         setAiLocationSaveRedirect(() => onApplyToRecommendation);
                         locationModal.open(loc ?? undefined);
                     }}
+                    onOpenAudioTrackEditor={(track, onApplyToRecommendation) => {
+                        audioTrackModal.open(track ?? undefined);
+                    }}
                     onOpenProfileEditor={(profile, onApplyToRecommendation) => {
                         setAiProfileSaveRedirect(() => onApplyToRecommendation);
                         profileModal.open(profile ?? undefined);
+                    }}
+                    onOpenPromptBlockEditor={(block, onApplyToRecommendation) => {
+                        promptBlockModal.open(block ?? undefined);
                     }}
                     allSamplers={allSamplers}
                     allCharacters={allCharacters}

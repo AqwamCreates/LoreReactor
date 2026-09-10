@@ -9,8 +9,9 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const includeCharacter = selectedEntities.includes('Character');
     const includeContext = selectedEntities.includes('Context');
     const includeLocation = selectedEntities.includes('Location');
-    const includeProfile = selectedEntities.includes('Profile');
+    const includeAudioTrack = selectedEntities.includes('AudioTrack');
     const includePromptBlock = selectedEntities.includes('PromptBlock');
+    const includeProfile = selectedEntities.includes('Profile');
 
     if (includeCharacter) {
         parts.push(`  "characters": [{
@@ -62,6 +63,21 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "useBase64Encoding": "boolean (default false)"
   }]`);
     }
+    if (includeAudioTrack) {
+        parts.push(`  "audioTracks": [{
+    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "filename": "string (suggested filename, user will provide actual file)",
+    "loop": "boolean (default true)", "volume": "number (0-1, default 1)",
+    "startFadeDurationMs": "number (default 1000)", "endFadeDurationMs": "number (default 1000)",
+    "audioCategory": "'ambient' | 'music' | 'sound effect' (default 'ambient')",
+    "priority": "number (default 0)",
+    "regularExpressionActivationTrigger": "string (regex without delimiters)",
+    "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
+    "locationBindings": ["location name or ID strings"],
+    "contextBindings": ["context name or ID strings"],
+    "characterBindings": ["character name or ID strings"]
+  }]`);
+    }
     if (includePromptBlock) {
         parts.push(`  "promptBlocks": [{
     "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
@@ -71,9 +87,9 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
     "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
-    "characterBindings": ["character ID strings"],
-    "contextBindings": ["context ID strings"],
-    "locationBindings": ["location ID strings"]
+    "characterBindings": ["character name or ID strings"],
+    "contextBindings": ["context name or ID strings"],
+    "locationBindings": ["location name or ID strings"]
   }]`);
     }
     if (includeProfile) {
@@ -105,7 +121,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
         if (includeCharacter) worldParts.push('"characters": [/* same character schema */]');
         if (includeContext) worldParts.push('"contexts": [/* same context schema */]');
         if (includeLocation) worldParts.push('"locations": [/* same location schema */]');
-        worldParts.push('"audioTracks": [{"id": "string (UUID)", "name": "string (required)", "filename": "string (required)", "description": "string", "loop": "boolean (default true)", "volume": "number (0-1, default 1)", "startFadeDurationMs": "number (default 1000)", "endFadeDurationMs": "number (default 1000)", "audioCategory": "\'ambient\' | \'music\' | \'sound effect\' (default \'ambient\')", "priority": "number (default 0)", "regularExpressionActivationTrigger": "string (regex)", "regularExpressionDeactivationTrigger": "string (regex)", "locationBindings": ["location name or ID strings"], "contextBindings": ["context name or ID strings"], "characterBindings": ["character name or ID strings"]}]');
+        if (includeAudioTrack) worldParts.push('"audioTracks": [/* same audioTrack schema */]');
         if (includePromptBlock) worldParts.push('"promptBlocks": [/* same promptBlock schema */]');
         if (includeProfile) worldParts.push('"profile": {/* same profile schema */}');
         parts.push(`  "world": {
