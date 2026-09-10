@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import type { Extension } from '../types';
 
-const now = Date.now()
-
 const INITIAL_EXTENSIONS: Extension[] = [
-    { id: 'ext_3', name: 'Scene Illustrator', description: 'Generate images from scene descriptions', extensionType: 'Image Generation API', firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
 ];
 
 export function useExtensionManager() {
