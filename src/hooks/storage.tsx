@@ -8,6 +8,7 @@ import type {
   BudgetData,
   RawBudgetData,
   AudioTrack, RawAudioTrack,
+  PromptBlock, RawPromptBlock,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -95,6 +96,7 @@ const PATHS = {
   webpages: "/user_data/webpage_data",
   memories: "/user_data/memory_data",
   audioTracks: "/user_data/audio_tracks",
+  promptBlocks: "/user_data/prompt_block_data",
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -293,6 +295,10 @@ async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T
 
 function getCleanPath(path: string){
   return PATHS.contexts.startsWith('/') ? path : `/${path}`;
+}
+
+function getCleanFileName(file: { name: string }){
+  return file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
 // --- Memory Repository ---
@@ -775,6 +781,56 @@ export async function deleteRawAudioTrack(id: string): Promise<void> {
     await updateManifest(PATHS.audioTracks, id, 'remove');
 }
 
+// --- Prompt Block Repository ---
+export async function loadRawPromptBlockManifest(): Promise<string[]> {
+    return await ensureManifest(PATHS.promptBlocks);
+}
+
+export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null> {
+    const raw = await fetchJson<RawPromptBlock>(`${PATHS.promptBlocks}/${id}.json`);
+    if (!raw) return null;
+
+    const now = Date.now();
+
+    return {
+        id,
+        name: raw.name || 'Untitled Prompt Block',
+        description: raw.description,
+        textContent: raw.textContent ?? '',
+        images: raw.images ?? [],
+        regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+        regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+        regularExpressionContext: raw.regularExpressionContext,
+        regularExpressionTarget: raw.regularExpressionTarget,
+        characterBindings: raw.characterBindings ?? [],
+        contextBindings: raw.contextBindings ?? [],
+        locationBindings: raw.locationBindings ?? [],
+        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+}
+
+export async function loadAllRawPromptBlocks(): Promise<PromptBlock[]> {
+    const ids = await loadRawPromptBlockManifest();
+    const results = await loadInBatches(ids, loadRawPromptBlock);
+    return results.filter((b): b is PromptBlock => b !== null);
+}
+
+export async function saveRawPromptBlock(block: PromptBlock): Promise<void> {
+    const { id, ...rawBlock } = block;
+    const payload: RawPromptBlock = {
+        ...rawBlock,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.promptBlocks}/${id}.json`, payload);
+    await updateManifest(PATHS.promptBlocks, id, 'add');
+}
+
+export async function deleteRawPromptBlock(id: string): Promise<void> {
+    await deleteResource(`${PATHS.promptBlocks}/${id}.json`);
+    await updateManifest(PATHS.promptBlocks, id, 'remove');
+}
+
 // --- Language Model Repository ---
 export async function loadRawModelManifest(): Promise<string[]> {
     return await ensureManifest(PATHS.models);
@@ -962,7 +1018,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         enableCalculator: rawProfile.enableCalculator ?? 0,
         enableMemoryWriting: rawProfile.enableMemoryWriting ?? 0,
         enableMemoryReading: rawProfile.enableMemoryReading ?? 0,
-        inputStrategy: rawProfile.inputStrategy,
+        inputStrategy: rawProfile.inputStrategy ?? [...getDefaultSummarizationSteps().map(() => 'System Prompt')].slice(0, 0).concat(['System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'] as const),
         summarizationSteps,
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || now,
@@ -1512,7 +1568,7 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
     const base64 = await fileToBase64(file);
-    const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = getCleanFileName(file);
     const imagePath = `${PATHS.characterImages}/${characterId}/${filename}`;
     await putJson(imagePath, { base64 });
     return filename;
@@ -1526,7 +1582,7 @@ export function getCharacterVoiceUrl(voiceFileName: string | undefined): string 
 
 export async function uploadCharacterVoice(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
-  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filename = getCleanFileName(file);
   const voicePath = `${PATHS.characterVoices}/${filename}`;
   await putJson(voicePath, { base64 });
   return filename;
@@ -1540,7 +1596,7 @@ export function getContextImageUrl(imageFilename: string | undefined): string | 
 
 export async function uploadContextImage(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
-  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filename = getCleanFileName(file);
   const imagePath = `${PATHS.contexts}/${filename}`;
   await putJson(imagePath, { base64 });
   return filename;
@@ -1554,7 +1610,7 @@ export function getLocationImageUrl(imageFilename: string | undefined): string |
 
 export async function uploadLocationImage(file: File): Promise<string> {
   const base64 = await fileToBase64(file);
-  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filename = getCleanFileName(file);
   const imagePath = `${PATHS.locations}/${filename}`;
   await putJson(imagePath, { base64 });
   return filename;
@@ -1568,9 +1624,22 @@ export function getAudioTrackUrl(imageFilename: string | undefined): string | nu
 
 export async function uploadAudioTrack(file: File): Promise<string> {
     const base64 = await fileToBase64(file);
-    const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = getCleanFileName(file);
     const audioPath = `${PATHS.audioTracks}/${filename}`;
     await putJson(audioPath, { base64 });
     return filename;
 }
 
+export function getPromptBlockImageUrl(imageFilename: string | undefined): string | null {
+  if (!imageFilename) return null;
+  const cleanPath = getCleanPath(PATHS.promptBlocks);
+  return `${localURL}${cleanPath}/${imageFilename}`;
+}
+
+export async function uploadPromptBlockImage(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const filename = getCleanFileName(file);
+  const imagePath = `${PATHS.promptBlocks}/${filename}`;
+  await putJson(imagePath, { base64 });
+  return filename;
+}

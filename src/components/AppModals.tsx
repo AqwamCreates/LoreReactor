@@ -1,9 +1,10 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
+import { PromptBlockEditorModal } from './PromptBlockEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { LocationEditorModal } from './LocationEditorModal';
 import { AudioTrackEditorModal } from './AudioTrackEditorModal';
@@ -54,18 +55,20 @@ interface AppModalsProps {
     allProfiles: Profile[];
     allExtensions: Extension[];
     allWorlds: World[];
+    allPromptBlocks: PromptBlock[];
     runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean; port?: number }>;
-    samplerToEdit: Sampler | null;
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
     locationModal: EntityModalState<Location>;
     audioTrackModal: EntityModalState<AudioTrack>;
-    stopModal: EntityModalState<StopPattern>;
+    samplerModal: EntityModalState<Sampler>;
+    stopPatternModal: EntityModalState<StopPattern>;
     modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
     worldModal: EntityModalState<World>;
+    promptBlockModal: EntityModalState<PromptBlock>;
     // Callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -84,9 +87,6 @@ interface AppModalsProps {
     onToggleAudioTrack: (id: string) => void;
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
-    onDeleteSampler: (id: string) => void;
-    onSaveSampler: (s: Sampler) => void;
-    onOpenSamplerEditor: (s?: Sampler | null) => void;
     onDeleteStopPattern: (id: string) => void;
     onDeleteBudgetStrategy: (id: string) => void;
     onActivateBudgetStrategy: (id: string) => void;
@@ -116,13 +116,14 @@ interface AppModalsProps {
 export function AppModals({
     modals, allChats, allCharacters, allContexts, allLocations, allAudioTracks, allSamplers,
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
-    runningModels, samplerToEdit, charModal, contextModal, locationModal, audioTrackModal, stopModal, modelModal,
-    budgetModal, profileModal, worldModal,
+    allPromptBlocks, runningModels,
+    charModal, contextModal, locationModal, audioTrackModal, samplerModal, stopPatternModal, modelModal,
+    budgetModal, profileModal, worldModal, promptBlockModal,
     onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
     onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
     onDeleteModel, onToggleModelLoad,
-    onDeleteSampler, onSaveSampler, onOpenSamplerEditor, onDeleteStopPattern,
+    onDeleteStopPattern,
     onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
     onDeleteExtension, onToggleExtension, onUpdateInteractionData,
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
@@ -327,11 +328,27 @@ export function AppModals({
                     items={allSamplers}
                     isOpen={modals.samplerList.isOpen}
                     onClose={modals.samplerList.close}
-                    onSelect={onOpenSamplerEditor}
-                    onDelete={onDeleteSampler}
-                    onCreateNew={() => onOpenSamplerEditor(null)}
+                    onSelect={(s: Sampler) => samplerModal.open(s)}
+                    onDelete={samplerModal.handleDelete}
+                    onCreateNew={() => samplerModal.open()}
                     renderSubtext={(s: Sampler) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`}
                     emptyMessage="No samplers found."
+                    actionLabel="Delete"
+                />
+            )}
+
+            {/* Prompt Blocks List */}
+            {modals.promptBlockList.isOpen && (
+                <ManagerModal
+                    title="Prompt Blocks"
+                    items={allPromptBlocks}
+                    isOpen={modals.promptBlockList.isOpen}
+                    onClose={modals.promptBlockList.close}
+                    onSelect={(b: PromptBlock) => promptBlockModal.open(b)}
+                    onDelete={promptBlockModal.handleDelete}
+                    onCreateNew={() => promptBlockModal.open()}
+                    renderSubtext={(b: PromptBlock) => `${b.textContent ? `📝 ${b.textContent.length} chars` : ''}${b.images.length > 0 ? ` • 🖼️ ${b.images.length}` : ''}${b.characterBindings.length > 0 ? ` • 🎭${b.characterBindings.length}` : ''}${b.contextBindings.length > 0 ? ` • 📜${b.contextBindings.length}` : ''}${b.locationBindings.length > 0 ? ` • 📍${b.locationBindings.length}` : ''}`}
+                    emptyMessage="No prompt blocks found."
                     actionLabel="Delete"
                 />
             )}
@@ -343,9 +360,9 @@ export function AppModals({
                     items={allStopPatterns}
                     isOpen={modals.stopList.isOpen}
                     onClose={modals.stopList.close}
-                    onSelect={(s: StopPattern) => stopModal.open(s)}
+                    onSelect={(s: StopPattern) => stopPatternModal.open(s)}
                     onDelete={onDeleteStopPattern}
-                    onCreateNew={() => stopModal.open()}
+                    onCreateNew={() => stopPatternModal.open()}
                     renderSubtext={(s: StopPattern) => (
                         <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>
                             {s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}
@@ -660,23 +677,36 @@ export function AppModals({
             )}
 
             {/* Sampler Editor */}
-            {modals.samplerEditor.isOpen && (
+            {samplerModal.isOpen && (
                 <SamplerEditorModal
-                    isOpen={modals.samplerEditor.isOpen}
-                    onClose={() => { modals.samplerEditor.close(); }}
-                    onSave={onSaveSampler}
-                    existingSampler={samplerToEdit}
+                    isOpen={samplerModal.isOpen}
+                    onClose={samplerModal.close}
+                    onSave={samplerModal.handleSave}
+                    existingSampler={samplerModal.itemToEdit}
                     allStopPatterns={allStopPatterns}
                 />
             )}
 
+            {/* Prompt Block Editor */}
+            {promptBlockModal.isOpen && (
+                <PromptBlockEditorModal
+                    isOpen={promptBlockModal.isOpen}
+                    onClose={promptBlockModal.close}
+                    onSave={promptBlockModal.handleSave}
+                    existingBlock={promptBlockModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                />
+            )}
+
             {/* Stop Pattern Editor */}
-            {stopModal.isOpen && (
+            {stopPatternModal.isOpen && (
                 <StopPatternEditorModal
-                    isOpen={stopModal.isOpen}
-                    onClose={stopModal.close}
-                    onSave={stopModal.handleSave}
-                    existingStopPattern={stopModal.itemToEdit}
+                    isOpen={stopPatternModal.isOpen}
+                    onClose={stopPatternModal.close}
+                    onSave={stopPatternModal.handleSave}
+                    existingStopPattern={stopPatternModal.itemToEdit}
                 />
             )}
 

@@ -42,13 +42,13 @@ export function useModalVisibility() {
     const [contextList, setContextListOpen] = useState(false);
     const [locationList, setLocationListOpen] = useState(false);
     const [audioTrackList, setAudioTrackListOpen] = useState(false);
-    const [samplerList, setSamplerListOpen] = useState(false);
-    const [extList, setExtListOpen] = useState(false);
     const [modelList, setModelListOpen] = useState(false);
+    const [samplerList, setSamplerListOpen] = useState(false);
+    const [promptBlockList, setPromptBlockListOpen] = useState(false);
     const [stopList, setStopListOpen] = useState(false);
     const [budgetStrategyList, setBudgetStrategyListOpen] = useState(false);
     const [profileList, setProfileListOpen] = useState(false);
-    const [samplerEditor, setSamplerEditorOpen] = useState(false);
+    const [extList, setExtensionListOpen] = useState(false);
     const [settings, setSettingsOpen] = useState(false);
     const [worldManager, setWorldManagerOpen] = useState(false);
     const [participantControl, setParticipantControlOpen] = useState(false);
@@ -65,13 +65,13 @@ export function useModalVisibility() {
         setContextListOpen(false);
         setLocationListOpen(false);
         setAudioTrackListOpen(false);
-        setSamplerListOpen(false);
-        setExtListOpen(false);
         setModelListOpen(false);
+        setSamplerListOpen(false);
+        setPromptBlockListOpen(false);
         setStopListOpen(false);
         setBudgetStrategyListOpen(false);
         setProfileListOpen(false);
-        setSamplerEditorOpen(false);
+        setExtensionListOpen(false);
         setSettingsOpen(false);
         setWorldManagerOpen(false);
         setParticipantControlOpen(false);
@@ -90,12 +90,12 @@ export function useModalVisibility() {
         locationList: createModalState(locationList, setLocationListOpen),
         audioTrackList: createModalState(audioTrackList, setAudioTrackListOpen),
         samplerList: createModalState(samplerList, setSamplerListOpen),
-        extList: createModalState(extList, setExtListOpen),
+        promptBlockList: createModalState(promptBlockList, setPromptBlockListOpen),
+        extList: createModalState(extList, setExtensionListOpen),
         modelList: createModalState(modelList, setModelListOpen),
         stopList: createModalState(stopList, setStopListOpen),
         budgetStrategyList: createModalState(budgetStrategyList, setBudgetStrategyListOpen),
         profileList: createModalState(profileList, setProfileListOpen),
-        samplerEditor: createModalState(samplerEditor, setSamplerEditorOpen),
         settings: createModalState(settings, setSettingsOpen),
         worldManager: createModalState(worldManager, setWorldManagerOpen),
         participantControl: createModalState(participantControl, setParticipantControlOpen),

@@ -12,6 +12,7 @@ interface ContextBarProps {
     onOpenStopPatterns: () => void;
     onOpenBudgets: () => void;
     onOpenProfiles: () => void;
+    onOpenPromptBlocks: () => void;
 }
 
 function NavButton({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
@@ -25,7 +26,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 export function ContextBar({
     viewMode,
     onOpenChatList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
-    onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
+    onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles, onOpenPromptBlocks,
 }: ContextBarProps) {
     if (viewMode === 'cinematic') return null;
 
@@ -40,6 +41,7 @@ export function ContextBar({
             <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
             <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
             <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
+            <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
             <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
             <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />
         </div>

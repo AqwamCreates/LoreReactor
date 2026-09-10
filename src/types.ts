@@ -439,6 +439,33 @@ export type PromptBlockType =
   | 'Tool Instructions'
   | 'Text Injection';
 
+export interface PromptBlock extends ObjectData {
+
+  textContent: string
+  images: string[]
+  regularExpressionActivationTrigger?: string;
+  regularExpressionDeactivationTrigger?: string;
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
+  characterBindings: string[]
+  contextBindings: string[]
+  locationBindings: string[]
+
+}
+
+export interface RawPromptBlock extends RawData {
+
+  textContent: string
+  images: string[]
+  regularExpressionActivationTrigger?: string;
+  regularExpressionDeactivationTrigger?: string;
+  regularExpressionContext?: regularExpressionContext;
+  regularExpressionTarget?: regularExpressionTarget;
+  characterBindings: string[]
+  contextBindings: string[]
+  locationBindings: string[]
+
+}
 export interface Profile extends ObjectData {
   volume: number; // -1 is audio-specific, >= 0 is override
   forceNameReveal: boolean;
@@ -471,7 +498,7 @@ export interface Profile extends ObjectData {
   enableCalculator: number,
   enableMemoryWriting: number;
   enableMemoryReading: number;
-  inputStrategy: PromptBlockType[];
+  inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.
   summarizationSteps: SummarizationStep[];
 }
 
@@ -507,7 +534,7 @@ export interface RawProfile extends RawData {
   enableCalculator: number,
   enableMemoryWriting: number;
   enableMemoryReading: number;
-  inputStrategy: PromptBlockType[];
+  inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.
   summarizationSteps: RawSummarizationStep[];
 }
 

@@ -25,7 +25,7 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         id: 'ai-recommendation',
         icon: '✨',
         label: 'Get AI Recommendation',
-        description: 'Generate new characters, contexts, and locations using your loaded model.',
+        description: 'Generate new characters, contexts, locations and worlds using your loaded model.',
     },
     {
         id: 'interaction-branching',

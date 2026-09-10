@@ -1,6 +1,6 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';

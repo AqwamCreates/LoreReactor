@@ -14,6 +14,7 @@ import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useWorldManager } from '../hooks/useWorldManager';
+import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
@@ -29,7 +30,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack } from '../types';
+import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack, PromptBlock } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -89,6 +90,7 @@ function App() {
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
+    const { promptBlocks: allPromptBlocks, isLoading: promptBlocksLoading, savePromptBlock, deletePromptBlock } = usePromptBlockManager();
 
     // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
@@ -114,11 +116,13 @@ function App() {
     const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
     const locationModal = useEntityModal(saveLocation, deleteLocation, 'Location');
     const audioTrackModal = useEntityModal<AudioTrack>(saveAudioTrack, deleteAudioTrack, 'Audio Track');
-    const stopModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
+    const samplerModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
+    const stopPatternModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
     const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
     const worldModal = useEntityModal<World>(saveWorld, deleteWorld, 'World');
+    const promptBlockModal = useEntityModal<PromptBlock>(savePromptBlock, deletePromptBlock, 'Prompt Block');
 
     // ─── Chat Inspection State ───────────────────────────────────────
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
@@ -126,7 +130,6 @@ function App() {
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { modals } = useModalVisibility();
-    const [samplerToEdit, setSamplerToEdit] = useState<Sampler | null>(null);
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
@@ -381,10 +384,11 @@ function App() {
         { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
+        { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocksLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
+    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, promptBlocksLoading, budgetLoading, profilesLoading, chatsLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -603,8 +607,6 @@ function App() {
         }, 50);
     };
 
-    const handleOpenSamplerEditor = (sampler?: Sampler | null) => { setSamplerToEdit(sampler || null); modals.samplerList.close(); modals.samplerEditor.open(); };
-    const handleSaveSampler = (sampler: Sampler) => { saveSampler(sampler); modals.samplerEditor.close(); setSamplerToEdit(null); };
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); refreshChatList(); }, [refreshChatList]);
 
     const handleForceFirstMessage = useCallback(async (character: Character) => {
@@ -626,7 +628,7 @@ function App() {
     const handleInjectCustomMessage = useCallback(async (character: Character, text: string) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: crypto.uuidv4(),
+            id: crypto.randomUUID(),
             name: `[Injected] ${character.name}`,
             description: 'User-injected message for LLM context',
             text: `${character.name}: ${text}`,
@@ -646,7 +648,7 @@ function App() {
     const handleInjectFirstMessage = useCallback(async (character: Character) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: crypto.uuidv4(),
+            id: crypto.randomUUID(),
             name: `[Injected First] ${character.name}`,
             description: 'User-injected first message for LLM context',
             text: `${character.name}: *${character.name} enters the scene.*`,
@@ -883,17 +885,19 @@ function App() {
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
                     allWorlds={allWorlds}
+                    allPromptBlocks={allPromptBlocks}
                     runningModels={runningModels}
-                    samplerToEdit={samplerToEdit}
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
                     audioTrackModal={audioTrackModal}
-                    stopModal={stopModal}
+                    samplerModal={samplerModal}
+                    stopPatternModal={stopPatternModal}
                     modelModal={modelModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
                     worldModal={worldModal}
+                    promptBlockModal={promptBlockModal}
                     onSwitchChat={handleSwitchChat}
                     onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
@@ -911,10 +915,7 @@ function App() {
                     onToggleAudioTrack={handleToggleAudioTrack}
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
-                    onDeleteSampler={deleteSampler}
-                    onSaveSampler={handleSaveSampler}
-                    onOpenSamplerEditor={handleOpenSamplerEditor}
-                    onDeleteStopPattern={stopModal.handleDelete}
+                    onDeleteStopPattern={stopPatternModal.handleDelete}
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
                     onDeleteProfile={deleteProfile}
