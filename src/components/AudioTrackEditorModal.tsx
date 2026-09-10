@@ -2,6 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory } from '../types';
+import { uploadAudioTrack, getAudioTrackUrl } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
@@ -50,6 +51,12 @@ export function AudioTrackEditorModal({
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
     const [errors, setErrors] = useState<{ name?: string; filename?: string; regex?: string; deactivationRegex?: string }>({});
+    const [audioFile, setAudioFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+    const audioInputRef = useRef<HTMLInputElement>(null);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -68,6 +75,7 @@ export function AudioTrackEditorModal({
                 setLocationBindings(existingTrack.locationBindings ?? []);
                 setContextBindings(existingTrack.contextBindings ?? []);
                 setCharacterBindings(existingTrack.characterBindings ?? []);
+                setPreviewUrl(getAudioTrackUrl(existingTrack.filename));
             } else {
                 setName('');
                 setDescription('');
@@ -83,12 +91,27 @@ export function AudioTrackEditorModal({
                 setLocationBindings([]);
                 setContextBindings([]);
                 setCharacterBindings([]);
+                setPreviewUrl(null);
             }
             setErrors({});
             setActivationTestText('');
             setActivationTestResult(null);
+            setAudioFile(null);
+            setIsUploading(false);
+            setIsPreviewPlaying(false);
         }
     }, [isOpen, existingTrack]);
+
+    // Cleanup preview audio on close
+    useEffect(() => {
+        if (!isOpen) {
+            if (previewAudioRef.current) {
+                previewAudioRef.current.pause();
+                previewAudioRef.current = null;
+            }
+            setIsPreviewPlaying(false);
+        }
+    }, [isOpen]);
 
     const validate = (): boolean => {
         const newErrors: typeof errors = {};
@@ -118,8 +141,70 @@ export function AudioTrackEditorModal({
         }
     };
 
-    const buildTrackFromForm = (isNewClone: boolean): AudioTrack | null => {
+    const handleTogglePreview = () => {
+        if (!previewUrl) return;
+
+        if (isPreviewPlaying && previewAudioRef.current) {
+            previewAudioRef.current.pause();
+            previewAudioRef.current.currentTime = 0;
+            setIsPreviewPlaying(false);
+            return;
+        }
+
+        if (!previewAudioRef.current) {
+            previewAudioRef.current = new Audio(previewUrl);
+            previewAudioRef.current.volume = volume;
+            previewAudioRef.current.loop = loop;
+            previewAudioRef.current.onended = () => setIsPreviewPlaying(false);
+            previewAudioRef.current.onerror = () => {
+                setIsPreviewPlaying(false);
+                addToast?.('Failed to play audio preview.', 'error');
+            };
+        } else {
+            previewAudioRef.current.src = previewUrl;
+            previewAudioRef.current.volume = volume;
+            previewAudioRef.current.loop = loop;
+        }
+
+        previewAudioRef.current.play().then(() => {
+            setIsPreviewPlaying(true);
+        }).catch(() => {
+            setIsPreviewPlaying(false);
+        });
+    };
+
+    // Update preview volume/loop when settings change during playback
+    useEffect(() => {
+        if (previewAudioRef.current && isPreviewPlaying) {
+            previewAudioRef.current.volume = volume;
+            previewAudioRef.current.loop = loop;
+        }
+    }, [volume, loop, isPreviewPlaying]);
+
+    const buildTrackFromForm = async (isNewClone: boolean): Promise<AudioTrack | null> => {
         if (!validate()) return null;
+
+        let finalFilename = filename.trim();
+
+        // Upload new file if selected
+        if (audioFile) {
+            setIsUploading(true);
+            try {
+                finalFilename = await uploadAudioTrack(audioFile);
+            } catch (err) {
+                console.error('Failed to upload audio file:', err);
+                setErrors(prev => ({ ...prev, filename: 'Upload failed.' }));
+                setIsUploading(false);
+                return null;
+            }
+            setIsUploading(false);
+            setAudioFile(null);
+        }
+
+        if (!finalFilename) {
+            setErrors(prev => ({ ...prev, filename: 'Filename is required.' }));
+            return null;
+        }
 
         const now = Date.now();
 
@@ -127,7 +212,7 @@ export function AudioTrackEditorModal({
             id: isNewClone ? uuidv4() : (existingTrack?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
-            filename: filename.trim(),
+            filename: finalFilename,
             loop,
             volume,
             startFadeDurationMs,
@@ -144,15 +229,15 @@ export function AudioTrackEditorModal({
         };
     };
 
-    const handleSubmit = () => {
-        const track = buildTrackFromForm(false);
+    const handleSubmit = async () => {
+        const track = await buildTrackFromForm(false);
         if (!track) return;
         onSave(track);
         onClose();
     };
 
-    const handleClone = () => {
-        const cloned = buildTrackFromForm(true);
+    const handleClone = async () => {
+        const cloned = await buildTrackFromForm(true);
         if (!cloned) return;
         onSave(cloned);
         onClose();
@@ -170,9 +255,9 @@ export function AudioTrackEditorModal({
                 <div className="modal-header">
                     <h2>{existingTrack ? 'Edit Audio Track' : 'Create New Audio Track'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {existingTrack && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>Clone</button>}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {existingTrack && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
                     </div>
                 </div>
 
@@ -190,13 +275,49 @@ export function AudioTrackEditorModal({
                     </div>
 
                     <div className="context-field-group">
-                        <label className="editor-label">Filename <span className="context-required-asterisk">*</span></label>
-                        <input type="text" value={filename} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" />
+                        <label className="editor-label">Audio File <span className="context-required-asterisk">*</span></label>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input type="text" value={filename} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} />
+                            <button type="button" className="editor-btn editor-btn-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
+                                {isUploading ? '⏳' : '📁 Upload'}
+                            </button>
+                        </div>
+                        <input ref={audioInputRef} type="file" accept=".ogg,.mp3,.wav,.flac,audio/*" hidden onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                                const file = e.target.files[0];
+                                setAudioFile(file);
+                                setFilename(file.name.replace(/[^a-zA-Z0-9._-]/g, '_'));
+                                if (errors.filename) setErrors({ ...errors, filename: undefined });
+                                // Create local preview URL for newly selected file
+                                setPreviewUrl(URL.createObjectURL(file));
+                            }
+                            e.target.value = '';
+                        }} disabled={isUploading} />
                         {errors.filename && <div className="editor-error-message">{errors.filename}</div>}
                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                            Audio file name in the audio tracks directory. Supports .ogg, .mp3, .wav, .flac.
+                            Supports .ogg, .mp3, .wav, .flac. Upload stores the file; or type an existing filename manually.
                         </div>
                     </div>
+
+                    {/* Audio Preview */}
+                    {previewUrl && (
+                        <div className="context-field-group">
+                            <label className="editor-label editor-label-small">Preview</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleTogglePreview}
+                                    className={`editor-btn ${isPreviewPlaying ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                    style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}
+                                >
+                                    {isPreviewPlaying ? '⏹ Stop' : '▶ Play'}
+                                </button>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {isPreviewPlaying ? 'Playing...' : 'Click to preview at current volume & loop settings'}
+                                </span>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Category & Priority */}
                     <div className="editor-section">

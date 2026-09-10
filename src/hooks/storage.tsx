@@ -291,6 +291,10 @@ async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T
   return results;
 }
 
+function getCleanPath(path: string){
+  return PATHS.contexts.startsWith('/') ? path : `/${path}`;
+}
+
 // --- Memory Repository ---
 
 export async function loadRawMemoryManifest(): Promise<string[]> { 
@@ -1522,7 +1526,7 @@ export async function uploadCharacterVoice(file: File): Promise<string> {
 
 export function getContextImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = PATHS.contexts.startsWith('/') ? PATHS.contexts : `/${PATHS.contexts}`;
+  const cleanPath = getCleanPath(PATHS.contexts);
   return `${localURL}${cleanPath}/${imageFilename}`;
 }
 
@@ -1536,7 +1540,7 @@ export async function uploadContextImage(file: File): Promise<string> {
 
 export function getLocationImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = PATHS.locations.startsWith('/') ? PATHS.locations : `/${PATHS.locations}`;
+  const cleanPath = getCleanPath(PATHS.locations);
   return `${localURL}${cleanPath}/${imageFilename}`;
 }
 
@@ -1547,3 +1551,18 @@ export async function uploadLocationImage(file: File): Promise<string> {
   await putJson(imagePath, { base64 });
   return filename;
 }
+
+export function getAudioTrackUrl(imageFilename: string | undefined): string | null {
+  if (!imageFilename) return null;
+  const cleanPath = getCleanPath(PATHS.audioTracks);
+  return `${localURL}${cleanPath}/${imageFilename}`;
+}
+
+export async function uploadAudioTrack(file: File): Promise<string> {
+    const base64 = await fileToBase64(file);
+    const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const audioPath = `${PATHS.audioTracks}/${filename}`;
+    await putJson(audioPath, { base64 });
+    return filename;
+}
+

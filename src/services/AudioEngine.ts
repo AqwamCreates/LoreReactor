@@ -15,11 +15,8 @@ export class AudioEngine {
     private masterGain: GainNode | null = null;
     private activeTracks: Map<string, ActiveTrackState> = new Map();
     private bufferCache: Map<string, AudioBuffer> = new Map();
-    private globalVolumeOverride: number = -1; // -1 = per-track default
+    private globalVolumeOverride = -1; // -1 = per-track default
     private animationFrameId: number | null = null;
-    private lastEvaluatedMessageCount: number = 0;
-    private lastActiveLocationId: string | undefined = undefined;
-    private lastActiveContextIds: Set<string> = new Set();
 
     private ensureContext(): AudioContext {
         if (!this.ctx) {
@@ -53,8 +50,9 @@ export class AudioEngine {
     }
 
     private async loadBuffer(filename: string): Promise<AudioBuffer | null> {
-        if (this.bufferCache.has(filename)) {
-            return this.bufferCache.get(filename)!;
+        const cached = this.bufferCache.get(filename);
+        if (cached) {
+            return cached;
         }
 
         try {
@@ -77,7 +75,8 @@ export class AudioEngine {
 
         const ctx = this.ensureContext();
         const gainNode = ctx.createGain();
-        gainNode.connect(this.masterGain!);
+        const masterGain = this.ensureContext().createGain() || this.masterGain;
+        gainNode.connect(masterGain);
         gainNode.gain.value = 0; // Start silent for fade-in
 
         const state: ActiveTrackState = {
@@ -237,10 +236,6 @@ export class AudioEngine {
                 state.targetVolume = this.getEffectiveVolume(track);
             }
         }
-
-        this.lastEvaluatedMessageCount = interactionData.interactionHistory.length;
-        this.lastActiveLocationId = currentLocationId;
-        this.lastActiveContextIds = currentContextIds;
     }
 
     private getCurrentLocationId(interactionData: InteractionData): string | undefined {

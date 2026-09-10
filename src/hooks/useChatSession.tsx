@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getAudioEngine } from '../services/AudioEngine';
 import { useThrottledStream } from './useThrottledStream';
 import { useGenerationLock } from './useGenerationLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -201,6 +202,26 @@ export function useChatSession() {
         if (isLoading && streamingText && messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'auto' });
         else if (!isLoading && messageEndRef.current && interactionData?.interactionHistory.length) messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }, [streamingText, isLoading, interactionData?.interactionHistory.length]);
+
+    // ─── Audio Engine ────────────────────────────────────────────────
+    useEffect(() => {
+        const engine = getAudioEngine();
+        engine.startVolumeTicker();
+        return () => {
+            engine.stopAll();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!interactionData) return;
+        const engine = getAudioEngine();
+
+        // Apply global volume override from profile
+        const profileVolume = interactionData.Profile?.volume ?? -1;
+        engine.setGlobalVolume(profileVolume);
+
+        engine.evaluate(interactionData);
+    }, [interactionData]);
 
     // ─── Helpers ─────────────────────────────────────────────────────
     const isModelReadyForGeneration = useCallback((): boolean => {
