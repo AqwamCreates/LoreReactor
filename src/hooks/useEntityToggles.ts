@@ -1,7 +1,7 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, Profile, BudgetStrategy, InteractionData } from '../types';
-import { saveRawInteractionData, loadRawContext, loadRawLocation } from './storage';
+import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData } from '../types';
+import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from './storage';
 
 const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
 
@@ -75,6 +75,17 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         addToast('Locations updated.', 'info');
     }, [interactionData, setInteractionData, addToast]);
 
+    const handleToggleAudioTrack = useCallback(async (trackId: string) => {
+        if (!interactionData) return;
+        const currentTracks = interactionData.audioTracks || [];
+        const ids = currentTracks.map(t => t.id);
+        const nt = ids.includes(trackId)
+            ? currentTracks.filter(t => t.id !== trackId)
+            : [...currentTracks, await loadRawAudioTrack(trackId)].filter(Boolean) as AudioTrack[];
+        setInteractionData({ ...interactionData, audioTracks: nt });
+        addToast('Audio tracks updated.', 'info');
+    }, [interactionData, setInteractionData, addToast]);
+
     const handleSetChatProtagonist = useCallback(async (charId: string) => {
         if (!interactionData) return;
         const sh = allCharacters.find(c => c.id === charId);
@@ -130,6 +141,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         handleToggleParticipant,
         handleToggleContext,
         handleToggleLocation,
+        handleToggleAudioTrack,
         handleSetChatProtagonist,
         handleToggleExtension,
         handleActivateBudgetStrategy,

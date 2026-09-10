@@ -30,6 +30,7 @@ function createEmptyChat(): InteractionData {
         participants: [],
         contexts: [],
         locations: [],
+        audioTracks: [],
         interactionHistory: [],
         numberOfMessages: 0,
         firstCreatedTimestamp: Date.now(),

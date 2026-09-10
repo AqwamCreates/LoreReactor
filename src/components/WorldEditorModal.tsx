@@ -83,7 +83,7 @@ export function WorldEditorModal({
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
-            audioTrackIds: audioTrackIds.length > 0 ? audioTrackIds : undefined,
+            audioTrackIds: audioTrackIds,
             profileId: profileId || undefined,
             firstCreatedTimestamp: (existingWorld && !isCloned) ? existingWorld.firstCreatedTimestamp : now,
             lastUpdatedTimestamp: now,
@@ -111,7 +111,7 @@ export function WorldEditorModal({
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
-            audioTrackIds: audioTrackIds.length > 0 ? audioTrackIds : undefined,
+            audioTrackIds: audioTrackIds,
             profileId: profileId || undefined,
             lastUpdatedTimestamp: now,
         };
