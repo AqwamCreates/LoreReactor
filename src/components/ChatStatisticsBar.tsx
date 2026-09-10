@@ -152,7 +152,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 )}
 
                 {/* Token Usage (no bar, colored percentage) */}
-                <div className="chat-stat-item" title={`${numberOfTokens} / ${maximumNumberOfTokens} tokens (${percentage}%)`}>
+                <div className="chat-stat-item" title={`${numberOfTokens} / ${maximumNumberOfTokens} token(s) (${percentage}%)`}>
                     <span className="chat-stat-label">📊</span>
                     <span className="chat-stat-value" style={{ color: tokenColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
                         {percentage}%
@@ -194,14 +194,14 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                         )}
                         {maximumNumberOfContextTokens > 0 && (
                             <div className="chat-stat-detail-row">
-                                <span className="chat-stat-detail-label">Maximum Number Of Context Tokens:</span>
+                                <span className="chat-stat-detail-label">Maximum Number Of Context token(s):</span>
                                 <span className="chat-stat-detail-value">{formatNumber(maximumNumberOfContextTokens)}</span>
                             </div>
                         )}
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Latency:</span>
                             <span className="chat-stat-detail-value" style={{ color: speedColor }}>
-                                {latency > 0 ? (1000 / latency).toFixed(1) : '∞'} tokens/s
+                                {latency > 0 ? (1000 / latency).toFixed(1) : '∞'} token(s)/s
                             </span>
                         </div>
                         <div className="chat-stat-detail-row">
@@ -215,8 +215,8 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             <span className="chat-stat-detail-value">{formatNumber(numberOfMessages)}</span>
                         </div>
                         <div className="chat-stat-detail-row">
-                            <span className="chat-stat-detail-label">Average Tokens Per Message:</span>
-                            <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(2) : '00'} tokens</span>
+                            <span className="chat-stat-detail-label">Average token(s) Per Message:</span>
+                            <span className="chat-stat-detail-value">{numberOfMessages > 0 ? (numberOfTokens / numberOfMessages).toFixed(2) : '00'} token(s)</span>
                         </div>
                         <div className="chat-stat-detail-row">
                             <span className="chat-stat-detail-label">Session Duration:</span>

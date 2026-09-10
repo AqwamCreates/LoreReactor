@@ -2,6 +2,7 @@
 import React from 'react';
 import type { Character, ChatMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
 interface MessageBubbleProps {
@@ -336,7 +337,9 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = React.useState(false);
+    const [editTokenCount, setEditTokenCount] = React.useState(0);
     const rawDraftRef = React.useRef<string>('');
+    const editTokenDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
@@ -353,6 +356,21 @@ export const MessageBubble = React.memo(function MessageBubble({
             rawDraftRef.current = editDraft;
         }
     }, [isEditing, message.id]);
+
+    // Debounced token count during editing
+    React.useEffect(() => {
+        if (!isEditing || editingId !== message.id || !editDraft) {
+            setEditTokenCount(0);
+            return;
+        }
+        if (editTokenDebounceRef.current) clearTimeout(editTokenDebounceRef.current);
+        let cancelled = false;
+        editTokenDebounceRef.current = setTimeout(async () => {
+            const count = await getLanguageModelEngine().countTokens(editDraft);
+            if (!cancelled) setEditTokenCount(count);
+        }, 400);
+        return () => { cancelled = true; if (editTokenDebounceRef.current) clearTimeout(editTokenDebounceRef.current); };
+    }, [isEditing, editingId, message.id, editDraft]);
 
     const conversionMap = React.useMemo(() => {
         const map: Record<FormatCategory, TargetFormat> = { ...DEFAULT_CONVERSIONS };
@@ -402,6 +420,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const handleCancelEditing = React.useCallback(() => {
         setConversions([]);
         setIsRawEditing(false);
+        setEditTokenCount(0);
         onCancelEditing();
     }, [onCancelEditing]);
 
@@ -508,6 +527,11 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     <MemoizedMessageText text={displayText} />
                                 </div>
                             )}
+
+                            {/* Token count */}
+                            <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px', textAlign: 'right' }}>
+                                ~{editTokenCount} token(s)
+                            </div>
 
                             {/* Conversion panel — compact */}
                             <div

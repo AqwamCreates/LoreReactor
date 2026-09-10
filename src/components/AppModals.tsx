@@ -67,6 +67,7 @@ interface AppModalsProps {
     worldModal: EntityModalState<World>;
     // Callbacks
     onSwitchChat: (id: string) => void;
+    onInspectChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
     onDeleteCharacter: (id: string) => void;
@@ -115,7 +116,7 @@ export function AppModals({
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
     runningModels, samplerToEdit, charModal, contextModal, locationModal, audioTrackModal, stopModal, modelModal,
     budgetModal, profileModal, worldModal,
-    onSwitchChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
+    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
     onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
     onDeleteModel, onToggleModelLoad,
@@ -157,7 +158,7 @@ export function AppModals({
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
                     onSelect={(item: InteractionData) => {
-                        onSwitchChat(item.id);
+                        onInspectChat(item.id);
                         modals.chatList.close();
                     }}
                     onDelete={onDeleteChat}
