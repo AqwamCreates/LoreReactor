@@ -5,6 +5,7 @@ interface ContextBarProps {
     onOpenCharacters: () => void;
     onOpenContexts: () => void;
     onOpenLocations: () => void;
+    onOpenAudioTracks: () => void;
     onOpenWorlds: () => void;
     onOpenModels: () => void;
     onOpenSamplers: () => void;
@@ -23,7 +24,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 
 export function ContextBar({
     viewMode,
-    onOpenChatList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenWorlds,
+    onOpenChatList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
     onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
 }: ContextBarProps) {
     if (viewMode === 'cinematic') return null;
@@ -34,6 +35,7 @@ export function ContextBar({
             <NavButton icon="🎭" label="Characters" onClick={onOpenCharacters} />
             <NavButton icon="📜" label="Contexts" onClick={onOpenContexts} />
             <NavButton icon="📍" label="Locations" onClick={onOpenLocations} />
+            <NavButton icon="🔊" label="Audio Tracks" onClick={onOpenAudioTracks} />
             <NavButton icon="🌍" label="Worlds" onClick={onOpenWorlds} />
             <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
             <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />

@@ -41,6 +41,7 @@ export function useModalVisibility() {
     const [charList, setCharListOpen] = useState(false);
     const [contextList, setContextListOpen] = useState(false);
     const [locationList, setLocationListOpen] = useState(false);
+    const [audioTrackList, setAudioTrackListOpen] = useState(false);
     const [samplerList, setSamplerListOpen] = useState(false);
     const [extList, setExtListOpen] = useState(false);
     const [modelList, setModelListOpen] = useState(false);
@@ -62,6 +63,7 @@ export function useModalVisibility() {
         setCharListOpen(false);
         setContextListOpen(false);
         setLocationListOpen(false);
+        setAudioTrackListOpen(false);
         setSamplerListOpen(false);
         setExtListOpen(false);
         setModelListOpen(false);
@@ -86,6 +88,7 @@ export function useModalVisibility() {
         charList: createModalState(charList, setCharListOpen),
         contextList: createModalState(contextList, setContextListOpen),
         locationList: createModalState(locationList, setLocationListOpen),
+        audioTrackList: createModalState(audioTrackList, setAudioTrackListOpen),
         samplerList: createModalState(samplerList, setSamplerListOpen),
         extList: createModalState(extList, setExtListOpen),
         modelList: createModalState(modelList, setModelListOpen),
