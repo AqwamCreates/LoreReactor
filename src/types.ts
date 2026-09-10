@@ -303,6 +303,7 @@ export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
 
 export interface Extension extends ObjectData {
   extensionType: ExtensionType;
+  priority: number,
 }
 
 export interface BudgetStrategy extends ObjectData {
