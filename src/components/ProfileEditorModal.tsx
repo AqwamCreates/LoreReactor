@@ -138,6 +138,7 @@ export function ProfileEditorModal({
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
+    const [volume, setVolume] = useState<number>(-1);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [enableWebSearch, setEnableWebSearch] = useState<number>(0);
     const [enableCalculator, setEnableCalculator] = useState<number>(0);
@@ -180,6 +181,7 @@ export function ProfileEditorModal({
                 setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
                 setContextSensitivity(existingProfile.contextSensitivity ?? -1);
                 setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
+                setVolume(existingProfile.volume ?? -1);
                 setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
                 setEnableWebSearch(existingProfile.enableWebSearch ?? 0);
                 setEnableCalculator(existingProfile.enableCalculator ?? 0);
@@ -221,6 +223,7 @@ export function ProfileEditorModal({
                 setMemoryRetentionWeight(-1);
                 setContextSensitivity(-1);
                 setCacheLevel(0);
+                setVolume(-1);
                 setStripThinkTokens(false);
                 setEnableWebSearch(0);
                 setEnableCalculator(0);
@@ -275,6 +278,7 @@ export function ProfileEditorModal({
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
+            volume,
             stripThinkTokens,
             enableWebSearch,
             enableCalculator,
@@ -322,6 +326,7 @@ export function ProfileEditorModal({
             memoryRetentionWeight,
             contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel,
+            volume,
             stripThinkTokens,
             enableWebSearch,
             enableCalculator,
@@ -507,7 +512,22 @@ export function ProfileEditorModal({
                     {/* Display Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Display</span>
-                        
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Global Volume Override</label>
+                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                    {volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} />
+                            </div>
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                -1 = use each track's own volume. ≥0 = override all tracks uniformly.
+                            </div>
+                        </div>
+
                         <label className="editor-checkbox-label">
                             <input
                                 type="checkbox"

@@ -1,11 +1,12 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { LocationEditorModal } from './LocationEditorModal';
+import { AudioTrackEditorModal } from './AudioTrackEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
@@ -44,6 +45,7 @@ interface AppModalsProps {
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
+    allAudioTracks: AudioTrack[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allModels: LanguageModel[];
@@ -57,6 +59,7 @@ interface AppModalsProps {
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
     locationModal: EntityModalState<Location>;
+    audioTrackModal: EntityModalState<AudioTrack>;
     stopModal: EntityModalState<StopPattern>;
     modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
@@ -74,6 +77,8 @@ interface AppModalsProps {
     onToggleContext: (id: string) => void;
     onDeleteLocation: (id: string) => void;
     onToggleLocation: (id: string) => void;
+    onDeleteAudioTrack: (id: string) => void;
+    onToggleAudioTrack: (id: string) => void;
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
     onDeleteSampler: (id: string) => void;
@@ -94,6 +99,7 @@ interface AppModalsProps {
     onSaveCharacter: (c: Character) => void;
     onSaveContext: (c: Context) => void;
     onSaveLocation: (l: Location) => void;
+    onSaveAudioTrack: (t: AudioTrack) => void;
     onSaveProfile: (p: Profile) => void;
     onSaveWorld: (w: World) => void;
     onLoadWorld: (world: World) => void;
@@ -105,18 +111,19 @@ interface AppModalsProps {
 }
 
 export function AppModals({
-    modals, allChats, allCharacters, allContexts, allLocations, allSamplers,
+    modals, allChats, allCharacters, allContexts, allLocations, allAudioTracks, allSamplers,
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
-    runningModels, samplerToEdit, charModal, contextModal, locationModal, stopModal, modelModal,
+    runningModels, samplerToEdit, charModal, contextModal, locationModal, audioTrackModal, stopModal, modelModal,
     budgetModal, profileModal, worldModal,
     onSwitchChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
-    onDeleteLocation, onToggleLocation, onDeleteModel, onToggleModelLoad,
+    onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
+    onDeleteModel, onToggleModelLoad,
     onDeleteSampler, onSaveSampler, onOpenSamplerEditor, onDeleteStopPattern,
     onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
     onDeleteExtension, onToggleExtension, onUpdateInteractionData,
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
-    onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
+    onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld,
     onLoadWorld, onDeleteWorld, onImportComplete, addToast,
     ensureChatsLoaded,
 }: AppModalsProps) {
@@ -221,6 +228,25 @@ export function AppModals({
                 />
             )}
 
+            {/* Audio Tracks List */}
+            {modals.audioTrackList.isOpen && (
+                <ManagerModal
+                    title="Audio Tracks"
+                    items={allAudioTracks}
+                    isOpen={modals.audioTrackList.isOpen}
+                    onClose={modals.audioTrackList.close}
+                    onSelect={(t: AudioTrack) => audioTrackModal.open(t)}
+                    onDelete={onDeleteAudioTrack}
+                    onCreateNew={() => audioTrackModal.open()}
+                    renderSubtext={(t: AudioTrack) => `${t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'} ${t.loop ? '🔁' : '▶️'} Vol: ${Math.round(t.volume * 100)}%${t.locationBindings.length > 0 ? ` • 📍${t.locationBindings.length}` : ''}${t.contextBindings.length > 0 ? ` • 📜${t.contextBindings.length}` : ''}`}
+                    emptyMessage="No audio tracks found."
+                    actionLabel="Delete"
+                    orderedListMode={true}
+                    currentOrderIds={interactionData?.audioTracks?.map(t => t.id) || []}
+                    onToggleOrder={onToggleAudioTrack}
+                />
+            )}
+
             {/* Worlds List */}
             {modals.worldManager.isOpen && (
                 <ManagerModal
@@ -232,7 +258,7 @@ export function AppModals({
                     onDelete={onDeleteWorld}
                     onCreateNew={() => worldModal.open()}
                     renderSubtext={(w: World) =>
-                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
                     }
                     emptyMessage="No worlds saved yet."
                     actionLabel="Delete"
@@ -563,6 +589,19 @@ export function AppModals({
                 />
             )}
 
+            {/* Audio Track Editor */}
+            {audioTrackModal.isOpen && (
+                <AudioTrackEditorModal
+                    isOpen={audioTrackModal.isOpen}
+                    onClose={audioTrackModal.close}
+                    onSave={audioTrackModal.handleSave}
+                    existingTrack={audioTrackModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                />
+            )}
+
             {/* World Editor */}
             {worldModal.isOpen && (
                 <WorldEditorModal
@@ -575,10 +614,12 @@ export function AppModals({
                     allContexts={allContexts}
                     allLocations={allLocations}
                     allProfiles={allProfiles}
+                    allAudioTracks={allAudioTracks}
                     currentCharacterIds={interactionData?.participants.map(p => p.id) || []}
                     currentContextIds={interactionData?.contexts?.map(c => c.id) || []}
                     currentLocationIds={interactionData?.locations?.map(l => l.id) || []}
                     currentProfileId={interactionData?.Profile?.id}
+                    currentAudioTrackIds={interactionData?.audioTracks?.map(t => t.id) || []}
                 />
             )}
 

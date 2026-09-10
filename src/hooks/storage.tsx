@@ -7,6 +7,7 @@ import type {
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData,
   RawBudgetData,
+  AudioTrack, RawAudioTrack,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -93,6 +94,7 @@ const PATHS = {
   budgetData: "/user_data/budget_data.json",
   webpages: "/user_data/webpage_data",
   memories: "/user_data/memory_data",
+  audioTracks: "/user_data/audio_tracks",
 };
 const MANIFEST_FILE = 'manifest.json';
 
@@ -713,6 +715,59 @@ export async function deleteRawLocation(id: string): Promise<void> {
     await updateManifest(PATHS.locations, id, 'remove');
 }
 
+// --- Audio Track Repository ---
+export async function loadRawAudioTrackManifest(): Promise<string[]> {
+    return await ensureManifest(PATHS.audioTracks);
+}
+
+export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> {
+    const raw = await fetchJson<RawAudioTrack>(`${PATHS.audioTracks}/${id}.json`);
+    if (!raw) return null;
+
+    const now = Date.now();
+
+    return {
+        id,
+        name: raw.name || 'Untitled Track',
+        description: raw.description,
+        filename: raw.filename,
+        loop: raw.loop ?? false,
+        volume: raw.volume ?? 1,
+        startFadeDurationMs: raw.startFadeDurationMs ?? 1000,
+        endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
+        regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+        regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+        locationBindings: raw.locationBindings ?? [],
+        contextBindings: raw.contextBindings ?? [],
+        characterBindings: raw.characterBindings ?? [],
+        priority: raw.priority ?? 0,
+        audioCategory: raw.audioCategory ?? 'ambient',
+        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+}
+
+export async function loadAllRawAudioTracks(): Promise<AudioTrack[]> {
+    const ids = await loadRawAudioTrackManifest();
+    const results = await loadInBatches(ids, loadRawAudioTrack);
+    return results.filter((t): t is AudioTrack => t !== null);
+}
+
+export async function saveRawAudioTrack(track: AudioTrack): Promise<void> {
+    const { id, ...rawTrack } = track;
+    const payload: RawAudioTrack = {
+        ...rawTrack,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(`${PATHS.audioTracks}/${id}.json`, payload);
+    await updateManifest(PATHS.audioTracks, id, 'add');
+}
+
+export async function deleteRawAudioTrack(id: string): Promise<void> {
+    await deleteResource(`${PATHS.audioTracks}/${id}.json`);
+    await updateManifest(PATHS.audioTracks, id, 'remove');
+}
+
 // --- Language Model Repository ---
 export async function loadRawModelManifest(): Promise<string[]> {
     return await ensureManifest(PATHS.models);
@@ -869,6 +924,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         id,
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
+        volume: rawProfile.volume,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
         enableCharacterExpression: rawProfile.enableCharacterExpression ?? false,
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
@@ -990,7 +1046,8 @@ async function buildInteractionDataShell(
   charMap: Map<string, Character>, 
   contextMap: Map<string, Context>,
   locationMap: Map<string, Location>,
-  profileMap: Map<string, Profile>
+  profileMap: Map<string, Profile>,
+  audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
 
   const now = Date.now();
@@ -1066,6 +1123,12 @@ async function buildInteractionDataShell(
 
   const profile = rawInteractionData.ProfileId ? profileMap.get(rawInteractionData.ProfileId) : undefined;
 
+  const audioTracks = audioTrackMap
+    ? (rawInteractionData.audioTrackIds || [])
+        .map(tid => audioTrackMap.get(tid))
+        .filter((t): t is AudioTrack => t !== undefined)
+    : [];
+
   return {
     id, 
     name: rawInteractionData.name || "Untitled Chat", 
@@ -1073,6 +1136,7 @@ async function buildInteractionDataShell(
     participants, 
     contexts,
     locations,
+    audioTracks,
     interactionHistory: [],
     numberOfMessages: rawInteractionData.interactionIdHistory?.length ?? 0,
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
@@ -1175,7 +1239,22 @@ export async function loadRawInteractionData(
     if (p) profileMap.set(p.id, p);
   }
 
-  const shell = await buildInteractionDataShell(id, rawInteractionData, charMap, contextMap, locationMap, profileMap);
+  const audioTrackMap = new Map<string, AudioTrack>();
+  if (rawInteractionData.audioTrackIds?.length) {
+    const trackResults = await Promise.all(
+      rawInteractionData.audioTrackIds.map(async (tid) => {
+        try {
+          return await loadRawAudioTrack(tid);
+        } catch {
+          console.warn(`Audio track ${tid} not found, skipping.`);
+          return null;
+        }
+      })
+    );
+    for (const t of trackResults) { if (t) audioTrackMap.set(t.id, t); }
+  }
+
+  const shell = await buildInteractionDataShell(id, rawInteractionData, charMap, contextMap, locationMap, profileMap, audioTrackMap);
   if (!shell) return null;
 
   return loadInteractionMessages(shell);
@@ -1199,7 +1278,8 @@ export async function loadAllRawInteractionDataShells(): Promise<InteractionData
       const emptyContextMap = new Map<string, Context>();
       const emptyLocationMap = new Map<string, Location>();
       const emptyProfileMap = new Map<string, Profile>();
-      return buildInteractionDataShell(id, raw, charMap, emptyContextMap, emptyLocationMap, emptyProfileMap);
+      const emptyAudioTrackMap = new Map<string, AudioTrack>();
+      return buildInteractionDataShell(id, raw, charMap, emptyContextMap, emptyLocationMap, emptyProfileMap, emptyAudioTrackMap);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -1230,13 +1310,14 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + 10));
   }
 
-  const { id, protagonist, participants, contexts, locations, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
+  const { id, protagonist, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
   const payload: RawInteractionData = {
     ...rawInteractionData, 
     protagonistId: protagonist.id, 
     participantIds: participants.map(p => p.id),
     contextIds: contexts?.map(i => i.id) || [],
     locationIds: locations?.map(l => l.id) || [],
+    audioTrackIds: audioTracks?.map(t => t.id) || [],
     interactionIdHistory: interactionHistory.map(m => m.id),
     parentInteractionDataId: parentInteractionDataId || null, 
     parentInteractionMessageId: parentInteractionMessageId || null,
@@ -1259,6 +1340,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
     locationIds: sourceChat.locations?.map(l => l.id) || [],
+    audioTrackIds: sourceChat.audioTracks?.map(t => t.id) || [],
     interactionIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 

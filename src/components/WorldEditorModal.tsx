@@ -1,6 +1,6 @@
 // src/components/WorldEditorModal.tsx
 import { useState, useEffect } from 'react';
-import type { World, Character, Context, Location, Profile } from '../types';
+import type { World, Character, Context, Location, Profile, AudioTrack } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
@@ -15,26 +15,30 @@ interface WorldEditorModalProps {
     allContexts: Context[];
     allLocations: Location[];
     allProfiles: Profile[];
+    allAudioTracks: AudioTrack[];
     currentCharacterIds: string[];
     currentContextIds: string[];
     currentLocationIds: string[];
     currentProfileId?: string;
+    currentAudioTrackIds?: string[];
 }
 
 export function WorldEditorModal({
     isOpen, onClose, onSave, onLoadWorld, existingWorld,
-    allCharacters, allContexts, allLocations, allProfiles,
-    currentCharacterIds, currentContextIds, currentLocationIds, currentProfileId,
+    allCharacters, allContexts, allLocations, allProfiles, allAudioTracks,
+    currentCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds,
 }: WorldEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [charIds, setCharIds] = useState<string[]>([]);
     const [ctxIds, setCtxIds] = useState<string[]>([]);
     const [locIds, setLocIds] = useState<string[]>([]);
+    const [audioTrackIds, setAudioTrackIds] = useState<string[]>([]);
     const [profileId, setProfileId] = useState('');
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
+    const [audioSearch, setAudioSearch] = useState('');
     const [isCloned, setIsCloned] = useState(false);
 
     useEffect(() => {
@@ -46,6 +50,7 @@ export function WorldEditorModal({
             setCharIds([...existingWorld.characterIds]);
             setCtxIds([...existingWorld.contextIds]);
             setLocIds([...existingWorld.locationIds]);
+            setAudioTrackIds([...(existingWorld.audioTrackIds || [])]);
             setProfileId(existingWorld.profileId || '');
         } else {
             setName('');
@@ -53,11 +58,13 @@ export function WorldEditorModal({
             setCharIds([]);
             setCtxIds([]);
             setLocIds([]);
+            setAudioTrackIds([]);
             setProfileId('');
         }
         setCharSearch('');
         setCtxSearch('');
         setLocSearch('');
+        setAudioSearch('');
     }, [isOpen, existingWorld]);
 
     if (!isOpen) return null;
@@ -76,6 +83,7 @@ export function WorldEditorModal({
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
+            audioTrackIds: audioTrackIds.length > 0 ? audioTrackIds : undefined,
             profileId: profileId || undefined,
             firstCreatedTimestamp: (existingWorld && !isCloned) ? existingWorld.firstCreatedTimestamp : now,
             lastUpdatedTimestamp: now,
@@ -103,6 +111,7 @@ export function WorldEditorModal({
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
+            audioTrackIds: audioTrackIds.length > 0 ? audioTrackIds : undefined,
             profileId: profileId || undefined,
             lastUpdatedTimestamp: now,
         };
@@ -114,6 +123,7 @@ export function WorldEditorModal({
     const copyCtxsFromChat = () => setCtxIds([...currentContextIds]);
     const copyLocsFromChat = () => setLocIds([...currentLocationIds]);
     const copyProfileFromChat = () => setProfileId(currentProfileId || '');
+    const copyAudioFromChat = () => setAudioTrackIds([...(currentAudioTrackIds || [])]);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -193,6 +203,21 @@ export function WorldEditorModal({
                         <EntitySelectList label="Locations" items={allLocations} selectedIds={locIds}
                             onToggle={id => toggleInList(locIds, setLocIds, id)}
                             searchQuery={locSearch} onSearchChange={setLocSearch} />
+                    </div>
+
+                    {/* Audio Tracks */}
+                    <div className="editor-section">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span className="editor-section-title" style={{ margin: 0 }}>Audio Tracks ({audioTrackIds.length})</span>
+                            {(currentAudioTrackIds?.length ?? 0) > 0 && (
+                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyAudioFromChat}>
+                                    Copy From Chat
+                                </button>
+                            )}
+                        </div>
+                        <EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={audioTrackIds}
+                            onToggle={id => toggleInList(audioTrackIds, setAudioTrackIds, id)}
+                            searchQuery={audioSearch} onSearchChange={setAudioSearch} />
                     </div>
 
                     {/* Profile */}

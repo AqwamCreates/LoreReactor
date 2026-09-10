@@ -1,10 +1,12 @@
 // src/App.tsx
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type React from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useContextManager } from '../hooks/useContextManager';
 import { useLocationManager } from '../hooks/useLocationManager';
+import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
 import { useSamplerManager } from '../hooks/useSamplerManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
 import { useModelManager } from '../hooks/useModelManager';
@@ -26,7 +28,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World } from '../types';
+import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -77,6 +79,7 @@ function App() {
     const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
     const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
+    const { audioTracks: allAudioTracks, isLoading: audioTracksLoading, saveAudioTrack, deleteAudioTrack } = useAudioTrackManager();
     const { worlds: allWorlds, isLoading: worldsLoading, saveWorld, deleteWorld } = useWorldManager();
     const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
     const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
@@ -108,6 +111,7 @@ function App() {
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
     const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
     const locationModal = useEntityModal(saveLocation, deleteLocation, 'Location');
+    const audioTrackModal = useEntityModal<AudioTrack>(saveAudioTrack, deleteAudioTrack, 'Audio Track');
     const stopModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
     const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
@@ -366,6 +370,7 @@ function App() {
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
+        { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracksLoading },
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
@@ -373,7 +378,7 @@ function App() {
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
+    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -682,13 +687,15 @@ function App() {
         if (!interactionData) return;
         const resolvedChars = world.characterIds.map(id => allCharacters.find(c => c.id === id)).filter((c): c is Character => !!c);
         const resolvedCtxs = world.contextIds.map(id => allContexts.find(c => c.id === id)).filter((c): c is Context => !!c);
-                const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter(l => l !== undefined);
+        const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter(l => l !== undefined);
+        const resolvedAudioTracks = (world.audioTrackIds || []).map(id => allAudioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
         const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
         const updated: InteractionData = {
             ...interactionData,
             participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
             contexts: resolvedCtxs,
             locations: resolvedLocs,
+            audioTracks: resolvedAudioTracks.length > 0 ? resolvedAudioTracks : [],
             Profile: resolvedProfile,
             lastUpdatedTimestamp: Date.now(),
         };
@@ -698,7 +705,7 @@ function App() {
         setInteractionData(updated);
         await saveRawInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
-    }, [interactionData, allCharacters, allContexts, allLocations, allProfiles, setInteractionData, addToast]);
+    }, [interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, setInteractionData, addToast]);
 
     // ─── Render ──────────────────────────────────────────────────────
     const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
@@ -821,7 +828,7 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
@@ -832,6 +839,7 @@ function App() {
                     allCharacters={allCharacters}
                     allContexts={allContexts}
                     allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
                     allModels={allModels}
@@ -844,6 +852,7 @@ function App() {
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
+                    audioTrackModal={audioTrackModal}
                     stopModal={stopModal}
                     modelModal={modelModal}
                     budgetModal={budgetModal}
@@ -860,6 +869,8 @@ function App() {
                     onToggleContext={handleToggleContext}
                     onDeleteLocation={locationModal.handleDelete}
                     onToggleLocation={handleToggleLocation}
+                    onDeleteAudioTrack={audioTrackModal.handleDelete}
+                    onToggleAudioTrack={() => {}}
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
                     onDeleteSampler={deleteSampler}
@@ -881,6 +892,7 @@ function App() {
                     onSaveCharacter={saveCharacter}
                     onSaveContext={saveContext}
                     onSaveLocation={saveLocation}
+                    onSaveAudioTrack={saveAudioTrack}
                     onSaveWorld={saveWorld}
                     onLoadWorld={handleLoadWorld}
                     onDeleteWorld={deleteWorld}

@@ -281,6 +281,7 @@ export interface InteractionData extends ObjectData {
   participants: Character[];
   contexts: Context[];
   locations: Location[];
+  audioTracks: AudioTrack[];
   interactionHistory: HistoryMessage[];
   numberOfMessages?: number;
   parentInteractionDataId?: string | null;
@@ -293,6 +294,7 @@ export interface RawInteractionData extends RawData {
   participantIds: string[];
   contextIds: string[];
   locationIds: string[];
+  audioTrackIds: string[];
   interactionIdHistory: string[];
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
@@ -428,6 +430,7 @@ export type PromptBlockType =
   | 'Text Injection';
 
 export interface Profile extends ObjectData {
+  volume: number; // -1 is audio-specific, >= 0 is override
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
@@ -462,6 +465,7 @@ export interface Profile extends ObjectData {
 }
 
 export interface RawProfile extends RawData {
+  volume: number; // -1 is audio-specific, >= 0 is override
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
@@ -504,6 +508,7 @@ export interface World extends ObjectData {
     characterIds: string[];
     contextIds: string[];
     locationIds: string[];
+    audioTrackIds: string[]
     profileId?: string;
 }
 
@@ -531,4 +536,36 @@ export interface Webpage extends ObjectData {
 export interface RawWebpage extends RawData {
   url: string;
   content: string;
+}
+
+export type audioCategory = 'ambient' | 'music' | 'sound effect'
+
+export interface AudioTrack extends ObjectData {
+    filename: string;
+    loop: boolean;
+    volume: number;
+    startFadeDurationMs: number;
+    endFadeDurationMs: number;
+    regularExpressionActivationTrigger?: string;
+    regularExpressionDeactivationTrigger?: string;
+    locationBindings: string[];
+    contextBindings: string[]
+    characterBindings: string[];
+    priority: number; // higher = overrides lower
+    audioCategory: audioCategory;
+}
+
+export interface RawAudioTrack extends RawData {
+    filename: string;
+    loop: boolean;
+    volume: number;
+    startFadeDurationMs: number;
+    endFadeDurationMs: number;
+    regularExpressionActivationTrigger?: string;
+    regularExpressionDeactivationTrigger?: string;
+    locationBindings: string[];
+    contextBindings: string[];
+    characterBindings: string[];
+    priority: number;
+    audioCategory: audioCategory;
 }
