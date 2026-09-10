@@ -332,7 +332,7 @@ export function ChatInspectionModal({
                                         padding: 0, textDecoration: 'underline',
                                     }}
                                 >
-                                    🌿 Alternate Timeline From {parentName || 'Parent Chat'}
+                                    🌿 Branching Timeline From {parentName || 'Parent Chat'}
                                 </button>
                             )}
                         </div>
