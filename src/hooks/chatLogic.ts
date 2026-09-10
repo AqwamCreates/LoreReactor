@@ -408,7 +408,6 @@ export function createChatHistoryPrompt(
     const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
     
-    // Only include chat messages (with text) in the prompt history
     const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
 
     if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
@@ -423,7 +422,6 @@ export function createChatHistoryPrompt(
     const activeSteps = [...(profile?.summarizationSteps || [])]
         .sort((a, b) => a.order - b.order);
 
-    // Map to original indices in full interactionHistory for reveal tracking
     let processedMessages = chatMessagesOnly.map((msg) => ({
         msg,
         idx: interactionHistory.indexOf(msg),
@@ -437,10 +435,8 @@ export function createChatHistoryPrompt(
             const windowSize = step.slidingWindowSize ?? 10;
             const cutoff = Math.max(0, processedMessages.length - windowSize);
             for (let i = 0; i < processedMessages.length; i++) {
-                const processedMessage = processedMessages[i];
-                const textContentSummary = processedMessage.msg.textContentSummary;
-                if (i < cutoff && textContentSummary) {
-                    processedMessage.text = textContentSummary;
+                if (i < cutoff && processedMessages[i].msg.textContentSummary) {
+                    processedMessages[i].text = processedMessages[i].msg.textContentSummary!;
                     hasBeenSummarized = true;
                 }
             }
@@ -476,10 +472,77 @@ export function createChatHistoryPrompt(
         }
     }
 
-    const chatHistoryLines: string[] = [];
-    chatHistoryLines.push(startOfChatHistoryLine); 
+    // ─── Location-scoped filtering ───────────────────────────────────
+    let currentLocationIndex: number | undefined;
+    for (let i = interactionHistory.length - 1; i >= 0; i--) {
+        if (interactionHistory[i].locationIndex !== undefined) {
+            currentLocationIndex = interactionHistory[i].locationIndex;
+            break;
+        }
+    }
 
-    for (const p of processedMessages) {
+    const locations = interactionData.locations;
+    const currentLocation = currentLocationIndex !== undefined && locations && locations.length > 0
+        ? locations[currentLocationIndex]
+        : undefined;
+
+    // Build set of characters who have directly interacted with the target character recently
+    const RECENT_INTERACTION_WINDOW = 20;
+    const recentInteractors = new Set<string>();
+    const recentSlice = chatMessagesOnly.slice(-RECENT_INTERACTION_WINDOW);
+    for (let ri = 0; ri < recentSlice.length; ri++) {
+        const msg = recentSlice[ri];
+        if (msg.character.id === character.id) {
+            if (ri > 0) recentInteractors.add(recentSlice[ri - 1].character.id);
+            if (ri < recentSlice.length - 1) recentInteractors.add(recentSlice[ri + 1].character.id);
+        } else {
+            if (ri > 0 && recentSlice[ri - 1].character.id === character.id) {
+                recentInteractors.add(msg.character.id);
+            }
+            if (ri < recentSlice.length - 1 && recentSlice[ri + 1].character.id === character.id) {
+                recentInteractors.add(msg.character.id);
+            }
+        }
+    }
+
+    const hasLocationData = !!locations && locations.length > 0 && currentLocationIndex !== undefined;
+
+    const outputMessages = processedMessages.filter((p) => {
+        // Always keep protagonist messages
+        if (p.msg.character.id === protagonist.id) return true;
+
+        // Always keep the target character's own messages
+        if (p.msg.character.id === character.id) return true;
+
+        // Keep if character recently interacted with target
+        if (recentInteractors.has(p.msg.character.id)) return true;
+
+        // Keep if character is at the same location
+        if (hasLocationData) {
+            const charLocationIndex = p.msg.locationIndex;
+            if (charLocationIndex !== undefined && charLocationIndex === currentLocationIndex) {
+                return true;
+            }
+            // If the message has no location data, keep it
+            if (charLocationIndex === undefined) return true;
+        }
+
+        // No location data available — don't filter
+        if (!hasLocationData) return true;
+
+        return false;
+    });
+
+    // ─── Build prompt ────────────────────────────────────────────────
+    const chatHistoryLines: string[] = [];
+    chatHistoryLines.push(startOfChatHistoryLine);
+
+    // Location indicator
+    if (currentLocation) {
+        chatHistoryLines.push(`${turnStartString}[Scene: ${currentLocation.name}]${turnEndString}`);
+    }
+
+    for (const p of outputMessages) {
         const otherCharacter = p.msg.character;
         const otherParticipantId = getParticipantId(otherCharacter, participants);
         const otherCharacterName = otherCharacter.name;

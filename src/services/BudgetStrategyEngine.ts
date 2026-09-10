@@ -78,6 +78,27 @@ function isQuotaError(e: unknown): boolean {
         message.includes('429') || message.includes('api error');
 }
 
+function isCensorshipRefusal(text: string): boolean {
+    if (!text || text.trim().length === 0) return false;
+    const lower = text.toLowerCase().trim();
+    const refusalPatterns = [
+        /^i can'?t (help|assist|provide|generate|create|write|produce|fulfill)/,
+        /^i'?m (unable|not able|sorry)/,
+        /^as an? (ai|language model|assistant)/,
+        /i (must|have to|need to) decline/,
+        /that (request|prompt|content) (violates|goes against|is against)/,
+        /i (cannot|won'?t|will not) (generate|create|produce|write|provide)/,
+        /(policy|guidelines?|terms of service|content policy)/,
+        /inappropriate|unsafe|harmful|illegal|explicit/,
+        /^sorry[,.]/,
+        /refuse|refused|refusing/,
+    ];
+    for (const pattern of refusalPatterns) {
+        if (pattern.test(lower)) return true;
+    }
+    return false;
+}
+
 function isResetDue(data: BudgetData): boolean {
     if (data.resetDuration <= 0) return false;
     return Date.now() - data.lastResetTimestamp >= data.resetDuration;
@@ -119,6 +140,8 @@ export class BudgetStrategyEngine {
         this.budgetData = budgetData;
         this.runningModels = runningModels;
         this.loadLocalModel = loadLocalModel ?? null;
+        if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
+        if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
         applyResetIfDue(this.budgetData);
     }
 
@@ -132,6 +155,8 @@ export class BudgetStrategyEngine {
 
     setBudgetData(budgetData: BudgetData): void {
         this.budgetData = budgetData;
+        if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
+        if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
         applyResetIfDue(this.budgetData);
     }
 
@@ -251,7 +276,24 @@ export class BudgetStrategyEngine {
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                return accumulatedPartialText + result.text;
+                // Check for broken response — rotate to next model
+                const fullOutput = accumulatedPartialText + result.text;
+                if (!fullOutput.trim()) {
+                    this.recordBroken(selectedModel.id);
+                    primaryFailedSet.add(selectedModel.id);
+                    console.warn(`Model ${selectedModel.name} returned empty/broken response, rotating.`);
+                    continue;
+                }
+
+                // Check for censorship refusal — rotate to next model
+                if (isCensorshipRefusal(result.text)) {
+                    this.recordCensorship(selectedModel.id);
+                    primaryFailedSet.add(selectedModel.id);
+                    console.warn(`Model ${selectedModel.name} returned censorship refusal, rotating.`);
+                    continue;
+                }
+
+                return fullOutput;
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
 
@@ -331,7 +373,24 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                    return accumulatedPartialText + result.text;
+                    // Check for broken response — rotate to next model
+                    const fullOutput = accumulatedPartialText + result.text;
+                    if (!fullOutput.trim()) {
+                        this.recordBroken(selectedModel.id);
+                        fallbackFailedSet.add(selectedModel.id);
+                        console.warn(`Fallback model ${selectedModel.name} returned empty/broken response, rotating.`);
+                        continue;
+                    }
+
+                    // Check for censorship refusal — rotate to next model
+                    if (isCensorshipRefusal(result.text)) {
+                        this.recordCensorship(selectedModel.id);
+                        fallbackFailedSet.add(selectedModel.id);
+                        console.warn(`Fallback model ${selectedModel.name} returned censorship refusal, rotating.`);
+                        continue;
+                    }
+
+                    return fullOutput;
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -409,9 +468,26 @@ export class BudgetStrategyEngine {
                     }
 
                     this.recordSuccess(freeModel.id, 0);
-                    console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
 
-                    return accumulatedPartialText + result.text;
+                    // Check for broken response — rotate to next free model
+                    const fullOutput = accumulatedPartialText + result.text;
+                    if (!fullOutput.trim()) {
+                        this.recordBroken(freeModel.id);
+                        allFailedIds.add(freeModel.id);
+                        console.warn(`Free model ${freeModel.name} returned empty/broken response, rotating.`);
+                        continue;
+                    }
+
+                    // Check for censorship refusal — rotate to next free model
+                    if (isCensorshipRefusal(result.text)) {
+                        this.recordCensorship(freeModel.id);
+                        allFailedIds.add(freeModel.id);
+                        console.warn(`Free model ${freeModel.name} returned censorship refusal, rotating.`);
+                        continue;
+                    }
+
+                    console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
+                    return fullOutput;
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -436,11 +512,6 @@ export class BudgetStrategyEngine {
 
     // ─── Non-Streaming Completion ────────────────────────────────────
 
-    /**
-     * Budget-aware non-streaming completion. Uses the same pool selection,
-     * fallback rotation, and stats tracking as generateStream().
-     * Intended for summarization engines and other background tasks.
-     */
     async generateCompletion(
         requestBody: Record<string, unknown>,
         abortSignal?: AbortSignal,
@@ -448,7 +519,6 @@ export class BudgetStrategyEngine {
         this.failedOnlineIds.clear();
         this.failedLocalIds.clear();
 
-        // For completions, prefer local/cheaper models by default
         const useOnline = await this.shouldUseOnline(undefined);
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
@@ -482,6 +552,22 @@ export class BudgetStrategyEngine {
                 const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
+
+                // Check for broken response — rotate
+                if (!result.text.trim()) {
+                    this.recordBroken(selectedModel.id);
+                    primaryFailedSet.add(selectedModel.id);
+                    console.warn(`Completion model ${selectedModel.name} returned empty/broken response, rotating.`);
+                    continue;
+                }
+
+                // Check for censorship refusal — rotate
+                if (isCensorshipRefusal(result.text)) {
+                    this.recordCensorship(selectedModel.id);
+                    primaryFailedSet.add(selectedModel.id);
+                    console.warn(`Completion model ${selectedModel.name} returned censorship refusal, rotating.`);
+                    continue;
+                }
 
                 return { text: result.text, modelId: selectedModel.id };
             } catch (e) {
@@ -527,6 +613,22 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
+                    // Check for broken response — rotate
+                    if (!result.text.trim()) {
+                        this.recordBroken(selectedModel.id);
+                        fallbackFailedSet.add(selectedModel.id);
+                        console.warn(`Fallback completion model ${selectedModel.name} returned empty/broken response, rotating.`);
+                        continue;
+                    }
+
+                    // Check for censorship refusal — rotate
+                    if (isCensorshipRefusal(result.text)) {
+                        this.recordCensorship(selectedModel.id);
+                        fallbackFailedSet.add(selectedModel.id);
+                        console.warn(`Fallback completion model ${selectedModel.name} returned censorship refusal, rotating.`);
+                        continue;
+                    }
+
                     return { text: result.text, modelId: selectedModel.id };
                 } catch (e) {
                     const sessionDuration = Date.now() - sessionStart;
@@ -566,6 +668,22 @@ export class BudgetStrategyEngine {
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 this.recordSuccess(freeModel.id, 0);
+
+                // Check for broken response — rotate
+                if (!result.text.trim()) {
+                    this.recordBroken(freeModel.id);
+                    allFailedIds.add(freeModel.id);
+                    console.warn(`Free completion model ${freeModel.name} returned empty/broken response, rotating.`);
+                    continue;
+                }
+
+                // Check for censorship refusal — rotate
+                if (isCensorshipRefusal(result.text)) {
+                    this.recordCensorship(freeModel.id);
+                    allFailedIds.add(freeModel.id);
+                    console.warn(`Free completion model ${freeModel.name} returned censorship refusal, rotating.`);
+                    continue;
+                }
 
                 return { text: result.text, modelId: freeModel.id };
             } catch {
@@ -623,11 +741,14 @@ export class BudgetStrategyEngine {
         const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
         const quotaHits = this.budgetData.modelQuotaHitCount?.[modelId] ?? 0;
         const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;
+        const censorshipHits = this.budgetData.modelCensorshipHitCount?.[modelId] ?? 0;
+        const brokenHits = this.budgetData.modelBrokenCount?.[modelId] ?? 0;
 
         const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 0;
         const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 0;
         const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 0;
-        const reliabilityFactor = usedCount > 0 ? (usedCount - quotaHits - errorHits) / usedCount : 0;
+        const totalFailures = quotaHits + errorHits + censorshipHits + brokenHits;
+        const reliabilityFactor = usedCount > 0 ? Math.max(0, (usedCount - totalFailures) / usedCount) : 0;
 
         return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
     }
@@ -701,6 +822,24 @@ export class BudgetStrategyEngine {
     private recordError(modelId: string): void {
         this.budgetData.modelLastErrorHitTimeStamps[modelId] = Date.now();
         this.budgetData.modelErrorHitCount[modelId] = (this.budgetData.modelErrorHitCount?.[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    private recordCensorship(modelId: string): void {
+        if (!this.budgetData.modelCensorshipHitCount) {
+            this.budgetData.modelCensorshipHitCount = {};
+        }
+        this.budgetData.modelCensorshipHitCount[modelId] =
+            (this.budgetData.modelCensorshipHitCount[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    private recordBroken(modelId: string): void {
+        if (!this.budgetData.modelBrokenCount) {
+            this.budgetData.modelBrokenCount = {};
+        }
+        this.budgetData.modelBrokenCount[modelId] =
+            (this.budgetData.modelBrokenCount[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
@@ -819,11 +958,6 @@ export class BudgetStrategyEngine {
 
 let instance: BudgetStrategyEngine | null = null;
 
-/**
- * Returns the shared BudgetStrategyEngine instance.
- * All stats tracking, budget accounting, and model rotation state
- * are shared across generation and summarization through this single instance.
- */
 export function getBudgetStrategyEngine(): BudgetStrategyEngine {
     if (!instance) {
         throw new Error('BudgetStrategyEngine not initialized. Call initializeBudgetStrategyEngine() first.');
@@ -831,10 +965,6 @@ export function getBudgetStrategyEngine(): BudgetStrategyEngine {
     return instance;
 }
 
-/**
- * Creates and stores the singleton BudgetStrategyEngine instance.
- * Call once during app initialization or when the user selects a budget strategy.
- */
 export function initializeBudgetStrategyEngine(
     strategy: BudgetStrategy,
     budgetData: BudgetData,
@@ -845,9 +975,6 @@ export function initializeBudgetStrategyEngine(
     return instance;
 }
 
-/**
- * Resets the singleton instance. Intended ONLY for test teardown.
- */
 export function reset(): void {
     instance = null;
 }
