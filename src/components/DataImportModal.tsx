@@ -19,40 +19,43 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Selection state for filtering what to import from the parsed file
-    const [selCharIds, setSelCharIds] = useState<string[]>([]);
-    const [selCtxIds, setSelCtxIds] = useState<string[]>([]);
-    const [selLocIds, setSelLocIds] = useState<string[]>([]);
-    const [selAudioTrackIds, setSelAudioTrackIds] = useState<string[]>([]);
-    const [selSamplerIds, setSelSamplerIds] = useState<string[]>([]);
-    const [selSpIds, setSelSpIds] = useState<string[]>([]);
-    const [selModelIds, setSelModelIds] = useState<string[]>([]);
-    const [selBsIds, setSelBsIds] = useState<string[]>([]);
-    const [selProfileIds, setSelProfileIds] = useState<string[]>([]);
-    const [selWorldIds, setSelWorldIds] = useState<string[]>([]);
-    const [selChatIds, setSelChatIds] = useState<string[]>([]);
+    const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+    const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
+    const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+    const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
+    const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
+    const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+    const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
+    const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+    const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
+    const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
-    const [charSearch, setCharSearch] = useState('');
-    const [ctxSearch, setCtxSearch] = useState('');
-    const [locSearch, setLocSearch] = useState('');
+    const [characterSearch, setCharacterSearch] = useState('');
+    const [contextSearch, setContextSearch] = useState('');
+    const [locationSearch, setLocationSearch] = useState('');
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
-    const [spSearch, setSpSearch] = useState('');
+    const [promptBlockSearch, setPromptBlockSearch] = useState('');
+    const [stopPatternSearch, setStopPatternSearch] = useState('');
     const [modelSearch, setModelSearch] = useState('');
-    const [bsSearch, setBsSearch] = useState('');
+    const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
     const [chatSearch, setChatSearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
-        setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]); setSelAudioTrackIds([]);
-        setSelSamplerIds([]); setSelSpIds([]); setSelModelIds([]);
-        setSelBsIds([]); setSelProfileIds([]); setSelWorldIds([]); setSelChatIds([]);
+        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
+        setSelectedAudioTrackIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedStopPatternIds([]); setSelectedModelIds([]);
+        setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]); setSelectedWorldIds([]); setSelectedChatIds([]);
         setIncludeActions(true);
-        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioTrackSearch('');
-        setSamplerSearch(''); setSpSearch(''); setModelSearch('');
-        setBsSearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
+        setCharacterSearch(''); setContextSearch(''); setLocationSearch(''); setAudioTrackSearch('');
+        setSamplerSearch(''); setPromptBlockSearch(''); setStopPatternSearch(''); setModelSearch('');
+        setBudgetStrategySearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -73,17 +76,18 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             if (!validateExport(json)) { setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.'); return; }
             setParsedData(json);
             // Pre-select all items by default
-            setSelCharIds(json.characters.map((c: { id: string }) => c.id));
-            setSelCtxIds(json.contexts.map((c: { id: string }) => c.id));
-            setSelLocIds(json.locations.map((l: { id: string }) => l.id));
-            setSelAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
-            setSelSamplerIds(json.samplers.map((s: { id: string }) => s.id));
-            setSelSpIds(json.stopPatterns.map((s: { id: string }) => s.id));
-            setSelModelIds(json.models.map((m: { id: string }) => m.id));
-            setSelBsIds(json.budgetStrategies.map((b: { id: string }) => b.id));
-            setSelProfileIds(json.profiles.map((p: { id: string }) => p.id));
-            setSelWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
-            setSelChatIds(json.chats.map((c: { id: string }) => c.id));
+            setSelectedCharacterIds(json.characters.map((c: { id: string }) => c.id));
+            setSelectedContextIds(json.contexts.map((c: { id: string }) => c.id));
+            setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
+            setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
+            setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
+            setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
+            setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
+            setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
+            setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
+            setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
+            setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
+            setSelectedChatIds(json.chats.map((c: { id: string }) => c.id));
             setIncludeActions(json.interjectableActions.length > 0);
         } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
     };
@@ -95,18 +99,19 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         // Filter parsed data to only selected items
         const filtered: LoreReactorExport = {
             version: 1, exportedAt: parsedData.exportedAt,
-            characters: parsedData.characters.filter(c => selCharIds.includes(c.id)),
-            contexts: parsedData.contexts.filter(c => selCtxIds.includes(c.id)),
-            locations: parsedData.locations.filter(l => selLocIds.includes(l.id)),
-            audioTracks: parsedData.audioTracks.filter(t => selAudioTrackIds.includes(t.id)),
-            samplers: parsedData.samplers.filter(s => selSamplerIds.includes(s.id)),
-            stopPatterns: parsedData.stopPatterns.filter(s => selSpIds.includes(s.id)),
-            models: parsedData.models.filter(m => selModelIds.includes(m.id)),
-            budgetStrategies: parsedData.budgetStrategies.filter(b => selBsIds.includes(b.id)),
-            profiles: parsedData.profiles.filter(p => selProfileIds.includes(p.id)),
-            worlds: parsedData.worlds?.filter((w: World) => selWorldIds.includes(w.id)) ?? [],
+            characters: parsedData.characters.filter(c => selectedCharacterIds.includes(c.id)),
+            contexts: parsedData.contexts.filter(c => selectedContextIds.includes(c.id)),
+            locations: parsedData.locations.filter(l => selectedLocationIds.includes(l.id)),
+            audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
+            samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
+            promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
+            stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
+            models: parsedData.models.filter(m => selectedModelIds.includes(m.id)),
+            budgetStrategies: parsedData.budgetStrategies.filter(b => selectedBudgetStrategyIds.includes(b.id)),
+            profiles: parsedData.profiles.filter(p => selectedProfileIds.includes(p.id)),
+            worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
-            chats: parsedData.chats.filter(c => selChatIds.includes(c.id)),
+            chats: parsedData.chats.filter(c => selectedChatIds.includes(c.id)),
         };
 
         try {
@@ -117,9 +122,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         finally { setIsImporting(false); }
     };
 
-    const totalSelected = selCharIds.length + selCtxIds.length + selLocIds.length +
-        selAudioTrackIds.length + selSamplerIds.length + selSpIds.length + selModelIds.length +
-        selBsIds.length + selProfileIds.length + selWorldIds.length + selChatIds.length + (includeActions ? 1 : 0);
+    const totalSelected = selectedCharacterIds.length + selectedContextIds.length + selectedLocationIds.length +
+        selectedAudioTrackIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedStopPatternIds.length + selectedModelIds.length + selectedBudgetStrategyIds.length +
+        selectedProfileIds.length + selectedWorldIds.length + selectedChatIds.length + (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -164,48 +170,52 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 </div>
 
                                 {parsedData.characters.length > 0 && (
-                                    <EntitySelectList label="Characters" items={parsedData.characters} selectedIds={selCharIds}
-                                        onToggle={(id) => toggle(selCharIds, setSelCharIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} />
+                                    <EntitySelectList label="Characters" items={parsedData.characters} selectedIds={selectedCharacterIds}
+                                        onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />
                                 )}
                                 {parsedData.contexts.length > 0 && (
-                                    <EntitySelectList label="Contexts" items={parsedData.contexts} selectedIds={selCtxIds}
-                                        onToggle={(id) => toggle(selCtxIds, setSelCtxIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} />
+                                    <EntitySelectList label="Contexts" items={parsedData.contexts} selectedIds={selectedContextIds}
+                                        onToggle={(id) => toggle(selectedContextIds, setSelectedContextIds, id)} searchQuery={contextSearch} onSearchChange={setContextSearch} />
                                 )}
                                 {parsedData.locations.length > 0 && (
-                                    <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selLocIds}
-                                        onToggle={(id) => toggle(selLocIds, setSelLocIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
+                                    <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selectedLocationIds}
+                                        onToggle={(id) => toggle(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locationSearch} onSearchChange={setLocationSearch} />
                                 )}
                                 {parsedData.audioTracks.length > 0 && (
-                                    <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selAudioTrackIds}
-                                        onToggle={(id) => toggle(selAudioTrackIds, setSelAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
-                                )}
-                                {(parsedData.worlds?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selWorldIds}
-                                        onToggle={(id) => toggle(selWorldIds, setSelWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
+                                    <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selectedAudioTrackIds}
+                                        onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 )}
                                 {parsedData.samplers.length > 0 && (
-                                    <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selSamplerIds}
-                                        onToggle={(id) => toggle(selSamplerIds, setSelSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
+                                    <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
+                                        onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
+                                )}
+                                {parsedData.promptBlocks.length > 0 && (
+                                    <EntitySelectList label="Prompt Blocks" items={parsedData.promptBlocks} selectedIds={selectedPromptBlockIds}
+                                        onToggle={(id) => toggle(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
                                 )}
                                 {parsedData.stopPatterns.length > 0 && (
-                                    <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selSpIds}
-                                        onToggle={(id) => toggle(selSpIds, setSelSpIds, id)} searchQuery={spSearch} onSearchChange={setSpSearch} />
+                                    <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selectedStopPatternIds}
+                                        onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
                                 )}
                                 {parsedData.models.length > 0 && (
-                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selModelIds}
-                                        onToggle={(id) => toggle(selModelIds, setSelModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
+                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selectedModelIds}
+                                        onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
                                 )}
                                 {parsedData.budgetStrategies.length > 0 && (
-                                    <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selBsIds}
-                                        onToggle={(id) => toggle(selBsIds, setSelBsIds, id)} searchQuery={bsSearch} onSearchChange={setBsSearch} />
+                                    <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selectedBudgetStrategyIds}
+                                        onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
                                 )}
                                 {parsedData.profiles.length > 0 && (
-                                    <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selProfileIds}
-                                        onToggle={(id) => toggle(selProfileIds, setSelProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
+                                    <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selectedProfileIds}
+                                        onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
+                                )}
+                                {(parsedData.worlds?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selectedWorldIds}
+                                        onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
                                 {parsedData.chats.length > 0 && (
-                                    <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selChatIds}
-                                        onToggle={(id) => toggle(selChatIds, setSelChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
+                                    <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selectedChatIds}
+                                        onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
                                 )}
 
                                 {parsedData.interjectableActions.length > 0 && (
@@ -243,12 +253,13 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
                                     <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
-                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
+                                    <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
                                     <div><strong>Language Models:</strong> {importResult.counts.models}</div>
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
+                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
                                     <div><strong>Chats:</strong> {importResult.counts.chats}</div>
                                 </div>
