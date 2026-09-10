@@ -869,6 +869,7 @@ function App() {
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
                     onDeleteProfile={deleteProfile}
+                    onSaveProfile={saveProfile}
                     onActivateProfile={handleActivateProfile}
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}

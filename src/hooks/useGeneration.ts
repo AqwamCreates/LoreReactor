@@ -39,14 +39,14 @@ export function useGeneration(options: UseGenerationOptions) {
         const activeStrategy = useSessionStore.getState().activeStrategy;
 
         const callbacks: TurnStreamCallbacks = {
-            onDisplayText: (text) => {
+            onDisplayText: (text: string) => {
                 streamingTextRef.current = text;
                 throttledSetStreamingText(text);
                 onToken?.(text);
             },
-            onLatency: (ms) => setLatency(ms),
-            onTimeToFirstToken: (ms) => setTimeToFirstToken(ms),
-            onExpression: (expr) => {
+            onLatency: (ms: number) => setLatency(ms),
+            onTimeToFirstToken: (ms: number) => setTimeToFirstToken(ms),
+            onExpression: (expr: string) => {
                 previousExpressionRef.current = expr;
                 setCurrentCharacterExpression(expr);
             },

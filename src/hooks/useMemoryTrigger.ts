@@ -32,7 +32,6 @@ export function useMemoryTrigger() {
         const port = model?.id ? models[model.id]?.port : undefined;
         const ep = port || (model?.parameters as Record<string, string>)?._runtimePort;
         if (!ep && !model?.apiKey) return;
-        const lmCtx: LanguageModelContext = { apiKey: model.apiKey ?? '', backend: model.backend, modelPath: model.model ?? '', runtimePort: Number(ep) };
 
         const effectiveRetentionWeight = (() => {
             const profileValue = profile?.memoryRetentionWeight;
@@ -41,8 +40,6 @@ export function useMemoryTrigger() {
         })();
 
         const ts = Date.now();
-        const strat = useSessionStore.getState().activeStrategy;
-        const running = useSessionStore.getState().runningModels;
 
         for (const other of otherParticipants) {
             const allRelevant = data.interactionHistory.filter(
