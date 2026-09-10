@@ -47,6 +47,7 @@ import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
+import { ChatInspectionModal } from './ChatInspectionModal';
 import './main.css';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
@@ -117,6 +118,10 @@ function App() {
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
     const worldModal = useEntityModal<World>(saveWorld, deleteWorld, 'World');
+
+    // ─── Chat Inspection State ───────────────────────────────────────
+    const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
+    const [isInspectionOpen, setIsInspectionOpen] = useState(false);
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { modals } = useModalVisibility();
@@ -707,6 +712,23 @@ function App() {
         addToast(`Loaded world "${world.name}"`, 'success');
     }, [interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, setInteractionData, addToast]);
 
+    // ─── Chat Inspection ─────────────────────────────────────────────
+    const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
+        const loaded = await loadRawInteractionData(parentId, allCharacters);
+        if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
+        return loaded;
+    }, [allCharacters]);
+
+    const handleOpenChatInspection = useCallback(async (chatId: string) => {
+        const loaded = await loadRawInteractionData(chatId, allCharacters);
+        if (!loaded) {
+            addToast('Failed to load chat for inspection.', 'error');
+            return;
+        }
+        setInspectionStack([loaded]);
+        setIsInspectionOpen(true);
+    }, [allCharacters, addToast]);
+
     // ─── Render ──────────────────────────────────────────────────────
     const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
 
@@ -859,6 +881,7 @@ function App() {
                     profileModal={profileModal}
                     worldModal={worldModal}
                     onSwitchChat={handleSwitchChat}
+                    onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
                     onDeleteCharacter={deleteCharacter}
@@ -901,6 +924,13 @@ function App() {
                     ensureChatsLoaded={ensureChatsLoaded}
                 />
             </div>
+
+            <ChatInspectionModal
+                isOpen={isInspectionOpen}
+                onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
+                inspectionStack={inspectionStack}
+                onInspectingParentInteractionData={handleInspectParentInteractionData}
+            />
 
             <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
         </>

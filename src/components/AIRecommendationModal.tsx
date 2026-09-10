@@ -92,6 +92,7 @@ interface GeneratedLocation {
     characterBindings?: string[];
     globalWeight?: number;
     characterWeights?: Record<string, number>;
+    locationDistances?: Record<string, number>;
     useBase64Encoding?: boolean;
 }
 
@@ -251,6 +252,7 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
     "characterBindings": ["character name or ID strings"],
     "globalWeight": "number (0-10, default 1)", "characterWeights": {"character name or ID": weight},
+    "locationDistances": {"location name or ID": "distance in km (number)"},
     "useBase64Encoding": "boolean (default false)"
   }`);
     }
@@ -402,7 +404,9 @@ function generatedLocationToEntity(l: GeneratedLocation): Location {
         locationBindings: l.locationBindings || [],
         locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers || undefined,
         characterBindings: l.characterBindings || [], globalWeight: l.globalWeight ?? 1,
-        characterWeights: l.characterWeights || {}, useBase64Encoding: l.useBase64Encoding ?? false,
+        characterWeights: l.characterWeights || {},
+        locationDistances: l.locationDistances || {},
+        useBase64Encoding: l.useBase64Encoding ?? false,
         firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
     };
 }
@@ -415,7 +419,9 @@ function locationEntityToGenerated(l: Location): GeneratedLocation {
         locationBindings: l.locationBindings,
         locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers,
         characterBindings: l.characterBindings, globalWeight: l.globalWeight,
-        characterWeights: l.characterWeights, useBase64Encoding: l.useBase64Encoding,
+        characterWeights: l.characterWeights,
+        locationDistances: l.locationDistances,
+        useBase64Encoding: l.useBase64Encoding,
     };
 }
 
@@ -526,10 +532,11 @@ function resolveWorldCrossReferences(world: GeneratedWorldDefinition, injectLoca
         const rcb = (l.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id);
         const rcw: Record<string, number> = {};
         if (l.characterWeights) for (const [ref, w] of Object.entries(l.characterWeights)) { const rid = resolveCharRef(ref); if (rid) rcw[rid] = w; }
-        return { id, name: l.name, description: l.description || undefined, text: l.text || '', images: injectLocationImages ? (l.images || []) : [], regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+        const rld: Record<string, number> = {};
+        if (l.locationDistances) for (const [ref, dist] of Object.entries(l.locationDistances)) { const rid = resolveLocRef(ref); if (rid) rld[rid] = dist; }
+        return { id, name: l.name, description: l.description || undefined, text: l.text || '', images: injectLocationImages ? (l.images || []) : [], regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, locationDistances: rld, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
     });
 
-    // Resolve audio tracks — match by name against existing, or create new
     const audioTracks: AudioTrack[] = (world.audioTracks || []).map(t => {
         const existing = allAudioTracks.find(at => at.name === t.name || at.filename === t.filename);
         if (existing) return existing;

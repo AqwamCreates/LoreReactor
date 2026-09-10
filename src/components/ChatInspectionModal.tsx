@@ -1,13 +1,17 @@
 // src/components/ChatInspectionModal.tsx
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import type { InteractionData, Location } from '../types';
+import type { InteractionData, Location, Character } from '../types';
+import { getCharacterImageUrlWithFallBack } from '../hooks/storage';
+import { getCurrentLocation } from '../hooks/locationLogic';
 import {
     ReactFlow,
     Background,
     Controls,
+    Handle,
+    Position,
     type Node,
     type Edge,
-    MarkerType,
+    type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './main.css';
@@ -18,6 +22,100 @@ interface ChatInspectionModalProps {
     inspectionStack: InteractionData[];
     onInspectingParentInteractionData: (parentId: string) => Promise<InteractionData>;
 }
+
+// ─── Custom Location Node ────────────────────────────────────────────
+
+interface LocationNodeData {
+    name: string;
+    isCurrent: boolean;
+    hasParticipants: boolean;
+    isReachable: boolean;
+    participants: { name: string; index: number }[];
+}
+
+function LocationNode({ data }: NodeProps<Node<LocationNodeData>>) {
+    const { name, isCurrent, hasParticipants, isReachable, participants } = data;
+
+    let borderColor: string;
+    let bgColor: string;
+    let textColor: string;
+    let opacity: number;
+    let boxShadow: string | undefined;
+
+    if (isCurrent) {
+        borderColor = '#4ade80';
+        bgColor = 'rgba(74, 222, 128, 0.15)';
+        textColor = '#4ade80';
+        opacity = 1;
+        boxShadow = '0 0 16px rgba(74, 222, 128, 0.4), inset 0 0 8px rgba(74, 222, 128, 0.1)';
+    } else if (hasParticipants) {
+        borderColor = '#f59e0b';
+        bgColor = 'rgba(245, 158, 11, 0.12)';
+        textColor = '#fbbf24';
+        opacity = 1;
+        boxShadow = '0 0 10px rgba(245, 158, 11, 0.3)';
+    } else if (isReachable) {
+        borderColor = 'rgba(96, 165, 250, 0.6)';
+        bgColor = 'rgba(96, 165, 250, 0.08)';
+        textColor = '#93c5fd';
+        opacity = 0.9;
+        boxShadow = '0 0 6px rgba(96, 165, 250, 0.15)';
+    } else {
+        borderColor = 'rgba(255, 255, 255, 0.1)';
+        bgColor = 'rgba(255, 255, 255, 0.03)';
+        textColor = 'rgba(255, 255, 255, 0.5)';
+        opacity = 0.45;
+        boxShadow = undefined;
+    }
+
+    return (
+        <div style={{
+            border: `2px solid ${borderColor}`,
+            background: bgColor,
+            borderRadius: '10px',
+            padding: '10px 14px',
+            minWidth: '140px',
+            maxWidth: '200px',
+            opacity,
+            boxShadow,
+            transition: 'all 0.3s ease',
+            textAlign: 'center',
+        }}>
+            <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: 'none' }} />
+            <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none' }} />
+
+            <div style={{
+                fontWeight: 'bold',
+                fontSize: '0.78rem',
+                color: textColor,
+                marginBottom: participants.length > 0 ? '6px' : 0,
+                lineHeight: 1.3,
+            }}>
+                {name}
+            </div>
+
+            {participants.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {participants.map(pp => (
+                        <span key={`${pp.name}-${pp.index}`} style={{
+                            fontSize: '0.6rem',
+                            padding: '2px 6px',
+                            background: hasParticipants ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255,255,255,0.08)',
+                            borderRadius: '4px',
+                            color: hasParticipants ? '#fde68a' : 'rgba(255,255,255,0.7)',
+                        }}>
+                            {pp.name} ({pp.index + 1})
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const nodeTypes = { locationNode: LocationNode };
+
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 function getRelativeTime(timestamp: number): string {
     const diff = Date.now() - timestamp;
@@ -32,29 +130,28 @@ function getRelativeTime(timestamp: number): string {
     return new Date(timestamp).toLocaleDateString();
 }
 
-function getCurrentLocationForParticipant(
-    participantId: string,
-    data: InteractionData,
-): Location | undefined {
-    const history = data.interactionHistory;
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (msg.character.id === participantId && msg.locationIndex !== undefined && data.locations) {
-            return data.locations[msg.locationIndex];
-        }
-    }
-    return undefined;
+function useCharacterPortraits(characters: Character[]): Map<string, string | null> {
+    const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
+
+    useEffect(() => {
+        let cancelled = false;
+        const resolved = new Map<string, string | null>();
+
+        (async () => {
+            for (const c of characters) {
+                const url = await getCharacterImageUrlWithFallBack(c.id);
+                if (!cancelled) resolved.set(c.id, url);
+            }
+            if (!cancelled) setPortraits(new Map(resolved));
+        })();
+
+        return () => { cancelled = true; };
+    }, [characters.map(c => c.id).join(',')]);
+
+    return portraits;
 }
 
-function getLastMessageLocation(data: InteractionData): Location | undefined {
-    const history = data.interactionHistory;
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].locationIndex !== undefined && data.locations) {
-            return data.locations[history[i].locationIndex!];
-        }
-    }
-    return undefined;
-}
+// ─── Component ───────────────────────────────────────────────────────
 
 export function ChatInspectionModal({
     isOpen,
@@ -77,6 +174,19 @@ export function ChatInspectionModal({
     const chat = internalStack[0] ?? null;
     const canGoBack = internalStack.length > 1;
 
+    // ALL derived values and hooks MUST be before the early return
+    const protagonist = chat?.protagonist ?? null;
+    const participants = chat?.participants || [];
+    const locations = chat?.locations || [];
+    const audioTracks = chat?.audioTracks || [];
+    const contexts = chat?.contexts || [];
+    const hasLocations = locations.length > 0;
+    const hasContexts = contexts.length > 0;
+    const hasAudioTracks = audioTracks.length > 0;
+    const parentName = canGoBack ? internalStack[1]?.name : undefined;
+
+    const portraits = useCharacterPortraits(participants);
+
     const handleBack = () => {
         setInternalStack(prev => prev.slice(1));
     };
@@ -97,60 +207,116 @@ export function ChatInspectionModal({
             return { nodes: [] as Node[], edges: [] as Edge[] };
         }
 
-        const currentLoc = getLastMessageLocation(chat);
-        const participants = chat.participants || [];
+        let currentLoc: Location | undefined;
+        for (let i = chat.interactionHistory.length - 1; i >= 0; i--) {
+            if (chat.interactionHistory[i].locationIndex !== undefined && chat.locations) {
+                currentLoc = chat.locations[chat.interactionHistory[i].locationIndex!];
+                break;
+            }
+        }
+
+        const parts = chat.participants || [];
 
         const locParticipants = new Map<string, { name: string; index: number }[]>();
         for (const loc of chat.locations) {
             locParticipants.set(loc.id, []);
         }
-        for (let i = 0; i < participants.length; i++) {
-            const pLoc = getCurrentLocationForParticipant(participants[i].id, chat);
+        for (let i = 0; i < parts.length; i++) {
+            const pLoc = getCurrentLocation(chat, parts[i]);
             if (pLoc && locParticipants.has(pLoc.id)) {
-                locParticipants.get(pLoc.id)!.push({ name: participants[i].name, index: i });
+                locParticipants.get(pLoc.id)!.push({ name: parts[i].name, index: i });
             }
         }
 
-        const graphNodes: Node[] = chat.locations.map((loc, idx) => {
-            const isCurrent = currentLoc?.id === loc.id;
-            const parts = locParticipants.get(loc.id) || [];
-            const hasParticipants = parts.length > 0;
+        const SCALE_PX_PER_KM = 3;
+        const MAX_DISTANCE_KM = 200;
 
-            const cols = Math.ceil(Math.sqrt(chat.locations!.length));
-            const row = Math.floor(idx / cols);
-            const col = idx % cols;
+        const locIndexMap = new Map<string, number>();
+        chat.locations.forEach((loc, idx) => locIndexMap.set(loc.id, idx));
+
+        const centerX = 400;
+        const centerY = 300;
+        const positions: { x: number; y: number }[] = chat.locations.map((loc, idx) => {
+            if (currentLoc && loc.id === currentLoc.id) {
+                return { x: centerX, y: centerY };
+            }
+            const angle = (idx / chat.locations.length) * Math.PI * 2;
+            const radius = 200;
+            return { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius };
+        });
+
+        const anchorIdx = currentLoc ? locIndexMap.get(currentLoc.id) : undefined;
+
+        const ITERATIONS = 80;
+        for (let iter = 0; iter < ITERATIONS; iter++) {
+            for (let i = 0; i < chat.locations.length; i++) {
+                const locA = chat.locations[i];
+                const distances = locA.locationDistances || {};
+
+                for (const [targetId, distKm] of Object.entries(distances)) {
+                    const j = locIndexMap.get(targetId);
+                    if (j === undefined || i === j) continue;
+
+                    const dx = positions[j].x - positions[i].x;
+                    const dy = positions[j].y - positions[i].y;
+                    const currentDist = Math.sqrt(dx * dx + dy * dy);
+                    const targetDist = Math.min(distKm * SCALE_PX_PER_KM, MAX_DISTANCE_KM * SCALE_PX_PER_KM);
+
+                    if (currentDist < 0.1) continue;
+
+                    const force = (targetDist - currentDist) / currentDist;
+                    const step = force * 0.15;
+
+                    const isAnchoredI = i === anchorIdx;
+                    const isAnchoredJ = j === anchorIdx;
+                    const moveI = isAnchoredI ? 0.05 : 0.5;
+                    const moveJ = isAnchoredJ ? 0.05 : 0.5;
+
+                    positions[i].x -= dx * step * moveI;
+                    positions[i].y -= dy * step * moveI;
+                    positions[j].x += dx * step * moveJ;
+                    positions[j].y += dy * step * moveJ;
+                }
+            }
+
+            for (let i = 0; i < chat.locations.length; i++) {
+                for (let j = i + 1; j < chat.locations.length; j++) {
+                    const dx = positions[j].x - positions[i].x;
+                    const dy = positions[j].y - positions[i].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const minSep = 160;
+                    if (dist < minSep && dist > 0.1) {
+                        const push = (minSep - dist) / dist * 0.3;
+                        const isAnchoredI = i === anchorIdx;
+                        const isAnchoredJ = j === anchorIdx;
+                        const moveI = isAnchoredI ? 0.02 : 0.3;
+                        const moveJ = isAnchoredJ ? 0.02 : 0.3;
+                        positions[i].x -= dx * push * moveI;
+                        positions[i].y -= dy * push * moveI;
+                        positions[j].x += dx * push * moveJ;
+                        positions[j].y += dy * push * moveJ;
+                    }
+                }
+            }
+        }
+
+        const graphNodes: Node<LocationNodeData>[] = chat.locations.map((loc, idx) => {
+            const isCurrent = currentLoc?.id === loc.id;
+            const locParts = locParticipants.get(loc.id) || [];
+            const hasParticipants = locParts.length > 0;
+            const isReachable = !isCurrent && !hasParticipants && !!currentLoc &&
+                !!loc.locationBindings && loc.locationBindings.includes(currentLoc.id);
 
             return {
                 id: loc.id,
-                position: { x: col * 200 + 50, y: row * 180 + 50 },
+                type: 'locationNode',
+                position: positions[idx],
                 data: {
-                    label: (
-                        <div style={{ textAlign: 'center', opacity: hasParticipants ? 1 : 0.5 }}>
-                            <div style={{
-                                fontWeight: 'bold', fontSize: '0.75rem',
-                                color: isCurrent ? 'var(--accent)' : 'var(--text-h)',
-                            }}>
-                                {isCurrent ? '📍 ' : ''}{loc.name}
-                            </div>
-                            {parts.length > 0 && (
-                                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                    {parts.map(pp => (
-                                        <span key={`${pp.name}-${pp.index}`} style={{
-                                            fontSize: '0.6rem', padding: '1px 4px',
-                                            background: 'rgba(255,255,255,0.08)', borderRadius: '3px',
-                                        }}>
-                                            {pp.name} (Character {pp.index})
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ),
-                },
-                style: {
-                    border: isCurrent ? '2px solid var(--accent)' : '1px solid var(--border)',
-                    background: isCurrent ? 'var(--accent-dim, rgba(255,255,255,0.1))' : 'var(--social-bg)',
-                    borderRadius: '8px', padding: '8px', minWidth: '140px',
+                    name: loc.name,
+                    isCurrent,
+                    hasParticipants,
+                    isReachable,
+                    participants: locParts,
                 },
             };
         });
@@ -159,15 +325,36 @@ export function ChatInspectionModal({
         let edgeIdx = 0;
         for (const loc of chat.locations) {
             if (loc.locationBindings) {
+                const isSourceActive = loc.id === currentLoc?.id || (locParticipants.get(loc.id)?.length ?? 0) > 0;
                 for (const boundId of loc.locationBindings) {
                     if (chat.locations.some(l => l.id === boundId)) {
+                        const distKm = loc.locationDistances?.[boundId];
+                        const label = distKm !== undefined ? `${distKm}km` : undefined;
+
                         graphEdges.push({
                             id: `e-${edgeIdx++}`,
                             source: loc.id,
                             target: boundId,
-                            animated: false,
-                            markerEnd: { type: MarkerType.ArrowClosed },
-                            style: { stroke: 'var(--border)', strokeWidth: 1 },
+                            type: 'smoothstep',
+                            animated: isSourceActive,
+                            label,
+                            labelStyle: {
+                                fontSize: '0.55rem',
+                                fill: isSourceActive ? '#fbbf24' : 'rgba(255,255,255,0.4)',
+                                fontWeight: 500,
+                            },
+                            labelBgStyle: {
+                                fill: 'var(--social-bg, #1a1a2e)',
+                                fillOpacity: 0.8,
+                                rx: 4, ry: 4,
+                            },
+                            labelBgPadding: [4, 2] as [number, number],
+                            style: {
+                                stroke: isSourceActive ? '#f59e0b' : 'rgba(255, 255, 255, 0.12)',
+                                strokeWidth: isSourceActive ? 2 : 1,
+                                opacity: isSourceActive ? 0.9 : 0.3,
+                            },
+                            pathOptions: { borderRadius: 12 },
                         });
                     }
                 }
@@ -177,18 +364,27 @@ export function ChatInspectionModal({
         return { nodes: graphNodes, edges: graphEdges };
     }, [chat]);
 
+    // Occupied locations — MUST be before early return
+    const occupiedLocations = useMemo(() => {
+        if (!chat || !hasLocations) return [];
+        const occupiedMap = new Map<string, { location: Location; participants: { name: string; index: number; portraitUrl: string | null }[] }>();
+        for (let i = 0; i < participants.length; i++) {
+            const pLoc = getCurrentLocation(chat, participants[i]);
+            if (!pLoc) continue;
+            if (!occupiedMap.has(pLoc.id)) {
+                occupiedMap.set(pLoc.id, { location: pLoc, participants: [] });
+            }
+            occupiedMap.get(pLoc.id)!.participants.push({
+                name: participants[i].name,
+                index: i,
+                portraitUrl: portraits.get(participants[i].id) ?? null,
+            });
+        }
+        return Array.from(occupiedMap.values());
+    }, [chat, hasLocations, participants, portraits]);
+
+    // Early return AFTER all hooks
     if (!isOpen || !chat) return null;
-
-    const protagonist = chat.protagonist;
-    const participants = chat.participants || [];
-    const locations = chat.locations || [];
-    const audioTracks = chat.audioTracks || [];
-    const contexts = chat.contexts || [];
-    const hasLocations = locations.length > 0;
-    const hasContexts = contexts.length > 0;
-    const hasAudioTracks = audioTracks.length > 0;
-
-    const parentName = canGoBack ? internalStack[1]?.name : undefined;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -213,26 +409,37 @@ export function ChatInspectionModal({
                 </div>
 
                 <div className="modal-body editor-modal-body" style={{ overflowY: 'auto' }}>
-                    {protagonist && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Protagonist</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px' }}>
-                                <div className="character-avatar placeholder" style={{ width: '48px', height: '48px', flexShrink: 0 }} />
-                                <div>
-                                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{protagonist.name}</div>
-                                    <div style={{ fontSize: '0.65rem', opacity: 0.6 }}>Protagonist</div>
-                                </div>
-                            </div>
+                    {/* Stats (top) */}
+                    <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
+                            <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>
+                            <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
+                            {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
+                            {chat.parentInteractionDataId && (
+                                <button
+                                    type="button"
+                                    onClick={handleNavigateToParent}
+                                    style={{
+                                        background: 'none', border: 'none', cursor: 'pointer',
+                                        fontSize: '0.65rem', opacity: 0.7, color: 'var(--accent)',
+                                        padding: 0, textDecoration: 'underline',
+                                    }}
+                                >
+                                    🌿 Branching Timeline From {parentName || 'Unknown'}
+                                </button>
+                            )}
                         </div>
-                    )}
+                    </div>
 
+                    {/* Participants */}
                     {participants.length > 0 && (
                         <div className="editor-section">
                             <span className="editor-section-title">Participants ({participants.length})</span>
                             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
                                 {participants.map((p, i) => {
                                     const isProtag = p.id === protagonist?.id;
-                                    const pLoc = hasLocations ? getCurrentLocationForParticipant(p.id, chat) : undefined;
+                                    const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
+                                    const portraitUrl = portraits.get(p.id) ?? null;
                                     return (
                                         <div key={p.id} style={{
                                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
@@ -241,12 +448,25 @@ export function ChatInspectionModal({
                                             border: isProtag ? '1px solid var(--accent)' : '1px solid var(--border)',
                                             borderRadius: '6px', flexShrink: 0,
                                         }}>
-                                            <div className="character-avatar placeholder" style={{ width: '36px', height: '36px' }} />
+                                            {portraitUrl ? (
+                                                <img
+                                                    src={portraitUrl}
+                                                    alt={p.name}
+                                                    style={{
+                                                        width: '36px', height: '64px',
+                                                        borderRadius: '4px', objectFit: 'cover',
+                                                        aspectRatio: '9 / 16',
+                                                    }}
+                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                            ) : (
+                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', aspectRatio: '9 / 16' }} />
+                                            )}
                                             <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
                                                 {p.name}
                                             </div>
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
-                                                (Character {i})
+                                                (Character {i + 1})
                                             </div>
                                             {pLoc && (
                                                 <div style={{
@@ -264,42 +484,56 @@ export function ChatInspectionModal({
                         </div>
                     )}
 
-                    {hasLocations && (
+                    {/* Occupied Locations */}
+                    {occupiedLocations.length > 0 && (
                         <div className="editor-section">
-                            <span className="editor-section-title">Location Map</span>
-                            <div style={{ height: '350px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                                <ReactFlow
-                                    nodes={nodes}
-                                    edges={edges}
-                                    fitView
-                                    proOptions={{ hideAttribution: true }}
-                                    style={{ background: 'var(--social-bg)' }}
-                                >
-                                    <Background />
-                                    <Controls showInteractive={false} />
-                                </ReactFlow>
-                            </div>
-                        </div>
-                    )}
-
-                    {hasAudioTracks && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Audio Tracks ({audioTracks.length})</span>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {audioTracks.map(t => (
-                                    <div key={t.id} style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '6px 8px', background: 'var(--social-bg)',
-                                        border: '1px solid var(--border)', borderRadius: '4px',
+                            <span className="editor-section-title">Occupied Locations ({occupiedLocations.length})</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {occupiedLocations.map(({ location, participants: locParts }) => (
+                                    <div key={location.id} style={{
+                                        padding: '8px 10px',
+                                        background: 'var(--social-bg)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
                                     }}>
-                                        <span>{t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{t.name}</span>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '6px' }}>
+                                            📍 {location.name}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {locParts.map(pp => (
+                                                <div key={`${pp.name}-${pp.index}`} style={{
+                                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                                    padding: '3px 8px',
+                                                    background: 'rgba(255,255,255,0.05)',
+                                                    borderRadius: '4px',
+                                                }}>
+                                                    {pp.portraitUrl ? (
+                                                        <img
+                                                            src={pp.portraitUrl}
+                                                            alt={pp.name}
+                                                            style={{
+                                                                width: '18px', height: '32px',
+                                                                borderRadius: '2px', objectFit: 'cover',
+                                                                aspectRatio: '9 / 16',
+                                                            }}
+                                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                        />
+                                                    ) : (
+                                                        <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', aspectRatio: '9 / 16' }} />
+                                                    )}
+                                                    <span style={{ fontSize: '0.65rem' }}>
+                                                        {pp.name} ({pp.index + 1})
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
 
+                    {/* Contexts */}
                     {hasContexts && (
                         <div className="editor-section">
                             <span className="editor-section-title">Contexts ({contexts.length})</span>
@@ -317,26 +551,53 @@ export function ChatInspectionModal({
                         </div>
                     )}
 
-                    <div className="editor-section" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
-                            <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>
-                            <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
-                            {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
-                            {chat.parentInteractionDataId && (
-                                <button
-                                    type="button"
-                                    onClick={handleNavigateToParent}
-                                    style={{
-                                        background: 'none', border: 'none', cursor: 'pointer',
-                                        fontSize: '0.65rem', opacity: 0.7, color: 'var(--accent)',
-                                        padding: 0, textDecoration: 'underline',
-                                    }}
+                    {/* Location Map */}
+                    {hasLocations && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Location Map</span>
+                            <div style={{ height: '400px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                <ReactFlow
+                                    nodes={nodes}
+                                    edges={edges}
+                                    nodeTypes={nodeTypes}
+                                    fitView
+                                    fitViewOptions={{ padding: 0.25 }}
+                                    colorMode="dark"
+                                    nodesDraggable={false}
+                                    nodesConnectable={false}
+                                    elementsSelectable={false}
+                                    panOnScroll={true}
+                                    zoomOnDoubleClick={false}
+                                    minZoom={0.3}
+                                    maxZoom={3}
+                                    proOptions={{ hideAttribution: true }}
+                                    style={{ background: 'var(--social-bg)' }}
                                 >
-                                    🌿 Branching Timeline From {parentName || 'Parent Chat'}
-                                </button>
-                            )}
+                                    <Background gap={20} size={1} color="rgba(255,255,255,0.04)" />
+                                    <Controls showInteractive={false} />
+                                </ReactFlow>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* Audio Tracks */}
+                    {hasAudioTracks && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Audio Tracks ({audioTracks.length})</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {audioTracks.map(t => (
+                                    <div key={t.id} style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '6px 8px', background: 'var(--social-bg)',
+                                        border: '1px solid var(--border)', borderRadius: '4px',
+                                    }}>
+                                        <span>{t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{t.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

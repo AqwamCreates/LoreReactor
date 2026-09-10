@@ -105,6 +105,7 @@ export interface Location extends ObjectData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
+  locationDistances: Record<string, number>; // in km.
   useBase64Encoding: boolean;
 }
 
@@ -117,6 +118,7 @@ export interface RawLocation extends RawData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
+  locationDistances: Record<string, number>; // in km.
   useBase64Encoding: boolean;
 }
 
@@ -343,6 +345,8 @@ export interface BudgetData extends ObjectData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
+  modelCensorshipHitCount: Record<string, number> // Mainly focuses on refusing with the request more than censorship of the response.
+  modelBrokenCount: Record<string, number> // Distinct to error because the model generates an empty string as response.
   modelQuotaHitCount: Record<string, number>
   modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number
@@ -363,6 +367,8 @@ export interface RawBudgetData extends RawData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
+  modelCensorshipHitCount: Record<string, number> // Mainly focuses on refusing with the request more than censorship of the response.
+  modelBrokenCount: Record<string, number> // Distinct to error because the model generates an empty string as response.
   modelQuotaHitCount: Record<string, number>
   modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number

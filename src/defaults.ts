@@ -38,6 +38,8 @@ export const DefaultBudgetData: BudgetData = {
     modelLastQuotaHitTimeStamps: {},
     modelLastErrorHitTimeStamps: {},
     modelUsedCount: {},
+    modelCensorshipHitCount: {},
+    modelBrokenCount: {},
     modelQuotaHitCount: {},
     modelErrorHitCount: {},
     lastResetTimestamp: now,

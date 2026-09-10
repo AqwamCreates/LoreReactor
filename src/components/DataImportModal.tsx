@@ -22,6 +22,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [selCharIds, setSelCharIds] = useState<string[]>([]);
     const [selCtxIds, setSelCtxIds] = useState<string[]>([]);
     const [selLocIds, setSelLocIds] = useState<string[]>([]);
+    const [selAudioTrackIds, setSelAudioTrackIds] = useState<string[]>([]);
     const [selSamplerIds, setSelSamplerIds] = useState<string[]>([]);
     const [selSpIds, setSelSpIds] = useState<string[]>([]);
     const [selModelIds, setSelModelIds] = useState<string[]>([]);
@@ -34,6 +35,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
+    const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [spSearch, setSpSearch] = useState('');
     const [modelSearch, setModelSearch] = useState('');
@@ -44,11 +46,11 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
-        setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]);
+        setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]); setSelAudioTrackIds([]);
         setSelSamplerIds([]); setSelSpIds([]); setSelModelIds([]);
         setSelBsIds([]); setSelProfileIds([]); setSelWorldIds([]); setSelChatIds([]);
         setIncludeActions(true);
-        setCharSearch(''); setCtxSearch(''); setLocSearch('');
+        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioTrackSearch('');
         setSamplerSearch(''); setSpSearch(''); setModelSearch('');
         setBsSearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
     };
@@ -74,6 +76,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             setSelCharIds(json.characters.map((c: { id: string }) => c.id));
             setSelCtxIds(json.contexts.map((c: { id: string }) => c.id));
             setSelLocIds(json.locations.map((l: { id: string }) => l.id));
+            setSelAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
             setSelSamplerIds(json.samplers.map((s: { id: string }) => s.id));
             setSelSpIds(json.stopPatterns.map((s: { id: string }) => s.id));
             setSelModelIds(json.models.map((m: { id: string }) => m.id));
@@ -95,6 +98,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             characters: parsedData.characters.filter(c => selCharIds.includes(c.id)),
             contexts: parsedData.contexts.filter(c => selCtxIds.includes(c.id)),
             locations: parsedData.locations.filter(l => selLocIds.includes(l.id)),
+            audioTracks: parsedData.audioTracks.filter(t => selAudioTrackIds.includes(t.id)),
             samplers: parsedData.samplers.filter(s => selSamplerIds.includes(s.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selSpIds.includes(s.id)),
             models: parsedData.models.filter(m => selModelIds.includes(m.id)),
@@ -114,7 +118,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     };
 
     const totalSelected = selCharIds.length + selCtxIds.length + selLocIds.length +
-        selSamplerIds.length + selSpIds.length + selModelIds.length +
+        selAudioTrackIds.length + selSamplerIds.length + selSpIds.length + selModelIds.length +
         selBsIds.length + selProfileIds.length + selWorldIds.length + selChatIds.length + (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
@@ -170,6 +174,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 {parsedData.locations.length > 0 && (
                                     <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selLocIds}
                                         onToggle={(id) => toggle(selLocIds, setSelLocIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
+                                )}
+                                {parsedData.audioTracks.length > 0 && (
+                                    <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selAudioTrackIds}
+                                        onToggle={(id) => toggle(selAudioTrackIds, setSelAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 )}
                                 {(parsedData.worlds?.length ?? 0) > 0 && (
                                     <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selWorldIds}
@@ -234,6 +242,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Characters:</strong> {importResult.counts.characters}</div>
                                     <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
+                                    <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
                                     <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>

@@ -772,7 +772,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                 >
                     <span className="branch-separator-content">
                         <span className="branch-separator-icon">🌿</span>
-                        <span className="branch-separator-text">Conversation Branches Here</span>
+                        <span className="branch-separator-text">Timeline Branches Here</span>
                         <span className="branch-separator-icon">🌿</span>
                     </span>
                 </button>

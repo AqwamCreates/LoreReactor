@@ -18,7 +18,7 @@ const RESET_PRESETS = [
     { label: 'Monthly', value: 30 * 24 * 60 * 60 * 1000 },
 ];
 
-type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'spent' | 'uses' | 'errors' | 'duration';
+type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'spent' | 'uses' | 'errors' | 'censorship' | 'broken' | 'duration';
 type SortDirection = 'asc' | 'desc';
 
 function formatCost(value: number): string {
@@ -85,6 +85,8 @@ interface ModelRow {
     uses: number;
     quotaHits: number;
     errorHits: number;
+    censorshipHits: number;
+    brokenHits: number;
     reliability: number;
     spent: number;
     lastUsed: number;
@@ -163,6 +165,8 @@ export function BudgetControlModal({
             const uses = budgetData.modelUsedCount?.[id] ?? 0;
             const quotaHits = budgetData.modelQuotaHitCount?.[id] ?? 0;
             const errorHits = budgetData.modelErrorHitCount?.[id] ?? 0;
+            const censorshipHits = budgetData.modelCensorshipHitCount?.[id] ?? 0;
+            const brokenHits = budgetData.modelBrokenCount?.[id] ?? 0;
             const totalHits = quotaHits + errorHits;
             const reliability = uses > 0 ? Math.min(1, totalHits / uses) : 0;
             rows.push({
@@ -173,6 +177,8 @@ export function BudgetControlModal({
                 uses,
                 quotaHits,
                 errorHits,
+                censorshipHits,
+                brokenHits,
                 reliability,
                 spent: budgetData.modelBudgetSpent?.[id] ?? 0,
                 lastUsed: budgetData.modelLastUsedTimestamps?.[id] ?? 0,
@@ -186,6 +192,8 @@ export function BudgetControlModal({
         const totalUses = modelRows.reduce((sum, r) => sum + r.uses, 0);
         const totalQuotaHits = modelRows.reduce((sum, r) => sum + r.quotaHits, 0);
         const totalErrorHits = modelRows.reduce((sum, r) => sum + r.errorHits, 0);
+        const totalCensorshipHits = modelRows.reduce((sum, r) => sum + r.censorshipHits, 0);
+        const totalBrokenHits = modelRows.reduce((sum, r) => sum + r.brokenHits, 0);
         const totalSpent = modelRows.reduce((sum, r) => sum + r.spent, 0);
         const totalDuration = modelRows.reduce((sum, r) => sum + r.totalSessionDuration, 0);
         const speedValues = modelRows.filter(r => Number.isFinite(r.speed) && r.speed > 0).map(r => r.speed);
@@ -195,7 +203,7 @@ export function BudgetControlModal({
         const overallReliability = totalUses > 0 ? Math.min(1, (totalQuotaHits + totalErrorHits) / totalUses) : 0;
         const successfulCount = Math.max(0, totalUses - totalQuotaHits - totalErrorHits);
         const successPct = totalUses > 0 ? Math.round((successfulCount / totalUses) * 100) : 0;
-        return { totalUses, totalQuotaHits, totalErrorHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability, successfulCount, successPct };
+        return { totalUses, totalQuotaHits, totalErrorHits, totalCensorshipHits, totalBrokenHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability, successfulCount, successPct };
     }, [modelRows]);
 
     const sortedRows = useMemo(() => {
@@ -210,6 +218,8 @@ export function BudgetControlModal({
                 case 'spent': cmp = a.spent - b.spent; break;
                 case 'uses': cmp = a.uses - b.uses; break;
                 case 'errors': cmp = (a.quotaHits + a.errorHits) - (b.quotaHits + b.errorHits); break;
+                case 'censorship': cmp = a.censorshipHits - b.censorshipHits; break;
+                case 'broken': cmp = a.brokenHits - b.brokenHits; break;
                 case 'duration': cmp = a.totalSessionDuration - b.totalSessionDuration; break;
             }
             return sortDirection === 'asc' ? cmp : -cmp;
@@ -405,8 +415,16 @@ export function BudgetControlModal({
                                                 </span>
                                             </div>
                                             <div className="budget-stat-row">
+                                                <span className="budget-stat-label">Censorship Hits</span>
+                                                <span className="budget-stat-value" style={{ color: '#a855f7' }}>{aggregateStats.totalCensorshipHits}</span>
+                                            </div>
+                                            <div className="budget-stat-row">
+                                                <span className="budget-stat-label">Broken Responses</span>
+                                                <span className="budget-stat-value" style={{ color: '#f59e0b' }}>{aggregateStats.totalBrokenHits}</span>
+                                            </div>
+                                            <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Quota Hits</span>
-                                                <span className="budget-stat-value" style={{ color: '#f59e0b' }}>{aggregateStats.totalQuotaHits}</span>
+                                                <span className="budget-stat-value" style={{ color: '#f97316' }}>{aggregateStats.totalQuotaHits}</span>
                                             </div>
                                             <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Error Hits</span>
@@ -451,6 +469,8 @@ export function BudgetControlModal({
                                                             <th className="sort-right" onClick={() => handleSort('reliability')}>Rel%{sortIndicator('reliability')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('spent')}>Spent{sortIndicator('spent')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('errors')}>Errs{sortIndicator('errors')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('censorship')}>Cens{sortIndicator('censorship')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('broken')}>Brkn{sortIndicator('broken')}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -467,13 +487,15 @@ export function BudgetControlModal({
                                                                     <td className="num" style={{ color: relColor }}>{relPct !== null ? `${relPct}%` : '—'}</td>
                                                                     <td className="num">{row.spent > 0 ? `$${formatCost(row.spent)}` : '—'}</td>
                                                                     <td className="num" style={{ color: (row.quotaHits + row.errorHits) > 0 ? '#ef4444' : undefined }}>{row.quotaHits + row.errorHits > 0 ? `${row.quotaHits}/${row.errorHits}` : '—'}</td>
+                                                                    <td className="num" style={{ color: row.censorshipHits > 0 ? '#a855f7' : undefined }}>{row.censorshipHits > 0 ? row.censorshipHits : '—'}</td>
+                                                                    <td className="num" style={{ color: row.brokenHits > 0 ? '#f97316' : undefined }}>{row.brokenHits > 0 ? row.brokenHits : '—'}</td>
                                                                 </tr>
                                                             );
                                                         })}
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − (hits ÷ uses).</div>
+                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − (hits ÷ uses). Cens = censorship refusals. Brkn = empty responses.</div>
                                         </div>
                                     )}
 

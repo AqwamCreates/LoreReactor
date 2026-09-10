@@ -165,6 +165,12 @@ export function AppModals({
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
                     emptyMessage="No saved chat sessions found."
+                    specialActionIcon="★"
+                    onSpecialAction={(item: InteractionData) => onSwitchChat(item.id)}
+                    specialActionTooltip={(item: InteractionData) =>
+                        interactionData?.id === item.id ? `✓ Active — "${item.name}"` : `Activate "${item.name}"`
+                    }
+                    activeSpecialActionId={interactionData?.id}
                 />
             )}
 

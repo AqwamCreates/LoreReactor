@@ -1,6 +1,6 @@
 // src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, World } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, World } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import './main.css';
@@ -11,6 +11,7 @@ interface DataExportModalProps {
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
+    allAudioTracks: AudioTrack[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allModels: LanguageModel[];
@@ -22,7 +23,7 @@ interface DataExportModalProps {
 
 export function DataExportModal({
     isOpen, onClose,
-    allCharacters, allContexts, allLocations, allSamplers, allStopPatterns,
+    allCharacters, allContexts, allLocations, allAudioTracks, allSamplers, allStopPatterns,
     allModels, allBudgetStrategies, allProfiles, allWorlds, allChats,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
@@ -32,6 +33,7 @@ export function DataExportModal({
     const [selCharIds, setSelCharIds] = useState<string[]>([]);
     const [selCtxIds, setSelCtxIds] = useState<string[]>([]);
     const [selLocIds, setSelLocIds] = useState<string[]>([]);
+    const [selAudioTrackIds, setSelAudioTrackIds] = useState<string[]>([]);
     const [selSamplerIds, setSelSamplerIds] = useState<string[]>([]);
     const [selSpIds, setSelSpIds] = useState<string[]>([]);
     const [selModelIds, setSelModelIds] = useState<string[]>([]);
@@ -44,6 +46,7 @@ export function DataExportModal({
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
+    const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [spSearch, setSpSearch] = useState('');
     const [modelSearch, setModelSearch] = useState('');
@@ -54,11 +57,11 @@ export function DataExportModal({
 
     const reset = () => {
         setSummary(null); setError(null); setIsExporting(false);
-        setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]);
+        setSelCharIds([]); setSelCtxIds([]); setSelLocIds([]); setSelAudioTrackIds([]);
         setSelSamplerIds([]); setSelSpIds([]); setSelModelIds([]);
         setSelBsIds([]); setSelProfileIds([]); setSelWorldIds([]); setSelChatIds([]);
         setIncludeActions(true);
-        setCharSearch(''); setCtxSearch(''); setLocSearch('');
+        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioTrackSearch('');
         setSamplerSearch(''); setSpSearch(''); setModelSearch('');
         setBsSearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
     };
@@ -70,7 +73,7 @@ export function DataExportModal({
     };
 
     const totalSelected = selCharIds.length + selCtxIds.length + selLocIds.length +
-        selSamplerIds.length + selSpIds.length + selModelIds.length +
+        selAudioTrackIds.length + selSamplerIds.length + selSpIds.length + selModelIds.length +
         selBsIds.length + selProfileIds.length + selWorldIds.length + selChatIds.length + (includeActions ? 1 : 0);
 
     const handleExport = async () => {
@@ -80,6 +83,7 @@ export function DataExportModal({
         try {
             const data = await exportSelectedData({
                 characterIds: selCharIds, contextIds: selCtxIds, locationIds: selLocIds,
+                audioTrackIds: selAudioTrackIds,
                 samplerIds: selSamplerIds, stopPatternIds: selSpIds, modelIds: selModelIds,
                 budgetStrategyIds: selBsIds, profileIds: selProfileIds, worldIds: selWorldIds,
                 includeActions, chatIds: selChatIds,
@@ -128,6 +132,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selCtxIds, setSelCtxIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} />
                                 <EntitySelectList label="Locations" items={allLocations} selectedIds={selLocIds}
                                     onToggle={(id) => toggle(selLocIds, setSelLocIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
+                                <EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selAudioTrackIds}
+                                    onToggle={(id) => toggle(selAudioTrackIds, setSelAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 <EntitySelectList label="Worlds" items={allWorlds} selectedIds={selWorldIds}
                                     onToggle={(id) => toggle(selWorldIds, setSelWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selSamplerIds}
@@ -172,6 +178,7 @@ export function DataExportModal({
                                     <div><strong>Characters:</strong> {summary.characters.length}</div>
                                     <div><strong>Contexts:</strong> {summary.contexts.length}</div>
                                     <div><strong>Locations:</strong> {summary.locations.length}</div>
+                                    <div><strong>Audio Tracks:</strong> {summary.audioTracks.length}</div>
                                     <div><strong>Worlds:</strong> {summary.worlds.length}</div>
                                     <div><strong>Samplers:</strong> {summary.samplers.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
