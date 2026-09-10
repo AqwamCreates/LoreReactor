@@ -9,16 +9,16 @@ interface SettingsItem {
 
 const SETTINGS_ITEMS: SettingsItem[] = [
     {
-        id: 'participant-control',
-        icon: '🎛️',
-        label: 'Participant Control',
-        description: 'Force messages and override chat stamina for participants.',
-    },
-    {
         id: 'budget-control',
         icon: '💰',
         label: 'Budget Control',
         description: 'View, edit, reset, and manage persistent budget runtime data.',
+    },
+    {
+        id: 'participant-control',
+        icon: '🎛️',
+        label: 'Participant Control',
+        description: 'Force messages and override chat stamina for participants.',
     },
     {
         id: 'ai-recommendation',
