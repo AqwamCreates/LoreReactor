@@ -425,6 +425,15 @@ export function AppModals({
                 />
             )}
 
+            {/* Budget Control */}
+            {modals.budgetControl.isOpen && (
+                <BudgetControlModal
+                    isOpen={modals.budgetControl.isOpen}
+                    onClose={modals.budgetControl.close}
+                    activeStrategy={activeStrategy}
+                />
+            )}
+
             {/* Participant Control */}
             {modals.participantControl.isOpen && (
                 <ParticipantControlModal
@@ -510,15 +519,6 @@ export function AppModals({
                     allProfiles={allProfiles}
                     allWorlds={allWorlds}
                     allChats={allChats}
-                />
-            )}
-
-            {/* Budget Control */}
-            {modals.budgetControl.isOpen && (
-                <BudgetControlModal
-                    isOpen={modals.budgetControl.isOpen}
-                    onClose={modals.budgetControl.close}
-                    activeStrategy={activeStrategy}
                 />
             )}
 

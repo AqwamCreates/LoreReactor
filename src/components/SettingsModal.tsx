@@ -15,6 +15,12 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         description: 'Force messages and override chat stamina for participants.',
     },
     {
+        id: 'budget-control',
+        icon: '💰',
+        label: 'Budget Control',
+        description: 'View, edit, reset, and manage persistent budget runtime data.',
+    },
+    {
         id: 'ai-recommendation',
         icon: '✨',
         label: 'Get AI Recommendation',
@@ -37,12 +43,6 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         icon: '📦',
         label: 'Export Data',
         description: 'Download everything as a single JSON backup file.',
-    },
-    {
-        id: 'budget-control',
-        icon: '💰',
-        label: 'Budget Control',
-        description: 'View, edit, reset, and manage persistent budget runtime data.',
     },
 ];
 
