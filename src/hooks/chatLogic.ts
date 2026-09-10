@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
-import { getLanguageModelEngine, type LanguageModelContext } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl } from './storage';
 import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';

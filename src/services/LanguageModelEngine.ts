@@ -455,7 +455,7 @@ export class LanguageModelEngine {
   // ─── Non-Streaming Completion ────────────────────────────────────
 
   async generateCompletion(
-    requestBody: any,
+    requestBody: Record<string, unknown>,
     modelContext?: LanguageModelContext,
   ): Promise<StreamResult> {
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
@@ -486,7 +486,7 @@ export class LanguageModelEngine {
   // ─── Streaming Generation ────────────────────────────────────────
 
   async generateStream(
-    requestBody: any,
+    requestBody: Record<string, unknown>,
     abortController: AbortController,
     callbacks?: StreamCallbacks,
     modelContext?: LanguageModelContext,
@@ -671,7 +671,7 @@ export function getLanguageModelEngine(): LanguageModelEngine {
  * Resets the singleton instance. Intended ONLY for test teardown.
  * Never call this in production code.
  */
-export function reset()(): void {
+export function reset(): void {
     if (instance) {
         instance.clearTokenCache();
     }

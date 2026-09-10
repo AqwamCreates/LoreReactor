@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, BudgetStrategy } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';

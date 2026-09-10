@@ -369,8 +369,10 @@ export function LocationEditorModal({
                                                     });
                                                     if (errors.bindingRegex) setErrors(prev => {
                                                         const next = { ...prev, bindingRegex: { ...(prev.bindingRegex || {}) } };
-                                                        delete next.bindingRegex![id];
-                                                        if (Object.keys(next.bindingRegex!).length === 0) delete next.bindingRegex;
+                                                        if (next.bindingRegex) {
+                                                            delete next.bindingRegex[id];
+                                                            if (Object.keys(next.bindingRegex).length === 0) delete next.bindingRegex;
+                                                        }
                                                         return next;
                                                     });
                                                 }}

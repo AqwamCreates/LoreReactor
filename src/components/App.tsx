@@ -1,5 +1,6 @@
 // src/App.tsx
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type React from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -58,63 +59,6 @@ type BudgetStrategyWithRawModelIds = BudgetStrategy & {
     _rawOnlineModelIds?: string[];
     _rawLocalModelIds?: string[];
 };
-
-/**
- * Finds the safe boundary in text where no incomplete markdown patterns exist.
- * Returns the index up to which text can be safely formatted without risking
- * mid-pattern splits (unclosed *, **, `, ```, etc.)
- */
-function findSafeFormatBoundary(text: string): number {
-    if (text.length === 0) return 0;
-
-    // Check for unclosed triple backticks (code blocks)
-    const tripleBacktickCount = (text.match(/```/g) || []).length;
-    if (tripleBacktickCount % 2 !== 0) {
-        const lastIdx = text.lastIndexOf('```');
-        return lastIdx >= 0 ? lastIdx : 0;
-    }
-
-    // Check for unclosed double backticks
-    const doubleBacktickCount = (text.match(/``/g) || []).length;
-    if (doubleBacktickCount % 2 !== 0) {
-        const lastIdx = text.lastIndexOf('``');
-        return lastIdx >= 0 ? lastIdx : 0;
-    }
-
-    // Check for unclosed single backticks (inline code)
-    const singleBacktickCount = (text.match(/`/g) || []).length;
-    if (singleBacktickCount % 2 !== 0) {
-        const lastIdx = text.lastIndexOf('`');
-        return lastIdx >= 0 ? lastIdx : 0;
-    }
-
-    // Check for unclosed double asterisks (bold)
-    const doubleAsteriskCount = (text.match(/\*\*/g) || []).length;
-    if (doubleAsteriskCount % 2 !== 0) {
-        const lastIdx = text.lastIndexOf('**');
-        return lastIdx >= 0 ? lastIdx : 0;
-    }
-
-    // Check for unclosed single asterisks (italic) — but not inside **
-    const strippedOfBold = text.replace(/\*\*/g, '');
-    const singleAsteriskCount = (strippedOfBold.match(/\*/g) || []).length;
-    if (singleAsteriskCount % 2 !== 0) {
-        let lastSafe = text.length;
-        for (let i = text.length - 1; i >= 0; i--) {
-            if (text[i] === '*') {
-                const isDouble = (i > 0 && text[i - 1] === '*') || (i < text.length - 1 && text[i + 1] === '*');
-                if (!isDouble) {
-                    lastSafe = i;
-                    break;
-                }
-            }
-        }
-        return lastSafe;
-    }
-
-    // All patterns are balanced — entire text is safe
-    return text.length;
-}
 
 function App() {
     // ─── Session Hook ────────────────────────────────────────────────
@@ -263,70 +207,10 @@ function App() {
     // ─── Display Name Cache ──────────────────────────────────────────
     const displayNameCache = useDisplayNameCache(interactionData);
 
-    // ─── Incremental Streaming Text Formatting ───────────────────────
-    const streamFormatCacheRef = useRef<{ rawPrefix: string; formattedPrefix: React.ReactNode }>({ rawPrefix: '', formattedPrefix: null });
-
-    const formattedStreamingText = useMemo((): React.ReactNode => {
-        if (!streamingText) {
-            streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: null };
-            return null;
-        }
-
-        const cache = streamFormatCacheRef.current;
-
-        // If streaming text starts with cached prefix, do incremental formatting
-        if (streamingText.startsWith(cache.rawPrefix) && cache.rawPrefix.length > 0) {
-            const newRawTail = streamingText.slice(cache.rawPrefix.length);
-
-            if (newRawTail.length === 0) {
-                return cache.formattedPrefix;
-            }
-
-            // Find safe boundary in the new tail
-            const safeLen = findSafeFormatBoundary(newRawTail);
-
-            if (safeLen === 0) {
-                // Entire new tail is unsafe — re-parse everything
-                const fullFormatted = formatMessageText(streamingText);
-                streamFormatCacheRef.current = { rawPrefix: streamingText, formattedPrefix: fullFormatted };
-                return fullFormatted;
-            }
-
-            // Format only the safe portion of new text
-            const safeNewRaw = newRawTail.slice(0, safeLen);
-            const unsafeNewRaw = newRawTail.slice(safeLen);
-
-            // Parse the safe new portion in isolation
-            const parsedNewSegment = formatMessageText(safeNewRaw);
-
-            // Combine cached formatted prefix + newly formatted segment
-            const combinedFormatted = React.createElement(React.Fragment, null,
-                cache.formattedPrefix,
-                parsedNewSegment,
-            );
-
-            // Update cache
-            const newSafeRawPrefix = streamingText.slice(0, cache.rawPrefix.length + safeLen);
-            streamFormatCacheRef.current = {
-                rawPrefix: newSafeRawPrefix,
-                formattedPrefix: combinedFormatted,
-            };
-
-            // If there's an unsafe tail, append it as plain text
-            if (unsafeNewRaw.length > 0) {
-                return React.createElement(React.Fragment, null,
-                    combinedFormatted,
-                    React.createElement('span', { className: 'fmt-normal' }, unsafeNewRaw),
-                );
-            }
-
-            return combinedFormatted;
-        }
-
-        // Text doesn't extend cached prefix (new generation or reset) — full parse
-        const fullFormatted = formatMessageText(streamingText);
-        streamFormatCacheRef.current = { rawPrefix: streamingText, formattedPrefix: fullFormatted };
-        return fullFormatted;
+    // ─── Streaming Text Formatting ───────────────────────────────────
+    const formattedStreamingText = useMemo(() => {
+        if (!streamingText) return null;
+        return formatMessageText(streamingText);
     }, [streamingText]);
 
     // ─── Derived Values ──────────────────────────────────────────────
@@ -360,7 +244,6 @@ function App() {
 
         if (!targetModel) return null;
 
-        // Cloud models do not need local loading.
         if (targetModel.apiKey && targetModel.backend) return null;
 
         try {
@@ -521,7 +404,6 @@ function App() {
     useEffect(() => {
         chatModifiedRef.current = false;
         previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
-        streamFormatCacheRef.current = { rawPrefix: '', formattedPrefix: null };
     }, [interactionData?.interactionHistory?.length]);
 
     // Auto-save: mark modified when chat has content, save when message count changes

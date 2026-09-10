@@ -550,7 +550,6 @@ export async function fetchMultipleContextUrls(
                 const summary = await summarizeWebpageContent(
                     result.content,
                     result.url,
-                    options.modelContext,
                     imagesForSummary
                 );
                 if (summary) {
@@ -566,7 +565,6 @@ export async function fetchMultipleContextUrls(
                 } else {
                     const merged = await mergeWebpageSummaries(
                         summarizedEntries,
-                        options.modelContext,
                     );
                     if (merged) {
                         const sourceList = summarizedEntries.map(e => e.url).join(', ');
