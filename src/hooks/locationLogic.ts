@@ -166,36 +166,42 @@ export function sampleReachableLocationByWeight(
 
 /**
  * Sample an initial location for a character who has never had one.
- * Prefers locations bound to this character using characterWeights,
- * falls back to all locations using globalWeight.
+ * Excludes locations with characterBindings that don't include this character.
+ * Uses characterWeights when available, falls back to globalWeight.
  */
 export function sampleInitialLocationForCharacter(locations: Location[], character: Character): number | undefined {
     if (!locations || locations.length === 0) return undefined;
 
-    // First pass: locations with character-specific weights for this character
-    const boundPool: { index: number; weight: number }[] = [];
-    let boundTotalWeight = 0;
+    const pool: { index: number; weight: number }[] = [];
+    let totalWeight = 0;
 
     for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
+
+        // Exclude locations bound to specific characters that don't include this one
+        if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
+            continue;
+        }
+
+        // Use character-specific weight if defined, otherwise global weight
         const charWeight = loc.characterWeights?.[character.id];
-        if (charWeight !== undefined && charWeight > 0) {
-            boundPool.push({ index: i, weight: charWeight });
-            boundTotalWeight += charWeight;
+        const weight = charWeight !== undefined ? charWeight : loc.globalWeight;
+
+        if (weight > 0) {
+            pool.push({ index: i, weight });
+            totalWeight += weight;
         }
     }
 
-    if (boundPool.length > 0 && boundTotalWeight > 0) {
-        let roll = Math.random() * boundTotalWeight;
-        for (const entry of boundPool) {
-            roll -= entry.weight;
-            if (roll <= 0) return entry.index;
-        }
-        return boundPool[boundPool.length - 1].index;
+    if (pool.length === 0 || totalWeight <= 0) return undefined;
+
+    let roll = Math.random() * totalWeight;
+    for (const entry of pool) {
+        roll -= entry.weight;
+        if (roll <= 0) return entry.index;
     }
 
-    // Fallback: all locations using globalWeight
-    return sampleLocationByWeight(locations, character);
+    return pool[pool.length - 1].index;
 }
 
 /**

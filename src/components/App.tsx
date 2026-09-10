@@ -18,6 +18,7 @@ import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../hooks/storage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
+import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
@@ -695,7 +696,7 @@ function App() {
         const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter(l => l !== undefined);
         const resolvedAudioTracks = (world.audioTrackIds || []).map(id => allAudioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
         const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
-        const updated: InteractionData = {
+        let updated: InteractionData = {
             ...interactionData,
             participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
             contexts: resolvedCtxs,
@@ -707,6 +708,8 @@ function App() {
         if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) {
             updated.participants = [updated.protagonist, ...updated.participants];
         }
+        // Assign initial locations to participants who have never had one
+        updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
         await saveRawInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
@@ -907,7 +910,11 @@ function App() {
                     onActivateProfile={handleActivateProfile}
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
-                    onUpdateInteractionData={(data) => { setInteractionData(data); saveRawInteractionData(data); }}
+                    onUpdateInteractionData={(data) => {
+                        const withLocations = assignInitialLocationsIfNeeded(data);
+                        setInteractionData(withLocations);
+                        saveRawInteractionData(withLocations);
+                    }}
                     onForceFirstMessage={handleForceFirstMessage}
                     onSendCustomMessage={handleSendCustomMessage}
                     onInjectCustomMessage={handleInjectCustomMessage}
