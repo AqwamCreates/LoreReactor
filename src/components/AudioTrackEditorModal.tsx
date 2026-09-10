@@ -31,7 +31,7 @@ export function AudioTrackEditorModal({
     allLocations = [],
 }: AudioTrackEditorModalProps) {
     const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
+    const [description, setDescription] = useState(''); 
     const [filename, setFilename] = useState('');
     const [loop, setLoop] = useState(true);
     const [volume, setVolume] = useState(1);
