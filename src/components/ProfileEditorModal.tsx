@@ -1,5 +1,5 @@
 // src/components/ProfileEditorModal.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import type { Profile, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
@@ -12,26 +12,13 @@ interface ProfileEditorModalProps {
 }
 
 const ALL_BLOCK_TYPES: PromptBlockType[] = [
-    'System Prompt',
-    'Think Prompt',
-    'Meta Think Instructions',
-    'Appearance Prompt',
-    'Dialogue Prompt',
-    'Memory',
-    'Chat History',
-    'Context',
-    'Location',
-    'Fatigue Information',
-    'Date And Time',
-    'Weather',
-    'Time Elapsed',
-    'Tool Instructions',
-    'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt',
+    'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location',
+    'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed',
+    'Tool Instructions', 'Text Injection',
 ];
 
-const DEFAULT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'
-];
+const DEFAULT_STRATEGY: PromptBlockType[] = [...ALL_BLOCK_TYPES];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
     'No injection.',
@@ -48,73 +35,70 @@ const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
 };
 
 const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
-    'Sliding Window Replace',
-    'Periodic Compression',
-    'Recursive Summary',
-    'Observation Masking',
+    'Sliding Window Replace', 'Periodic Compression', 'Recursive Summary', 'Observation Masking',
 ];
 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Sliding Window Replace',
-            strategyType: 'Sliding Window Replace',
-            enabled: true,
-            order: 0,
-            slidingWindowSize: 10,
-            summaryTokenBudget: 256,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Periodic Compression',
-            strategyType: 'Periodic Compression',
-            enabled: false,
-            order: 1,
-            compressionInterval: 20,
-            compressionChunkSize: 10,
-            summaryTokenBudget: 512,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Recursive Summary',
-            strategyType: 'Recursive Summary',
-            enabled: false,
-            order: 2,
-            recursiveChunkSize: 10,
-            recursiveMaxDepth: 3,
-            summaryTokenBudget: 1024,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
-        {
-            id: `step-${crypto.randomUUID()}`,
-            name: 'Observation Masking',
-            strategyType: 'Observation Masking',
-            enabled: false,
-            order: 3,
-            maskingRelevanceThreshold: 0.3,
-            maskingKeywordWeight: 0.7,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        },
+        { id: `step-${crypto.randomUUID()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, compressionInterval: 20, compressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveChunkSize: 10, recursiveMaxDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.randomUUID()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
     ];
 }
 
+// ─── Shared Styles ───────────────────────────────────────────────────
+
+const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' };
+const CHECKBOX_SPACED_STYLE: CSSProperties = { marginTop: '8px' };
+const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
+const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
+const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
+const TOOLBAR_BTN_SMALL_STYLE: CSSProperties = { width: '24px', height: '24px', fontSize: '0.7rem' };
+const TOOLBAR_BTN_DELETE_STYLE: CSSProperties = { ...TOOLBAR_BTN_SMALL_STYLE, fontSize: '0.8rem', color: '#ff4444' };
+const STEP_EXPANDED_STYLE: CSSProperties = {
+    padding: '10px 12px', margin: '0 0 4px 0', background: 'var(--social-bg)',
+    border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 6px 6px',
+    display: 'flex', flexDirection: 'column', gap: '8px',
+};
+const STEP_NAME_STYLE: CSSProperties = {
+    fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)',
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, fontStyle: 'italic' };
+const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
+const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
+
+// ─── Reusable Checkbox Component ─────────────────────────────────────
+
+function ProfileCheckbox({
+    checked, onChange, label, hint, spaced = false,
+}: {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    label: string;
+    hint?: string;
+    spaced?: boolean;
+}) {
+    return (
+        <label className="editor-checkbox-label" style={spaced ? CHECKBOX_SPACED_STYLE : undefined}>
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+                className="editor-checkbox-input"
+            />
+            <span>{label}</span>
+            {hint && <div style={CHECKBOX_HINT_STYLE}>{hint}</div>}
+        </label>
+    );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────
+
 export function ProfileEditorModal({
-    isOpen,
-    onClose,
-    onSave,
-    existingProfile,
+    isOpen, onClose, onSave, existingProfile,
 }: ProfileEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -158,92 +142,64 @@ export function ProfileEditorModal({
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
 
     useEffect(() => {
-        if (isOpen) {
-            if (existingProfile) {
-                setName(existingProfile.name || '');
-                setDescription(existingProfile.description || '');
-                setForceNameReveal(existingProfile.forceNameReveal ?? false);
-                setEnableCharacterExpression(existingProfile.enableCharacterExpression ?? false);
-                setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
-                setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
-                setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
-                setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
-                setForceNoLocationImageInjection(existingProfile.forceNoLocationImageInjection ?? false);
-                setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
-                setUseWeather(existingProfile.useWeather ?? false);
-                setWeatherApiKey(existingProfile.weatherApiKey ?? '');
-                setUseTimeElapsed(existingProfile.useTimeElapsed ?? false);
-                setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
-                setChatProbability(existingProfile.chatProbability ?? -1);
-                setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
-                setNameSensitivity(existingProfile.nameSensitivity ?? -1);
-                setSkipProbability(existingProfile.skipProbability ?? -1);
-                setChatImpatienceSensitivity(existingProfile.chatImpatienceSensitivity ?? -1);
-                setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
-                setContextSensitivity(existingProfile.contextSensitivity ?? -1);
-                setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
-                setVolume(existingProfile.volume ?? -1);
-                setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-                setEnableWebSearch(existingProfile.enableWebSearch ?? 0);
-                setEnableCalculator(existingProfile.enableCalculator ?? 0);
-                setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
-                setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
-                setNarrateNormalText(existingProfile.narrateNormalText ?? true);
-                setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
-                setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
-                setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-                const savedStrategy = existingProfile.inputStrategy?.length
-                    ? existingProfile.inputStrategy
-                    : [...DEFAULT_STRATEGY];
-                setInputStrategy(savedStrategy);
-                setSummarizationSteps(
-                    existingProfile.summarizationSteps?.length
-                        ? [...existingProfile.summarizationSteps].sort((a, b) => a.order - b.order)
-                        : getDefaultSummarizationSteps()
-                );
-            } else {
-                setName('');
-                setDescription('');
-                setForceNameReveal(false);
-                setEnableCharacterExpression(false);
-                setForceNoCharacterImageInjection(false);
-                setNumberOfMessagesToDisableThinkPrompt(-1);
-                setNumberOfMessagesToDisableMetaThinkInstructions(-1);
-                setNumberOfMessagesToDisableDialoguePrompt(-1);
-                setForceNoContextImageInjection(false);
-                setForceNoLocationImageInjection(false);
-                setUseCurrentDateAndTime(false);
-                setUseWeather(false);
-                setWeatherApiKey('');
-                setUseTimeElapsed(false);
-                setForceEqualInitiative(false);
-                setChatProbability(0);
-                setMaximumChatStamina(0);
-                setNameSensitivity(-1);
-                setSkipProbability(-1);
-                setChatImpatienceSensitivity(-1);
-                setMemoryRetentionWeight(-1);
-                setContextSensitivity(-1);
-                setCacheLevel(0);
-                setVolume(-1);
-                setStripThinkTokens(false);
-                setEnableWebSearch(0);
-                setEnableCalculator(0);
-                setEnableMemoryWriting(0);
-                setEnableMemoryReading(0);
-                setNarrateNormalText(true);
-                setNarrateQuotedText(false);
-                setNarrateBoldedText(false);
-                setNarrateItalicizedText(false);
-                setInputStrategy([...DEFAULT_STRATEGY]);
-                setSummarizationSteps(getDefaultSummarizationSteps());
-            }
-            setErrors({});
-            setDraggedIndex(null);
-            setDraggedStepIndex(null);
-            setExpandedStepId(null);
+        if (!isOpen) return;
+
+        if (existingProfile) {
+            setName(existingProfile.name || '');
+            setDescription(existingProfile.description || '');
+            setForceNameReveal(existingProfile.forceNameReveal ?? false);
+            setEnableCharacterExpression(existingProfile.enableCharacterExpression ?? false);
+            setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
+            setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
+            setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
+            setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
+            setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
+            setForceNoLocationImageInjection(existingProfile.forceNoLocationImageInjection ?? false);
+            setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
+            setUseWeather(existingProfile.useWeather ?? false);
+            setWeatherApiKey(existingProfile.weatherApiKey ?? '');
+            setUseTimeElapsed(existingProfile.useTimeElapsed ?? false);
+            setForceEqualInitiative(existingProfile.forceEqualInitiative ?? false);
+            setChatProbability(existingProfile.chatProbability ?? -1);
+            setMaximumChatStamina(existingProfile.maximumChatStamina ?? -1);
+            setNameSensitivity(existingProfile.nameSensitivity ?? -1);
+            setSkipProbability(existingProfile.skipProbability ?? -1);
+            setChatImpatienceSensitivity(existingProfile.chatImpatienceSensitivity ?? -1);
+            setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
+            setContextSensitivity(existingProfile.contextSensitivity ?? -1);
+            setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
+            setVolume(existingProfile.volume ?? -1);
+            setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
+            setEnableWebSearch(existingProfile.enableWebSearch ?? 0);
+            setEnableCalculator(existingProfile.enableCalculator ?? 0);
+            setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
+            setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
+            setNarrateNormalText(existingProfile.narrateNormalText ?? true);
+            setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
+            setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
+            setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
+            setInputStrategy(existingProfile.inputStrategy?.length ? existingProfile.inputStrategy : [...DEFAULT_STRATEGY]);
+            setSummarizationSteps(
+                existingProfile.summarizationSteps?.length
+                    ? [...existingProfile.summarizationSteps].sort((a, b) => a.order - b.order)
+                    : getDefaultSummarizationSteps()
+            );
+        } else {
+            setName(''); setDescription('');
+            setForceNameReveal(false); setEnableCharacterExpression(false);
+            setForceNoCharacterImageInjection(false); setForceNoContextImageInjection(false); setForceNoLocationImageInjection(false);
+            setNumberOfMessagesToDisableThinkPrompt(-1); setNumberOfMessagesToDisableMetaThinkInstructions(-1); setNumberOfMessagesToDisableDialoguePrompt(-1);
+            setUseCurrentDateAndTime(false); setUseWeather(false); setWeatherApiKey(''); setUseTimeElapsed(false);
+            setForceEqualInitiative(false); setChatProbability(0); setMaximumChatStamina(0);
+            setNameSensitivity(-1); setSkipProbability(-1); setChatImpatienceSensitivity(-1);
+            setMemoryRetentionWeight(-1); setContextSensitivity(-1); setCacheLevel(0); setVolume(-1);
+            setStripThinkTokens(false);
+            setEnableWebSearch(0); setEnableCalculator(0); setEnableMemoryWriting(0); setEnableMemoryReading(0);
+            setNarrateNormalText(true); setNarrateQuotedText(false); setNarrateBoldedText(false); setNarrateItalicizedText(false);
+            setInputStrategy([...DEFAULT_STRATEGY]);
+            setSummarizationSteps(getDefaultSummarizationSteps());
         }
+        setErrors({}); setDraggedIndex(null); setDraggedStepIndex(null); setExpandedStepId(null);
     }, [isOpen, existingProfile]);
 
     const validate = (): boolean => {
@@ -253,107 +209,39 @@ export function ProfileEditorModal({
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
-        if (!validate()) return;
-
+    const buildProfile = (id: string, profileName: string): Profile => {
         const now = Date.now();
-        const profile: Profile = {
-            id: existingProfile?.id || crypto.randomUUID(),
-            name: name.trim(),
-            description: description.trim() || undefined,
-            forceNameReveal,
-            enableCharacterExpression,
-            forceNoCharacterImageInjection,
-            numberOfMessagesToDisableThinkPrompt,
-            numberOfMessagesToDisableMetaThinkInstructions,
-            numberOfMessagesToDisableDialoguePrompt,
-            forceNoContextImageInjection,
-            forceNoLocationImageInjection,
-            useCurrentDateAndTime,
-            useWeather,
-            weatherApiKey,
-            useTimeElapsed,
-            forceEqualInitiative,
-            chatProbability,
-            maximumChatStamina,
-            nameSensitivity,
-            skipProbability,
-            chatImpatienceSensitivity,
-            memoryRetentionWeight,
-            contextSensitivity,
-            cacheInvalidationReductionLevel: cacheLevel,
-            volume,
-            stripThinkTokens,
-            enableWebSearch,
-            enableCalculator,
-            enableMemoryWriting,
-            enableMemoryReading,
-            narrateNormalText,
-            narrateQuotedText,
-            narrateBoldedText,
-            narrateItalicizedText,
-            inputStrategy,
-            summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, order: i, lastUpdatedTimestamp: now })),
+        return {
+            id, name: profileName, description: description.trim() || undefined,
+            forceNameReveal, enableCharacterExpression,
+            forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection,
+            numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt,
+            useCurrentDateAndTime, useWeather, weatherApiKey, useTimeElapsed,
+            forceEqualInitiative, chatProbability, maximumChatStamina,
+            nameSensitivity, skipProbability, chatImpatienceSensitivity,
+            memoryRetentionWeight, contextSensitivity,
+            cacheInvalidationReductionLevel: cacheLevel, volume, stripThinkTokens,
+            enableWebSearch, enableCalculator, enableMemoryWriting, enableMemoryReading,
+            narrateNormalText, narrateQuotedText, narrateBoldedText, narrateItalicizedText,
+            inputStrategy: [...inputStrategy],
+            summarizationSteps: summarizationSteps.map((s, i) => ({
+                ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
+                firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            })),
             firstCreatedTimestamp: existingProfile?.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: now,
         };
+    };
 
-        onSave(profile);
+    const handleSubmit = () => {
+        if (!validate()) return;
+        onSave(buildProfile(existingProfile?.id || crypto.randomUUID(), name.trim()));
         onClose();
     };
 
     const handleClone = () => {
         if (!validate()) return;
-
-        const now = Date.now();
-        const cloned: Profile = {
-            id: crypto.randomUUID(),
-            name: `${name.trim()} (Clone)`,
-            description: description.trim() || undefined,
-            forceNameReveal,
-            enableCharacterExpression,
-            forceNoCharacterImageInjection,
-            numberOfMessagesToDisableThinkPrompt,
-            numberOfMessagesToDisableMetaThinkInstructions,
-            numberOfMessagesToDisableDialoguePrompt,
-            forceNoContextImageInjection,
-            forceNoLocationImageInjection,
-            useCurrentDateAndTime,
-            useWeather,
-            weatherApiKey,
-            useTimeElapsed,
-            forceEqualInitiative,
-            chatProbability,
-            maximumChatStamina,
-            nameSensitivity,
-            skipProbability,
-            chatImpatienceSensitivity,
-            memoryRetentionWeight,
-            contextSensitivity,
-            cacheInvalidationReductionLevel: cacheLevel,
-            volume,
-            stripThinkTokens,
-            enableWebSearch,
-            enableCalculator,
-            enableMemoryWriting,
-            enableMemoryReading,
-            narrateNormalText,
-            narrateQuotedText,
-            narrateBoldedText,
-            narrateItalicizedText,
-            inputStrategy: [...inputStrategy],
-            summarizationSteps: summarizationSteps.map((s, i) => ({
-                ...s,
-                id: `step-${crypto.randomUUID()}`,
-                order: i,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-            })),
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        };
-
-        onSave(cloned);
+        onSave(buildProfile(crypto.randomUUID(), `${name.trim()} (Clone)`));
         onClose();
     };
 
@@ -364,17 +252,8 @@ export function ProfileEditorModal({
         e.dataTransfer.setData('text/plain', String(index));
         setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0);
     };
-
-    const handleDragEnd = (e: React.DragEvent) => {
-        (e.target as HTMLElement).style.opacity = '1';
-        setDraggedIndex(null);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
+    const handleDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedIndex(null); };
+    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
         const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
@@ -385,7 +264,6 @@ export function ProfileEditorModal({
         setInputStrategy(newOrder);
         setDraggedIndex(null);
     };
-
     const moveBlock = (index: number, direction: -1 | 1) => {
         const newIndex = index + direction;
         if (newIndex < 0 || newIndex >= inputStrategy.length) return;
@@ -393,17 +271,8 @@ export function ProfileEditorModal({
         [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
         setInputStrategy(newOrder);
     };
-
-    const addBlock = (blockType: PromptBlockType) => {
-        if (!inputStrategy.includes(blockType)) {
-            setInputStrategy(prev => [...prev, blockType]);
-        }
-    };
-
-    const removeBlock = (index: number) => {
-        setInputStrategy(prev => prev.filter((_, i) => i !== index));
-    };
-
+    const addBlock = (blockType: PromptBlockType) => { if (!inputStrategy.includes(blockType)) setInputStrategy(prev => [...prev, blockType]); };
+    const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
     const missingBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
 
     // --- Summarization step drag handlers ---
@@ -413,12 +282,7 @@ export function ProfileEditorModal({
         e.dataTransfer.setData('text/plain', String(index));
         setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0);
     };
-
-    const handleStepDragEnd = (e: React.DragEvent) => {
-        (e.target as HTMLElement).style.opacity = '1';
-        setDraggedStepIndex(null);
-    };
-
+    const handleStepDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedStepIndex(null); };
     const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
         e.preventDefault();
         const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
@@ -429,7 +293,6 @@ export function ProfileEditorModal({
         setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
         setDraggedStepIndex(null);
     };
-
     const moveStep = (index: number, direction: -1 | 1) => {
         const newIndex = index + direction;
         if (newIndex < 0 || newIndex >= summarizationSteps.length) return;
@@ -437,38 +300,40 @@ export function ProfileEditorModal({
         [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]];
         setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
     };
-
     const updateStepField = <K extends keyof SummarizationStep>(index: number, field: K, value: SummarizationStep[K]) => {
-        setSummarizationSteps(prev => prev.map((s, i) =>
-            i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s
-        ));
+        setSummarizationSteps(prev => prev.map((s, i) => i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s));
     };
-
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
         const newStep: SummarizationStep = {
-            id: `step-${crypto.randomUUID()}`,
-            name: strategyType,
-            strategyType,
-            enabled: true,
-            order: summarizationSteps.length,
-            summaryTokenBudget: 512,
-            triggerTokenThreshold: 0,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
+            id: `step-${crypto.randomUUID()}`, name: strategyType, strategyType, enabled: true,
+            order: summarizationSteps.length, summaryTokenBudget: 512, triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
         if (strategyType === 'Sliding Window Replace') newStep.slidingWindowSize = 10;
         if (strategyType === 'Periodic Compression') { newStep.compressionInterval = 20; newStep.compressionChunkSize = 10; }
         if (strategyType === 'Recursive Summary') { newStep.recursiveChunkSize = 10; newStep.recursiveMaxDepth = 3; }
         if (strategyType === 'Observation Masking') { newStep.maskingRelevanceThreshold = 0.3; newStep.maskingKeywordWeight = 0.7; }
-
         setSummarizationSteps(prev => [...prev, newStep]);
     };
-
     const removeSummarizationStep = (index: number) => {
         setSummarizationSteps(prev => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i })));
         if (expandedStepId === summarizationSteps[index]?.id) setExpandedStepId(null);
     };
+
+    // --- Slider override helper ---
+    const renderOverrideSlider = (
+        label: string, value: number, min: number, max: number, step: number, decimals: number,
+        onChange: (val: number) => void, description: string, valueLabel?: string,
+    ) => (
+        <div style={{ marginBottom: '12px' }}>
+            <div style={SLIDER_HEADER_STYLE}>
+                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{label}</label>
+                {valueLabel && <span style={SLIDER_VALUE_STYLE}>{valueLabel}</span>}
+            </div>
+            <SliderInput label="" value={value} minimumValue={min} maximumValue={max} stepValue={step} decimals={decimals} onChange={onChange} description={description} />
+        </div>
+    );
 
     if (!isOpen) return null;
 
@@ -479,11 +344,7 @@ export function ProfileEditorModal({
                     <h2>{existingProfile ? 'Edit Profile' : 'Create New Profile'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {existingProfile && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
-                                Clone
-                            </button>
-                        )}
+                        {existingProfile && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>Clone</button>}
                         <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
@@ -492,26 +353,14 @@ export function ProfileEditorModal({
                     {/* Name */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }}
-                            className={`editor-input ${errors.name ? 'error' : ''}`}
-                            placeholder="e.g., Default RP, No Cache Mode, Strict Names"
-                        />
+                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Default RP, No Cache Mode, Strict Names" />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
                     {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            className="editor-textarea"
-                            placeholder="Describe when to use this profile"
-                            rows={2}
-                        />
+                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} />
                     </div>
 
                     {/* Display Section */}
@@ -519,182 +368,48 @@ export function ProfileEditorModal({
                         <span className="editor-section-title">Display</span>
 
                         <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Global Volume Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}
-                                </span>
+                            <div style={SLIDER_HEADER_STYLE}>
+                                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label>
+                                <span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} />
                             </div>
-                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                -1 = use each track's own volume. ≥0 = override all tracks uniformly.
-                            </div>
+                            <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                         </div>
 
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceNameReveal}
-                                onChange={(e) => setForceNameReveal(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force Name Reveal</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Always show character names instead of "Character X".
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={enableCharacterExpression}
-                                onChange={(e) => setEnableCharacterExpression(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Enable Character Expression</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images.
-                        </div>
+                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
+                        <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." spaced />
                     </div>
 
                     {/* Injection Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Injection</span>
 
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceNoCharacterImageInjection}
-                                onChange={(e) => setForceNoCharacterImageInjection(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force No Character Image Injection</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent character images from being sent to the model, even if the character has one assigned.
-                        </div>
+                        <ProfileCheckbox checked={forceNoCharacterImageInjection} onChange={setForceNoCharacterImageInjection} label="Force No Character Image Injection" hint="Prevent character images from being sent to the model, even if the character has one assigned." />
+                        <ProfileCheckbox checked={forceNoContextImageInjection} onChange={setForceNoContextImageInjection} label="Force No Context Image Injection" hint="Prevent context images from being sent to the model." spaced />
+                        <ProfileCheckbox checked={forceNoLocationImageInjection} onChange={setForceNoLocationImageInjection} label="Force No Location Image Injection" hint="Prevent location images from being sent to the model." spaced />
+                        <ProfileCheckbox checked={useCurrentDateAndTime} onChange={setUseCurrentDateAndTime} label="Use Current Date And Time" hint="Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place." spaced />
+                        <ProfileCheckbox checked={useWeather} onChange={setUseWeather} label="Use Weather" hint="Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API." spaced />
 
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={forceNoContextImageInjection}
-                                onChange={(e) => setForceNoContextImageInjection(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force No Context Image Injection</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent context images from being sent to the model.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={forceNoLocationImageInjection}
-                                onChange={(e) => setForceNoLocationImageInjection(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force No Location Image Injection</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent location images from being sent to the model.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={useCurrentDateAndTime}
-                                onChange={(e) => setUseCurrentDateAndTime(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Use Current Date And Time</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={useWeather}
-                                onChange={(e) => setUseWeather(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Use Weather</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API.
-                        </div>
                         {useWeather && (
                             <div style={{ marginTop: '8px', marginLeft: '26px' }}>
                                 <label className="editor-label editor-label-small">OpenWeather API Key</label>
-                                <input
-                                    type="password"
-                                    value={weatherApiKey}
-                                    onChange={(e) => setWeatherApiKey(e.target.value)}
-                                    className="editor-input"
-                                    placeholder="Paste your OpenWeather API key..."
-                                    autoComplete="off"
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Free tier: 1,000 calls/day. Get one at openweathermap.org/api
-                                </div>
+                                <input type="password" value={weatherApiKey} onChange={(e) => setWeatherApiKey(e.target.value)} className="editor-input" placeholder="Paste your OpenWeather API key..." autoComplete="off" />
+                                <div style={FIELD_HINT_STYLE}>Free tier: 1,000 calls/day. Get one at openweathermap.org/api</div>
                             </div>
                         )}
 
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={useTimeElapsed}
-                                onChange={(e) => setUseTimeElapsed(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Use Time Elapsed</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Inject how long it has been since the last message was sent. Useful for real-time pacing awareness.
-                        </div>
+                        <ProfileCheckbox checked={useTimeElapsed} onChange={setUseTimeElapsed} label="Use Time Elapsed" hint="Inject how long it has been since the last message was sent. Useful for real-time pacing awareness." spaced />
 
                         <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Think Prompt"
-                                value={numberOfMessagesToDisableThinkPrompt}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
+                            <SliderInput label="Number of Messages to Disable Think Prompt" value={numberOfMessagesToDisableThinkPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
                         </div>
-
                         <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Meta-Thinking"
-                                value={numberOfMessagesToDisableMetaThinkInstructions}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
+                            <SliderInput label="Number of Messages to Disable Meta-Thinking" value={numberOfMessagesToDisableMetaThinkInstructions} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
                         </div>
-
                         <div style={{ marginTop: '12px' }}>
-                            <SliderInput
-                                label="Number of Messages to Disable Dialogue Prompt"
-                                value={numberOfMessagesToDisableDialoguePrompt}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))}
-                                description="-1 = auto defer to character default. N = disable after N messages."
-                            />
+                            <SliderInput label="Number of Messages to Disable Dialogue Prompt" value={numberOfMessagesToDisableDialoguePrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
                         </div>
                     </div>
 
@@ -702,317 +417,55 @@ export function ProfileEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Turn Sequencing</span>
 
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={forceEqualInitiative}
-                                onChange={(e) => setForceEqualInitiative(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Force Equal Initiative</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px', marginBottom: '12px' }}>
-                            All participants get equal initiative weight regardless of character settings.
-                        </div>
+                        <ProfileCheckbox checked={forceEqualInitiative} onChange={setForceEqualInitiative} label="Force Equal Initiative" hint="All participants get equal initiative weight regardless of character settings." />
 
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Probability Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatProbability === -1 ? '(Character default)' : ""}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={chatProbability}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={0.05}
-                                decimals={2}
-                                onChange={setChatProbability}
-                                description="-1 = disabled (use per-character setting). Slide right to override all participants."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Maximum Chat Stamina Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {maximumChatStamina === -1 ? '(Character default)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={maximumChatStamina}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setMaximumChatStamina(Math.round(val))}
-                                description="-1 = disabled (use per-character setting). Slide right to set a shared stamina cap."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Name Sensitivity Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={nameSensitivity}
-                                minimumValue={-1}
-                                maximumValue={10}
-                                stepValue={0.5}
-                                decimals={1}
-                                onChange={setNameSensitivity}
-                                description="-1 = defer to character default. 0 = disabled. N = multiplier per name mention in latest message."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Skip Probability Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={skipProbability}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={0.05}
-                                decimals={2}
-                                onChange={setSkipProbability}
-                                description="-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Chat Impatience Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={chatImpatienceSensitivity}
-                                minimumValue={-1}
-                                maximumValue={5}
-                                stepValue={0.1}
-                                decimals={1}
-                                onChange={setChatImpatienceSensitivity}
-                                description="-1 = defer to character. 0 = disabled. Higher values make quiet characters speak sooner."
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Retention Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={memoryRetentionWeight}
-                                minimumValue={-1}
-                                maximumValue={2}
-                                stepValue={0.1}
-                                decimals={1}
-                                onChange={setMemoryRetentionWeight}
-                                description="-1 = defer to character. 0 = minimal history. 1 = full history. Controls how far back memories reach."
-                            />
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Context Sensitivity Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : ''}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={contextSensitivity}
-                                minimumValue={-1}
-                                maximumValue={2}
-                                stepValue={0.1}
-                                decimals={1}
-                                onChange={setContextSensitivity}
-                                description="-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger."
-                            />
-                        </div>
+                        {renderOverrideSlider('Chat Probability Override', chatProbability, -1, 1, 0.05, 2, setChatProbability, '-1 = disabled (use per-character setting). Slide right to override all participants.', chatProbability === -1 ? '(Character default)' : undefined)}
+                        {renderOverrideSlider('Maximum Chat Stamina Override', maximumChatStamina, -1, 10, 1, 0, (val) => setMaximumChatStamina(Math.round(val)), '-1 = disabled (use per-character setting). Slide right to set a shared stamina cap.', maximumChatStamina === -1 ? '(Character default)' : undefined)}
+                        {renderOverrideSlider('Name Sensitivity Override', nameSensitivity, -1, 10, 0.5, 1, setNameSensitivity, '-1 = defer to character default. 0 = disabled. N = multiplier per name mention in latest message.', nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Skip Probability Override', skipProbability, -1, 1, 0.05, 2, setSkipProbability, '-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected.', skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Chat Impatience Override', chatImpatienceSensitivity, -1, 5, 0.1, 1, setChatImpatienceSensitivity, '-1 = defer to character. 0 = disabled. Higher values make quiet characters speak sooner.', chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Memory Retention Override', memoryRetentionWeight, -1, 2, 0.1, 1, setMemoryRetentionWeight, '-1 = defer to character. 0 = minimal history. 1 = full history. Controls how far back memories reach.', memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : undefined)}
+                        {renderOverrideSlider('Context Sensitivity Override', contextSensitivity, -1, 2, 0.1, 1, setContextSensitivity, '-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger.', contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : undefined)}
                     </div>
 
                     {/* Cache Invalidation Reduction */}
                     <div className="editor-section">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={SLIDER_HEADER_STYLE}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
                         </div>
-                        <SliderInput
-                            label=""
-                            value={cacheLevel}
-                            minimumValue={0}
-                            maximumValue={3}
-                            stepValue={1}
-                            decimals={0}
-                            onChange={(val) => setCacheLevel(Math.round(val))}
-                            description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''}
-                        />
+                        <SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} />
                     </div>
 
                     {/* Voice Narration */}
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateNormalText}
-                                    onChange={(e) => setNarrateNormalText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Normal Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateQuotedText}
-                                    onChange={(e) => setNarrateQuotedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Quoted Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateBoldedText}
-                                    onChange={(e) => setNarrateBoldedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Bolded Text</span>
-                            </label>
-                            <label className="editor-checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={narrateItalicizedText}
-                                    onChange={(e) => setNarrateItalicizedText(e.target.checked)}
-                                    className="editor-checkbox-input"
-                                />
-                                <span>Narrate Italicized Text</span>
-                            </label>
+                            <ProfileCheckbox checked={narrateNormalText} onChange={setNarrateNormalText} label="Narrate Normal Text" />
+                            <ProfileCheckbox checked={narrateQuotedText} onChange={setNarrateQuotedText} label="Narrate Quoted Text" />
+                            <ProfileCheckbox checked={narrateBoldedText} onChange={setNarrateBoldedText} label="Narrate Bolded Text" />
+                            <ProfileCheckbox checked={narrateItalicizedText} onChange={setNarrateItalicizedText} label="Narrate Italicized Text" />
                         </div>
                     </div>
 
                     {/* Strip Think Tokens */}
                     <div className="editor-section">
                         <span className="editor-section-title">Output Processing</span>
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={stripThinkTokens}
-                                onChange={(e) => setStripThinkTokens(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span>Strip Think Tokens</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Remove &lt;think&gt;...&lt;/think&gt; blocks from displayed output. The model still uses them internally.
-                        </div>
+                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove <think>...</think> blocks from displayed output. The model still uses them internally." />
                     </div>
 
                     {/* Tools */}
                     <div className="editor-section">
                         <span className="editor-section-title">Tools</span>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px' }}>
-                            Enable runtime tool use during generation. These are not prompt injections — they allow the model to invoke tools while chatting.
-                        </div>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Web Search Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableWebSearch === 0 ? '(Character default)' : enableWebSearch === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={enableWebSearch}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableWebSearch(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Calculator Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableCalculator === 0 ? '(Character default)' : enableCalculator === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={enableCalculator}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableCalculator(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
-                        </div>
+                        <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>Enable runtime tool use during generation. These are not prompt injections — they allow the model to invoke tools while chatting.</div>
+                        {renderOverrideSlider('Web Search Override', enableWebSearch, -1, 1, 1, 0, (val) => setEnableWebSearch(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableWebSearch === 0 ? '(Character default)' : enableWebSearch === -1 ? '(Force Off)' : '(Force On)')}
+                        {renderOverrideSlider('Calculator Override', enableCalculator, -1, 1, 1, 0, (val) => setEnableCalculator(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableCalculator === 0 ? '(Character default)' : enableCalculator === -1 ? '(Force Off)' : '(Force On)')}
                     </div>
 
                     {/* Memory */}
                     <div className="editor-section">
                         <span className="editor-section-title">Memory</span>
-
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Reading Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={enableMemoryReading}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableMemoryReading(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
-                        </div>
-
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <label className="editor-label editor-label-small" style={{ margin: 0 }}>Memory Writing Override</label>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)'}
-                                </span>
-                            </div>
-                            <SliderInput
-                                label=""
-                                value={enableMemoryWriting}
-                                minimumValue={-1}
-                                maximumValue={1}
-                                stepValue={1}
-                                decimals={0}
-                                onChange={(val) => setEnableMemoryWriting(Math.round(val))}
-                                description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
-                            />
-                        </div>
+                        {renderOverrideSlider('Memory Reading Override', enableMemoryReading, -1, 1, 1, 0, (val) => setEnableMemoryReading(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)')}
+                        {renderOverrideSlider('Memory Writing Override', enableMemoryWriting, -1, 1, 1, 0, (val) => setEnableMemoryWriting(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)')}
                     </div>
 
                     {/* Input Strategy Order */}
@@ -1021,55 +474,29 @@ export function ProfileEditorModal({
                             <span>Prompt Block Order</span>
                             <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
                         </div>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Controls the order in which prompt sections are assembled.
-                        </div>
+                        <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled.</div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {inputStrategy.map((blockType, index) => {
-                                const isDragging = draggedIndex === index;
-                                return (
-                                    <div
-                                        key={`${blockType}-${index}`}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, index)}
-                                        onDragEnd={handleDragEnd}
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => handleDrop(e, index)}
-                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
-                                        style={{ padding: '6px 8px' }}
-                                    >
-                                        <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
-                                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>
-                                                {index + 1}. {blockType}
-                                            </span>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                            <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                            <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-btn" title="Move down" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
-                                            <button type="button" onClick={() => removeBlock(index)} className="toolbar-btn" title="Remove from order" style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}>×</button>
-                                        </div>
+                            {inputStrategy.map((blockType, index) => (
+                                <div key={`${blockType}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}>
+                                    <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+                                    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {blockType}</span>
                                     </div>
-                                );
-                            })}
+                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
+                                        <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                        <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-btn" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
+                                        <button type="button" onClick={() => removeBlock(index)} className="toolbar-btn" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
                         {missingBlocks.length > 0 && (
                             <div style={{ marginTop: '8px' }}>
-                                <select
-                                    onChange={(e) => {
-                                        const val = e.target.value as PromptBlockType;
-                                        if (val) addBlock(val);
-                                        e.target.value = '';
-                                    }}
-                                    className="editor-select"
-                                    defaultValue=""
-                                >
+                                <select onChange={(e) => { const val = e.target.value as PromptBlockType; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="">
                                     <option value="" disabled>+ Add a missing block</option>
-                                    {missingBlocks.map(b => (
-                                        <option key={b} value={b}>{b}</option>
-                                    ))}
+                                    {missingBlocks.map(b => <option key={b} value={b}>{b}</option>)}
                                 </select>
                             </div>
                         )}
@@ -1081,9 +508,7 @@ export function ProfileEditorModal({
                             <span>Summarization Pipeline</span>
                             <span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span>
                         </div>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Controls how messages are summarized based on the order of the individual text summarizers.
-                        </div>
+                        <div style={CHECKBOX_HINT_STYLE}>Controls how messages are summarized based on the order of the individual text summarizers.</div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             {summarizationSteps.map((step, index) => {
@@ -1092,68 +517,28 @@ export function ProfileEditorModal({
 
                                 return (
                                     <div key={step.id}>
-                                        <div
-                                            draggable
-                                            onDragStart={(e) => handleStepDragStart(e, index)}
-                                            onDragEnd={handleStepDragEnd}
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) => handleStepDrop(e, index)}
-                                            className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
-                                            style={{ padding: '6px 8px', cursor: 'pointer' }}
-                                            onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
-                                        >
+                                        <div draggable onDragStart={(e) => handleStepDragStart(e, index)} onDragEnd={handleStepDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleStepDrop(e, index)} className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedStepId(isExpanded ? null : step.id)}>
                                             <div className="sampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div>
-
                                             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 'bold',
-                                                    color: 'var(--text-h)',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                    {index + 1}. {step.name}
-                                                </span>
+                                                <span style={STEP_NAME_STYLE}>{index + 1}. {step.name}</span>
                                             </div>
-
                                             <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                                <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-btn" title="Move down" style={{ width: '24px', height: '24px', fontSize: '0.7rem', opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
-                                                <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-btn" title="Remove step" style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}>×</button>
+                                                <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                                <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-btn" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
+                                                <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-btn" title="Remove step" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
                                                 <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                                             </div>
                                         </div>
 
                                         {isExpanded && (
-                                            <div style={{
-                                                padding: '10px 12px',
-                                                margin: '0 0 4px 0',
-                                                background: 'var(--social-bg)',
-                                                border: '1px solid var(--border)',
-                                                borderTop: 'none',
-                                                borderRadius: '0 0 6px 6px',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: '8px',
-                                            }}>
-                                                <div style={{ fontSize: '0.65rem', opacity: 0.6, fontStyle: 'italic' }}>
-                                                    {STRATEGY_DESCRIPTIONS[step.strategyType]}
-                                                </div>
+                                            <div style={STEP_EXPANDED_STYLE}>
+                                                <div style={STEP_DESC_STYLE}>{STRATEGY_DESCRIPTIONS[step.strategyType]}</div>
 
                                                 {step.strategyType === 'Sliding Window Replace' && (
                                                     <div>
                                                         <label className="editor-label editor-label-small">Window Size</label>
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            max="50"
-                                                            value={step.slidingWindowSize ?? 10}
-                                                            onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keep last N messages verbatim</div>
+                                                        <input type="number" min="1" max="50" value={step.slidingWindowSize ?? 10} onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                        <div style={FIELD_HINT_STYLE}>Keep last N messages verbatim</div>
                                                     </div>
                                                 )}
 
@@ -1161,29 +546,13 @@ export function ProfileEditorModal({
                                                     <div className="editor-row">
                                                         <div>
                                                             <label className="editor-label editor-label-small">Compression Interval</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="100"
-                                                                value={step.compressionInterval ?? 20}
-                                                                onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Compress every M messages</div>
+                                                            <input type="number" min="5" max="100" value={step.compressionInterval ?? 20} onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Compress every M messages</div>
                                                         </div>
                                                         <div>
                                                             <label className="editor-label editor-label-small">Chunk Size</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="50"
-                                                                value={step.compressionChunkSize ?? 10}
-                                                                onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per compression chunk</div>
+                                                            <input type="number" min="5" max="50" value={step.compressionChunkSize ?? 10} onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Messages per compression chunk</div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -1192,29 +561,13 @@ export function ProfileEditorModal({
                                                     <div className="editor-row">
                                                         <div>
                                                             <label className="editor-label editor-label-small">Chunk Size</label>
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                max="50"
-                                                                value={step.recursiveChunkSize ?? 10}
-                                                                onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages per chunk at layer 0</div>
+                                                            <input type="number" min="5" max="50" value={step.recursiveChunkSize ?? 10} onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Messages per chunk at layer 0</div>
                                                         </div>
                                                         <div>
                                                             <label className="editor-label editor-label-small">Max Depth</label>
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                max="5"
-                                                                value={step.recursiveMaxDepth ?? 3}
-                                                                onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max recursion layers</div>
+                                                            <input type="number" min="1" max="5" value={step.recursiveMaxDepth ?? 3} onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Max recursion layers</div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -1223,31 +576,13 @@ export function ProfileEditorModal({
                                                     <div className="editor-row">
                                                         <div>
                                                             <label className="editor-label editor-label-small">Relevance Threshold</label>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max="1"
-                                                                step="0.05"
-                                                                value={step.maskingRelevanceThreshold ?? 0.3}
-                                                                onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Min score to include (0.0–1.0)</div>
+                                                            <input type="number" min="0" max="1" step="0.05" value={step.maskingRelevanceThreshold ?? 0.3} onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Min score to include (0.0–1.0)</div>
                                                         </div>
                                                         <div>
                                                             <label className="editor-label editor-label-small">Keyword Weight</label>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                max="1"
-                                                                step="0.05"
-                                                                value={step.maskingKeywordWeight ?? 0.7}
-                                                                onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))}
-                                                                className="editor-input"
-                                                                style={{ textAlign: 'right' }}
-                                                            />
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Keyword vs recency balance</div>
+                                                            <input type="number" min="0" max="1" step="0.05" value={step.maskingKeywordWeight ?? 0.7} onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                            <div style={FIELD_HINT_STYLE}>Keyword vs recency balance</div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -1255,31 +590,13 @@ export function ProfileEditorModal({
                                                 <div className="editor-row">
                                                     <div>
                                                         <label className="editor-label editor-label-small">Summary Token Budget</label>
-                                                        <input
-                                                            type="number"
-                                                            min="64"
-                                                            max="4096"
-                                                            step="64"
-                                                            value={step.summaryTokenBudget ?? 512}
-                                                            onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Max tokens for generated summaries</div>
+                                                        <input type="number" min="64" max="4096" step="64" value={step.summaryTokenBudget ?? 512} onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                        <div style={FIELD_HINT_STYLE}>Max tokens for generated summaries</div>
                                                     </div>
                                                     <div>
                                                         <label className="editor-label editor-label-small">Trigger Threshold</label>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max="131072"
-                                                            step="1024"
-                                                            value={step.triggerTokenThreshold ?? 0}
-                                                            onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))}
-                                                            className="editor-input"
-                                                            style={{ textAlign: 'right' }}
-                                                        />
-                                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>0 = auto based on context length</div>
+                                                        <input type="number" min="0" max="131072" step="1024" value={step.triggerTokenThreshold ?? 0} onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))} className="editor-input" style={INPUT_RIGHT_STYLE} />
+                                                        <div style={FIELD_HINT_STYLE}>0 = auto based on context length</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1290,19 +607,9 @@ export function ProfileEditorModal({
                         </div>
 
                         <div style={{ marginTop: '8px' }}>
-                            <select
-                                onChange={(e) => {
-                                    const val = e.target.value as SummarizationStrategyType;
-                                    if (val) addSummarizationStep(val);
-                                    e.target.value = '';
-                                }}
-                                className="editor-select"
-                                defaultValue=""
-                            >
+                            <select onChange={(e) => { const val = e.target.value as SummarizationStrategyType; if (val) addSummarizationStep(val); e.target.value = ''; }} className="editor-select" defaultValue="">
                                 <option value="" disabled>+ Add a summarization step</option>
-                                {ALL_STRATEGY_TYPES.map(t => (
-                                    <option key={t} value={t}>{t}</option>
-                                ))}
+                                {ALL_STRATEGY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                         </div>
 

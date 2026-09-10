@@ -310,6 +310,10 @@ export function useChatSession() {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const d = useSessionStore.getState().interactionData; if (!d) { releaseLock(); return; }
+
+        // Initialize audio context on user gesture (browser autoplay policy)
+        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentChar, actionText));
 
         const hasLocations = ud.locations && ud.locations.length > 0;
@@ -350,6 +354,10 @@ export function useChatSession() {
         if (!currentInteractionData || !currentChar || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+        // Initialize audio context on user gesture (browser autoplay policy)
+        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
         setStreamingCharacter(null);
@@ -410,6 +418,9 @@ export function useChatSession() {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
+        // Initialize audio context on user gesture (browser autoplay policy)
+        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+
         const existingText = msg.textContent;
         const char = msg.character;
         resumingMessageIdRef.current = messageId;
@@ -457,6 +468,10 @@ export function useChatSession() {
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+        // Initialize audio context on user gesture (browser autoplay policy)
+        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
@@ -515,7 +530,7 @@ export function useChatSession() {
     }, [handleServerResponse, isLoadingRef, isModelReadyForGeneration]);
 
     // ─── Return ──────────────────────────────────────────────────────
-    const maxCtx = selectedModel?.contextLength || 8192;
+    const maximumNumberOfTokens = selectedModel?.contextLength || 8192;
 
     return {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
@@ -523,7 +538,7 @@ export function useChatSession() {
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef,
         latency, timeToFirstToken, numberOfMessages: interactionData?.interactionHistory.length || 0,
-        numberOfTokens, maximumNumberOfTokens: maxCtx, startNewChat,
+        numberOfTokens, maximumNumberOfTokens, startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy, budgetData,
         numberOfCacheInvalidations,
