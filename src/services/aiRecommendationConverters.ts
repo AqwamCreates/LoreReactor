@@ -1,5 +1,5 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
@@ -116,6 +116,26 @@ function fillAudioTrackDefaults(t: Record<string, unknown>): AudioTrack {
     };
 }
 
+function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
+    const now = Date.now();
+    return {
+        id: ensureId(b),
+        name: (b.name as string) || 'Unnamed',
+        description: (b.description as string) || undefined,
+        textContent: (b.textContent as string) || '',
+        images: (b.images as string[]) || [],
+        regularExpressionActivationTrigger: (b.regularExpressionActivationTrigger as string) || undefined,
+        regularExpressionDeactivationTrigger: (b.regularExpressionDeactivationTrigger as string) || undefined,
+        regularExpressionContext: (b.regularExpressionContext as PromptBlock['regularExpressionContext']) ?? 'global',
+        regularExpressionTarget: (b.regularExpressionTarget as PromptBlock['regularExpressionTarget']) ?? 'everyone',
+        characterBindings: (b.characterBindings as string[]) || [],
+        contextBindings: (b.contextBindings as string[]) || [],
+        locationBindings: (b.locationBindings as string[]) || [],
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
 function fillProfileDefaults(p: Record<string, unknown>): Profile {
     const now = Date.now();
     return {
@@ -196,6 +216,9 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
         if (Array.isArray(parsed.audioTracks)) {
             result.audioTracks = parsed.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t));
         }
+        if (Array.isArray(parsed.promptBlocks)) {
+            result.promptBlocks = parsed.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b));
+        }
         if (parsed.profile && typeof parsed.profile === 'object') {
             result.profile = fillProfileDefaults(parsed.profile as Record<string, unknown>);
         }
@@ -208,11 +231,12 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
                 contexts: Array.isArray(w.contexts) ? w.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c)) : [],
                 locations: Array.isArray(w.locations) ? w.locations.map((l: Record<string, unknown>) => fillLocationDefaults(l)) : [],
                 audioTracks: Array.isArray(w.audioTracks) ? w.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t)) : undefined,
+                promptBlocks: Array.isArray(w.promptBlocks) ? w.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b)) : undefined,
                 profile: w.profile && typeof w.profile === 'object' ? fillProfileDefaults(w.profile as Record<string, unknown>) : undefined,
             };
         }
 
-        if (!result.characters && !result.contexts && !result.locations && !result.profile && !result.world) return null;
+        if (!result.characters && !result.contexts && !result.locations && !result.promptBlocks && !result.profile && !result.world) return null;
         return result;
     } catch { return null; }
 }
@@ -222,6 +246,7 @@ export function deriveHistoryLabel(output: GeneratedOutput): string {
     if (output.characters?.length) return `🎭 ${output.characters[0].name}${output.characters.length > 1 ? ` +${output.characters.length - 1}` : ''}`;
     if (output.contexts?.length) return `📜 ${output.contexts[0].name}${output.contexts.length > 1 ? ` +${output.contexts.length - 1}` : ''}`;
     if (output.locations?.length) return `📍 ${output.locations[0].name}${output.locations.length > 1 ? ` +${output.locations.length - 1}` : ''}`;
+    if (output.promptBlocks?.length) return `🧱 ${output.promptBlocks[0].name}${output.promptBlocks.length > 1 ? ` +${output.promptBlocks.length - 1}` : ''}`;
     if (output.profile) return `👤 ${output.profile.name}`;
     return 'Unknown';
 }
@@ -230,14 +255,14 @@ export function resolveWorldCrossReferences(
     world: NonNullable<GeneratedOutput['world']>,
     injectLocationImages: boolean,
     allAudioTracks: AudioTrack[],
-): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; profile?: Profile } {
-    // Characters and contexts already have IDs from parsing
+): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; promptBlocks: PromptBlock[]; profile?: Profile } {
     const characters = world.characters;
     const contexts = world.contexts;
 
     // Build name→ID maps for cross-reference resolution
     const charNameToId = new Map(characters.map(c => [c.name, c.id]));
     const locNameToId = new Map(world.locations.map(l => [l.name, l.id]));
+    const ctxNameToId = new Map(contexts.map(c => [c.name, c.id]));
 
     const resolveCharRef = (ref: string): string | undefined => {
         if (charNameToId.has(ref)) return charNameToId.get(ref);
@@ -246,6 +271,11 @@ export function resolveWorldCrossReferences(
     };
     const resolveLocRef = (ref: string): string | undefined => {
         if (locNameToId.has(ref)) return locNameToId.get(ref);
+        if (UUID_REGEX.test(ref)) return ref;
+        return undefined;
+    };
+    const resolveCtxRef = (ref: string): string | undefined => {
+        if (ctxNameToId.has(ref)) return ctxNameToId.get(ref);
         if (UUID_REGEX.test(ref)) return ref;
         return undefined;
     };
@@ -291,5 +321,13 @@ export function resolveWorldCrossReferences(
         return existing || t;
     });
 
-    return { characters, contexts, locations, audioTracks, profile: world.profile };
+    // Resolve prompt block bindings
+    const promptBlocks: PromptBlock[] = (world.promptBlocks || []).map(b => ({
+        ...b,
+        characterBindings: (b.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id),
+        contextBindings: (b.contextBindings ?? []).map(resolveCtxRef).filter((id): id is string => !!id),
+        locationBindings: (b.locationBindings ?? []).map(resolveLocRef).filter((id): id is string => !!id),
+    }));
+
+    return { characters, contexts, locations, audioTracks, promptBlocks, profile: world.profile };
 }

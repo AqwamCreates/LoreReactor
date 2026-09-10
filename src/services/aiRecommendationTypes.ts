@@ -1,8 +1,8 @@
 // src/services/aiRecommendationTypes.ts
-import type { Character, Context, Location, AudioTrack, Profile, PromptBlockType, SummarizationStrategyType } from '../types';
+import type { Character, Context, Location, AudioTrack, Profile, PromptBlock, PromptBlockType, SummarizationStrategyType } from '../types';
 
-export type EntityType = 'Character' | 'Context' | 'Location' | 'Profile' | 'World';
-export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'Profile' | 'World';
+export type EntityType = 'Character' | 'Context' | 'Location' | 'Profile' | 'PromptBlock' | 'World';
+export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'Profile' | 'PromptBlock' | 'World';
 
 export const IMAGE_PRIORITY_ITEMS = ['reference', 'character', 'context', 'location'] as const;
 export type ImagePriorityItem = typeof IMAGE_PRIORITY_ITEMS[number];
@@ -33,6 +33,7 @@ export const ENTITY_OPTIONS: { type: EntityType; label: string; icon: string }[]
     { type: 'Context', label: 'Context', icon: '📜' },
     { type: 'Location', label: 'Location', icon: '📍' },
     { type: 'Profile', label: 'Profile', icon: '👤' },
+    { type: 'PromptBlock', label: 'Prompt Block', icon: '🧱' },
     { type: 'World', label: 'World', icon: '🌍' },
 ];
 
@@ -48,6 +49,7 @@ export interface GeneratedOutput {
     contexts?: Context[];
     locations?: Location[];
     audioTracks?: AudioTrack[];
+    promptBlocks?: PromptBlock[];
     profile?: Profile;
     world?: {
         name: string;
@@ -56,6 +58,7 @@ export interface GeneratedOutput {
         contexts: Context[];
         locations: Location[];
         audioTracks?: AudioTrack[];
+        promptBlocks?: PromptBlock[];
         profile?: Profile;
     };
 }

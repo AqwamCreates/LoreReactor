@@ -117,7 +117,7 @@ function App() {
     const locationModal = useEntityModal(saveLocation, deleteLocation, 'Location');
     const audioTrackModal = useEntityModal<AudioTrack>(saveAudioTrack, deleteAudioTrack, 'Audio Track');
     const samplerModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
-    const stopPatternModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
+    const stopModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
     const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
@@ -224,13 +224,6 @@ function App() {
         if (!streamingText) return null;
         return formatMessageText(streamingText);
     }, [streamingText]);
-
-    // ─── Budget Time Until Reset ─────────────────────────────────────
-    const [currentTime] = useState(() => Date.now());
-    const timeUntilReset = useMemo(() => {
-        if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) return undefined;
-        return Math.max(0, budgetData.resetDuration - (currentTime - budgetData.lastResetTimestamp));
-    }, [budgetData, activeStrategy, currentTime]);
 
     // ─── Derived Values ──────────────────────────────────────────────
     const isModelLoading = useMemo(() => {
@@ -684,7 +677,6 @@ function App() {
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
         refreshChatList();
-        // If renaming the active chat, update it in place
         if (interactionData?.id === id) {
             setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
         }
@@ -791,7 +783,7 @@ function App() {
                                 maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                 budgetSpent={budgetData?.budgetSpent}
                                 maximumBudget={activeStrategy?.maximumBudget}
-                                timeUntilReset={timeUntilReset}
+                                timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
                             />
                         </div>
                     </div></div></header>
@@ -873,7 +865,7 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} onOpenPromptBlocks={modals.promptBlockList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
@@ -899,7 +891,7 @@ function App() {
                     locationModal={locationModal}
                     audioTrackModal={audioTrackModal}
                     samplerModal={samplerModal}
-                    stopPatternModal={stopPatternModal}
+                    stopModal={stopModal}
                     modelModal={modelModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
@@ -922,7 +914,8 @@ function App() {
                     onToggleAudioTrack={handleToggleAudioTrack}
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
-                    onDeleteStopPattern={stopPatternModal.handleDelete}
+                    onDeleteSampler={samplerModal.handleDelete}
+                    onDeleteStopPattern={stopModal.handleDelete}
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
                     onDeleteProfile={deleteProfile}

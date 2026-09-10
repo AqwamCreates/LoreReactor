@@ -1,7 +1,7 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,25 +19,29 @@ interface AIRecommendationModalProps {
     onSaveCharacter: (char: Character) => Promise<boolean>;
     onSaveContext: (ctx: Context) => Promise<boolean>;
     onSaveLocation: (loc: Location) => Promise<boolean>;
+    onSaveAudioTrack: (track: AudioTrack) => Promise<boolean>;
     onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
+    onSavePromptBlock: (block: PromptBlock) => Promise<boolean>;
     onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
     onOpenContextEditor?: (ctx: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
+    onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     allSamplers: Sampler[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
+    allPromptBlocks: PromptBlock[];
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning?: boolean; port?: number }>;
 }
 
 export function AIRecommendationModal({
-    isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
-    onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenProfileEditor,
-    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, selectedModel, runningModels,
+    isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
+    onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor,
+    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -56,10 +60,12 @@ export function AIRecommendationModal({
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
+    const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
     const [audioSearch, setAudioSearch] = useState('');
+    const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [referenceImages, setReferenceImages] = useState<File[]>([]);
     const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
     const [isUploadingImages, setIsUploadingImages] = useState(false);
@@ -83,8 +89,8 @@ export function AIRecommendationModal({
         setImageInjectionPriority(['reference', 'character', 'context', 'location']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
-        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]); setSelectedAudioTrackIds([]);
-        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioSearch('');
+        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedPromptBlockIds([]);
+        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioSearch(''); setPromptBlockSearch('');
         setReferenceImages([]);
         setReferenceImagePreviews(prev => { prev.forEach(p => { if (!p.startsWith('data:image')) URL.revokeObjectURL(p); }); return []; });
     }, []);
@@ -152,6 +158,7 @@ export function AIRecommendationModal({
         if (selectedContextIds.length > 0) { parts.push('EXISTING CONTEXTS:'); selectedContextIds.forEach((id, i) => { const c = allContexts.find(x => x.id === id); if (c) parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.text ? ` | ${c.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
         if (selectedLocationIds.length > 0) { parts.push('EXISTING LOCATIONS:'); selectedLocationIds.forEach((id, i) => { const l = allLocations.find(x => x.id === id); if (l) parts.push(`${i + 1}. ID: ${l.id} | Name: ${l.name}${l.text ? ` | ${l.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
         if (selectedAudioTrackIds.length > 0) { parts.push('EXISTING AUDIO TRACKS:'); selectedAudioTrackIds.forEach((id, i) => { const t = allAudioTracks.find(x => x.id === id); if (t) parts.push(`${i + 1}. ID: ${t.id} | Name: ${t.name} | File: ${t.filename} | Category: ${t.audioCategory}`); }); parts.push(''); }
+        if (selectedPromptBlockIds.length > 0) { parts.push('EXISTING PROMPT BLOCKS:'); selectedPromptBlockIds.forEach((id, i) => { const b = allPromptBlocks.find(x => x.id === id); if (b) parts.push(`${i + 1}. ID: ${b.id} | Name: ${b.name}${b.textContent ? ` | ${b.textContent.substring(0, 200)}` : ''}`); }); parts.push(''); }
         return parts.join('\n');
     };
 
@@ -231,6 +238,16 @@ export function AIRecommendationModal({
                     if (!await onSaveLocation(loc)) throw new Error(`Failed to save location "${loc.name}".`);
                 }
             }
+            if (parsedOutput.audioTracks) {
+                for (const track of parsedOutput.audioTracks) {
+                    if (!await onSaveAudioTrack(track)) throw new Error(`Failed to save audio track "${track.name}".`);
+                }
+            }
+            if (parsedOutput.promptBlocks) {
+                for (const block of parsedOutput.promptBlocks) {
+                    if (!await onSavePromptBlock(block)) throw new Error(`Failed to save prompt block "${block.name}".`);
+                }
+            }
             if (parsedOutput.profile) {
                 if (!injectCharacterImages) parsedOutput.profile.forceNoCharacterImageInjection = true;
                 if (!injectContextImages) parsedOutput.profile.forceNoContextImageInjection = true;
@@ -248,6 +265,12 @@ export function AIRecommendationModal({
                 for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
                 for (const lo of resolved.locations) if (!await onSaveLocation(lo)) throw new Error(`Failed to save "${lo.name}".`);
+                for (const at of resolved.audioTracks) {
+                    if (!await onSaveAudioTrack(at)) throw new Error(`Failed to save audio track "${at.name}".`);
+                }
+                for (const pb of resolved.promptBlocks) {
+                    if (!await onSavePromptBlock(pb)) throw new Error(`Failed to save prompt block "${pb.name}".`);
+                }
                 if (resolved.profile && !await onSaveProfile(resolved.profile)) throw new Error(`Failed to save "${resolved.profile.name}".`);
                 const world: World = {
                     id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined,
@@ -266,15 +289,19 @@ export function AIRecommendationModal({
     const hasChars = (parsedOutput?.characters?.length ?? 0) > 0;
     const hasCtxs = (parsedOutput?.contexts?.length ?? 0) > 0;
     const hasLocs = (parsedOutput?.locations?.length ?? 0) > 0;
+    const hasTracks = (parsedOutput?.audioTracks?.length ?? 0) > 0;
     const hasProf = !!parsedOutput?.profile;
+    const hasBlocks = (parsedOutput?.promptBlocks?.length ?? 0) > 0;
     const hasWorld = !!parsedOutput?.world;
-    const hasAnyParsed = hasChars || hasCtxs || hasLocs || hasProf || hasWorld;
+    const hasAnyParsed = hasChars || hasCtxs || hasLocs || hasTracks || hasProf || hasBlocks || hasWorld;
     const hasOutput = streamingText.trim().length > 0;
     const availableTabs: ViewTab[] = ['raw'];
     if (hasChars) availableTabs.push('Character');
     if (hasCtxs) availableTabs.push('Context');
     if (hasLocs) availableTabs.push('Location');
+    if (hasTracks) availableTabs.push('AudioTrack');
     if (hasProf) availableTabs.push('Profile');
+    if (hasBlocks) availableTabs.push('PromptBlock');
     if (hasWorld) availableTabs.push('World');
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
     const disabledImageItems = IMAGE_PRIORITY_ITEMS.filter(item => !imageInjectionPriority.includes(item));
@@ -310,7 +337,7 @@ export function AIRecommendationModal({
                             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}><button type="button" className={`editor-btn ${showSchemaPreview ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setShowSchemaPreview(!showSchemaPreview)} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>{showSchemaPreview ? '🔽 Hide JSON Schema' : '📋 Show JSON Schema'}</button></div>
                             {showSchemaPreview && <div style={{ marginTop: '8px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}><span style={{ fontSize: '0.6rem', opacity: 0.6 }}>Copy schema for external AI tools</span><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCopySchema} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>{schemaCopied ? '✅ Copied!' : '📋 Copy'}</button></div><pre style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', fontSize: '0.65rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '300px', overflowY: 'auto', color: 'var(--text-h)', margin: 0 }}>{buildJsonSchema(selectedEntities)}</pre></div>}
                         </div>
-                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /><EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} /></div>
+                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /><EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} /><EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds} onToggle={(id) => toggleInOrderedList(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} /></div>
                         <div className="editor-section"><label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label><textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea" placeholder={selectedEntities.includes('World') ? "e.g., A haunted Victorian mansion with 5 NPCs..." : "Leave empty for free generation..."} rows={3} /></div>
                         <div className="editor-section"><span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span><div className="entity-ref-hint">Upload images as visual reference.</div><div className="editor-image-grid">{referenceImagePreviews.map((p, i) => (<div key={p} className="editor-image-square active"><img src={p} alt={`Ref ${i + 1}`} /><button type="button" onClick={() => handleRemoveReferenceImage(i)} className="editor-image-remove-btn">×</button></div>))}<div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}><div className="context-image-placeholder"><div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div><div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div></div></div></div><input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} /></div>
                         <div className="editor-section"><span className="editor-section-title">Image Injection Priority</span><div className="entity-ref-hint">Drag to reorder. × to disable.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{imageInjectionPriority.map((item, index) => (<div key={item} draggable onDragStart={() => handleDragStart(index)} onDragOver={(e) => handleDragOver(e, index)} onDrop={() => handleDrop(index)} onDragEnd={handleDragEnd} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)', border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'grab', opacity: dragIndex === index ? 0.5 : 1, transition: 'border 0.15s, background 0.15s, opacity 0.15s', userSelect: 'none' }}><span style={{ opacity: 0.3, fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span><span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span><span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span><button type="button" onClick={() => toggleImagePriorityItem(item)} className="context-character-binding-remove" title="Remove">×</button></div>))}</div>{disabledImageItems.length > 0 && <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{disabledImageItems.map(item => (<button key={item} type="button" onClick={() => toggleImagePriorityItem(item)} className="editor-btn editor-btn-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>+ {IMAGE_SHORT_LABELS[item]}</button>))}</div>}</div>
@@ -332,7 +359,9 @@ export function AIRecommendationModal({
                                 {hasChars && <button type="button" className={`editor-btn ${activeTab === 'Character' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Character')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🎭 Characters ({parsedOutput!.characters!.length})</button>}
                                 {hasCtxs && <button type="button" className={`editor-btn ${activeTab === 'Context' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Context')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📜 Contexts ({parsedOutput!.contexts!.length})</button>}
                                 {hasLocs && <button type="button" className={`editor-btn ${activeTab === 'Location' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Location')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📍 Locations ({parsedOutput!.locations!.length})</button>}
+                                {hasTracks && <button type="button" className={`editor-btn ${activeTab === 'AudioTrack' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('AudioTrack')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🔊 Audio Tracks ({parsedOutput!.audioTracks!.length})</button>}
                                 {hasProf && <button type="button" className={`editor-btn ${activeTab === 'Profile' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('Profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {parsedOutput!.profile!.name}</button>}
+                                {hasBlocks && <button type="button" className={`editor-btn ${activeTab === 'PromptBlock' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('PromptBlock')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🧱 Prompt Blocks ({parsedOutput!.promptBlocks!.length})</button>}
                                 {hasWorld && <button type="button" className={`editor-btn ${activeTab === 'World' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('World')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🌍 {parsedOutput!.world!.name}</button>}
                                 <button type="button" className={`editor-btn ${activeTab === 'raw' ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setActiveTab('raw')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📄 Raw JSON</button>
                             </div>}
@@ -369,10 +398,29 @@ export function AIRecommendationModal({
                                 ))}
                             </div>}
 
+                            {effectiveTab === 'AudioTrack' && hasTracks && <div className="entity-field-list">
+                                {parsedOutput!.audioTracks!.map((track, i) => (
+                                    <div key={track.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                        {renderSummary(track.description)}
+                                        {renderFieldList(Object.entries(track).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
+                                        {onOpenAudioTrackEditor && <div style={{ marginTop: '8px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenAudioTrackEditor(track, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
+                                    </div>
+                                ))}
+                            </div>}
+
                             {effectiveTab === 'Profile' && hasProf && <div className="entity-field-list">
                                 {renderSummary(parsedOutput!.profile!.description)}
                                 {renderFieldList(Object.entries(parsedOutput!.profile!).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
                                 {onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenProfileEditor(parsedOutput!.profile!, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
+                            </div>}
+
+                            {effectiveTab === 'PromptBlock' && hasBlocks && <div className="entity-field-list">
+                                {parsedOutput!.promptBlocks!.map((block, i) => (
+                                    <div key={block.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                        {renderSummary(block.description)}
+                                        {renderFieldList(Object.entries(block).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
+                                    </div>
+                                ))}
                             </div>}
 
                             {effectiveTab === 'World' && hasWorld && <div className="entity-field-list">
@@ -382,11 +430,13 @@ export function AIRecommendationModal({
                                 {(parsedOutput!.world!.contexts.length) > 0 && <div className="entity-field-block"><div className="entity-field-title">Contexts ({parsedOutput!.world!.contexts.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.contexts.map((c, i) => <div key={c.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📜 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>}
                                 {(parsedOutput!.world!.locations.length) > 0 && <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput!.world!.locations.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.locations.map((l, i) => <div key={l.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>}
                                 {(parsedOutput!.world!.audioTracks?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Audio Tracks ({parsedOutput!.world!.audioTracks!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.audioTracks!.map((t, i) => <div key={t.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🔊 {t.name}</div>{t.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{t.description.length > 150 ? t.description.substring(0, 150) + '...' : t.description}</div>}<div style={{ opacity: 0.5, fontSize: '0.6rem', marginTop: '1px' }}>{t.audioCategory || 'ambient'} • {t.filename}</div></div>)}</div></div>}
+                                {(parsedOutput!.world!.promptBlocks?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Prompt Blocks ({parsedOutput!.world!.promptBlocks!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.promptBlocks!.map((b, i) => <div key={b.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🧱 {b.name}</div>{b.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{b.description.length > 150 ? b.description.substring(0, 150) + '...' : b.description}</div>}</div>)}</div></div>}
                                 {parsedOutput!.world!.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {parsedOutput!.world!.profile.name}</div>{parsedOutput!.world!.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{parsedOutput!.world!.profile.description.length > 150 ? parsedOutput!.world!.profile.description.substring(0, 150) + '...' : parsedOutput!.world!.profile.description}</div>}</div></div>}
                                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {onOpenCharacterEditor && parsedOutput!.world!.characters.map((c, i) => <button key={c.id || `wc-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenCharacterEditor(c, () => {})} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}
                                     {onOpenContextEditor && parsedOutput!.world!.contexts.map((c, i) => <button key={c.id || `wx-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenContextEditor(c, () => {})} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}
                                     {onOpenLocationEditor && parsedOutput!.world!.locations.map((l, i) => <button key={l.id || `wl-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenLocationEditor(l, () => {})} style={worldEditBtnStyle}>✏️ Edit 📍 {l.name}</button>)}
+                                    {onOpenAudioTrackEditor && parsedOutput!.world!.audioTracks?.map((t, i) => <button key={t.id || `wt-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenAudioTrackEditor(t, () => {})} style={worldEditBtnStyle}>✏️ Edit 🔊 {t.name}</button>)}
                                     {onOpenProfileEditor && parsedOutput!.world!.profile && <button type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenProfileEditor(parsedOutput!.world!.profile!, () => {})} style={worldEditBtnStyle}>✏️ Edit 👤 {parsedOutput!.world!.profile.name}</button>}
                                 </div>
                             </div>}

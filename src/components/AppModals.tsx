@@ -63,7 +63,7 @@ interface AppModalsProps {
     locationModal: EntityModalState<Location>;
     audioTrackModal: EntityModalState<AudioTrack>;
     samplerModal: EntityModalState<Sampler>;
-    stopPatternModal: EntityModalState<StopPattern>;
+    stopModal: EntityModalState<StopPattern>;
     modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
@@ -87,6 +87,7 @@ interface AppModalsProps {
     onToggleAudioTrack: (id: string) => void;
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
+    onDeleteSampler: (id: string) => void;
     onDeleteStopPattern: (id: string) => void;
     onDeleteBudgetStrategy: (id: string) => void;
     onActivateBudgetStrategy: (id: string) => void;
@@ -117,13 +118,13 @@ export function AppModals({
     modals, allChats, allCharacters, allContexts, allLocations, allAudioTracks, allSamplers,
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
     allPromptBlocks, runningModels,
-    charModal, contextModal, locationModal, audioTrackModal, samplerModal, stopPatternModal, modelModal,
+    charModal, contextModal, locationModal, audioTrackModal, samplerModal, stopModal, modelModal,
     budgetModal, profileModal, worldModal, promptBlockModal,
     onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
     onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
     onDeleteModel, onToggleModelLoad,
-    onDeleteStopPattern,
+    onDeleteSampler, onDeleteStopPattern,
     onDeleteBudgetStrategy, onActivateBudgetStrategy, onDeleteProfile, onActivateProfile,
     onDeleteExtension, onToggleExtension, onUpdateInteractionData,
     onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
@@ -329,7 +330,7 @@ export function AppModals({
                     isOpen={modals.samplerList.isOpen}
                     onClose={modals.samplerList.close}
                     onSelect={(s: Sampler) => samplerModal.open(s)}
-                    onDelete={samplerModal.handleDelete}
+                    onDelete={onDeleteSampler}
                     onCreateNew={() => samplerModal.open()}
                     renderSubtext={(s: Sampler) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`}
                     emptyMessage="No samplers found."
@@ -360,9 +361,9 @@ export function AppModals({
                     items={allStopPatterns}
                     isOpen={modals.stopList.isOpen}
                     onClose={modals.stopList.close}
-                    onSelect={(s: StopPattern) => stopPatternModal.open(s)}
+                    onSelect={(s: StopPattern) => stopModal.open(s)}
                     onDelete={onDeleteStopPattern}
-                    onCreateNew={() => stopPatternModal.open()}
+                    onCreateNew={() => stopModal.open()}
                     renderSubtext={(s: StopPattern) => (
                         <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>
                             {s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}
@@ -485,6 +486,7 @@ export function AppModals({
                     onSaveLocation={async (l: Location) => { onSaveLocation(l); return true; }}
                     onSaveProfile={async (p: Profile) => { onSaveProfile(p); return true; }}
                     onSaveWorld={async (w: World) => { onSaveWorld(w); return true; }}
+                    onSavePromptBlock={async (b: PromptBlock) => { promptBlockModal.handleSave(b); return true; }}
                     onOpenCharacterEditor={(char, onApplyToRecommendation) => {
                         setAiCharacterSaveRedirect(() => onApplyToRecommendation);
                         charModal.open(char ?? undefined);
@@ -506,6 +508,7 @@ export function AppModals({
                     allContexts={allContexts}
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
+                    allPromptBlocks={allPromptBlocks}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
                     runningModels={runningModels}
                 />
@@ -702,12 +705,12 @@ export function AppModals({
             )}
 
             {/* Stop Pattern Editor */}
-            {stopPatternModal.isOpen && (
+            {stopModal.isOpen && (
                 <StopPatternEditorModal
-                    isOpen={stopPatternModal.isOpen}
-                    onClose={stopPatternModal.close}
-                    onSave={stopPatternModal.handleSave}
-                    existingStopPattern={stopPatternModal.itemToEdit}
+                    isOpen={stopModal.isOpen}
+                    onClose={stopModal.close}
+                    onSave={stopModal.handleSave}
+                    existingStopPattern={stopModal.itemToEdit}
                 />
             )}
 
