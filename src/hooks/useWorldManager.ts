@@ -30,7 +30,7 @@ export function useWorldManager() {
         const now = Date.now();
         const world: World = {
             id: uuidv4(), name, description: '',
-            characterIds: [], contextIds: [], locationIds: [],
+            characterIds: [], contextIds: [], locationIds: [], audioTrackIds: [],
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
         return await saveWorld(world) ? world : null;
@@ -38,13 +38,14 @@ export function useWorldManager() {
 
     const snapshotFromChat = useCallback(async (
         name: string, characterIds: string[], contextIds: string[],
-        locationIds: string[], profileId?: string,
+        locationIds: string[], profileId?: string, audioTrackIds?: string[],
     ): Promise<World | null> => {
         const now = Date.now();
         const world: World = {
             id: uuidv4(), name, description: 'Snapshot from chat',
             characterIds: [...characterIds], contextIds: [...contextIds],
-            locationIds: [...locationIds], profileId,
+            locationIds: [...locationIds], audioTrackIds: audioTrackIds ? [...audioTrackIds] : [],
+            profileId,
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
         return await saveWorld(world) ? world : null;
