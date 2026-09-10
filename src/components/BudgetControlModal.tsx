@@ -7,7 +7,6 @@ import './main.css';
 interface BudgetControlModalProps {
     isOpen: boolean;
     onClose: () => void;
-    allBudgetStrategies: BudgetStrategy[];
     activeStrategy?: BudgetStrategy | null;
 }
 
@@ -95,7 +94,6 @@ interface ModelRow {
 export function BudgetControlModal({
     isOpen,
     onClose,
-    allBudgetStrategies,
     activeStrategy,
 }: BudgetControlModalProps) {
     const {

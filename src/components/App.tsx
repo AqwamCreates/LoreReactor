@@ -1,6 +1,5 @@
 // src/App.tsx
-import type React from 'react';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
@@ -440,6 +439,7 @@ function App() {
     const lastCountedMessageIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
+        // Cancel any pending calculation
         if (tokenCountTimerRef.current) {
             clearTimeout(tokenCountTimerRef.current);
             tokenCountTimerRef.current = null;
@@ -449,19 +449,14 @@ function App() {
             tokenCountAbortRef.current = null;
         }
 
-        if (InteractionMessages.length === 0 || !interactionData?.participants) {
-            setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
-            lastCountedMessageIdsRef.current.clear();
-            return;
-        }
-
-        if (activeStrategy) {
-            setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
-            lastCountedMessageIdsRef.current.clear();
-            return;
-        }
-
+        // All setState calls deferred into setTimeout to avoid sync setState in effect body
         tokenCountTimerRef.current = setTimeout(async () => {
+            if (InteractionMessages.length === 0 || !interactionData?.participants || activeStrategy) {
+                setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
+                lastCountedMessageIdsRef.current.clear();
+                return;
+            }
+
             const abort = new AbortController();
             tokenCountAbortRef.current = abort;
 
@@ -537,13 +532,7 @@ function App() {
                 tokenCountAbortRef.current = null;
             }
         };
-    }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
-
-    // Reset token counting state when switching chats
-    useEffect(() => {
-        lastCountedMessageIdsRef.current.clear();
-        setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
-    }, [interactionData?.id]);
+    }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, interactionData?.id, selectedModelId, allModels, runningModels, activeStrategy]);
 
     // ─── Callbacks ───────────────────────────────────────────────────
     const fileInputRef = useRef<HTMLInputElement>(null);

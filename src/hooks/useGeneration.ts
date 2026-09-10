@@ -1,5 +1,5 @@
 // src/hooks/useGeneration.ts
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { useSessionStore } from '../store/useSessionStore';
 import { GenerationOrchestrator, type TurnStreamCallbacks } from '../services/GenerationOrchestrator';

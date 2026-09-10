@@ -85,6 +85,7 @@ interface GeneratedLocation {
     name: string;
     description?: string;
     text?: string;
+    images?: string[];
     regularExpressionActivationTrigger?: string;
     locationBindings?: string[];
     locationBindingRegularExpressionTriggers?: Record<string, string>;
@@ -226,6 +227,7 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
         parts.push(`  "location": {
     "name": "string (required)", "description": "string (display only, NOT used as AI input)",
     "text": "string (required)",
+    "images": ["string array (image filenames for location visuals)"],
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "locationBindings": ["location name or ID strings"],
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
@@ -375,6 +377,7 @@ function generatedLocationToEntity(l: GeneratedLocation): Location {
     return {
         id: uuidv4(), name: l.name, description: l.description || undefined,
         text: l.text || '',
+        images: l.images || [],
         regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined,
         locationBindings: l.locationBindings || [],
         locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers || undefined,
@@ -387,6 +390,7 @@ function generatedLocationToEntity(l: GeneratedLocation): Location {
 function locationEntityToGenerated(l: Location): GeneratedLocation {
     return {
         name: l.name, description: l.description, text: l.text,
+        images: l.images,
         regularExpressionActivationTrigger: l.regularExpressionActivationTrigger,
         locationBindings: l.locationBindings,
         locationBindingRegularExpressionTriggers: l.locationBindingRegularExpressionTriggers,
@@ -464,7 +468,7 @@ function profileEntityToGenerated(p: Profile): GeneratedProfile {
     };
 }
 
-function resolveWorldCrossReferences(world: GeneratedWorldDefinition): { characters: Character[]; contexts: Context[]; locations: Location[]; profile?: Profile } {
+function resolveWorldCrossReferences(world: GeneratedWorldDefinition, injectLocationImages: boolean): { characters: Character[]; contexts: Context[]; locations: Location[]; profile?: Profile } {
     const now = Date.now();
     const charNameToId = new Map<string, string>();
     const characters: Character[] = world.characters.map(c => {
@@ -484,7 +488,7 @@ function resolveWorldCrossReferences(world: GeneratedWorldDefinition): { charact
         const rcb = (l.characterBindings || []).map(resolveCharRef).filter((id): id is string => !!id);
         const rcw: Record<string, number> = {};
         if (l.characterWeights) for (const [ref, w] of Object.entries(l.characterWeights)) { const rid = resolveCharRef(ref); if (rid) rcw[rid] = w; }
-        return { id, name: l.name, description: l.description || undefined, text: l.text || '', regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+        return { id, name: l.name, description: l.description || undefined, text: l.text || '', images: injectLocationImages ? (l.images || []) : [], regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
     });
     let profile: Profile | undefined;
     if (world.profile) profile = buildProfileFromGenerated(world.profile);
@@ -758,10 +762,10 @@ export function AIRecommendationModal({
         try {
             if (parsedOutput.character) { const c = parsedOutput.character; const char = generatedCharacterToEntity(c, allSamplers); char.doNotInjectCharacterImage = !injectCharacterImages; if (!await onSaveCharacter(char)) throw new Error('Failed to save character.'); }
             if (parsedOutput.context) { const ctx = generatedContextToEntity(parsedOutput.context); if (!injectContextImages) ctx.includeLinkImages = false; if (!await onSaveContext(ctx)) throw new Error('Failed to save context.'); }
-            if (parsedOutput.location) { const loc = generatedLocationToEntity(parsedOutput.location); if (!await onSaveLocation(loc)) throw new Error('Failed to save location.'); }
+            if (parsedOutput.location) { const loc = generatedLocationToEntity(parsedOutput.location); if (!injectLocationImages) loc.images = []; if (!await onSaveLocation(loc)) throw new Error('Failed to save location.'); }
             if (parsedOutput.profile) { const p = buildProfileFromGenerated(parsedOutput.profile); p.forceNoCharacterImageInjection = !injectCharacterImages; p.forceNoContextImageInjection = !injectContextImages; if (!await onSaveProfile(p)) throw new Error('Failed to save profile.'); }
             if (parsedOutput.world) {
-                const resolved = resolveWorldCrossReferences(parsedOutput.world);
+                const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages);
                 if (!injectCharacterImages) resolved.characters.forEach(c => { c.doNotInjectCharacterImage = true; });
                 if (resolved.profile) { resolved.profile.forceNoCharacterImageInjection = !injectCharacterImages; resolved.profile.forceNoContextImageInjection = !injectContextImages; }
                 for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);

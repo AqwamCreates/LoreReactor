@@ -61,7 +61,7 @@ export function useMemoryTrigger() {
 
             if (relevantMessages.length === 0) continue;
 
-            const summaryContext = await makeCharacterMemory(data, character, lmCtx, 512, strat, running);
+            const summaryContext = await makeCharacterMemory(data, character, 512);
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
@@ -77,7 +77,7 @@ export function useMemoryTrigger() {
             character.memories[other.id] = [newMemory];
         }
 
-        const globalSummaryContext = await makeCharacterMemory(data, character, lmCtx, 512, strat, running);
+        const globalSummaryContext = await makeCharacterMemory(data, character, 512);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),

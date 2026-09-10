@@ -491,7 +491,6 @@ export function AppModals({
                 <BudgetControlModal
                     isOpen={modals.budgetControl.isOpen}
                     onClose={modals.budgetControl.close}
-                    allBudgetStrategies={allBudgetStrategies}
                     activeStrategy={activeStrategy}
                 />
             )}
