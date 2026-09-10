@@ -104,7 +104,7 @@ function ProfileCheckbox({
 // ─── Main Component ──────────────────────────────────────────────────
 
 export function ProfileEditorModal({
-    isOpen, onClose, onSave, existingProfile, allPromptBlocks = [],
+    isOpen, onClose, onSave, existingProfile,
 }: ProfileEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');

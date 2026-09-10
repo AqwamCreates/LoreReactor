@@ -31,6 +31,15 @@ export class AudioEngine {
         return this.ctx;
     }
 
+    /**
+     * Initialize or resume the audio context.
+     * Call this on a user gesture (click/tap) to satisfy browser autoplay policies
+     * before any audio playback is expected.
+     */
+    initialize(): void {
+        this.ensureContext();
+    }
+
     setGlobalVolume(volume: number): void {
         this.globalVolumeOverride = volume;
         for (const state of this.activeTracks.values()) {
@@ -75,8 +84,7 @@ export class AudioEngine {
 
         const ctx = this.ensureContext();
         const gainNode = ctx.createGain();
-        const masterGain = this.ensureContext().createGain() || this.masterGain;
-        gainNode.connect(masterGain);
+        gainNode.connect(this.masterGain!);
         gainNode.gain.value = 0; // Start silent for fade-in
 
         const state: ActiveTrackState = {
@@ -239,7 +247,6 @@ export class AudioEngine {
     }
 
     private getCurrentLocationId(interactionData: InteractionData): string | undefined {
-        // Find the most recent interaction message with a locationIndex
         const history = interactionData.interactionHistory;
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
@@ -274,7 +281,6 @@ export class AudioEngine {
             if (Math.abs(diff) < 0.001) {
                 state.gainNode.gain.value = target;
             } else {
-                // Smooth approach: move 10% of the remaining distance per tick (~60fps)
                 state.gainNode.gain.value = current + diff * 0.1;
             }
         }

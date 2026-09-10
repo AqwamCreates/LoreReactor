@@ -12,7 +12,7 @@ function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, characte
     const characterValue = character[key] as boolean;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
     if (profileValue === undefined || profileValue === 0) return characterValue;
-    if (profileValue < 0) return false
+    if (profileValue < 0) return false;
     return true;
 }
 
@@ -21,9 +21,7 @@ export function getEffectiveChatProbability(character: Character, profile?: Prof
 }
 
 export function getEffectiveMaximumChatStamina(character: Character, profile?: Profile): number {
-    const profileValue = profile?.maximumChatStamina;
-    if (profileValue === undefined || profileValue === -1) return character.maximumChatStamina ?? Number.POSITIVE_INFINITY;
-    return profileValue;
+    return getEffectiveNumeric("maximumChatStamina", character, profile);
 }
 
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
@@ -32,33 +30,35 @@ export function getEffectiveInitiativeWeight(character: Character, profile?: Pro
 }
 
 export function getEffectiveNameSensitivity(character: Character, profile?: Profile): number {
-    const profileValue = profile?.nameSensitivity;
-    if (profileValue === undefined || profileValue === -1) return character.nameSensitivity ?? 1;
-    return profileValue;
+    return getEffectiveNumeric("nameSensitivity", character, profile);
 }
 
 export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: Profile): number {
-    const profileValue = profile?.chatImpatienceSensitivity;
-    if (profileValue !== undefined && profileValue !== -1) return profileValue;
-    return character.chatImpatienceSensitivity ?? 0;
+    return getEffectiveNumeric("chatImpatienceSensitivity", character, profile);
 }
 
 export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
-    const profileValue = profile?.skipProbability;
-    if (profileValue === undefined || profileValue === -1) return character.skipProbability ?? 0;
-    return profileValue;
+    return getEffectiveNumeric("skipProbability", character, profile);
 }
 
 export function getEffectiveMemoryRetentionWeight(character: Character, profile?: Profile): number {
-    const profileValue = profile?.memoryRetentionWeight;
-    if (profileValue === undefined || profileValue === -1) return character.memoryRetentionWeight ?? 1;
-    return profileValue;
+    return getEffectiveNumeric("memoryRetentionWeight", character, profile);
 }
 
 export function getEffectiveContextSensitivity(character: Character, profile?: Profile): number {
-    const profileValue = profile?.contextSensitivity;
-    if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
-    return profileValue;
+    return getEffectiveNumeric("contextSensitivity", character, profile);
+}
+
+export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("numberOfMessagesToDisableThinkPrompt", character, profile);
+}
+
+export function getEffectiveMessagesToDisableMetaThinkInstructions(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("numberOfMessagesToDisableMetaThinkInstructions", character, profile);
+}
+
+export function getEffectiveMessagesToDisableDialoguePrompt(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("numberOfMessagesToDisableDialoguePrompt", character, profile);
 }
 
 export function getEffectiveEnableMemoryWriting(character: Character, profile?: Profile): boolean {

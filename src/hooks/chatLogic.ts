@@ -1,11 +1,11 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl } from './storage';
-import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch } from './characterLogic';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getPromptBlockImageUrl } from './storage';
+import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
 import { fetchCurrentWeather } from '../services/WeatherService';
 import { getCurrentLocation } from './locationLogic';
@@ -16,7 +16,7 @@ const topicExpansionInstructions = "If the conversation becomes stagnant or repe
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
 const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
-const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure that the existing texts satisfies the prompts.";
+const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating new text to ensure the existing texts satisfies the prompts.";
 const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns.";
@@ -36,7 +36,7 @@ const startOfContextLine = `${contextStartString}Start Of The Context.${contextE
 const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
 
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
-const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${thinkEndString}${contextEndString}`
+const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${thinkEndString}${contextEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
 const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
@@ -166,62 +166,61 @@ function filterArrayBasedOnTarget(
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
-function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier = 1): boolean {
-    const regexTrigger = context.regularExpressionActivationTrigger;
-    if (!regexTrigger) return true;
+function doesRegexMatch(regexString: string | undefined, searchSpace: string, sensitivityMultiplier = 1): boolean {
+    if (!regexString) return true;
     try {
-        const regex = new RegExp(regexTrigger);
+        const regex = new RegExp(regexString);
         const matched = regex.test(searchSpace);
         if (!matched) return false;
         if (sensitivityMultiplier >= 1) return true;
         return Math.random() < sensitivityMultiplier;
     } catch (e) {
-        console.warn(`Invalid activation regex in context ${context.name}`, e);
+        console.warn(`Invalid regex: ${regexString}`, e);
         return false;
     }
+}
+
+function doesRegexDeactivate(regexString: string | undefined, activationRegex: string | undefined, searchSpace: string): boolean {
+    if (!activationRegex) return false;
+    if (!regexString) return false;
+    try {
+        const regex = new RegExp(regexString);
+        return regex.test(searchSpace);
+    } catch (e) {
+        console.warn(`Invalid deactivation regex: ${regexString}`, e);
+        return false;
+    }
+}
+
+function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier = 1): boolean {
+    return doesRegexMatch(context.regularExpressionActivationTrigger, searchSpace, sensitivityMultiplier);
 }
 
 function doesContextDeactivate(context: Context, searchSpace: string): boolean {
-    if (!context.regularExpressionActivationTrigger) return false;
-    const deactivationTrigger = context.regularExpressionDeactivationTrigger;
-    if (!deactivationTrigger) return false;
-    try {
-        const regex = new RegExp(deactivationTrigger);
-        return regex.test(searchSpace);
-    } catch (e) {
-        console.warn(`Invalid deactivation regex in context ${context.name}`, e);
-        return false;
-    }
+    return doesRegexDeactivate(context.regularExpressionDeactivationTrigger, context.regularExpressionActivationTrigger, searchSpace);
 }
 
 function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): boolean {
-    const regexTrigger = stopPattern.regularExpressionActivationTrigger;
-    if (!regexTrigger) return true;
-    try {
-        const regex = new RegExp(regexTrigger);
-        return regex.test(searchSpace);
-    } catch (e) {
-        console.warn(`Invalid activation regex in stop pattern ${stopPattern.name}`, e);
-        return false;
-    }
+    return doesRegexMatch(stopPattern.regularExpressionActivationTrigger, searchSpace);
 }
 
 function doesStopPatternDeactivate(stopPattern: StopPattern, searchSpace: string): boolean {
-    if (!stopPattern.regularExpressionActivationTrigger) return false;
-    const deactivationTrigger = stopPattern.regularExpressionDeactivationTrigger;
-    if (!deactivationTrigger) return false;
-    try {
-        const regex = new RegExp(deactivationTrigger);
-        return regex.test(searchSpace);
-    } catch (e) {
-        console.warn(`Invalid deactivation regex in stop pattern ${stopPattern.name}`, e);
-        return false;
-    }
+    return doesRegexDeactivate(stopPattern.regularExpressionDeactivationTrigger, stopPattern.regularExpressionActivationTrigger, searchSpace);
 }
 
 function isCharacterBound(context: Context, currentCharacterId: string): boolean {
     if (!context.characterBindings || context.characterBindings.length === 0) return true;
     return context.characterBindings.includes(currentCharacterId);
+}
+
+function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: string): boolean {
+    if (!block.characterBindings || block.characterBindings.length === 0) return true;
+    return block.characterBindings.includes(currentCharacterId);
+}
+
+/** Check if a string is a built-in PromptBlockType vs a custom block UUID */
+function isBuiltInBlockType(value: string): value is PromptBlockType {
+    return (DEFAULT_INPUT_STRATEGY as string[]).includes(value) || value === 'Tool Instructions';
 }
 
 const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -383,6 +382,7 @@ interface BuildResult {
     activeStopPatterns: StopPattern[];
     activeContextsForImages: Context[];
     activeLocationImages: string[];
+    activePromptBlockImages: string[];
     fetchErrors: string[];
 }
 
@@ -486,7 +486,6 @@ export function createChatHistoryPrompt(
         ? locations[currentLocationIndex]
         : undefined;
 
-    // Build set of characters who have directly interacted with the target character recently
     const RECENT_INTERACTION_WINDOW = 20;
     const recentInteractors = new Set<string>();
     const recentSlice = chatMessagesOnly.slice(-RECENT_INTERACTION_WINDOW);
@@ -508,36 +507,21 @@ export function createChatHistoryPrompt(
     const hasLocationData = !!locations && locations.length > 0 && currentLocationIndex !== undefined;
 
     const outputMessages = processedMessages.filter((p) => {
-        // Always keep protagonist messages
         if (p.msg.character.id === protagonist.id) return true;
-
-        // Always keep the target character's own messages
         if (p.msg.character.id === character.id) return true;
-
-        // Keep if character recently interacted with target
         if (recentInteractors.has(p.msg.character.id)) return true;
-
-        // Keep if character is at the same location
         if (hasLocationData) {
             const charLocationIndex = p.msg.locationIndex;
-            if (charLocationIndex !== undefined && charLocationIndex === currentLocationIndex) {
-                return true;
-            }
-            // If the message has no location data, keep it
+            if (charLocationIndex !== undefined && charLocationIndex === currentLocationIndex) return true;
             if (charLocationIndex === undefined) return true;
         }
-
-        // No location data available — don't filter
         if (!hasLocationData) return true;
-
         return false;
     });
 
-    // ─── Build prompt ────────────────────────────────────────────────
     const chatHistoryLines: string[] = [];
     chatHistoryLines.push(startOfChatHistoryLine);
 
-    // Location indicator
     if (currentLocation) {
         chatHistoryLines.push(`${turnStartString}[Scene: ${currentLocation.name}]${turnEndString}`);
     }
@@ -575,7 +559,18 @@ export function createChatHistoryPrompt(
     return { chatHistoryPrompt, hasBeenSummarized };
 }
 
-export async function buildPromptAndStopPatterns(interactionData: InteractionData, character: Character, existingCharacterText: string, runtimePort?: number): Promise<BuildResult> {
+const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
+    if (profileValue === undefined || profileValue === -1) return characterValue;
+    return profileValue;
+};
+
+export async function buildPromptAndStopPatterns(
+    interactionData: InteractionData,
+    character: Character,
+    existingCharacterText: string,
+    allPromptBlocks: PromptBlock[],
+    runtimePort?: number
+): Promise<BuildResult> {
     const interactionHistory = interactionData.interactionHistory;
     const contexts = interactionData.contexts || [];
     const sampler = character.sampler;
@@ -597,14 +592,14 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     let thinkPrompt = character.thinkPrompt;
 
     const profile = interactionData.Profile;
-    const useCurrentDateAndTime = profile?.useCurrentDateAndTime
-    const useWeather = profile?.useWeather
-    const useTimeElapsed = profile?.useTimeElapsed
+    const useCurrentDateAndTime = profile?.useCurrentDateAndTime;
+    const useWeather = profile?.useWeather;
+    const useTimeElapsed = profile?.useTimeElapsed;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
-    const enableWebSearch = getEffectiveEnableWebSearch(character, profile)
-    const enableCalculator = getEffectiveEnableCalculator(character, profile)
-    const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile)
+    const enableWebSearch = getEffectiveEnableWebSearch(character, profile);
+    const enableCalculator = getEffectiveEnableCalculator(character, profile);
+    const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile);
     const enableMemoryWriting = getEffectiveEnableMemoryWriting(character, profile);
 
     const effectiveContextSensitivity = (() => {
@@ -613,7 +608,6 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         return profileValue;
     })();
 
-    // Only include chat messages (with text) in prompt search space
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
 
@@ -626,7 +620,6 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    // Count only chat messages for prompt disable thresholds
     const numberOfMessagesByParticipant = interactionHistory.filter(
         msg => msg.character.id === characterId && msg.kind === 'chat'
     ).length;
@@ -742,6 +735,12 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
+    // Collect active context IDs for prompt block binding resolution
+    const activeContextIds = new Set<string>();
+    for (const { context } of resolvedContexts) {
+        activeContextIds.add(context.id);
+    }
+
     for (const { context, formattedLine } of resolvedContexts) {
         let line: string;
 
@@ -852,7 +851,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
     const locationLines: string[] = [];
     const activeLocationImages: string[] = [];
 
-    const location = getCurrentLocation(interactionData, character)
+    const location = getCurrentLocation(interactionData, character);
+    const currentLocationId = location?.id;
 
     if (location) {
         locationLines.push(startOfLocationLine);
@@ -862,7 +862,7 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
         let locationContent = `${contextStartString}Current Location: ${locationName}`;
 
-        if (locationText) locationContent += `\n\n${locationText}`
+        if (locationText) locationContent += `\n\n${locationText}`;
         locationContent += `${contextEndString}`;
         locationLines.push(locationContent);
         if (location.images && location.images.length > 0) {
@@ -889,21 +889,16 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         dateAndTimeLines.push(`${contextStartString}${thinkStartString}Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
     }
 
-    const weatherLines: string[] = []
+    const weatherLines: string[] = [];
 
     if (useWeather) {
-
-        const weatherLine = await fetchCurrentWeather(profile?.weatherApiKey)
-
+        const weatherLine = await fetchCurrentWeather(profile?.weatherApiKey);
         if (weatherLine) {
-
             weatherLines.push(`${contextStartString}${thinkStartString}${weatherLine}${thinkEndString}${contextEndString}`);
-
         }
-
     }
 
-    const timeElapsedLines: string[] = []
+    const timeElapsedLines: string[] = [];
 
     if (useTimeElapsed && interactionHistory.length > 0) {
         const now = Date.now();
@@ -965,8 +960,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         }
     }
 
-    const toolInstructions: string[] = []
-    const enableTools = enableWebSearch || enableCalculator
+    const toolInstructions: string[] = [];
+    const enableTools = enableWebSearch || enableCalculator;
 
     if (enableTools) {
         toolInstructions.push(`${contextStartString}${thinkStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
@@ -1008,14 +1003,9 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         'Text Injection': textInjectionLines,
     };
 
-    const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
-        if (profileValue === undefined || profileValue === -1) return characterValue;
-        return profileValue;
-    };
-
-    const numberOfMessagesToDisableThinkPrompt = resolveDisablePrompt(profile?.numberOfMessagesToDisableThinkPrompt, character.numberOfMessagesToDisableThinkPrompt);
-    const numberOfMessagesToDisableMetaThinkInstructions = resolveDisablePrompt(profile?.numberOfMessagesToDisableMetaThinkInstructions, character.numberOfMessagesToDisableMetaThinkInstructions);
-    const numberOfMessagesToDisableDialoguePrompt = resolveDisablePrompt(profile?.numberOfMessagesToDisableDialoguePrompt, character.numberOfMessagesToDisableDialoguePrompt);
+    const numberOfMessagesToDisableThinkPrompt = getEffectiveMessagesToDisableThinkPrompt(character, profile);
+    const numberOfMessagesToDisableMetaThinkInstructions = getEffectiveMessagesToDisableMetaThinkInstructions(character, profile);
+    const numberOfMessagesToDisableDialoguePrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
         blockMap['Think Prompt'] = undefined;
@@ -1029,19 +1019,86 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
         blockMap['Dialogue Prompt'] = undefined;
     }
 
-    const promptLines: string[] = [];
-    const usedTypes = new Set<string>();
-
-    for (const blockType of inputStrategy) {
-        const lines = blockMap[blockType];
-        if (lines && lines.length > 0) {
-            promptLines.push(...lines);
-        }
-        usedTypes.add(blockType);
+    // Build a lookup map for prompt blocks by ID for O(1) access during assembly
+    const promptBlockById = new Map<string, PromptBlock>();
+    for (const pb of allPromptBlocks) {
+        promptBlockById.set(pb.id, pb);
     }
 
+    // Collect active prompt block images (independent of strategy position)
+    const activePromptBlockImages: string[] = [];
+    for (const block of allPromptBlocks) {
+        if (!isPromptBlockCharacterBound(block, characterId)) continue;
+        if (block.contextBindings && block.contextBindings.length > 0) {
+            if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
+        }
+        if (block.locationBindings && block.locationBindings.length > 0) {
+            if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
+        }
+        if (block.regularExpressionActivationTrigger) {
+            if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+            if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+        }
+        if (block.images && block.images.length > 0) {
+            activePromptBlockImages.push(...block.images);
+        }
+    }
+
+    // Assemble prompt following inputStrategy order exactly.
+    // Each entry is either a built-in PromptBlockType string or a custom
+    // prompt block UUID string. Each custom block UUID resolves individually
+    // at whatever position it appears — they are NOT grouped together and
+    // do NOT need to be adjacent to each other.
+    const promptLines: string[] = [];
+    const usedBuiltInTypes = new Set<string>();
+
+    for (const entry of inputStrategy) {
+        if (isBuiltInBlockType(entry)) {
+            const lines = blockMap[entry];
+            if (lines && lines.length > 0) {
+                promptLines.push(...lines);
+            }
+            usedBuiltInTypes.add(entry);
+        } else {
+            // Entry is a custom prompt block UUID — resolve this specific block
+            const block = promptBlockById.get(entry);
+            if (!block) continue;
+            if (!block.textContent || !block.textContent.trim()) continue;
+
+            // Character binding check
+            if (!isPromptBlockCharacterBound(block, characterId)) continue;
+
+            // Context binding check
+            if (block.contextBindings && block.contextBindings.length > 0) {
+                if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
+            }
+
+            // Location binding check
+            if (block.locationBindings && block.locationBindings.length > 0) {
+                if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
+            }
+
+            // Regex activation/deactivation check
+            if (block.regularExpressionActivationTrigger) {
+                if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+                if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+            }
+
+            const replacedText = replacePlaceholders(
+                block.textContent,
+                characterParticipantTag,
+                characterName,
+                protagonistParticipantTag,
+                contextProtagonistName,
+            );
+
+            promptLines.push(`${contextStartString}${replacedText}${contextEndString}`);
+        }
+    }
+
+    // Fallback: append any built-in types not covered by the strategy
     for (const blockType of DEFAULT_INPUT_STRATEGY) {
-        if (!usedTypes.has(blockType)) {
+        if (!usedBuiltInTypes.has(blockType)) {
             const lines = blockMap[blockType];
             if (lines && lines.length > 0) {
                 promptLines.push(...lines);
@@ -1051,19 +1108,20 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
 
     const prompt = promptLines.join('\n');
 
-    return { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors };
+    return { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors };
 }
 
 export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
     existingCharacterText: string,
+    allPromptBlocks: PromptBlock[],
     protagonistFileBase64s?: string[],
     runtimePort?: number
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -1096,7 +1154,6 @@ export async function prepareRequestBody(
 
         let isCharacterImageInjected = false;
 
-        // Character image — use current expression with fallback to neutral
         if (!character.doNotInjectCharacterImage) {
             const characterMessage = findPreviousInteractionMessage(interactionData, character.id);
             const characterExpression = characterMessage?.characterExpression;
@@ -1114,7 +1171,6 @@ export async function prepareRequestBody(
             }
         }
 
-        // Protagonist image — use expression from last message with fallback to neutral
         const protagonist = interactionData.protagonist;
         if (protagonist && !protagonist.doNotInjectCharacterImage) {
             const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id);
@@ -1137,7 +1193,6 @@ export async function prepareRequestBody(
             }
         }
 
-        // Protagonist attached files from current turn
         if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
             for (let i = 0; i < protagonistFileBase64s.length; i++) {
                 const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
@@ -1173,7 +1228,6 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedImages);
     }
 
-    // Location images
     if (!profile?.forceNoContextImageInjection && activeLocationImages.length > 0) {
         const locationImagePromises = activeLocationImages.map(async (filename) => {
             try {
@@ -1197,7 +1251,30 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedLocationImages);
     }
 
-    // Protagonist attached files from the latest stored user message
+    if (!profile?.forceNoContextImageInjection && activePromptBlockImages.length > 0) {
+        const promptBlockImagePromises = activePromptBlockImages.map(async (filename) => {
+            try {
+                const imageUrl = getPromptBlockImageUrl(filename);
+                if (!imageUrl) return null;
+                const response = await fetch(imageUrl);
+                if (!response.ok) return null;
+                const blob = await response.blob();
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                });
+                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                return { data: rawData, id: imageIdCounter++ };
+            } catch (e) {
+                console.warn(`Failed to load prompt block image ${filename}`, e);
+                return null;
+            }
+        });
+        const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
+        filesBase64.push(...resolvedPromptBlockImages);
+    }
+
     const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
         (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.kind === 'chat'
     );
@@ -1266,9 +1343,6 @@ export function createNewInteractionData(character: Character): InteractionData 
     };
 }
 
-/**
- * Create a silent InteractionMessage (no text) for location/state tracking.
- */
 export function createInteractionMessage(
     character: Character,
     options?: { locationIndex?: number; remainingChatStamina?: number; parentId?: string | null }
@@ -1286,9 +1360,6 @@ export function createInteractionMessage(
     };
 }
 
-/**
- * Create a full ChatMessage with text content.
- */
 export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
     const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;

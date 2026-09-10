@@ -312,7 +312,7 @@ export function useChatSession() {
         const d = useSessionStore.getState().interactionData; if (!d) { releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+        try { getAudioEngine(); } catch { /* ignore */ }
 
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentChar, actionText));
 
@@ -356,7 +356,7 @@ export function useChatSession() {
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+        try { getAudioEngine(); } catch { /* ignore */ }
 
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
@@ -419,7 +419,7 @@ export function useChatSession() {
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+        try { getAudioEngine(); } catch { /* ignore */ }
 
         const existingText = msg.textContent;
         const char = msg.character;
@@ -470,7 +470,7 @@ export function useChatSession() {
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine().ensureContext(); } catch { /* ignore */ }
+        try { getAudioEngine(); } catch { /* ignore */ }
 
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
