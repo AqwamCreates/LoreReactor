@@ -1,5 +1,5 @@
 // src/components/ChatInput.tsx
-import React from 'react';
+import type React from 'react';
 import type { BudgetStrategy } from '../types';
 
 interface ChatInputProps {

@@ -532,7 +532,7 @@ function App() {
                 tokenCountAbortRef.current = null;
             }
         };
-    }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, interactionData?.id, selectedModelId, allModels, runningModels, activeStrategy]);
+    }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
 
     // ─── Callbacks ───────────────────────────────────────────────────
     const fileInputRef = useRef<HTMLInputElement>(null);

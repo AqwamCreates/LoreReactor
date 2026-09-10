@@ -18,6 +18,54 @@ export interface ParsedCharacterCardExtended extends ParsedCharacterCard {
     groupOnlyGreetings?: string[];
 }
 
+// ─── Raw JSON shapes from card specs ────────────────────────────────
+
+interface RawV1Card {
+    name?: string;
+    description?: string;
+    first_mes?: string;
+    personality?: string;
+    scenario?: string;
+    mes_example?: string;
+    system_prompt?: string;
+    post_history_instructions?: string;
+    tags?: string[];
+    creator?: string;
+    character_version?: string;
+    [key: string]: unknown;
+}
+
+interface RawV2Data {
+    name?: string;
+    description?: string;
+    first_mes?: string;
+    personality?: string;
+    scenario?: string;
+    mes_example?: string;
+    creator_notes?: string;
+    system_prompt?: string;
+    post_history_instructions?: string;
+    alternate_greetings?: string[];
+    tags?: string[];
+    creator?: string;
+    character_version?: string;
+    character_book?: CharacterBook;
+    extensions?: Record<string, unknown>;
+    [key: string]: unknown;
+}
+
+interface RawV3Data extends RawV2Data {
+    nickname?: string;
+    group_only_greetings?: string[];
+    assets?: V3Asset[];
+}
+
+interface RawCardEnvelope {
+    spec?: string;
+    data?: unknown;
+    [key: string]: unknown;
+}
+
 /**
  * Reads a PNG file and extracts character data from tEXt metadata chunks.
  * Checks both V2 (`chara`) and V3 (`ccv3`) keywords.
@@ -37,9 +85,9 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
         }
 
         // Collect all tEXt chunks — V3 cards may have both ccv3 and chara
-        let v3Data: any = null;
-        let v2Data: any = null;
-        let v1Data: any = null;
+        let v3Data: RawV3Data | null = null;
+        let v2Data: RawV2Data | null = null;
+        let v1Data: RawV1Card | null = null;
 
         let offset = 8;
         while (offset < buffer.byteLength) {
@@ -66,22 +114,22 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
                     const value = decodeText(buffer, nullPos + 1, dataEnd);
 
                     try {
-                        const json = decodeBase64AsUtf8(value);
+                        const json = decodeBase64AsUtf8(value) as RawCardEnvelope;
 
                         // V3: spec === "chara_card_v3", keyword is typically "ccv3"
                         if (keyword === 'ccv3' || keyword === 'CCV3') {
                             if (json.spec === 'chara_card_v3' && json.data) {
-                                v3Data = json.data;
+                                v3Data = json.data as RawV3Data;
                             }
                         }
 
                         // V2: spec === "chara_card_v2", keyword is "chara"
                         if (keyword === 'chara' || keyword === 'Chara') {
                             if (json.spec && json.data) {
-                                v2Data = json.data;
-                            } else if (json.name && !json.spec) {
+                                v2Data = json.data as RawV2Data;
+                            } else if ((json as RawV1Card).name && !json.spec) {
                                 // V1 format — flat object
-                                v1Data = json;
+                                v1Data = json as unknown as RawV1Card;
                             }
                         }
                     } catch {
@@ -114,19 +162,19 @@ function decodeText(buffer: ArrayBuffer, start: number, end: number): string {
  * Decodes a base64 string as UTF-8, preserving multi-byte characters.
  * atob() treats each byte as Latin-1, which corrupts curly quotes, em-dashes, etc.
  */
-function decodeBase64AsUtf8(base64: string): any {
+function decodeBase64AsUtf8(base64: string): unknown {
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
     }
     const utf8String = new TextDecoder('utf-8').decode(bytes);
-    return JSON.parse(utf8String);
+    return JSON.parse(utf8String) as unknown;
 }
 
 // ─── V1 Normalization ──────────────────────────────────────────────
 
-function normalizeV1(json: any): ParsedCharacterCardExtended {
+function normalizeV1(json: RawV1Card): ParsedCharacterCardExtended {
     return {
         name: json.name || '',
         description: json.description || '',
@@ -144,7 +192,7 @@ function normalizeV1(json: any): ParsedCharacterCardExtended {
 
 // ─── V2 Normalization ──────────────────────────────────────────────
 
-function normalizeV2(data: any): ParsedCharacterCardExtended {
+function normalizeV2(data: RawV2Data): ParsedCharacterCardExtended {
     const result: ParsedCharacterCardExtended = {
         name: data.name || '',
         description: data.description || '',
@@ -157,7 +205,7 @@ function normalizeV2(data: any): ParsedCharacterCardExtended {
         postHistoryInstructions: data.post_history_instructions || undefined,
         alternateGreetings: data.alternate_greetings?.length ? data.alternate_greetings : undefined,
         tags: data.tags || undefined,
-        creator: data.extensions?.creator || data.creator || undefined,
+        creator: (data.extensions as Record<string, unknown>)?.creator as string | undefined || data.creator || undefined,
         characterVersion: data.character_version || undefined,
     };
 
@@ -177,7 +225,7 @@ function normalizeV2(data: any): ParsedCharacterCardExtended {
 
 // ─── V3 Normalization ──────────────────────────────────────────────
 
-function normalizeV3(data: any): ParsedCharacterCardExtended {
+function normalizeV3(data: RawV3Data): ParsedCharacterCardExtended {
     // V3 contains all V2 fields plus additions
     const result = normalizeV2(data);
 
@@ -210,7 +258,7 @@ interface CharacterBookEntry {
     comment?: string;
     priority?: number;
     position?: 'before_char' | 'after_char';
-    extensions?: Record<string, any>;
+    extensions?: Record<string, unknown>;
 }
 
 interface CharacterBook {
@@ -219,7 +267,7 @@ interface CharacterBook {
     scan_depth?: number;
     token_budget?: number;
     recursive_scanning?: boolean;
-    extensions?: Record<string, any>;
+    extensions?: Record<string, unknown>;
 }
 
 /**
@@ -352,14 +400,14 @@ function extractV3Assets(assets: V3Asset[]): Record<string, string> {
  * Extracts expression/emotion images from tool-specific extensions.
  * Supports SillyTavern, Agnai, and common community namespaces.
  */
-function extractExtensionImages(extensions: Record<string, any> | undefined): Record<string, string> {
+function extractExtensionImages(extensions: Record<string, unknown> | undefined): Record<string, string> {
     if (!extensions) return {};
     const images: Record<string, string> = {};
 
     // SillyTavern expression images: extensions.sillytavern_v2.expressions or extensions.expressions
-    const stExpressions = extensions.sillytavern_v2?.expressions
-        || extensions.expressions
-        || extensions.st_expressions;
+    const stExpressions = (extensions.sillytavern_v2 as Record<string, unknown>)?.expressions as Record<string, string> | undefined
+        || extensions.expressions as Record<string, string> | undefined
+        || extensions.st_expressions as Record<string, string> | undefined;
     if (stExpressions && typeof stExpressions === 'object') {
         for (const [emotion, filename] of Object.entries(stExpressions)) {
             if (typeof filename === 'string' && filename.trim()) {
@@ -369,7 +417,8 @@ function extractExtensionImages(extensions: Record<string, any> | undefined): Re
     }
 
     // Agnai voice/image extensions: extensions.agnai?.images
-    const agnaiImages = extensions.agnai?.images || extensions.agnai_images;
+    const agnaiImages = (extensions.agnai as Record<string, unknown>)?.images as Record<string, string> | undefined
+        || extensions.agnai_images as Record<string, string> | undefined;
     if (agnaiImages && typeof agnaiImages === 'object') {
         for (const [emotion, filename] of Object.entries(agnaiImages)) {
             if (typeof filename === 'string' && filename.trim()) {
@@ -379,7 +428,7 @@ function extractExtensionImages(extensions: Record<string, any> | undefined): Re
     }
 
     // Generic expression map: extensions.expression_images
-    const genericExpressions = extensions.expression_images;
+    const genericExpressions = extensions.expression_images as Record<string, string> | undefined;
     if (genericExpressions && typeof genericExpressions === 'object') {
         for (const [emotion, filename] of Object.entries(genericExpressions)) {
             if (typeof filename === 'string' && filename.trim()) {

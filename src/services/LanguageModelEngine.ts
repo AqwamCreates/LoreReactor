@@ -85,6 +85,78 @@ const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 /** Maximum number of entries to prevent unbounded memory growth. */
 const TOKEN_CACHE_MAX_SIZE = 500;
 
+// ─── Raw API response shapes ────────────────────────────────────────
+
+interface OpenAIMessage {
+    role: string;
+    content: string;
+}
+
+interface OpenAIChoiceDelta {
+    content?: string;
+}
+
+interface OpenAIChoice {
+    delta?: OpenAIChoiceDelta;
+    message?: { content?: string };
+}
+
+interface OpenAIStreamChunk {
+    choices?: OpenAIChoice[];
+    content?: string;
+    text?: string;
+}
+
+interface OpenAICompletionResponse {
+    choices?: OpenAIChoice[];
+    content?: string;
+}
+
+interface TokenizeResponse {
+    tokens?: unknown[];
+}
+
+interface GoogleTokenizeResponse {
+    totalTokens?: number;
+}
+
+interface AnthropicTokenizeResponse {
+    input_tokens?: number;
+}
+
+interface MinimaxTokenizeResponse {
+    input_tokens?: number;
+}
+
+interface KimiTokenizeResponse {
+    data?: { total_tokens?: number };
+    total_tokens?: number;
+}
+
+interface GLMTokenizeResponse {
+    usage?: { tokens?: number };
+    tokens?: number;
+}
+
+interface CohereTokenizeResponse {
+    tokens?: unknown[];
+    token_count?: number;
+}
+
+interface AI21TokenizeResponse {
+    tokens?: unknown[];
+    count?: number;
+}
+
+interface NovelAITokenizeResponse {
+    tokens?: unknown[];
+    count?: number;
+}
+
+interface CloudErrorData {
+    error?: { message?: string };
+}
+
 export class LanguageModelEngine {
 
   // ─── Token Count Cache ────────────────────────────────────────────
@@ -145,7 +217,7 @@ export class LanguageModelEngine {
 
   private buildCloudRequest(
     apiKey: string,
-    backend: string,
+    backendName: string,
     modelPath: string | undefined,
     prompt: string,
     stream: boolean,
@@ -154,19 +226,19 @@ export class LanguageModelEngine {
     let url: string;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
 
-    if (backend === 'Other') {
+    if (backendName === 'Other') {
       if (!modelPath) throw new Error("Custom URL (Model Path) is required for 'Other' backend.");
       url = modelPath;
     } else {
-      const defaultUrl = cloudEndpoints[backend];
-      if (!defaultUrl) throw new Error(`Unsupported cloud backend: ${backend}`);
+      const defaultUrl = cloudEndpoints[backendName];
+      if (!defaultUrl) throw new Error(`Unsupported cloud backend: ${backendName}`);
       url = defaultUrl;
     }
 
-    if (backend === 'Inworld') {
-      headers.Authorization = `Basic ${apiKey}`;
+    if (backendName === 'Inworld') {
+      (headers as Record<string, string>).Authorization = `Basic ${apiKey}`;
     } else {
-      headers.Authorization = `Bearer ${apiKey}`;
+      (headers as Record<string, string>).Authorization = `Bearer ${apiKey}`;
     }
 
     const payloadModelName = modelPath || 'default-model';
@@ -181,7 +253,7 @@ export class LanguageModelEngine {
       ...params.extraParams,
     };
 
-    if (!STOP_UNSUPPORTED_BACKENDS.has(backend) && params.stop && params.stop.length > 0) {
+    if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;
     }
 
@@ -226,10 +298,10 @@ export class LanguageModelEngine {
       : prompt;
 
     const resolvedParams: ResolvedParams = params || {};
-    const { apiKey, backend, modelPath, runtimePort } = modelContext || {};
+    const { apiKey, backend: backendName, modelPath, runtimePort } = modelContext || {};
 
-    if (apiKey && backend && cloudBackends.includes(backend)) {
-      return this.buildCloudRequest(apiKey, backend, modelPath, finalPrompt, stream, resolvedParams);
+    if (apiKey && backendName && cloudBackends.includes(backendName)) {
+      return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, resolvedParams);
     }
 
     return this.buildLocalRequest(runtimePort, finalPrompt, stream, resolvedParams);
@@ -237,7 +309,7 @@ export class LanguageModelEngine {
 
   // ─── Response Parsing ────────────────────────────────────────────
 
-  private extractFromRequestBody(requestBody: any): {
+  private extractFromRequestBody(requestBody: Record<string, unknown>): {
     prompt: string;
     temperature?: number;
     top_p?: number;
@@ -245,23 +317,24 @@ export class LanguageModelEngine {
     stop?: string[];
     extraParams?: Record<string, unknown>;
   } {
-    let prompt = requestBody.prompt || '';
+    let prompt = (requestBody.prompt as string) || '';
     if (!prompt && requestBody.messages) {
-      const lastUserMsg = [...requestBody.messages].reverse().find((m: any) => m.role === 'user');
+      const messages = requestBody.messages as OpenAIMessage[];
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
       prompt = lastUserMsg?.content || '';
     }
 
     return {
       prompt,
-      temperature: requestBody.temperature,
-      top_p: requestBody.top_p,
-      maxTokens: requestBody.n_predict || requestBody.max_tokens,
-      stop: requestBody.stop,
-      extraParams: requestBody.extra_cloud_params,
+      temperature: requestBody.temperature as number | undefined,
+      top_p: requestBody.top_p as number | undefined,
+      maxTokens: (requestBody.n_predict as number) || (requestBody.max_tokens as number),
+      stop: requestBody.stop as string[] | undefined,
+      extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
     };
   }
 
-  private extractContent(data: any): string | null {
+  private extractContent(data: OpenAICompletionResponse): string | null {
     if (data.choices?.[0]?.message?.content !== undefined) {
       const content = data.choices[0].message.content?.trim();
       return content && content.length > 0 ? content : null;
@@ -298,7 +371,7 @@ export class LanguageModelEngine {
       return estimatedTokens;
     }
 
-    const { runtimePort, backend, apiKey, modelPath } = modelContext;
+    const { runtimePort, backend: backendName, apiKey, modelPath } = modelContext;
 
     if (runtimePort) {
       const localKey = `local:${runtimePort}`;
@@ -324,7 +397,7 @@ export class LanguageModelEngine {
             }
             return estimatedTokens;
           }
-          const data = await res.json();
+          const data = await res.json() as TokenizeResponse;
           return data.tokens?.length ?? estimatedTokens;
         } catch {
           this.failedTokenizeBackends.add(localKey);
@@ -340,8 +413,8 @@ export class LanguageModelEngine {
       return count;
     }
 
-    if (backend && apiKey && cloudTokenizeEndpoints[backend]) {
-      const cloudKey = `${backend}:${modelPath ?? ''}`;
+    if (backendName && apiKey && cloudTokenizeEndpoints[backendName]) {
+      const cloudKey = `${backendName}:${modelPath ?? ''}`;
 
       if (this._inFlightTokenize.has(cloudKey)) {
         await this._inFlightTokenize.get(cloudKey);
@@ -353,12 +426,12 @@ export class LanguageModelEngine {
 
       const fetchPromise = (async (): Promise<number> => {
         try {
-          const templateUrl = cloudTokenizeEndpoints[backend];
-          const headers: HeadersInit = { 'Content-Type': 'application/json' };
+          const templateUrl = cloudTokenizeEndpoints[backendName];
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
           let url = templateUrl;
           let body: string;
 
-          switch (backend) {
+          switch (backendName) {
             case 'Google': {
               const modelName = modelPath || 'gemini-2.5-flash';
               url = `${templateUrl.replace('{model}', modelName)}?key=${apiKey}`;
@@ -423,15 +496,15 @@ export class LanguageModelEngine {
           }
           const data = await res.json();
 
-          switch (backend) {
-            case 'Google': return data.totalTokens ?? estimatedTokens;
-            case 'Anthropic': return data.input_tokens ?? estimatedTokens;
-            case 'Minimax': return data.input_tokens ?? estimatedTokens;
-            case 'Kimi': return data.data?.total_tokens ?? data.total_tokens ?? estimatedTokens;
-            case 'GLM': return data.usage?.tokens ?? data.tokens ?? estimatedTokens;
-            case 'Cohere': return data.tokens?.length ?? data.token_count ?? estimatedTokens;
-            case 'AI21': return data.tokens?.length ?? data.count ?? estimatedTokens;
-            case 'NovelAI': return data.tokens?.length ?? data.count ?? estimatedTokens;
+          switch (backendName) {
+            case 'Google': return (data as GoogleTokenizeResponse).totalTokens ?? estimatedTokens;
+            case 'Anthropic': return (data as AnthropicTokenizeResponse).input_tokens ?? estimatedTokens;
+            case 'Minimax': return (data as MinimaxTokenizeResponse).input_tokens ?? estimatedTokens;
+            case 'Kimi': return (data as KimiTokenizeResponse).data?.total_tokens ?? (data as KimiTokenizeResponse).total_tokens ?? estimatedTokens;
+            case 'GLM': return (data as GLMTokenizeResponse).usage?.tokens ?? (data as GLMTokenizeResponse).tokens ?? estimatedTokens;
+            case 'Cohere': return (data as CohereTokenizeResponse).tokens?.length ?? (data as CohereTokenizeResponse).token_count ?? estimatedTokens;
+            case 'AI21': return (data as AI21TokenizeResponse).tokens?.length ?? (data as AI21TokenizeResponse).count ?? estimatedTokens;
+            case 'NovelAI': return (data as NovelAITokenizeResponse).tokens?.length ?? (data as NovelAITokenizeResponse).count ?? estimatedTokens;
             default: return estimatedTokens;
           }
         } catch {
@@ -473,7 +546,7 @@ export class LanguageModelEngine {
       const res = await fetch(url, { method: 'POST', headers, body });
       if (!res.ok) return { text: '', isCompleted: false };
 
-      const data = await res.json();
+      const data = await res.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
       return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };
@@ -518,7 +591,7 @@ export class LanguageModelEngine {
       if (abortController.signal.aborted) return { text: '', isCompleted: false };
       let errorMsg = `API Error: ${response.status}`;
       try {
-        const errData = await response.json();
+        const errData = await response.json() as CloudErrorData;
         if (errData.error?.message) errorMsg = `API Error: ${errData.error.message}`;
       } catch { /* ignore parse errors */ }
       throw new Error(errorMsg);
@@ -573,7 +646,7 @@ export class LanguageModelEngine {
           }
 
           try {
-            const json = JSON.parse(jsonStr);
+            const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
             let token = "";
 
             if (json.choices?.[0]?.delta?.content !== undefined) {

@@ -209,10 +209,11 @@ export class BudgetStrategyEngine {
             const sessionStart = Date.now();
 
             try {
-                const { body } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, runtimePort);
+                const { body: rawBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, runtimePort);
+                const body = rawBody as Record<string, unknown>;
 
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
-                let result;
+                let result: StreamResult;
                 try {
                     result = await this.engine.generateStream(
                         body,
@@ -288,7 +289,8 @@ export class BudgetStrategyEngine {
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: fallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, fallbackPort);
+                    const { body: rawFallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, fallbackPort);
+                    const fallbackBody = rawFallbackBody as Record<string, unknown>;
 
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
@@ -324,7 +326,7 @@ export class BudgetStrategyEngine {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
-                    const promptTokens = await this.engine.countTokens((fallbackBody.prompt as string) || '');;
+                    const promptTokens = await this.engine.countTokens((fallbackBody.prompt as string) || '');
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
@@ -369,10 +371,11 @@ export class BudgetStrategyEngine {
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: freeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, freePort);
+                    const { body: rawFreeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, freePort);
+                    const freeBody = rawFreeBody as Record<string, unknown>;
 
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
-                    let result;
+                    let result: StreamResult;
                     try {
                         result = await this.engine.generateStream(
                             freeBody,
@@ -565,7 +568,7 @@ export class BudgetStrategyEngine {
                 this.recordSuccess(freeModel.id, 0);
 
                 return { text: result.text, modelId: freeModel.id };
-            } catch (e) {
+            } catch {
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 allFailedIds.add(freeModel.id);

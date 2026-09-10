@@ -766,7 +766,7 @@ export function AIRecommendationModal({
             if (parsedOutput.profile) { const p = buildProfileFromGenerated(parsedOutput.profile); p.forceNoCharacterImageInjection = !injectCharacterImages; p.forceNoContextImageInjection = !injectContextImages; if (!await onSaveProfile(p)) throw new Error('Failed to save profile.'); }
             if (parsedOutput.world) {
                 const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages);
-                if (!injectCharacterImages) resolved.characters.forEach(c => { c.doNotInjectCharacterImage = true; });
+                if (!injectCharacterImages) for (const c of resolved.characters) { c.doNotInjectCharacterImage = true; }
                 if (resolved.profile) { resolved.profile.forceNoCharacterImageInjection = !injectCharacterImages; resolved.profile.forceNoContextImageInjection = !injectContextImages; }
                 for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);

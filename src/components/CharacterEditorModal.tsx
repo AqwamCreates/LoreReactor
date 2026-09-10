@@ -280,7 +280,7 @@ export function CharacterEditorModal({
         setSubmitError(null);
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
-            setEmotionImages(prev => ({ ...prev, ...extended.emotionImages! }));
+            setEmotionImages(prev => ({ ...prev, ...extended.emotionImages }));
         }
     };
 
@@ -299,7 +299,7 @@ export function CharacterEditorModal({
 
         if (imageFile) {
             setIsUploading(true);
-            try { finalImages['neutral'] = await uploadCharacterImage(targetCharacterId, imageFile); }
+            try { finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); }
             catch { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
             setIsUploading(false);
         }

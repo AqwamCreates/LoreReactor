@@ -371,7 +371,7 @@ export function LocationEditorModal({
                                                         const next = { ...prev, bindingRegex: { ...(prev.bindingRegex || {}) } };
                                                         if (next.bindingRegex) {
                                                             delete next.bindingRegex[id];
-                                                            if (Object.keys(next.bindingRegex).length === 0) next.bindingRegex = undefined;;
+                                                            if (Object.keys(next.bindingRegex).length === 0) next.bindingRegex = {};
                                                         }
                                                         return next;
                                                     });
