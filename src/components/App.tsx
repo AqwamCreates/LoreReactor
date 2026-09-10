@@ -225,6 +225,13 @@ function App() {
         return formatMessageText(streamingText);
     }, [streamingText]);
 
+    // ─── Budget Time Until Reset ─────────────────────────────────────
+    const [currentTime] = useState(() => Date.now());
+    const timeUntilReset = useMemo(() => {
+        if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) return undefined;
+        return Math.max(0, budgetData.resetDuration - (currentTime - budgetData.lastResetTimestamp));
+    }, [budgetData, activeStrategy, currentTime]);
+
     // ─── Derived Values ──────────────────────────────────────────────
     const isModelLoading = useMemo(() => {
         if (!selectedModelId) return false;
@@ -784,7 +791,7 @@ function App() {
                                 maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                 budgetSpent={budgetData?.budgetSpent}
                                 maximumBudget={activeStrategy?.maximumBudget}
-                                timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
+                                timeUntilReset={timeUntilReset}
                             />
                         </div>
                     </div></div></header>
@@ -866,7 +873,7 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} onOpenPromptBlocks={modals.promptBlockList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}

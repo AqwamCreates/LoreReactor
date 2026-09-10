@@ -553,6 +553,7 @@ export function AppModals({
                     allCharacters={allCharacters}
                     allContexts={allContexts}
                     allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
                     allModels={allModels}
