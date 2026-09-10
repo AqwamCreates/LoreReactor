@@ -57,6 +57,7 @@ export function useModalVisibility() {
     const [importData, setImportDataOpen] = useState(false);
     const [exportData, setExportDataOpen] = useState(false);
     const [budgetControl, setBudgetControlOpen] = useState(false);
+    const [branchingVisualization, setBranchingVisualizationOpen] = useState(false);
 
     const closeAll = useCallback(() => {
         setChatListOpen(false);
@@ -79,10 +80,9 @@ export function useModalVisibility() {
         setImportDataOpen(false);
         setExportDataOpen(false);
         setBudgetControlOpen(false);
+        setBranchingVisualizationOpen(false);
     }, []);
 
-    // Return modals as a clean Record<string, ModalVisibility>
-    // closeAll is returned separately so it doesn't pollute the record type
     const modals: Record<string, ModalVisibility> = {
         chatList: createModalState(chatList, setChatListOpen),
         charList: createModalState(charList, setCharListOpen),
@@ -104,6 +104,7 @@ export function useModalVisibility() {
         importData: createModalState(importData, setImportDataOpen),
         exportData: createModalState(exportData, setExportDataOpen),
         budgetControl: createModalState(budgetControl, setBudgetControlOpen),
+        branchingVisualization: createModalState(branchingVisualization, setBranchingVisualizationOpen),
     };
 
     return { modals, closeAll };

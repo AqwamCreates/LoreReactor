@@ -1,3 +1,4 @@
+// src/components/SettingsModal.tsx
 import './main.css';
 
 interface SettingsItem {
@@ -25,6 +26,12 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         icon: '✨',
         label: 'Get AI Recommendation',
         description: 'Generate new characters, contexts, and locations using your loaded model.',
+    },
+    {
+        id: 'interaction-branching',
+        icon: '🌿',
+        label: 'Interaction Branching Visualization',
+        description: 'View and manage the branching timeline tree of the current chat session.',
     },
     {
         id: 'import-character-card',
@@ -55,6 +62,7 @@ interface SettingsModalProps {
     onOpenImportData: () => void;
     onOpenParticipantControl: () => void;
     onOpenBudgetControl: () => void;
+    onOpenChatBranching: () => void;
 }
 
 export function SettingsModal({
@@ -66,16 +74,23 @@ export function SettingsModal({
     onOpenImportData,
     onOpenParticipantControl,
     onOpenBudgetControl,
+    onOpenChatBranching,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
         switch (id) {
+            case 'budget-control':
+                onOpenBudgetControl();
+                break;
             case 'participant-control':
                 onOpenParticipantControl();
                 break;
             case 'ai-recommendation':
                 onOpenAIRecommendation();
+                break;
+            case 'interaction-branching':
+                onOpenChatBranching();
                 break;
             case 'import-character-card':
                 onOpenImportCharacterCard();
@@ -85,9 +100,6 @@ export function SettingsModal({
                 break;
             case 'export-data':
                 onOpenExportData();
-                break;
-            case 'budget-control':
-                onOpenBudgetControl();
                 break;
         }
     };

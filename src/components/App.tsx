@@ -450,7 +450,6 @@ function App() {
     const lastCountedMessageIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
-        // Cancel any pending calculation
         if (tokenCountTimerRef.current) {
             clearTimeout(tokenCountTimerRef.current);
             tokenCountTimerRef.current = null;
@@ -460,7 +459,6 @@ function App() {
             tokenCountAbortRef.current = null;
         }
 
-        // All setState calls deferred into setTimeout to avoid sync setState in effect body
         tokenCountTimerRef.current = setTimeout(async () => {
             if (InteractionMessages.length === 0 || !interactionData?.participants || activeStrategy) {
                 setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
@@ -670,6 +668,20 @@ function App() {
         handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [handleDeleteChat]);
 
+    // ─── Rename chat wrapper for InteractionBranchingModal ───────────
+    const handleRenameChat = useCallback(async (id: string, name: string) => {
+        const loaded = await loadRawInteractionData(id, allCharacters);
+        if (!loaded) { addToast('Chat not found.', 'error'); return; }
+        const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
+        await saveRawInteractionData(updated);
+        refreshChatList();
+        // If renaming the active chat, update it in place
+        if (interactionData?.id === id) {
+            setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
+        }
+        addToast(`Renamed to "${name}"`, 'success');
+    }, [allCharacters, interactionData, setInteractionData, refreshChatList, addToast]);
+
     // ─── Branch source navigation ────────────────────────────────────
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!interactionData?.parentInteractionDataId) return;
@@ -708,7 +720,6 @@ function App() {
         if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) {
             updated.participants = [updated.protagonist, ...updated.participants];
         }
-        // Assign initial locations to participants who have never had one
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
         await saveRawInteractionData(updated);
@@ -887,6 +898,7 @@ function App() {
                     onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
+                    onRenameChat={handleRenameChat}
                     onDeleteCharacter={deleteCharacter}
                     onLoadFullCharacter={loadFullCharacter}
                     onToggleParticipant={handleToggleParticipant}

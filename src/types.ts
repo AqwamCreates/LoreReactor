@@ -100,6 +100,8 @@ export interface Location extends ObjectData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
+  backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
+  backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
@@ -113,6 +115,8 @@ export interface RawLocation extends RawData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
+  backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
+  backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];

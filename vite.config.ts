@@ -67,6 +67,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['large-json-files', '@huggingface/transformers'],
+    include: ['@dagrejs/dagre'],
+  },
+  ssr: {
+    noExternal: ['@dagrejs/dagre'],
   },
   build: {
     target: 'esnext',

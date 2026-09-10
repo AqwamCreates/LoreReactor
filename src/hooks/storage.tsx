@@ -686,6 +686,8 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         description: rawLocation.description,
         text: rawLocation.text,
         images: rawLocation.images,
+        backgroundImageRegularExpressionActivationTriggers: rawLocation.backgroundImageRegularExpressionActivationTriggers ?? {},
+        backgroundImageWeights: rawLocation.backgroundImageWeights ?? {},
         locationBindings: rawLocation.locationBindings ?? {},
         locationBindingRegularExpressionTriggers: rawLocation.locationBindingRegularExpressionTriggers ?? {},
         regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,

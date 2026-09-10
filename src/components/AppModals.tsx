@@ -18,6 +18,7 @@ import { AIRecommendationModal } from './AIRecommendationModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
+import { InteractionBranchingModal } from './InteractionBranchingModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
@@ -70,6 +71,7 @@ interface AppModalsProps {
     onInspectChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
+    onRenameChat: (id: string, name: string) => void;
     onDeleteCharacter: (id: string) => void;
     onLoadFullCharacter: (id: string) => Promise<Character | null>;
     onToggleParticipant: (id: string) => void;
@@ -116,7 +118,7 @@ export function AppModals({
     allStopPatterns, allModels, allBudgetStrategies, allProfiles, allExtensions, allWorlds,
     runningModels, samplerToEdit, charModal, contextModal, locationModal, audioTrackModal, stopModal, modelModal,
     budgetModal, profileModal, worldModal,
-    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onDeleteCharacter, onLoadFullCharacter,
+    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat, onDeleteCharacter, onLoadFullCharacter,
     onToggleParticipant, onSetProtagonist, onDeleteContext, onToggleContext,
     onDeleteLocation, onToggleLocation, onDeleteAudioTrack, onToggleAudioTrack,
     onDeleteModel, onToggleModelLoad,
@@ -429,6 +431,7 @@ export function AppModals({
                     onOpenImportData={modals.importData.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
+                    onOpenChatBranching={modals.branchingVisualization.open}
                 />
             )}
 
@@ -488,6 +491,20 @@ export function AppModals({
                     allAudioTracks={allAudioTracks}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
                     runningModels={runningModels}
+                />
+            )}
+
+            {/* Interaction Branching Visualization */}
+            {modals.branchingVisualization.isOpen && (
+                <InteractionBranchingModal
+                    isOpen={modals.branchingVisualization.isOpen}
+                    onClose={modals.branchingVisualization.close}
+                    currentInteractionId={interactionData?.id ?? ''}
+                    allInteractions={allChats}
+                    onSwitchChat={onSwitchChat}
+                    onDeleteChat={onDeleteChat}
+                    onInspectChat={onInspectChat}
+                    onRenameChat={onRenameChat}
                 />
             )}
 
