@@ -239,7 +239,7 @@ export function AppModals({
                 />
             )}
 
-            {/* Models List */}
+            {/* Language Models List */}
             {useMemo(() => {
                 if (!modals.modelList.isOpen) return null;
                 
@@ -251,7 +251,7 @@ export function AppModals({
 
                 return (
                     <ManagerModal
-                        title="Models"
+                        title="Language Models"
                         items={allModels}
                         isOpen={modals.modelList.isOpen}
                         onClose={modals.modelList.close}

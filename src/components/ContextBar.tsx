@@ -35,7 +35,7 @@ export function ContextBar({
             <NavButton icon="📜" label="Contexts" onClick={onOpenContexts} />
             <NavButton icon="📍" label="Locations" onClick={onOpenLocations} />
             <NavButton icon="🌍" label="Worlds" onClick={onOpenWorlds} />
-            <NavButton icon="🤖" label="Models" onClick={onOpenModels} />
+            <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
             <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
             <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
             <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />

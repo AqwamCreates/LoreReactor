@@ -429,7 +429,7 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{formatSessionDuration(aggregateStats.totalDuration)}</span>
                                             </div>
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Active Models</span>
+                                                <span className="budget-stat-label">Active Language Models</span>
                                                 <span className="budget-stat-value">{modelRows.filter(r => r.uses > 0).length} / {modelRows.length}</span>
                                             </div>
                                         </div>
@@ -489,7 +489,7 @@ export function BudgetControlModal({
                                         <span className="budget-section-title">Runtime Timestamps</span>
                                         <div className="budget-stat-grid">
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Models Used</span>
+                                                <span className="budget-stat-label">Language Models Used</span>
                                                 <span className="budget-stat-value">{countKeys(budgetData.modelLastUsedTimestamps)}</span>
                                             </div>
                                             <div className="budget-stat-row">
@@ -497,7 +497,7 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{formatTimestamp(latestUsed)}</span>
                                             </div>
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Quota Hit Models</span>
+                                                <span className="budget-stat-label">Quota Hit Language Models</span>
                                                 <span className="budget-stat-value">{countKeys(budgetData.modelLastQuotaHitTimeStamps)}</span>
                                             </div>
                                             <div className="budget-stat-row">
@@ -505,7 +505,7 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{formatTimestamp(latestQuota)}</span>
                                             </div>
                                             <div className="budget-stat-row">
-                                                <span className="budget-stat-label">Error Hit Models</span>
+                                                <span className="budget-stat-label">Error Hit Language Models</span>
                                                 <span className="budget-stat-value">{countKeys(budgetData.modelLastErrorHitTimeStamps)}</span>
                                             </div>
                                             <div className="budget-stat-row">

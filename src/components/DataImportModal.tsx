@@ -184,7 +184,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                         onToggle={(id) => toggle(selSpIds, setSelSpIds, id)} searchQuery={spSearch} onSearchChange={setSpSearch} />
                                 )}
                                 {parsedData.models.length > 0 && (
-                                    <EntitySelectList label="Models" items={parsedData.models} selectedIds={selModelIds}
+                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selModelIds}
                                         onToggle={(id) => toggle(selModelIds, setSelModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
                                 )}
                                 {parsedData.budgetStrategies.length > 0 && (
@@ -237,7 +237,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
-                                    <div><strong>Models:</strong> {importResult.counts.models}</div>
+                                    <div><strong>Language Models:</strong> {importResult.counts.models}</div>
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>

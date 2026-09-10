@@ -134,7 +134,7 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selSamplerIds, setSelSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
                                 <EntitySelectList label="Stop Patterns" items={allStopPatterns} selectedIds={selSpIds}
                                     onToggle={(id) => toggle(selSpIds, setSelSpIds, id)} searchQuery={spSearch} onSearchChange={setSpSearch} />
-                                <EntitySelectList label="Models" items={allModels} selectedIds={selModelIds}
+                                <EntitySelectList label="Language Models" items={allModels} selectedIds={selModelIds}
                                     onToggle={(id) => toggle(selModelIds, setSelModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
                                 <EntitySelectList label="Budget Strategies" items={allBudgetStrategies} selectedIds={selBsIds}
                                     onToggle={(id) => toggle(selBsIds, setSelBsIds, id)} searchQuery={bsSearch} onSearchChange={setBsSearch} />
@@ -175,7 +175,7 @@ export function DataExportModal({
                                     <div><strong>Worlds:</strong> {summary.worlds.length}</div>
                                     <div><strong>Samplers:</strong> {summary.samplers.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
-                                    <div><strong>Models:</strong> {summary.models.length}</div>
+                                    <div><strong>Language Models:</strong> {summary.models.length}</div>
                                     <div><strong>Budget Strategies:</strong> {summary.budgetStrategies.length}</div>
                                     <div><strong>Profiles:</strong> {summary.profiles.length}</div>
                                     <div><strong>Actions:</strong> {summary.interjectableActions.length}</div>

@@ -220,7 +220,7 @@ function App() {
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
     }, [selectedModelId, allModels, runningModels]);
 
-    const modelStatusMessage = !selectedModelId ? 'No model selected — open Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
+    const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
     const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
@@ -367,7 +367,7 @@ function App() {
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
-        { id: 'models', label: 'Models', icon: '🤖', done: !modelsLoading },
+        { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },

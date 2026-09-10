@@ -39,7 +39,7 @@ export function ChatInput({
                     {isModelLoading && <span className="model-status-spinner" />}
                     <span className="model-status-text">{modelStatusMessage}</span>
                     {!selectedModelId && (
-                        <button type="button" className="model-status-action-btn" onClick={onOpenModels}>Open Models</button>
+                        <button type="button" className="model-status-action-btn" onClick={onOpenModels}>Open Language Models</button>
                     )}
                 </div>
             )}

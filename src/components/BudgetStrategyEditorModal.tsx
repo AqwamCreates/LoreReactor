@@ -288,7 +288,7 @@ export function BudgetStrategyEditorModal({
                         </div>
 
                         <EntitySelectList
-                            label="Online Models"
+                            label="Online Language Models"
                             items={allModels}
                             selectedIds={onlineModelIds}
                             onToggle={toggleOnlineModel}
@@ -299,7 +299,7 @@ export function BudgetStrategyEditorModal({
                         {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
 
                         <EntitySelectList
-                            label="Local Models"
+                            label="Local Language Models"
                             items={allModels}
                             selectedIds={localModelIds}
                             onToggle={toggleLocalModel}
