@@ -28,6 +28,7 @@ interface AIRecommendationModalProps {
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
     onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
+    onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
     allCharacters: Character[];
     allContexts: Context[];
@@ -40,7 +41,7 @@ interface AIRecommendationModalProps {
 
 export function AIRecommendationModal({
     isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
-    onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor,
+    onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
     allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
@@ -219,7 +220,6 @@ export function AIRecommendationModal({
         if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
         setIsSaving(true); setResultError(null); const now = Date.now();
         try {
-            // Save top-level entities
             if (parsedOutput.characters) {
                 for (const char of parsedOutput.characters) {
                     if (!injectCharacterImages) char.doNotInjectCharacterImage = true;
@@ -253,8 +253,6 @@ export function AIRecommendationModal({
                 if (!injectContextImages) parsedOutput.profile.forceNoContextImageInjection = true;
                 if (!await onSaveProfile(parsedOutput.profile)) throw new Error(`Failed to save profile "${parsedOutput.profile.name}".`);
             }
-
-            // Save world and its sub-entities
             if (parsedOutput.world) {
                 const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages, allAudioTracks);
                 if (!injectCharacterImages) for (const c of resolved.characters) c.doNotInjectCharacterImage = true;
@@ -419,6 +417,7 @@ export function AIRecommendationModal({
                                     <div key={block.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
                                         {renderSummary(block.description)}
                                         {renderFieldList(Object.entries(block).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
+                                        {onOpenPromptBlockEditor && <div style={{ marginTop: '8px', textAlign: 'center' }}><button type="button" className="editor-btn editor-btn-save" onClick={() => onOpenPromptBlockEditor(block, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
                                     </div>
                                 ))}
                             </div>}
@@ -427,8 +426,8 @@ export function AIRecommendationModal({
                                 {renderSummary(parsedOutput!.world!.description)}
                                 <div className="entity-field-block"><div className="entity-field-title">Name</div><div className="entity-field-content">{parsedOutput!.world!.name}</div></div>
                                 <div className="entity-field-block"><div className="entity-field-title">Characters ({parsedOutput!.world!.characters.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.characters.map((c, i) => <div key={c.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🎭 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>
-                                {(parsedOutput!.world!.contexts.length) > 0 && <div className="entity-field-block"><div className="entity-field-title">Contexts ({parsedOutput!.world!.contexts.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.contexts.map((c, i) => <div key={c.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📜 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>}
-                                {(parsedOutput!.world!.locations.length) > 0 && <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput!.world!.locations.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.locations.map((l, i) => <div key={l.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>}
+                                <div className="entity-field-block"><div className="entity-field-title">Contexts ({parsedOutput!.world!.contexts.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.contexts.map((c, i) => <div key={c.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📜 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>
+                                <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput!.world!.locations.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.locations.map((l, i) => <div key={l.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>
                                 {(parsedOutput!.world!.audioTracks?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Audio Tracks ({parsedOutput!.world!.audioTracks!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.audioTracks!.map((t, i) => <div key={t.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🔊 {t.name}</div>{t.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{t.description.length > 150 ? t.description.substring(0, 150) + '...' : t.description}</div>}<div style={{ opacity: 0.5, fontSize: '0.6rem', marginTop: '1px' }}>{t.audioCategory || 'ambient'} • {t.filename}</div></div>)}</div></div>}
                                 {(parsedOutput!.world!.promptBlocks?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Prompt Blocks ({parsedOutput!.world!.promptBlocks!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput!.world!.promptBlocks!.map((b, i) => <div key={b.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🧱 {b.name}</div>{b.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{b.description.length > 150 ? b.description.substring(0, 150) + '...' : b.description}</div>}</div>)}</div></div>}
                                 {parsedOutput!.world!.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {parsedOutput!.world!.profile.name}</div>{parsedOutput!.world!.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{parsedOutput!.world!.profile.description.length > 150 ? parsedOutput!.world!.profile.description.substring(0, 150) + '...' : parsedOutput!.world!.profile.description}</div>}</div></div>}
@@ -437,6 +436,7 @@ export function AIRecommendationModal({
                                     {onOpenContextEditor && parsedOutput!.world!.contexts.map((c, i) => <button key={c.id || `wx-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenContextEditor(c, () => {})} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}
                                     {onOpenLocationEditor && parsedOutput!.world!.locations.map((l, i) => <button key={l.id || `wl-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenLocationEditor(l, () => {})} style={worldEditBtnStyle}>✏️ Edit 📍 {l.name}</button>)}
                                     {onOpenAudioTrackEditor && parsedOutput!.world!.audioTracks?.map((t, i) => <button key={t.id || `wt-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenAudioTrackEditor(t, () => {})} style={worldEditBtnStyle}>✏️ Edit 🔊 {t.name}</button>)}
+                                    {onOpenPromptBlockEditor && parsedOutput!.world!.promptBlocks?.map((b, i) => <button key={b.id || `wb-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenPromptBlockEditor(b, () => {})} style={worldEditBtnStyle}>✏️ Edit 🧱 {b.name}</button>)}
                                     {onOpenProfileEditor && parsedOutput!.world!.profile && <button type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenProfileEditor(parsedOutput!.world!.profile!, () => {})} style={worldEditBtnStyle}>✏️ Edit 👤 {parsedOutput!.world!.profile.name}</button>}
                                 </div>
                             </div>}
