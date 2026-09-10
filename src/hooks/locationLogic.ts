@@ -1,4 +1,5 @@
 import type { Character, InteractionData, Location } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Get the current location index for a character from their last interaction entry.
@@ -161,4 +162,97 @@ export function sampleReachableLocationByWeight(
     }
 
     return pool[pool.length - 1].originalIndex;
+}
+
+/**
+ * Sample an initial location for a character who has never had one.
+ * Prefers locations bound to this character using characterWeights,
+ * falls back to all locations using globalWeight.
+ */
+export function sampleInitialLocationForCharacter(locations: Location[], character: Character): number | undefined {
+    if (!locations || locations.length === 0) return undefined;
+
+    // First pass: locations with character-specific weights for this character
+    const boundPool: { index: number; weight: number }[] = [];
+    let boundTotalWeight = 0;
+
+    for (let i = 0; i < locations.length; i++) {
+        const loc = locations[i];
+        const charWeight = loc.characterWeights?.[character.id];
+        if (charWeight !== undefined && charWeight > 0) {
+            boundPool.push({ index: i, weight: charWeight });
+            boundTotalWeight += charWeight;
+        }
+    }
+
+    if (boundPool.length > 0 && boundTotalWeight > 0) {
+        let roll = Math.random() * boundTotalWeight;
+        for (const entry of boundPool) {
+            roll -= entry.weight;
+            if (roll <= 0) return entry.index;
+        }
+        return boundPool[boundPool.length - 1].index;
+    }
+
+    // Fallback: all locations using globalWeight
+    return sampleLocationByWeight(locations, character);
+}
+
+/**
+ * Assign initial locations to all participants who have never had one.
+ * Only operates when interactionHistory is empty (fresh chat).
+ * Uses character-bound locations with characterWeights first,
+ * falls back to globalWeight sampling.
+ */
+export function assignInitialLocationsIfNeeded(interactionData: InteractionData): InteractionData {
+    const locations = interactionData.locations;
+    if (!locations || locations.length === 0) return interactionData;
+    if (interactionData.interactionHistory.length > 0) return interactionData;
+
+    // Check if any participant already has a location via any message
+    const allParticipantIds = new Set<string>();
+    allParticipantIds.add(interactionData.protagonist.id);
+    for (const p of interactionData.participants) allParticipantIds.add(p.id);
+
+    const assignedIds = new Set<string>();
+    for (const msg of interactionData.interactionHistory) {
+        if (msg.locationIndex !== undefined) assignedIds.add(msg.character.id);
+    }
+
+    // All participants lack locations (history is empty, so assignedIds is empty)
+    // Create silent interaction messages to establish initial positions
+    const newHistory = [...interactionData.interactionHistory];
+    let changed = false;
+
+    for (const id of allParticipantIds) {
+        if (assignedIds.has(id)) continue;
+
+        const character = id === interactionData.protagonist.id
+            ? interactionData.protagonist
+            : interactionData.participants.find(p => p.id === id);
+        if (!character) continue;
+
+        const locationIndex = sampleInitialLocationForCharacter(locations, character);
+        if (locationIndex === undefined) continue;
+
+        const now = Date.now();
+        newHistory.push({
+            kind: 'interaction',
+            id: uuidv4(),
+            character: { ...character },
+            locationIndex,
+            parentInteractionMessageId: null,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        });
+        changed = true;
+    }
+
+    if (!changed) return interactionData;
+
+    return {
+        ...interactionData,
+        interactionHistory: newHistory,
+        lastUpdatedTimestamp: Date.now(),
+    };
 }
