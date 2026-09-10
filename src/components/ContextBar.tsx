@@ -40,8 +40,8 @@ export function ContextBar({
             <NavButton icon="🌍" label="Worlds" onClick={onOpenWorlds} />
             <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
             <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
-            <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
             <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
+            <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
             <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
             <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />
         </div>

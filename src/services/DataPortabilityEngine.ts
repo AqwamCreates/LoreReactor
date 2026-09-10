@@ -1,7 +1,7 @@
 // src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, AudioTrack, Sampler, StopPattern, LanguageModel,
-    BudgetStrategy, Profile, InteractionData, InterjectableAction, World,
+    BudgetStrategy, Profile, InteractionData, InterjectableAction, World, PromptBlock,
 } from '../types';
 import {
     loadRawCharacter, saveRawCharacter,
@@ -14,6 +14,7 @@ import {
     loadRawBudgetStrategy, saveRawBudgetStrategy,
     loadRawProfile, saveRawProfile,
     loadRawWorld, saveRawWorld,
+    loadRawPromptBlock, saveRawPromptBlock,
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
@@ -26,6 +27,7 @@ export interface LoreReactorExport {
     contexts: Context[];
     locations: Location[];
     audioTracks: AudioTrack[];
+    promptBlocks: PromptBlock[];
     samplers: Sampler[];
     stopPatterns: StopPattern[];
     models: LanguageModel[];
@@ -40,8 +42,9 @@ export interface ImportResult {
     success: boolean;
     counts: {
         characters: number; contexts: number; locations: number; audioTracks: number;
-        samplers: number; stopPatterns: number; models: number; budgetStrategies: number;
-        profiles: number; worlds: number; interjectableActions: number; chats: number;
+        promptBlocks: number; samplers: number; stopPatterns: number; models: number;
+        budgetStrategies: number; profiles: number; worlds: number;
+        interjectableActions: number; chats: number;
     };
     errors: string[];
 }
@@ -55,6 +58,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.contexts)) return false;
     if (!Array.isArray(d.locations)) return false;
     if (!Array.isArray(d.audioTracks)) return false;
+    if (!Array.isArray(d.promptBlocks)) return false;
     if (!Array.isArray(d.samplers)) return false;
     if (!Array.isArray(d.stopPatterns)) return false;
     if (!Array.isArray(d.models)) return false;
@@ -74,6 +78,7 @@ export async function exportSelectedData(selection: {
     contextIds: string[];
     locationIds: string[];
     audioTrackIds: string[];
+    promptBlockIds: string[];
     samplerIds: string[];
     stopPatternIds: string[];
     modelIds: string[];
@@ -86,8 +91,9 @@ export async function exportSelectedData(selection: {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
         characters: [], contexts: [], locations: [], audioTracks: [],
-        samplers: [], stopPatterns: [], models: [], budgetStrategies: [],
-        profiles: [], worlds: [], interjectableActions: [], chats: [],
+        promptBlocks: [], samplers: [], stopPatterns: [], models: [],
+        budgetStrategies: [], profiles: [], worlds: [],
+        interjectableActions: [], chats: [],
     };
 
     // Load individual entities by ID
@@ -106,6 +112,10 @@ export async function exportSelectedData(selection: {
     for (const id of selection.audioTrackIds) {
         const full = await loadRawAudioTrack(id);
         if (full) data.audioTracks.push(full);
+    }
+    for (const id of selection.promptBlockIds) {
+        const full = await loadRawPromptBlock(id);
+        if (full) data.promptBlocks.push(full);
     }
     for (const id of selection.samplerIds) {
         const full = await loadRawSampler(id);
@@ -157,8 +167,9 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         success: true,
         counts: {
             characters: 0, contexts: 0, locations: 0, audioTracks: 0,
-            samplers: 0, stopPatterns: 0, models: 0, budgetStrategies: 0,
-            profiles: 0, worlds: 0, interjectableActions: 0, chats: 0,
+            promptBlocks: 0, samplers: 0, stopPatterns: 0, models: 0,
+            budgetStrategies: 0, profiles: 0, worlds: 0,
+            interjectableActions: 0, chats: 0,
         },
         errors: [],
     };
@@ -179,6 +190,10 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const t of data.audioTracks) {
         try { await saveRawAudioTrack(t); result.counts.audioTracks++; }
         catch (e) { result.errors.push(`Audio Track "${t.name || t.id}": ${(e as Error).message}`); }
+    }
+    for (const pb of data.promptBlocks) {
+        try { await saveRawPromptBlock(pb); result.counts.promptBlocks++; }
+        catch (e) { result.errors.push(`Prompt Block "${pb.name || pb.id}": ${(e as Error).message}`); }
     }
     for (const s of data.samplers) {
         try { await saveRawSampler(s); result.counts.samplers++; }
