@@ -49,8 +49,8 @@ export function CharacterImageEditorModal({
         try {
             const filename = await uploadCharacterImage(characterId, file);
             setLocalImages(prev => ({ ...prev, [emotion]: filename }));
-        } catch (err) {
-            console.error(`Failed to upload ${emotion} image:`, err);
+        } catch (error) {
+            console.error(`Failed to upload ${emotion} image:`, error);
         } finally {
             setUploadingEmotion(null);
         }

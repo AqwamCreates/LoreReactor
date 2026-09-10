@@ -11,8 +11,8 @@ export function useStopPatternManager() {
         try {
         const data = await loadAllRawStopPatterns();
         setStopPatterns(data);
-        } catch (err) {
-        console.error("Failed to load stop patterns", err);
+        } catch (error) {
+        console.error("Failed to load stop patterns", error);
         } finally {
         setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useStopPatternManager() {
         await saveRawStopPattern(pattern);
         await loadStopPatterns();
         return true;
-        } catch (err) {
-        console.error("Failed to save stop pattern", err);
+        } catch (error) {
+        console.error("Failed to save stop pattern", error);
         return false;
         }
     };
@@ -34,8 +34,8 @@ export function useStopPatternManager() {
         await deleteRawStopPattern(id);
         await loadStopPatterns();
         return true;
-        } catch (err) {
-        console.error("Failed to delete stop pattern", err);
+        } catch (error) {
+        console.error("Failed to delete stop pattern", error);
         return false;
         }
     };

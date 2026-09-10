@@ -139,8 +139,8 @@ function getProtagonistFileBase64s(data: InteractionData): string[] | undefined 
     return undefined;
 }
 
-function classifyError(err: unknown, signal: AbortSignal): TurnError {
-    const e = err as Error;
+function classifyError(error: unknown, signal: AbortSignal): TurnError {
+    const e = error as Error;
     if (e.name === 'AbortError' || signal.aborted) {
         return { message: 'Aborted', type: 'aborted' };
     }
@@ -233,14 +233,14 @@ export class GenerationOrchestrator {
                         const modelPath = targetModel.model || '';
                         const args = buildModelLoadArguments(targetModel);
 
-                        const res = await fetch(`${localURL}/models/load`, {
+                        const response = await fetch(`${localURL}/models/load`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ id: targetModel.id, modelPath, args }),
                         });
 
-                        if (res.ok) {
-                            const responseData = await res.json();
+                        if (response.ok) {
+                            const responseData = await response.json();
                             return responseData.port ?? null;
                         }
                     } catch (e) {
@@ -407,8 +407,8 @@ export class GenerationOrchestrator {
                     displayText,
                 },
             };
-        } catch (err) {
-            return { error: classifyError(err, signal) };
+        } catch (error) {
+            return { error: classifyError(error, signal) };
         }
     }
 }

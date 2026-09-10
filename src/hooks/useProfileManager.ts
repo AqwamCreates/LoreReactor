@@ -15,8 +15,8 @@ export function useProfileManager() {
         try {
             const data = await loadAllRawProfiles();
             setProfiles(data);
-        } catch (err) {
-            console.error("Failed to load profiles", err);
+        } catch (error) {
+            console.error("Failed to load profiles", error);
             addToast("Failed to load profiles list", "error");
         } finally {
             setIsLoading(false);
@@ -29,8 +29,8 @@ export function useProfileManager() {
             await loadProfiles();
             addToast(`Profile "${profile.name}" saved`, "success");
             return true;
-        } catch (err) {
-            console.error("Failed to save profile", err);
+        } catch (error) {
+            console.error("Failed to save profile", error);
             addToast("Failed to save profile", "error");
             return false;
         }
@@ -42,8 +42,8 @@ export function useProfileManager() {
             await loadProfiles();
             addToast("Profile deleted", "info");
             return true;
-        } catch (err) {
-            console.error("Failed to delete profile", err);
+        } catch (error) {
+            console.error("Failed to delete profile", error);
             addToast("Failed to delete profile", "error");
             return false;
         }

@@ -386,18 +386,18 @@ export class LanguageModelEngine {
 
       const fetchPromise = (async (): Promise<number> => {
         try {
-          const res = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
+          const response = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: text }),
           });
-          if (!res.ok) {
-            if (res.status === 404 || res.status >= 500) {
+          if (!response.ok) {
+            if (response.status === 404 || response.status >= 500) {
               this.failedTokenizeBackends.add(localKey);
             }
             return estimatedTokens;
           }
-          const data = await res.json() as TokenizeResponse;
+          const data = await response.json() as TokenizeResponse;
           return data.tokens?.length ?? estimatedTokens;
         } catch {
           this.failedTokenizeBackends.add(localKey);
@@ -487,14 +487,14 @@ export class LanguageModelEngine {
               return estimatedTokens;
           }
 
-          const res = await fetch(url, { method: 'POST', headers, body });
-          if (!res.ok) {
-            if (res.status === 404 || res.status >= 500) {
+          const response = await fetch(url, { method: 'POST', headers, body });
+          if (!response.ok) {
+            if (response.status === 404 || response.status >= 500) {
               this.failedTokenizeBackends.add(cloudKey);
             }
             return estimatedTokens;
           }
-          const data = await res.json();
+          const data = await response.json();
 
           switch (backendName) {
             case 'Google': return (data as GoogleTokenizeResponse).totalTokens ?? estimatedTokens;
@@ -543,10 +543,10 @@ export class LanguageModelEngine {
         extraParams,
       });
 
-      const res = await fetch(url, { method: 'POST', headers, body });
-      if (!res.ok) return { text: '', isCompleted: false };
+      const response = await fetch(url, { method: 'POST', headers, body });
+      if (!response.ok) return { text: '', isCompleted: false };
 
-      const data = await res.json() as OpenAICompletionResponse;
+      const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
       return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };

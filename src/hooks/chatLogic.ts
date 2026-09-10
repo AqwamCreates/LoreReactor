@@ -706,8 +706,8 @@ export async function buildPromptAndStopPatterns(interactionData: InteractionDat
                 }
             );
 
-            for (const err of errors) {
-                fetchErrors.push(`${ctx.name}: ${err}`);
+            for (const error of errors) {
+                fetchErrors.push(`${ctx.name}: ${error}`);
             }
 
             const validResults = results.filter(r => !r.error && r.content.length > 0);

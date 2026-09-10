@@ -189,8 +189,8 @@ export function AudioTrackEditorModal({
             setIsUploading(true);
             try {
                 finalFilename = await uploadAudioTrack(audioFile);
-            } catch (err) {
-                console.error('Failed to upload audio file:', err);
+            } catch (error) {
+                console.error('Failed to upload audio file:', error);
                 setErrors(prev => ({ ...prev, filename: 'Upload failed.' }));
                 setIsUploading(false);
                 return null;

@@ -626,7 +626,7 @@ function App() {
     const handleInjectCustomMessage = useCallback(async (character: Character, text: string) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: crypto.randomUUID(),
+            id: crypto.uuidv4(),
             name: `[Injected] ${character.name}`,
             description: 'User-injected message for LLM context',
             text: `${character.name}: ${text}`,
@@ -646,7 +646,7 @@ function App() {
     const handleInjectFirstMessage = useCallback(async (character: Character) => {
         if (!interactionData) return;
         const injectedContext: Context = {
-            id: crypto.randomUUID(),
+            id: crypto.uuidv4(),
             name: `[Injected First] ${character.name}`,
             description: 'User-injected first message for LLM context',
             text: `${character.name}: *${character.name} enters the scene.*`,

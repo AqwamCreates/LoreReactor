@@ -79,19 +79,19 @@ async function waitForModelReady(port: number, timeoutMs = 60000): Promise<boole
 }
 
 // --- /user_data routes ---
-app.use('/user_data', (req, res) => {
+app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   if (!relativePath || relativePath.includes('..')) {
     log.warn(`Blocked suspicious path attempt: ${relativePath}`);
-    return res.status(403).json({ error: 'Invalid path structure' });
+    return response.status(403).json({ error: 'Invalid path structure' });
   }
 
   const filePath = path.join(ROOT_DIR, 'user_data', relativePath);
   const directory = path.dirname(filePath);
   
-  const originalStatus = res.status.bind(res);
+  const originalStatus = response.status.bind(response);
   
-  res.status = (code: number) => {
+  response.status = (code: number) => {
     // Log only if status is error (4xx or 5xx)
     if (req.method === 'GET' && code >= 400) {
       log.reqError(req.method || 'GET', req.url || '/', code);
@@ -102,40 +102,40 @@ app.use('/user_data', (req, res) => {
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
       log.reqError('GET', req.url || '/', 404);
-      return res.status(404).json({ error: 'Resource not found' });
+      return response.status(404).json({ error: 'Resource not found' });
     }
-    fs.stat(filePath, (err, stats) => {
-      if (err) {
+    fs.stat(filePath, (error, stats) => {
+      if (error) {
         log.reqError('GET', req.url || '/', 500);
-        return res.status(500).json({ error: 'FS Error' });
+        return response.status(500).json({ error: 'FS Error' });
       }
       if (stats.isDirectory()) {
-        fs.readdir(filePath, (err, files) => {
-          if (err) {
+        fs.readdir(filePath, (error, files) => {
+          if (error) {
             log.reqError('GET', req.url || '/', 500);
-            return res.status(500).json({ error: 'Directory Read Error' });
+            return response.status(500).json({ error: 'Directory Read Error' });
           }
-          res.json(files);
+          response.json(files);
         });
       } else {
-        fs.readFile(filePath, 'utf8', (err, data) => {
-          if (err) {
+        fs.readFile(filePath, 'utf8', (error, data) => {
+          if (error) {
             log.reqError('GET', req.url || '/', 500);
-            return res.status(500).json({ error: 'Read Error' });
+            return response.status(500).json({ error: 'Read Error' });
           }
           const ext = path.extname(filePath).toLowerCase();
-          if (ext === '.json') { res.setHeader('Content-Type', 'application/json'); res.send(data); }
+          if (ext === '.json') { response.setHeader('Content-Type', 'application/json'); response.send(data); }
           else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
             const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
-            res.setHeader('Content-Type', mimeMap[ext]);
+            response.setHeader('Content-Type', mimeMap[ext]);
             fs.readFile(filePath, (ie, buf) => {
               if (ie) {
                 log.reqError('GET', req.url || '/', 500);
-                return res.status(500).send('Image Error');
+                return response.status(500).send('Image Error');
               }
-              res.send(buf);
+              response.send(buf);
             });
-          } else { res.send(data); }
+          } else { response.send(data); }
         });
       }
     });
@@ -147,7 +147,7 @@ app.use('/user_data', (req, res) => {
       try { fs.mkdirSync(directory, { recursive: true }); log.success(`Created directory: ${directory}`); }
       catch (e: unknown) {
         const details = e instanceof Error ? e.message : 'Unknown error';
-        return res.status(500).json({ error: 'Mkdir Failed', details });
+        return response.status(500).json({ error: 'Mkdir Failed', details });
       }
     }
     const body: unknown = req.body;
@@ -158,43 +158,43 @@ app.use('/user_data', (req, res) => {
     if (isImage && base64) {
       try {
         const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-        fs.writeFile(filePath, buffer, (err) => err ? res.status(500).json({ error: 'Write Image Failed' }) : res.json({ success: true }));
+        fs.writeFile(filePath, buffer, (error) => error ? response.status(500).json({ error: 'Write Image Failed' }) : response.json({ success: true }));
         return;
-      } catch { return res.status(400).json({ error: 'Invalid Base64' }); }
+      } catch { return response.status(400).json({ error: 'Invalid Base64' }); }
     }
-    fs.writeFile(filePath, JSON.stringify(body, null, 2), (err) => err ? res.status(500).json({ error: 'Write JSON Failed' }) : res.json({ success: true }));
+    fs.writeFile(filePath, JSON.stringify(body, null, 2), (error) => error ? response.status(500).json({ error: 'Write JSON Failed' }) : response.json({ success: true }));
     return;
   }
 
   if (req.method === 'DELETE') {
-    fs.unlink(filePath, (err) => {
-      if (err && err.code !== 'ENOENT') return res.status(500).json({ error: 'Delete Failed' });
-      res.json({ success: true });
+    fs.unlink(filePath, (error) => {
+      if (error && error.code !== 'ENOENT') return response.status(500).json({ error: 'Delete Failed' });
+      response.json({ success: true });
     });
     return;
   }
 
-  res.status(405).json({ error: 'Method Not Allowed' });
+  response.status(405).json({ error: 'Method Not Allowed' });
 });
 
 // --- Model Management ---
 
-app.get('/models/status', (req, res) => {
+app.get('/models/status', (req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
     id, port: instance.port, status: instance.status,
     modelPath: instance.modelPath, uptime: Date.now() - instance.startTime
   }));
-  res.json({ activeModels: status, count: status.length });
+  response.json({ activeModels: status, count: status.length });
 });
 
-app.post('/models/load', async (req, res) => {
+app.post('/models/load', async (req, response) => {
   const { id, modelPath, port: requestedPort, args = [] } = req.body;
-  if (!id || !modelPath) return res.status(400).json({ error: 'Missing id or modelPath' });
-  if (activeModels.has(id)) return res.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
+  if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
+  if (activeModels.has(id)) return response.status(409).json({ error: `Model ${id} is already loaded`, port: activeModels.get(id)?.port });
 
   const absoluteModelPath = resolveModelPath(modelPath);
-  if (!fs.existsSync(LLAMA_SERVER_PATH)) return res.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
-  if (!fs.existsSync(absoluteModelPath)) return res.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
+  if (!fs.existsSync(LLAMA_SERVER_PATH)) return response.status(500).json({ error: `llama-server.exe not found at ${LLAMA_SERVER_PATH}` });
+  if (!fs.existsSync(absoluteModelPath)) return response.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
 
   // ✅ Validate mmproj path if provided in args
   const mmprojIndex = args.indexOf('--mmproj');
@@ -273,21 +273,21 @@ app.post('/models/load', async (req, res) => {
   if (isReady) {
     instance.status = 'ready';
     log.success(`Model ${id} loaded successfully on port ${port}`);
-    res.json({ success: true, id, port, status: 'ready' });
+    response.json({ success: true, id, port, status: 'ready' });
   } else {
     instance.status = 'error';
     log.error(`Model ${id} failed to start within timeout. Killing process.`);
     proc.kill();
     activeModels.delete(id);
-    res.status(504).json({ error: 'Model failed to initialize within timeout' });
+    response.status(504).json({ error: 'Model failed to initialize within timeout' });
   }
 });
 
-app.post('/models/unload', (req, res) => {
+app.post('/models/unload', (req, response) => {
   const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'Missing id' });
+  if (!id) return response.status(400).json({ error: 'Missing id' });
   const instance = activeModels.get(id);
-  if (!instance) return res.status(404).json({ error: `Model ${id} not found` });
+  if (!instance) return response.status(404).json({ error: `Model ${id} not found` });
 
   log.info(`Unloading model ${id}...`);
   instance.process.kill('SIGTERM');
@@ -302,14 +302,14 @@ app.post('/models/unload', (req, res) => {
   }, 2000);
   activeModels.delete(id);
   log.success(`Model ${id} unloaded`);
-  res.json({ success: true, message: 'Model unloaded' });
+  response.json({ success: true, message: 'Model unloaded' });
 });
 
-app.all('/proxy/:modelId/{*path}', (req, res) => {
+app.all('/proxy/:modelId/{*path}', (req, response) => {
   const modelId = req.params.modelId;
   const remainingPath = (req.params as { path?: string }).path || '';
   const instance = activeModels.get(modelId);
-  if (!instance || instance.status !== 'ready') return res.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
+  if (!instance || instance.status !== 'ready') return response.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
 
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
   fetch(targetUrl, {
@@ -322,17 +322,17 @@ app.all('/proxy/:modelId/{*path}', (req, res) => {
     body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
   })
   .then(response => response.json())
-  .then(data => res.json(data))
-  .catch(err => res.status(502).json({ error: 'Proxy error', details: err.message }));
+  .then(data => response.json(data))
+  .catch(error => response.status(502).json({ error: 'Proxy error', details: error.message }));
 });
 
 // --- Web Fetch Proxy (CORS bypass) ---
 
-app.post('/fetch', async (req, res) => {
+app.post('/fetch', async (req, response) => {
   const { url, headers: reqHeaders } = req.body;
 
   if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'Missing url' });
+    return response.status(400).json({ error: 'Missing url' });
   }
 
   try {
@@ -354,7 +354,7 @@ app.post('/fetch', async (req, res) => {
 
     if (isImage) {
       const buffer = Buffer.from(await response.arrayBuffer());
-      res.json({
+      response.json({
         ok: response.ok,
         status: response.status,
         contentType,
@@ -362,7 +362,7 @@ app.post('/fetch', async (req, res) => {
       });
     } else {
       const text = await response.text();
-      res.json({
+      response.json({
         ok: response.ok,
         status: response.status,
         contentType,
@@ -376,7 +376,7 @@ app.post('/fetch', async (req, res) => {
     log.reqError('FETCH', url, 0);
     log.warn(`Fetch failed for ${url}: ${errorMsg}`);
     // ✅ Always return valid JSON, even on failure
-    res.json({ ok: false, status: 0, contentType: '', error: errorMsg });
+    response.json({ ok: false, status: 0, contentType: '', error: errorMsg });
   }
 });
 

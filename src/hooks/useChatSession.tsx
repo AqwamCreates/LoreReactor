@@ -159,9 +159,9 @@ export function useChatSession() {
     useEffect(() => {
         (async () => {
             try {
-                const res = await fetch(`${localURL}/models/status`);
-                if (!res.ok) return;
-                const data = await res.json();
+                const response = await fetch(`${localURL}/models/status`);
+                if (!response.ok) return;
+                const data = await response.json();
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
                 setRunningModelsMap(status);

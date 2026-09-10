@@ -155,8 +155,8 @@ export function CharacterCardImportModal({
                 emotionImageCount: extended.emotionImages ? Object.keys(extended.emotionImages).length : 0,
                 cardFileName: file.name,
             });
-        } catch (err) {
-            setError(`Failed to parse character card: ${(err as Error).message}`);
+        } catch (error) {
+            setError(`Failed to parse character card: ${(error as Error).message}`);
         } finally {
             setIsProcessing(false);
         }
@@ -190,8 +190,8 @@ export function CharacterCardImportModal({
 
             reset();
             onClose();
-        } catch (err) {
-            setError(`Save failed: ${(err as Error).message}`);
+        } catch (error) {
+            setError(`Save failed: ${(error as Error).message}`);
         } finally {
             setIsSaving(false);
         }

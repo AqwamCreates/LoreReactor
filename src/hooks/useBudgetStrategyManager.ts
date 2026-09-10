@@ -11,8 +11,8 @@ export function useBudgetStrategyManager() {
         try {
         const data = await loadAllRawBudgetStrategies();
         setStrategies(data);
-        } catch (err) {
-        console.error("Failed to load budget strategies", err);
+        } catch (error) {
+        console.error("Failed to load budget strategies", error);
         } finally {
         setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useBudgetStrategyManager() {
         await saveRawBudgetStrategy(strategy);
         await loadStrategies();
         return true;
-        } catch (err) {
-        console.error("Failed to save budget strategy", err);
+        } catch (error) {
+        console.error("Failed to save budget strategy", error);
         return false;
         }
     };
@@ -34,8 +34,8 @@ export function useBudgetStrategyManager() {
         await deleteRawBudgetStrategy(id);
         await loadStrategies();
         return true;
-        } catch (err) {
-        console.error("Failed to delete budget strategy", err);
+        } catch (error) {
+        console.error("Failed to delete budget strategy", error);
         return false;
         }
     };

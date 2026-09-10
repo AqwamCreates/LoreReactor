@@ -45,9 +45,9 @@ export function useCharacterVoice() {
                 if (!uploadedTtsVoicesRef.current.has(label)) {
                     const url = getCharacterVoiceUrl(character.voice);
                     if (!url) return;
-                    const res = await fetch(url);
-                    if (!res.ok) return;
-                    const blob = await res.blob();
+                    const response = await fetch(url);
+                    if (!response.ok) return;
+                    const blob = await response.blob();
                     const file = new File([blob], `${label}.wav`, { type: blob.type || 'audio/wav' });
                     if (!await textToSpeechModelEngine.uploadVoice(label, file, ctx)) return;
                     uploadedTtsVoicesRef.current.add(label);

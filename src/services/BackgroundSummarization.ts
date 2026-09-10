@@ -89,8 +89,8 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
         } else {
             addToast(`${triggered.strategyType} complete`, 'info');
         }
-    } catch (err) {
-        console.warn('Background summarization failed:', err);
-        addToast(`Summarization failed: ${(err as Error).message}`, 'error');
+    } catch (error) {
+        console.warn('Background summarization failed:', error);
+        addToast(`Summarization failed: ${(error as Error).message}`, 'error');
     }
 }

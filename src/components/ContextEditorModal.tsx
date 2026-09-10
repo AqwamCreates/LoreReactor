@@ -338,8 +338,8 @@ export function ContextEditorModal({
                 const uploadPromises = imageFiles.map(file => uploadContextImage(file));
                 const uploadedFilenames = await Promise.all(uploadPromises);
                 finalImageFilenames = [...(isNewClone ? [] : (existingContext?.images || [])), ...uploadedFilenames];
-            } catch (err) {
-                console.error("Failed to upload images:", err);
+            } catch (error) {
+                console.error("Failed to upload images:", error);
                 alert("Failed to upload images. Context not saved.");
                 setIsUploading(false);
                 return null;

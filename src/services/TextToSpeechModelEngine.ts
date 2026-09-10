@@ -34,13 +34,13 @@ export class TextToSpeechModelEngine {
 
         const url = `${serverUrl}/synthesize_speech/?${params.toString()}`;
 
-        const res = await fetch(url);
-        if (!res.ok) {
-          console.warn(`TTS synthesis failed: ${res.status}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.warn(`TTS synthesis failed: ${response.status}`);
           return null;
         }
 
-        return await res.blob();
+        return await response.blob();
       } catch (e) {
         console.warn('TTS synthesis failed:', e);
         return null;
@@ -68,12 +68,12 @@ export class TextToSpeechModelEngine {
       formData.append('audio_file_label', label);
       formData.append('file', file);
 
-      const res = await fetch(`${serverUrl}/upload_audio/`, {
+      const response = await fetch(`${serverUrl}/upload_audio/`, {
         method: 'POST',
         body: formData,
       });
 
-      return res.ok;
+      return response.ok;
     } catch (e) {
       console.warn('TTS voice upload failed:', e);
       return false;
@@ -97,13 +97,13 @@ export class TextToSpeechModelEngine {
       formData.append('reference_speaker', targetVoice);
       formData.append('file', audioFile);
 
-      const res = await fetch(`${serverUrl}/change_voice/`, {
+      const response = await fetch(`${serverUrl}/change_voice/`, {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) return null;
-      return await res.blob();
+      if (!response.ok) return null;
+      return await response.blob();
     } catch (e) {
       console.warn('TTS voice conversion failed:', e);
       return null;
@@ -118,10 +118,10 @@ export class TextToSpeechModelEngine {
     if (!serverUrl) return false;
 
     try {
-      const res = await fetch(`${serverUrl}/base_tts/?text=ping`, {
+      const response = await fetch(`${serverUrl}/base_tts/?text=ping`, {
         signal: AbortSignal.timeout(3000),
       });
-      return res.ok;
+      return response.ok;
     } catch {
       return false;
     }

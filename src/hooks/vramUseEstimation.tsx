@@ -236,8 +236,8 @@ export function vramUseEstimation({
                 );
                 
                 setEstimatedVRAM(result);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to estimate VRAM');
+            } catch (error) {
+                setError(error instanceof Error ? error.message : 'Failed to estimate VRAM');
                 setEstimatedVRAM('Unknown');
             } finally {
                 setIsEstimating(false);

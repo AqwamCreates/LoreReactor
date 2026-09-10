@@ -12,8 +12,8 @@ export function useCharacterManager() {
         try {
             const data = await loadAllCharacterShells();
             setCharacters(data);
-        } catch (err) {
-            console.error("Failed to load characters", err);
+        } catch (error) {
+            console.error("Failed to load characters", error);
         } finally {
             setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useCharacterManager() {
     const loadFullCharacter = async (id: string): Promise<Character | null> => {
         try {
             return await loadRawCharacter(id);
-        } catch (err) {
-            console.error(`Failed to load full character ${id}`, err);
+        } catch (error) {
+            console.error(`Failed to load full character ${id}`, error);
             return null;
         }
     };
@@ -34,8 +34,8 @@ export function useCharacterManager() {
             await saveRawCharacter(char);
             await loadCharacters(); // Refresh shell list
             return true;
-        } catch (err) {
-            console.error("Failed to save character", err);
+        } catch (error) {
+            console.error("Failed to save character", error);
             return false;
         }
     };
@@ -45,8 +45,8 @@ export function useCharacterManager() {
             await deleteRawCharacter(id);
             await loadCharacters(); // Refresh shell list
             return true;
-        } catch (err) {
-            console.error("Failed to delete character", err);
+        } catch (error) {
+            console.error("Failed to delete character", error);
             return false;
         }
     };

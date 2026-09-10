@@ -294,8 +294,8 @@ export async function runTurnSequence(
         try {
             await saveRawInteractionData(workingData);
             if (onMessageSaved) onMessageSaved(workingData);
-        } catch (err) {
-            console.error("Failed to save intermediate message:", err);
+        } catch (error) {
+            console.error("Failed to save intermediate message:", error);
         }
     }
 

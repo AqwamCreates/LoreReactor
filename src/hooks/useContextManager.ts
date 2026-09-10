@@ -11,8 +11,8 @@ export function useContextManager() {
         try {
         const data = await loadAllRawContexts();
         setContexts(data);
-        } catch (err) {
-        console.error("Failed to load contexts", err);
+        } catch (error) {
+        console.error("Failed to load contexts", error);
         } finally {
         setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useContextManager() {
         await saveRawContext(context);
         await loadContexts();
         return true;
-        } catch (err) {
-        console.error("Failed to save context", err);
+        } catch (error) {
+        console.error("Failed to save context", error);
         return false;
         }
     };
@@ -34,8 +34,8 @@ export function useContextManager() {
         await deleteRawContext(id);
         await loadContexts();
         return true;
-        } catch (err) {
-        console.error("Failed to delete context", err);
+        } catch (error) {
+        console.error("Failed to delete context", error);
         return false;
         }
     };

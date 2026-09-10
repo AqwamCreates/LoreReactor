@@ -98,8 +98,8 @@ export function DataExportModal({
             a.href = url; a.download = `LoreReactor_Export_${timestamp}.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        } catch (err) {
-            setError(`Export failed: ${(err as Error).message}`);
+        } catch (error) {
+            setError(`Export failed: ${(error as Error).message}`);
         } finally { setIsExporting(false); }
     };
 

@@ -41,10 +41,10 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
-        { id: `step-${crypto.randomUUID()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, compressionInterval: 20, compressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveChunkSize: 10, recursiveMaxDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.uuidv4()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.uuidv4()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, compressionInterval: 20, compressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.uuidv4()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveChunkSize: 10, recursiveMaxDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${crypto.uuidv4()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
     ];
 }
 
@@ -225,7 +225,7 @@ export function ProfileEditorModal({
             narrateNormalText, narrateQuotedText, narrateBoldedText, narrateItalicizedText,
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
-                ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
+                ...s, id: s.id || `step-${crypto.uuidv4()}`, order: i,
                 firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
             })),
             firstCreatedTimestamp: existingProfile?.firstCreatedTimestamp || now,
@@ -235,13 +235,13 @@ export function ProfileEditorModal({
 
     const handleSubmit = () => {
         if (!validate()) return;
-        onSave(buildProfile(existingProfile?.id || crypto.randomUUID(), name.trim()));
+        onSave(buildProfile(existingProfile?.id || crypto.uuidv4(), name.trim()));
         onClose();
     };
 
     const handleClone = () => {
         if (!validate()) return;
-        onSave(buildProfile(crypto.randomUUID(), `${name.trim()} (Clone)`));
+        onSave(buildProfile(crypto.uuidv4(), `${name.trim()} (Clone)`));
         onClose();
     };
 
@@ -306,7 +306,7 @@ export function ProfileEditorModal({
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
         const newStep: SummarizationStep = {
-            id: `step-${crypto.randomUUID()}`, name: strategyType, strategyType, enabled: true,
+            id: `step-${crypto.uuidv4()}`, name: strategyType, strategyType, enabled: true,
             order: summarizationSteps.length, summaryTokenBudget: 512, triggerTokenThreshold: 0,
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };

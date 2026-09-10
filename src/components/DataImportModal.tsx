@@ -85,7 +85,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             setSelWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
             setSelChatIds(json.chats.map((c: { id: string }) => c.id));
             setIncludeActions(json.interjectableActions.length > 0);
-        } catch (err) { setError(`Failed to parse file: ${(err as Error).message}`); }
+        } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
     };
 
     const handleConfirmImport = async () => {
@@ -113,7 +113,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             const result = await importSelectedData(filtered);
             setImportResult(result);
             if (result.success || result.errors.length === 0) onImportComplete();
-        } catch (err) { setError(`Import failed: ${(err as Error).message}`); }
+        } catch (error) { setError(`Import failed: ${(error as Error).message}`); }
         finally { setIsImporting(false); }
     };
 
@@ -258,8 +258,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 <div className="editor-section">
                                     <span className="editor-section-title">Errors ({importResult.errors.length})</span>
                                     <div className="entity-error-list">
-                                        {importResult.errors.map((err, i) => (
-                                            <div key={i} className="entity-error-item">• {err}</div>
+                                        {importResult.errors.map((error, i) => (
+                                            <div key={i} className="entity-error-item">• {error}</div>
                                         ))}
                                     </div>
                                 </div>

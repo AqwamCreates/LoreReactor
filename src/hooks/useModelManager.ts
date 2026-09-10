@@ -40,10 +40,10 @@ export function useModelManager() {
 
     const fetchStatus = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/models/status`);
-            if (!res.ok) return;
+            const response = await fetch(`${API_BASE}/models/status`);
+            if (!response.ok) return;
             
-            const data = await res.json();
+            const data = await response.json();
             const newStatus: Record<string, ModelState> = {};
             
             for (const m of data.activeModels || []) {
@@ -147,13 +147,13 @@ export function useModelManager() {
 
     const unloadModelInternal = async (id: string): Promise<boolean> => {
         try {
-            const res = await fetch(`${API_BASE}/models/unload`, {
+            const response = await fetch(`${API_BASE}/models/unload`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id })
             });
             
-            if (res.ok) {
+            if (response.ok) {
                 idleNotifiedRef.current.delete(id);
                 setRunningModels(prev => {
                     const next = { ...prev };
@@ -222,19 +222,19 @@ export function useModelManager() {
             
             try {
                 addToast(`Starting model ${model.name}...`, "info");
-                const res = await fetch(`${API_BASE}/models/load`, {
+                const response = await fetch(`${API_BASE}/models/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: model.id, modelPath, args })
                 });
 
-                if (res.ok) {
-                    const data = await res.json();
+                if (response.ok) {
+                    const data = await response.json();
                     addToast(`Model loaded on port ${data.port}`, "success");
                     setRunningModels(prev => ({ ...prev, [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false } }));
                     setSelectedModelId(id);
                 } else {
-                    throw new Error((await res.json()).error || "Unknown error");
+                    throw new Error((await response.json()).error || "Unknown error");
                 }
             } catch (e: unknown) {
                 const message = e instanceof Error ? e.message : "Unknown error";

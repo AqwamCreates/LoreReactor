@@ -11,8 +11,8 @@ export function useLocationManager() {
         try {
             const data = await loadAllRawLocations();
             setLocations(data);
-        } catch (err) {
-            console.error("Failed to load locations", err);
+        } catch (error) {
+            console.error("Failed to load locations", error);
         } finally {
             setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useLocationManager() {
             await saveRawLocation(location);
             await loadLocations();
             return true;
-        } catch (err) {
-            console.error("Failed to save location", err);
+        } catch (error) {
+            console.error("Failed to save location", error);
             return false;
         }
     };
@@ -34,8 +34,8 @@ export function useLocationManager() {
             await deleteRawLocation(id);
             await loadLocations();
             return true;
-        } catch (err) {
-            console.error("Failed to delete location", err);
+        } catch (error) {
+            console.error("Failed to delete location", error);
             return false;
         }
     };

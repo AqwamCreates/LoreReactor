@@ -16,8 +16,8 @@ export function useChatListManager() {
             const sorted = data.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
             setChats(sorted);
             loadedRef.current = true;
-        } catch (err) {
-            console.error("Failed to load chats", err);
+        } catch (error) {
+            console.error("Failed to load chats", error);
         } finally {
             setIsLoading(false);
         }
@@ -29,8 +29,8 @@ export function useChatListManager() {
             // After deletion, force reload to reflect changes
             await loadChats(true);
             return true;
-        } catch (err) {
-            console.error("Failed to delete chat", err);
+        } catch (error) {
+            console.error("Failed to delete chat", error);
             return false;
         }
     };

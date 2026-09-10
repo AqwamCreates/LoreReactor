@@ -256,8 +256,8 @@ export function LocationEditorModal({
                 const uploadPromises = imageFiles.map(file => uploadLocationImage(file));
                 const uploadedFilenames = await Promise.all(uploadPromises);
                 finalImageFilenames = [...(isNewClone ? [] : (existingLocation?.images || [])), ...uploadedFilenames];
-            } catch (err) {
-                console.error("Failed to upload images:", err);
+            } catch (error) {
+                console.error("Failed to upload images:", error);
                 alert("Failed to upload images. Location not saved.");
                 setIsUploading(false);
                 return null;

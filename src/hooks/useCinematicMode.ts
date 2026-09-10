@@ -23,6 +23,96 @@ function resolvePortrait(characterId: string, images: Record<string, string> | u
     return getCharacterImageUrl(characterId, filename);
 }
 
+/**
+ * Resolve the background image URL for the current location.
+ * Priority:
+ * 1. If backgroundImageRegularExpressionActivationTriggers has a match against
+ *    the last user/protagonist message, use that specific image index.
+ * 2. If backgroundImageWeights has entries, sample by weight.
+ * 3. Fall back to images[0].
+ */
+function resolveLocationBackgroundUrl(interactionData: InteractionData): string | null {
+    const locations = interactionData.locations;
+    if (!locations || locations.length === 0) return null;
+
+    // Find current location from last message with locationIndex
+    let currentLocIndex: number | undefined;
+    const history = interactionData.interactionHistory;
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].locationIndex !== undefined && history[i].locationIndex >= 0) {
+            currentLocIndex = history[i].locationIndex;
+            break;
+        }
+    }
+    if (currentLocIndex === undefined) return null;
+
+    const loc = locations[currentLocIndex];
+    if (!loc?.images || loc.images.length === 0) return null;
+
+    // Find last protagonist/user message text
+    const protagonistId = interactionData.protagonist?.id;
+    let lastUserText = '';
+    if (protagonistId) {
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
+            if (msg.kind === 'chat' && msg.character.id === protagonistId) {
+                lastUserText = msg.textContent;
+                break;
+            }
+        }
+    }
+
+    // 1. Check regex triggers against last user message
+    const regexTriggers = loc.backgroundImageRegularExpressionActivationTriggers;
+    if (regexTriggers && Object.keys(regexTriggers).length > 0 && lastUserText) {
+        for (const [idxStr, pattern] of Object.entries(regexTriggers)) {
+            if (!pattern.trim()) continue;
+            try {
+                const regex = new RegExp(pattern);
+                if (regex.test(lastUserText)) {
+                    const idx = Number(idxStr);
+                    if (idx >= 0 && idx < loc.images.length && loc.images[idx]) {
+                        return getLocationImageUrl(loc.images[idx]);
+                    }
+                }
+            } catch {
+                // Invalid regex — skip
+            }
+        }
+    }
+
+    // 2. Sample by weight
+    const weights = loc.backgroundImageWeights;
+    if (weights && Object.keys(weights).length > 0) {
+        const pool: { index: number; weight: number }[] = [];
+        let totalWeight = 0;
+        for (const [idxStr, w] of Object.entries(weights)) {
+            const idx = Number(idxStr);
+            if (idx >= 0 && idx < loc.images.length && loc.images[idx] && w > 0) {
+                pool.push({ index: idx, weight: w });
+                totalWeight += w;
+            }
+        }
+        if (pool.length > 0 && totalWeight > 0) {
+            let roll = Math.random() * totalWeight;
+            for (const entry of pool) {
+                roll -= entry.weight;
+                if (roll <= 0) {
+                    return getLocationImageUrl(loc.images[entry.index]);
+                }
+            }
+            return getLocationImageUrl(loc.images[pool[pool.length - 1].index]);
+        }
+    }
+
+    // 3. Fallback to first image
+    if (loc.images[0]) {
+        return getLocationImageUrl(loc.images[0]);
+    }
+
+    return null;
+}
+
 export function useCinematicMode(options: UseCinematicModeOptions) {
     const {
         viewMode, interactionData, currentCharacter,
@@ -66,21 +156,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         return getCharacterImageUrl(streamingCharacter.id, filename);
     }, [streamingCharacter, currentCharacterExpression]);
 
-    const locationBackgroundUrl = (() => {
-        if (!interactionData?.locations?.length) return null;
-        const history = interactionData.interactionHistory;
-        for (let i = history.length - 1; i >= 0; i--) {
-            const msg = history[i];
-            if (msg.locationIndex !== undefined && msg.locationIndex >= 0) {
-                const loc = interactionData.locations[msg.locationIndex];
-                if (loc?.images?.length && loc.images[0]) {
-                    return getLocationImageUrl(loc.images[0]);
-                }
-                return null;
-            }
-        }
-        return null;
-    })();
+    const locationBackgroundUrl = interactionData ? resolveLocationBackgroundUrl(interactionData) : null;
 
     // IntersectionObserver for cinematic avatar selection
     useEffect(() => {

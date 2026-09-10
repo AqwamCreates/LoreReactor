@@ -82,8 +82,8 @@ export function useBudgetDataManager() {
             setBudgetData(resetChecked);
             emitBudgetDataUpdated(resetChecked);
             return resetChecked;
-        } catch (err) {
-            console.error('Failed to load budget data:', err);
+        } catch (error) {
+            console.error('Failed to load budget data:', error);
             setBudgetData(null);
             emitBudgetDataUpdated(null);
             return null;
@@ -103,8 +103,8 @@ export function useBudgetDataManager() {
             setBudgetData(updated);
             emitBudgetDataUpdated(updated);
             return true;
-        } catch (err) {
-            console.error('Failed to save budget data:', err);
+        } catch (error) {
+            console.error('Failed to save budget data:', error);
             return false;
         }
     }, []);
@@ -119,8 +119,8 @@ export function useBudgetDataManager() {
             setBudgetData(created);
             emitBudgetDataUpdated(created);
             return true;
-        } catch (err) {
-            console.error('Failed to create budget data:', err);
+        } catch (error) {
+            console.error('Failed to create budget data:', error);
             return false;
         }
     }, []);
@@ -140,8 +140,8 @@ export function useBudgetDataManager() {
             setBudgetData(updated);
             emitBudgetDataUpdated(updated);
             return true;
-        } catch (err) {
-            console.error('Failed to update budget data:', err);
+        } catch (error) {
+            console.error('Failed to update budget data:', error);
             return false;
         }
     }, [budgetData]);

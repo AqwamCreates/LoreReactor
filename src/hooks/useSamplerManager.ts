@@ -11,8 +11,8 @@ export function useSamplerManager() {
         try {
         const data = await loadAllRawSamplers();
         setSamplers(data);
-        } catch (err) {
-        console.error("Failed to load Samplers", err);
+        } catch (error) {
+        console.error("Failed to load Samplers", error);
         } finally {
         setIsLoading(false);
         }
@@ -23,8 +23,8 @@ export function useSamplerManager() {
         await saveRawSampler(Sampler);
         await loadSamplers();
         return true;
-        } catch (err) {
-        console.error("Failed to save Sampler", err);
+        } catch (error) {
+        console.error("Failed to save Sampler", error);
         return false;
         }
     };
@@ -34,8 +34,8 @@ export function useSamplerManager() {
         await deleteRawSampler(id);
         await loadSamplers();
         return true;
-        } catch (err) {
-        console.error("Failed to delete Sampler", err);
+        } catch (error) {
+        console.error("Failed to delete Sampler", error);
         return false;
         }
     };

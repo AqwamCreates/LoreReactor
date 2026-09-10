@@ -36,13 +36,13 @@ export async function fetchCurrentWeather(apiKey?: string): Promise<string | nul
 
     try {
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${location.lat}&lon=${location.lon}&appid=${apiKey}&units=metric`;
-        const res = await fetch(url);
-        if (!res.ok) {
-            console.warn(`Weather API returned ${res.status}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.warn(`Weather API returned ${response.status}`);
             return null;
         }
 
-        const data = await res.json();
+        const data = await response.json();
 
         const description = data.weather?.[0]?.description ?? 'unknown';
         const temperature = Math.round(data.main?.temp ?? 0);
