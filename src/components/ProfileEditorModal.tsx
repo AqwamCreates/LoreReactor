@@ -125,6 +125,7 @@ export function ProfileEditorModal({
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
+    const [forceNoLocationImageInjection, setForceNoLocationImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
     const [useWeather, setUseWeather] = useState(false);
     const [weatherApiKey, setWeatherApiKey] = useState('');
@@ -168,6 +169,7 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
                 setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
                 setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
+                setForceNoLocationImageInjection(existingProfile.forceNoLocationImageInjection ?? false);
                 setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
                 setUseWeather(existingProfile.useWeather ?? false);
                 setWeatherApiKey(existingProfile.weatherApiKey ?? '');
@@ -210,6 +212,7 @@ export function ProfileEditorModal({
                 setNumberOfMessagesToDisableMetaThinkInstructions(-1);
                 setNumberOfMessagesToDisableDialoguePrompt(-1);
                 setForceNoContextImageInjection(false);
+                setForceNoLocationImageInjection(false);
                 setUseCurrentDateAndTime(false);
                 setUseWeather(false);
                 setWeatherApiKey('');
@@ -265,6 +268,7 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableMetaThinkInstructions,
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
+            forceNoLocationImageInjection,
             useCurrentDateAndTime,
             useWeather,
             weatherApiKey,
@@ -313,6 +317,7 @@ export function ProfileEditorModal({
             numberOfMessagesToDisableMetaThinkInstructions,
             numberOfMessagesToDisableDialoguePrompt,
             forceNoContextImageInjection,
+            forceNoLocationImageInjection,
             useCurrentDateAndTime,
             useWeather,
             weatherApiKey,
@@ -582,7 +587,20 @@ export function ProfileEditorModal({
                             <span>Force No Context Image Injection</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Prevent context and location images from being sent to the model.
+                            Prevent context images from being sent to the model.
+                        </div>
+
+                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={forceNoLocationImageInjection}
+                                onChange={(e) => setForceNoLocationImageInjection(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span>Force No Location Image Injection</span>
+                        </label>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                            Prevent location images from being sent to the model.
                         </div>
 
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>

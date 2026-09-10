@@ -1,7 +1,7 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, Sampler, LanguageModel, Profile, World, PromptBlockType, SummarizationStrategyType } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlockType, SummarizationStrategyType } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -95,6 +95,23 @@ interface GeneratedLocation {
     useBase64Encoding?: boolean;
 }
 
+interface GeneratedAudioTrack {
+    name: string;
+    description?: string;
+    filename: string;
+    loop?: boolean;
+    volume?: number;
+    startFadeDurationMs?: number;
+    endFadeDurationMs?: number;
+    audioCategory?: 'ambient' | 'music' | 'sound effect';
+    priority?: number;
+    regularExpressionActivationTrigger?: string;
+    regularExpressionDeactivationTrigger?: string;
+    locationBindings?: string[];
+    contextBindings?: string[];
+    characterBindings?: string[];
+}
+
 interface GeneratedSummarizationStep {
     strategyType: SummarizationStrategyType;
     enabled: boolean;
@@ -151,6 +168,7 @@ interface GeneratedWorldDefinition {
     characters: GeneratedCharacter[];
     contexts: GeneratedContext[];
     locations: GeneratedLocation[];
+    audioTracks?: GeneratedAudioTrack[];
     profile?: GeneratedProfile;
 }
 
@@ -264,7 +282,9 @@ function buildJsonSchema(effectiveEntities: EntityType[]): string {
         parts.push(`  "world": {
     "name": "string (required)", "description": "string (display only, NOT used as AI input)",
     "characters": [/* character objects */], "contexts": [/* context objects */],
-    "locations": [/* location objects */], "profile": {/* profile object, optional */}
+    "locations": [/* location objects */],
+    "audioTracks": [{"name": "string (required)", "filename": "string (required, e.g. forest_ambience.ogg)", "description": "string", "loop": "boolean (default true)", "volume": "number (0-1, default 1)", "startFadeDurationMs": "number (default 1000)", "endFadeDurationMs": "number (default 1000)", "audioCategory": "'ambient' | 'music' | 'sound effect' (default 'ambient')", "priority": "number (default 0)", "regularExpressionActivationTrigger": "string (regex)", "regularExpressionDeactivationTrigger": "string (regex)", "locationBindings": ["location name or ID strings"], "contextBindings": ["context name or ID strings"], "characterBindings": ["character name or ID strings"]}],
+    "profile": {/* profile object, optional */}
   }`);
     }
     return `{\n${parts.join(',\n')}\n}`;
@@ -399,6 +419,24 @@ function locationEntityToGenerated(l: Location): GeneratedLocation {
     };
 }
 
+function generatedAudioTrackToEntity(t: GeneratedAudioTrack): AudioTrack {
+    const now = Date.now();
+    return {
+        id: uuidv4(), name: t.name, description: t.description || undefined,
+        filename: t.filename, loop: t.loop ?? true, volume: t.volume ?? 1,
+        startFadeDurationMs: t.startFadeDurationMs ?? 1000,
+        endFadeDurationMs: t.endFadeDurationMs ?? 1000,
+        audioCategory: t.audioCategory ?? 'ambient',
+        priority: t.priority ?? 0,
+        regularExpressionActivationTrigger: t.regularExpressionActivationTrigger || undefined,
+        regularExpressionDeactivationTrigger: t.regularExpressionDeactivationTrigger || undefined,
+        locationBindings: t.locationBindings || [],
+        contextBindings: t.contextBindings || [],
+        characterBindings: t.characterBindings || [],
+        firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
+    };
+}
+
 function buildProfileFromGenerated(p: GeneratedProfile): Profile {
     const now = Date.now();
     return {
@@ -468,7 +506,7 @@ function profileEntityToGenerated(p: Profile): GeneratedProfile {
     };
 }
 
-function resolveWorldCrossReferences(world: GeneratedWorldDefinition, injectLocationImages: boolean): { characters: Character[]; contexts: Context[]; locations: Location[]; profile?: Profile } {
+function resolveWorldCrossReferences(world: GeneratedWorldDefinition, injectLocationImages: boolean, allAudioTracks: AudioTrack[]): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; profile?: Profile } {
     const now = Date.now();
     const charNameToId = new Map<string, string>();
     const characters: Character[] = world.characters.map(c => {
@@ -490,9 +528,17 @@ function resolveWorldCrossReferences(world: GeneratedWorldDefinition, injectLoca
         if (l.characterWeights) for (const [ref, w] of Object.entries(l.characterWeights)) { const rid = resolveCharRef(ref); if (rid) rcw[rid] = w; }
         return { id, name: l.name, description: l.description || undefined, text: l.text || '', images: injectLocationImages ? (l.images || []) : [], regularExpressionActivationTrigger: l.regularExpressionActivationTrigger || undefined, locationBindings: rlb, locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined, characterBindings: rcb, globalWeight: l.globalWeight ?? 1, characterWeights: rcw, useBase64Encoding: l.useBase64Encoding ?? false, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
     });
+
+    // Resolve audio tracks — match by name against existing, or create new
+    const audioTracks: AudioTrack[] = (world.audioTracks || []).map(t => {
+        const existing = allAudioTracks.find(at => at.name === t.name || at.filename === t.filename);
+        if (existing) return existing;
+        return generatedAudioTrackToEntity(t);
+    });
+
     let profile: Profile | undefined;
     if (world.profile) profile = buildProfileFromGenerated(world.profile);
-    return { characters, contexts, locations, profile };
+    return { characters, contexts, locations, audioTracks, profile };
 }
 
 interface AIRecommendationModalProps {
@@ -511,6 +557,7 @@ interface AIRecommendationModalProps {
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
+    allAudioTracks: AudioTrack[];
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning?: boolean; port?: number }>;
 }
@@ -518,7 +565,7 @@ interface AIRecommendationModalProps {
 export function AIRecommendationModal({
     isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveProfile, onSaveWorld,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenProfileEditor,
-    allSamplers, allCharacters, allContexts, allLocations, selectedModel, runningModels,
+    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -536,9 +583,11 @@ export function AIRecommendationModal({
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+    const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
+    const [audioSearch, setAudioSearch] = useState('');
     const [referenceImages, setReferenceImages] = useState<File[]>([]);
     const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
     const [isUploadingImages, setIsUploadingImages] = useState(false);
@@ -563,8 +612,8 @@ export function AIRecommendationModal({
         setImageInjectionPriority(['reference', 'character', 'context', 'location']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
-        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
-        setCharSearch(''); setCtxSearch(''); setLocSearch('');
+        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]); setSelectedAudioTrackIds([]);
+        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioSearch('');
         setReferenceImages([]);
         setReferenceImagePreviews(prev => { prev.forEach(p => { if (!p.startsWith('data:image')) URL.revokeObjectURL(p); }); return []; });
     }, []);
@@ -685,6 +734,7 @@ export function AIRecommendationModal({
         if (selectedCharacterIds.length > 0) { parts.push('EXISTING CHARACTERS:'); selectedCharacterIds.forEach((id, i) => { const c = allCharacters.find(ch => ch.id === id); if (c) parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.description ? ` | ${c.description.substring(0, 200)}` : ''}`); }); parts.push(''); }
         if (selectedContextIds.length > 0) { parts.push('EXISTING CONTEXTS:'); selectedContextIds.forEach((id, i) => { const c = allContexts.find(x => x.id === id); if (c) parts.push(`${i + 1}. ID: ${c.id} | Name: ${c.name}${c.text ? ` | ${c.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
         if (selectedLocationIds.length > 0) { parts.push('EXISTING LOCATIONS:'); selectedLocationIds.forEach((id, i) => { const l = allLocations.find(x => x.id === id); if (l) parts.push(`${i + 1}. ID: ${l.id} | Name: ${l.name}${l.text ? ` | ${l.text.substring(0, 200)}` : ''}`); }); parts.push(''); }
+        if (selectedAudioTrackIds.length > 0) { parts.push('EXISTING AUDIO TRACKS:'); selectedAudioTrackIds.forEach((id, i) => { const t = allAudioTracks.find(x => x.id === id); if (t) parts.push(`${i + 1}. ID: ${t.id} | Name: ${t.name} | File: ${t.filename} | Category: ${t.audioCategory}`); }); parts.push(''); }
         return parts.join('\n');
     };
 
@@ -765,14 +815,14 @@ export function AIRecommendationModal({
             if (parsedOutput.location) { const loc = generatedLocationToEntity(parsedOutput.location); if (!injectLocationImages) loc.images = []; if (!await onSaveLocation(loc)) throw new Error('Failed to save location.'); }
             if (parsedOutput.profile) { const p = buildProfileFromGenerated(parsedOutput.profile); p.forceNoCharacterImageInjection = !injectCharacterImages; p.forceNoContextImageInjection = !injectContextImages; if (!await onSaveProfile(p)) throw new Error('Failed to save profile.'); }
             if (parsedOutput.world) {
-                const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages);
+                const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages, allAudioTracks);
                 if (!injectCharacterImages) for (const c of resolved.characters) { c.doNotInjectCharacterImage = true; }
                 if (resolved.profile) { resolved.profile.forceNoCharacterImageInjection = !injectCharacterImages; resolved.profile.forceNoContextImageInjection = !injectContextImages; }
                 for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
                 for (const lo of resolved.locations) if (!await onSaveLocation(lo)) throw new Error(`Failed to save "${lo.name}".`);
                 if (resolved.profile && !await onSaveProfile(resolved.profile)) throw new Error(`Failed to save "${resolved.profile.name}".`);
-                const world: World = { id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined, characterIds: resolved.characters.map(c => c.id), contextIds: resolved.contexts.map(c => c.id), locationIds: resolved.locations.map(l => l.id), profileId: resolved.profile?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+                const world: World = { id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined, characterIds: resolved.characters.map(c => c.id), contextIds: resolved.contexts.map(c => c.id), locationIds: resolved.locations.map(l => l.id), audioTrackIds: resolved.audioTracks.map(t => t.id), profileId: resolved.profile?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
                 if (!await onSaveWorld(world)) throw new Error('Failed to save world.');
             }
             resetResult(); setIsResultOpen(false);
@@ -820,7 +870,7 @@ export function AIRecommendationModal({
                             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}><button type="button" className={`editor-btn ${showSchemaPreview ? 'editor-btn-save' : 'editor-btn-cancel'}`} onClick={() => setShowSchemaPreview(!showSchemaPreview)} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>{showSchemaPreview ? '🔽 Hide JSON Schema' : '📋 Show JSON Schema'}</button></div>
                             {showSchemaPreview && <div style={{ marginTop: '8px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}><span style={{ fontSize: '0.6rem', opacity: 0.6 }}>Copy schema for external AI tools</span><button type="button" className="editor-btn editor-btn-cancel" onClick={handleCopySchema} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>{schemaCopied ? '✅ Copied!' : '📋 Copy'}</button></div><pre style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', fontSize: '0.65rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '300px', overflowY: 'auto', color: 'var(--text-h)', margin: 0 }}>{buildJsonSchema(effectiveSchemaEntities)}</pre></div>}
                         </div>
-                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /></div>
+                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /><EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} /></div>
                         <div className="editor-section"><label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label><textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea" placeholder={selectedEntities.includes('World') ? "e.g., A haunted Victorian mansion with 5 NPCs..." : "Leave empty for free generation..."} rows={3} /></div>
                         <div className="editor-section"><span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span><div className="entity-ref-hint">Upload images as visual reference.</div><div className="editor-image-grid">{referenceImagePreviews.map((p, i) => (<div key={p} className="editor-image-square active"><img src={p} alt={`Ref ${i + 1}`} /><button type="button" onClick={() => handleRemoveReferenceImage(i)} className="editor-image-remove-btn">×</button></div>))}<div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}><div className="context-image-placeholder"><div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div><div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div></div></div></div><input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} /></div>
                         <div className="editor-section"><span className="editor-section-title">Image Injection Priority</span><div className="entity-ref-hint">Drag to reorder. × to disable.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{imageInjectionPriority.map((item, index) => (<div key={item} draggable onDragStart={() => handleDragStart(index)} onDragOver={(e) => handleDragOver(e, index)} onDrop={() => handleDrop(index)} onDragEnd={handleDragEnd} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)', border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'grab', opacity: dragIndex === index ? 0.5 : 1, transition: 'border 0.15s, background 0.15s, opacity 0.15s', userSelect: 'none' }}><span style={{ opacity: 0.3, fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span><span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span><span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span><button type="button" onClick={() => toggleImagePriorityItem(item)} className="context-character-binding-remove" title="Remove">×</button></div>))}</div>{disabledImageItems.length > 0 && <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{disabledImageItems.map(item => (<button key={item} type="button" onClick={() => toggleImagePriorityItem(item)} className="editor-btn editor-btn-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>+ {IMAGE_SHORT_LABELS[item]}</button>))}</div>}</div>
@@ -863,6 +913,7 @@ export function AIRecommendationModal({
                                 <div className="entity-field-block"><div className="entity-field-title">Characters ({parsedOutput.world.characters.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.characters.map((c, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🎭 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>
                                 {(parsedOutput.world.contexts?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Contexts ({parsedOutput.world.contexts!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.contexts!.map((c, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📜 {c.name}</div>{c.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{c.description.length > 150 ? c.description.substring(0, 150) + '...' : c.description}</div>}</div>)}</div></div>}
                                 {(parsedOutput.world.locations?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Locations ({parsedOutput.world.locations!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.locations!.map((l, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>}
+                                {(parsedOutput.world.audioTracks?.length ?? 0) > 0 && <div className="entity-field-block"><div className="entity-field-title">Audio Tracks ({parsedOutput.world.audioTracks!.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{parsedOutput.world.audioTracks!.map((t, i) => <div key={i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🔊 {t.name}</div>{t.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{t.description.length > 150 ? t.description.substring(0, 150) + '...' : t.description}</div>}<div style={{ opacity: 0.5, fontSize: '0.6rem', marginTop: '1px' }}>{t.audioCategory || 'ambient'} • {t.filename}</div></div>)}</div></div>}
                                 {parsedOutput.world.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {parsedOutput.world.profile.name}</div>{parsedOutput.world.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{parsedOutput.world.profile.description.length > 150 ? parsedOutput.world.profile.description.substring(0, 150) + '...' : parsedOutput.world.profile.description}</div>}</div></div>}
                                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {onOpenCharacterEditor && parsedOutput.world.characters.map((c, i) => <button key={`wc-${i}`} type="button" className="editor-btn editor-btn-cancel" onClick={() => onOpenCharacterEditor(generatedCharacterToEntity(c, allSamplers), (refined) => applyRefinedCharacter(refined, i))} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}

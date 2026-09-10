@@ -933,6 +933,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         enableCharacterExpression: rawProfile.enableCharacterExpression ?? false,
         forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
         forceNoContextImageInjection: rawProfile.forceNoContextImageInjection,
+        forceNoLocationImageInjection: rawProfile.forceNoLocationImageInjection,
         useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,
         useWeather: rawProfile.useWeather,
         weatherApiKey: rawProfile.weatherApiKey,

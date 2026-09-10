@@ -469,6 +469,7 @@ export function AppModals({
                     allCharacters={allCharacters}
                     allContexts={allContexts}
                     allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
                     runningModels={runningModels}
                 />

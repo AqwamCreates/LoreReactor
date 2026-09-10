@@ -435,6 +435,7 @@ export interface Profile extends ObjectData {
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
+  forceNoLocationImageInjection: boolean;
   useCurrentDateAndTime: boolean;
   useWeather: boolean;
   weatherApiKey?: string;
@@ -470,6 +471,7 @@ export interface RawProfile extends RawData {
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
+  forceNoLocationImageInjection: boolean;
   useCurrentDateAndTime: boolean;
   useWeather: boolean;
   weatherApiKey?: string;
