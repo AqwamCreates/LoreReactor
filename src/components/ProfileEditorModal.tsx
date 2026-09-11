@@ -19,8 +19,6 @@ const ALL_BLOCK_TYPES: PromptBlockType[] = [
     'Tool Instructions', 'Text Injection',
 ];
 
-const DEFAULT_STRATEGY: (PromptBlockType | string)[] = [...ALL_BLOCK_TYPES];
-
 const CACHE_LEVEL_DESCRIPTIONS = [
     'No injection.',
     'Inject all participant names upfront.',
@@ -139,7 +137,7 @@ export function ProfileEditorModal({
     const [narrateQuotedText, setNarrateQuotedText] = useState(false);
     const [narrateBoldedText, setNarrateBoldedText] = useState(false);
     const [narrateItalicizedText, setNarrateItalicizedText] = useState(false);
-    const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>([...DEFAULT_STRATEGY]);
+    const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>([]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>([]);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
@@ -198,7 +196,7 @@ export function ProfileEditorModal({
             setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
             setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
             setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
-            setInputStrategy(existingProfile.inputStrategy?.length ? existingProfile.inputStrategy : [...DEFAULT_STRATEGY]);
+            setInputStrategy(existingProfile.inputStrategy?.length ? existingProfile.inputStrategy : []);
             setSummarizationSteps(
                 existingProfile.summarizationSteps?.length
                     ? [...existingProfile.summarizationSteps].sort((a, b) => a.order - b.order)
@@ -216,7 +214,7 @@ export function ProfileEditorModal({
             setStripThinkTokens(false);
             setEnableWebSearch(0); setEnableCalculator(0); setEnableMemoryWriting(0); setEnableMemoryReading(0);
             setNarrateNormalText(true); setNarrateQuotedText(false); setNarrateBoldedText(false); setNarrateItalicizedText(false);
-            setInputStrategy([...DEFAULT_STRATEGY]);
+            setInputStrategy([]);
             setSummarizationSteps(getDefaultSummarizationSteps());
         }
         setErrors({}); setDraggedIndex(null); setDraggedStepIndex(null); setExpandedStepId(null);
