@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData } from '../types';
 import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from './storage';
+import { assignInitialLocationsIfNeeded } from './locationLogic';
 
 const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
 
@@ -38,19 +39,43 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         if (charId === interactionData.protagonist?.id) { addToast('Cannot remove the protagonist.', 'error'); return; }
         const ids = interactionData.participants.map(p => p.id);
         let np: Character[];
+        let updatedData: InteractionData;
+
         if (ids.includes(charId)) {
+            // Removing participant — clean up orphaned silent interaction messages
             np = interactionData.participants.filter(p => p.id !== charId);
+
+            // Check if this character has any actual chat messages
+            const hasChatMessages = interactionData.interactionHistory.some(
+                m => m.character.id === charId && m.kind === 'chat'
+            );
+
+            if (!hasChatMessages) {
+                // Character only has silent interaction entries (location assignments) — remove them
+                const cleanedHistory = interactionData.interactionHistory.filter(m => m.character.id !== charId);
+                updatedData = { ...interactionData, participants: np, interactionHistory: cleanedHistory };
+            } else {
+                updatedData = { ...interactionData, participants: np };
+            }
         } else {
+            // Adding participant — assign initial location if needed
             const sh = allCharacters.find(c => c.id === charId);
             if (!sh) return;
             const ch = sh.sampler ? sh : await loadFullCharacter(charId);
             if (!ch) return;
             np = [...interactionData.participants, ch];
+            updatedData = { ...interactionData, participants: np };
+            // Assign initial location for newly added character
+            updatedData = assignInitialLocationsIfNeeded(updatedData);
         }
+
         if (!np.find(p => p.id === interactionData.protagonist?.id)) np.unshift(interactionData.protagonist);
-        const uc = { ...interactionData, participants: np };
-        setInteractionData(uc);
-        if (!np.find(p => p.id === interactionData.protagonist?.id)) setCurrentCharacter(uc.protagonist);
+        if (!updatedData.participants.find(p => p.id === updatedData.protagonist?.id)) {
+            updatedData = { ...updatedData, participants: [updatedData.protagonist, ...updatedData.participants] };
+        }
+
+        setInteractionData(updatedData);
+        if (!np.find(p => p.id === interactionData.protagonist?.id)) setCurrentCharacter(updatedData.protagonist);
         addToast('Participants updated.', 'info');
     }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, loadFullCharacter, addToast]);
 
@@ -92,8 +117,10 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         if (!sh) return;
         const ch = sh.sampler ? sh : await loadFullCharacter(charId);
         if (!ch) return;
-        const uc = { ...interactionData, protagonist: ch };
+        let uc: InteractionData = { ...interactionData, protagonist: ch };
         if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
+        // Ensure new protagonist has a location assigned
+        uc = assignInitialLocationsIfNeeded(uc);
         setInteractionData(uc);
         setCurrentCharacter(ch);
         setDefaultCharacterId(charId);

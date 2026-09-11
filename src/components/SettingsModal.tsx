@@ -56,25 +56,25 @@ const SETTINGS_ITEMS: SettingsItem[] = [
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onOpenImportCharacterCard: () => void;
+    onOpenBudgetControl: () => void;
+    onOpenParticipantControl: () => void;
     onOpenAIRecommendation: () => void;
+    onOpenAlternateTimelines: () => void;
+    onOpenImportCharacterCard: () => void;
     onOpenExportData: () => void;
     onOpenImportData: () => void;
-    onOpenParticipantControl: () => void;
-    onOpenBudgetControl: () => void;
-    onOpenChatBranching: () => void;
 }
 
 export function SettingsModal({
     isOpen,
     onClose,
+    onOpenBudgetControl,
+    onOpenParticipantControl,
     onOpenAIRecommendation,
+    onOpenAlternateTimelines,
     onOpenImportCharacterCard,
     onOpenExportData,
     onOpenImportData,
-    onOpenParticipantControl,
-    onOpenBudgetControl,
-    onOpenChatBranching,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
@@ -90,7 +90,7 @@ export function SettingsModal({
                 onOpenAIRecommendation();
                 break;
             case 'alternate-timelines':
-                onOpenChatBranching();
+                onOpenAlternateTimelines();
                 break;
             case 'import-character-card':
                 onOpenImportCharacterCard();

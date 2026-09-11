@@ -104,12 +104,16 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     return `${initialString} have no energy left to speak.${thinkEndString}${contextEndString}`;
 }
 
-export function findPreviousInteractionMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
+export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
     const interactionHistory = interactionData.interactionHistory;
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
     }
     return null;
+}
+
+export function findAllMessages(interactionData: InteractionData, characterId: string): HistoryMessage[] {
+    return interactionData.interactionHistory.filter(m => m.character.id === characterId);
 }
 
 function filterArrayBasedOnContext(
@@ -824,7 +828,7 @@ export async function buildPromptAndStopPatterns(
 
     // META THINK BLOCK
     const metaThinkLines: string[] = [];
-    const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
+    const previousMessage = findPreviousMessage(interactionData, character.id);
     const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, profile);
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
@@ -1177,7 +1181,7 @@ export async function prepareRequestBody(
         let isCharacterImageInjected = false;
 
         if (!character.doNotInjectCharacterImage) {
-            const characterMessage = findPreviousInteractionMessage(interactionData, character.id);
+            const characterMessage = findPreviousMessage(interactionData, character.id);
             const characterExpression = characterMessage?.characterExpression;
             const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
 
@@ -1195,7 +1199,7 @@ export async function prepareRequestBody(
 
         const protagonist = interactionData.protagonist;
         if (protagonist && !protagonist.doNotInjectCharacterImage) {
-            const protagonistMessage = findPreviousInteractionMessage(interactionData, protagonist.id);
+            const protagonistMessage = findPreviousMessage(interactionData, protagonist.id);
             const protagonistExpression = protagonistMessage?.characterExpression;
             const protagonistImagePath = await getCharacterImageUrlWithFallBack(protagonist.id, protagonistExpression);
 
@@ -1384,7 +1388,7 @@ export function createInteractionMessage(
 }
 
 export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
-    const previousMessage = findPreviousInteractionMessage(interactionData, character.id);
+    const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
     const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);

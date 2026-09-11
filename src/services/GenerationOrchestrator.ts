@@ -6,7 +6,7 @@ import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLog
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from '../hooks/characterLogic';
-import { findPreviousInteractionMessage } from '../hooks/chatLogic';
+import { findPreviousMessage } from '../hooks/chatLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
@@ -68,7 +68,7 @@ function regenerateStaminaForTurn(data: InteractionData, character: Character): 
     const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
     if (maxStamina === Number.POSITIVE_INFINITY) return data;
 
-    const prevMsg = findPreviousInteractionMessage(data, character.id);
+    const prevMsg = findPreviousMessage(data, character.id);
     if (!prevMsg) return data;
     if (prevMsg.kind !== 'chat' || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;
 

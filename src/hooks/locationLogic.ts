@@ -1,32 +1,29 @@
+// src/hooks/locationLogic.ts
 import type { Character, InteractionData, Location } from '../types';
-import { findPreviousInteractionMessage } from './chatLogic';
+import { findPreviousMessage } from './chatLogic';
 import { v4 as uuidv4 } from 'uuid';
 
 
 /**
  * Get the current location index for a character from their last interaction entry.
  */
-
-export function getCurrentLocationIndex(interactionData: InteractionData, character: Character) {
-    const locations = interactionData.locations
-    if (!locations) return undefined
-    if (locations.length <= 0) return undefined
-    const message = findPreviousInteractionMessage(interactionData, character.id)
-    if (!message) return undefined
+export function getCurrentLocationIndex(interactionData: InteractionData, character: Character): number | undefined {
+    const locations = interactionData.locations;
+    if (!locations || locations.length <= 0) return undefined;
+    const message = findPreviousMessage(interactionData, character.id);
+    if (!message) return undefined;
     return message.locationIndex;
 }
 
-export function getCurrentLocation(interactionData: InteractionData, character: Character){
+export function getCurrentLocation(interactionData: InteractionData, character: Character): Location | undefined {
+    const currentLocationIndex = getCurrentLocationIndex(interactionData, character);
 
-    const currentLocationIndex = getCurrentLocationIndex(interactionData, character)
+    if (currentLocationIndex === undefined) return undefined;
 
-    if (!currentLocationIndex) return undefined
+    const locations = interactionData.locations;
+    if (!locations) return undefined;
 
-    const locations = interactionData.locations
-
-    const location = locations[currentLocationIndex];
-
-    return location
+    return locations[currentLocationIndex];
 }
 
 /**
@@ -205,52 +202,120 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
 
 /**
  * Assign initial locations to all participants who have never had one.
- * Only operates when interactionHistory is empty (fresh chat).
+ * Runs at any point — checks per-character whether they have a location entry
+ * in history, not whether history itself is empty.
+ * Uses character-bound locations with characterWeights first,
+ * falls back to globalWeight sampling.
+ */
+/**
+ * Assign initial locations to all participants who have never had one.
+ * Also backfills missing locations for characters who have history entries
+ * but no locationIndex on their last entry.
  * Uses character-bound locations with characterWeights first,
  * falls back to globalWeight sampling.
  */
 export function assignInitialLocationsIfNeeded(interactionData: InteractionData): InteractionData {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return interactionData;
-    if (interactionData.interactionHistory.length > 0) return interactionData;
 
-    // Check if any participant already has a location via any message
+    // Collect all participant IDs
     const allParticipantIds = new Set<string>();
     allParticipantIds.add(interactionData.protagonist.id);
     for (const p of interactionData.participants) allParticipantIds.add(p.id);
 
-    const assignedIds = new Set<string>();
-    for (const msg of interactionData.interactionHistory) {
-        if (msg.locationIndex !== undefined) assignedIds.add(msg.character.id);
-    }
-
-    // All participants lack locations (history is empty, so assignedIds is empty)
-    // Create silent interaction messages to establish initial positions
     const newHistory = [...interactionData.interactionHistory];
+    const now = Date.now();
     let changed = false;
 
+    // Phase 1: Patch existing entries that have undefined locationIndex
+    const noHistoryAtAll: Character[] = [];
     for (const id of allParticipantIds) {
-        if (assignedIds.has(id)) continue;
-
         const character = id === interactionData.protagonist.id
             ? interactionData.protagonist
             : interactionData.participants.find(p => p.id === id);
         if (!character) continue;
 
+        const lastMsg = findPreviousMessage(interactionData, character.id);
+
+        if (!lastMsg) {
+            // No previous message at all — goes to sampling pool
+            noHistoryAtAll.push(character);
+            continue;
+        }
+
+        if (lastMsg.locationIndex !== undefined) continue;
+
+        // Has a previous message but no locationIndex — assign and patch in place
         const locationIndex = sampleInitialLocationForCharacter(locations, character);
         if (locationIndex === undefined) continue;
 
-        const now = Date.now();
-        newHistory.push({
-            kind: 'interaction',
-            id: uuidv4(),
-            character: { ...character },
-            locationIndex,
-            parentInteractionMessageId: null,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-        });
-        changed = true;
+        for (let i = newHistory.length - 1; i >= 0; i--) {
+            if (newHistory[i].character.id === character.id && newHistory[i].locationIndex === undefined) {
+                newHistory[i] = { ...newHistory[i], locationIndex };
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    // Phase 2: Sample remaining characters (no history at all) by initiative weight
+    if (noHistoryAtAll.length > 0) {
+        const remaining = [...noHistoryAtAll];
+        while (remaining.length > 0) {
+            const pool: { char: Character; weight: number }[] = [];
+            let totalWeight = 0;
+            for (const c of remaining) {
+                const w = c.initiativeWeight ?? 1;
+                if (w > 0) {
+                    pool.push({ char: c, weight: w });
+                    totalWeight += w;
+                }
+            }
+
+            if (pool.length === 0 || totalWeight <= 0) {
+                // Fallback: take first remaining
+                const fallback = remaining.shift()!;
+                const locationIndex = sampleInitialLocationForCharacter(locations, fallback);
+                if (locationIndex !== undefined) {
+                    newHistory.push({
+                        kind: 'interaction',
+                        id: uuidv4(),
+                        character: { ...fallback },
+                        locationIndex,
+                        parentInteractionMessageId: null,
+                        firstCreatedTimestamp: now,
+                        lastUpdatedTimestamp: now,
+                    });
+                    changed = true;
+                }
+                continue;
+            }
+
+            let roll = Math.random() * totalWeight;
+            let picked: Character | null = null;
+            for (const entry of pool) {
+                roll -= entry.weight;
+                if (roll <= 0) { picked = entry.char; break; }
+            }
+            if (!picked) picked = pool[pool.length - 1].char;
+
+            const locationIndex = sampleInitialLocationForCharacter(locations, picked);
+            if (locationIndex !== undefined) {
+                newHistory.push({
+                    kind: 'interaction',
+                    id: uuidv4(),
+                    character: { ...picked },
+                    locationIndex,
+                    parentInteractionMessageId: null,
+                    firstCreatedTimestamp: now,
+                    lastUpdatedTimestamp: now,
+                });
+                changed = true;
+            }
+
+            const idx = remaining.indexOf(picked);
+            if (idx !== -1) remaining.splice(idx, 1);
+        }
     }
 
     if (!changed) return interactionData;
@@ -258,6 +323,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     return {
         ...interactionData,
         interactionHistory: newHistory,
-        lastUpdatedTimestamp: Date.now(),
+        lastUpdatedTimestamp: now,
     };
 }

@@ -483,7 +483,7 @@ export function AppModals({
                     onOpenImportData={modals.importData.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenAlternateTimelines={modals.branchingVisualization.open}
+                    onOpenAlternateTimelines={modals.alternateTimelines.open}
                 />
             )}
 
@@ -558,10 +558,10 @@ export function AppModals({
             )}
 
             {/* Interaction Branching Visualization */}
-            {modals.branchingVisualization.isOpen && (
+            {modals.alternateTimelines.isOpen && (
                 <AlternateTimelinesModal
-                    isOpen={modals.branchingVisualization.isOpen}
-                    onClose={modals.branchingVisualization.close}
+                    isOpen={modals.alternateTimelines.isOpen}
+                    onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''}
                     allInteractions={allChats}
                     onSwitchChat={onSwitchChat}

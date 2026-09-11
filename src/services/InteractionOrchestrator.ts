@@ -1,7 +1,7 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
-import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight } from '../hooks/locationLogic';
+import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -101,6 +101,9 @@ export async function runTurnSequence(
     
     const profile = currentInteractionData.Profile;
     let workingData = { ...currentInteractionData, interactionHistory: [...currentInteractionData.interactionHistory] };
+
+    // Ensure all participants have locations before any turn logic
+    workingData = assignInitialLocationsIfNeeded(workingData);
 
     // Capture the triggering message text for conditional location binding evaluation
     const lastChatEntry = [...workingData.interactionHistory].reverse().find(m => hasTextContent(m));

@@ -57,7 +57,7 @@ export function useModalVisibility() {
     const [importData, setImportDataOpen] = useState(false);
     const [exportData, setExportDataOpen] = useState(false);
     const [budgetControl, setBudgetControlOpen] = useState(false);
-    const [branchingVisualization, setBranchingVisualizationOpen] = useState(false);
+    const [alternateTimelines, setBranchingVisualizationOpen] = useState(false);
 
     const closeAll = useCallback(() => {
         setChatListOpen(false);
@@ -104,7 +104,7 @@ export function useModalVisibility() {
         importData: createModalState(importData, setImportDataOpen),
         exportData: createModalState(exportData, setExportDataOpen),
         budgetControl: createModalState(budgetControl, setBudgetControlOpen),
-        branchingVisualization: createModalState(branchingVisualization, setBranchingVisualizationOpen),
+        alternateTimelines: createModalState(alternateTimelines, setBranchingVisualizationOpen),
     };
 
     return { modals, closeAll };
