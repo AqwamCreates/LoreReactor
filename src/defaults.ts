@@ -1,5 +1,5 @@
 // src/defaults.ts
-import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, Sampler } from './types';
+import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler } from './types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -65,4 +65,8 @@ export const DefaultActions: InterjectableAction[] = [
     { label: 'Point At', count: 0 }, { label: 'Wink At', count: 0 }, { label: 'Blush At', count: 0 },
     { label: 'Frown At', count: 0 }, { label: 'Smile At', count: 0 }, { label: 'Grin At', count: 0 },
     { label: 'Pout At', count: 0 }
+];
+
+export const defaultInputStrategy: PromptBlockType[] = [
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed', 'Fatigue Information', 'Tool Instructions', 'Text Injection'
 ];

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
+import { defaultInputStrategy } from '../defaults';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -11,13 +12,6 @@ interface ProfileEditorModalProps {
     existingProfile?: Profile | null;
     allPromptBlocks?: PromptBlock[];
 }
-
-const ALL_BLOCK_TYPES: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt',
-    'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location',
-    'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed',
-    'Tool Instructions', 'Text Injection',
-];
 
 const CACHE_LEVEL_DESCRIPTIONS = [
     'No injection.',
@@ -49,7 +43,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
 
 /** Check if a string is a built-in PromptBlockType */
 function isBuiltInBlockType(value: string): value is PromptBlockType {
-    return (ALL_BLOCK_TYPES as string[]).includes(value);
+    return (defaultInputStrategy as string[]).includes(value);
 }
 
 // ─── Shared Styles ───────────────────────────────────────────────────
@@ -295,7 +289,7 @@ export function ProfileEditorModal({
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
     // Missing built-in blocks that aren't in the strategy
-    const missingBuiltInBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
+    const missingBuiltInBlocks = defaultInputStrategy.filter(b => !inputStrategy.includes(b));
     // Prompt blocks not yet in the strategy
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 

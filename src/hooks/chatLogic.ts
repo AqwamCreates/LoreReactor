@@ -10,6 +10,7 @@ import { contextStartString, contextEndString, turnStartString, turnEndString, m
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
 import { resolveModelContextFromSamplerParameters } from '../utilities/modelContextResolver';
+import { defaultInputStrategy } from '../defaults';
 
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
@@ -38,10 +39,6 @@ const endOfContextLine = `${contextStartString}End Of The Context.${contextEndSt
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
 const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${thinkEndString}${contextEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
-
-const DEFAULT_INPUT_STRATEGY: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Text Injection'
-];
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
@@ -889,16 +886,6 @@ export async function buildPromptAndStopPatterns(
         locationLines.push(endOfLocationLine);
     }
 
-    // FATIGUE BLOCK
-    const fatigueLines: string[] = [];
-
-    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${contextStartString}${thinkStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}.${thinkEndString}${contextEndString}`;
-        if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
-        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
-        if (fatigue) fatigueLines.push(fatigue);
-    }
-
     let latitude: number | undefined = location?.latitude;
     let longitude: number | undefined = location?.longitude;
 
@@ -1011,6 +998,16 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
+        // FATIGUE BLOCK
+    const fatigueLines: string[] = [];
+
+    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
+        const remainingChatStaminaInstructions = `${contextStartString}${thinkStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}.${thinkEndString}${contextEndString}`;
+        if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
+        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
+        if (fatigue) fatigueLines.push(fatigue);
+    }
+
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
@@ -1029,10 +1026,10 @@ export async function buildPromptAndStopPatterns(
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Location': locationLines,
-        'Fatigue Information': fatigueLines,
-        'Date And Time': dateAndTimeLines,
         'Weather': weatherLines,
+        'Date And Time': dateAndTimeLines,
         'Time Elapsed': timeElapsedLines,
+        'Fatigue Information': fatigueLines,
         'Tool Instructions': toolInstructions,
         'Text Injection': textInjectionLines,
     };
@@ -1118,16 +1115,6 @@ export async function buildPromptAndStopPatterns(
             );
 
             promptLines.push(`${contextStartString}${replacedText}${contextEndString}`);
-        }
-    }
-
-    // Fallback: append any built-in types not covered by the strategy
-    for (const blockType of DEFAULT_INPUT_STRATEGY) {
-        if (!usedBuiltInTypes.has(blockType)) {
-            const lines = blockMap[blockType];
-            if (lines && lines.length > 0) {
-                promptLines.push(...lines);
-            }
         }
     }
 

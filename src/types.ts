@@ -436,10 +436,10 @@ export type PromptBlockType =
   | 'Chat History'
   | 'Context'
   | 'Location'
-  | 'Fatigue Information'
-  | 'Date And Time'
   | 'Weather'
+  | 'Date And Time'
   | 'Time Elapsed'
+  | 'Fatigue Information'
   | 'Tool Instructions'
   | 'Text Injection';
 

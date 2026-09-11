@@ -1,4 +1,5 @@
 // src/services/aiRecommendationSchema.ts
+import { defaultInputStrategy } from '../defaults';
 import type { EntityType } from './aiRecommendationTypes';
 
 export function buildJsonSchema(selectedEntities: EntityType[]): string {
@@ -117,7 +118,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "stripThinkTokens": "boolean (default true)",
     "enableWebSearch": "number (0 or 1, default 0)", "enableCalculator": "number (0 or 1, default 0)",
     "enableMemoryWriting": "number (0 or 1, default 0)", "enableMemoryReading": "number (0 or 1, default 0)",
-    "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. Built-in types: 'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'. Custom prompt blocks are referenced by their UUID string."],
+    "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. ${defaultInputStrategy.join(", ")}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]
   }`);
     }
