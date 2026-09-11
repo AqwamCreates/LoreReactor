@@ -4,14 +4,20 @@ import './main.css';
 
 const TOOL_LABELS: Record<tool, string> = {
     pick: 'Random Pick',
+    date: 'Current Date & Time',
+    coin: 'Coin Flip',
     dice: 'Roll Dice',
+    random: 'Random Number',
     calculator: 'Calculator',
     web: 'Web Search',
 };
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {
     pick: 'Allow this character to randomly pick from a list of options.',
+    date: 'Allow this character to check the current date and time during conversation.',
+    coin: 'Allow this character to flip a coin during conversation.',
     dice: 'Allow this character to roll dice (e.g. 2d6+3) during conversation.',
+    random: 'Allow this character to generate random numbers during conversation.',
     calculator: 'Allow this character to perform calculations during conversation.',
     web: 'Allow this character to search the web during conversation.',
 };

@@ -171,7 +171,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coinflip" | "dice" | "random" | "calculator" | "web"
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "calculator" | "web"
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;

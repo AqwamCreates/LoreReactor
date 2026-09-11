@@ -2,7 +2,7 @@
 
 import { toolStartSring, toolEndString } from "../stringList";
 
-const characterAgnosticTools = ['Dice', 'pick']
+const characterAgnosticTools = ['dice', 'pick']
 
 const characterSpecificTools = ['calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 

@@ -14,7 +14,7 @@ const toolFunctions: Record<string, (args: string) => ToolResult | Promise<ToolR
 
     "pick": executeRandomPick,
     "date": executeDate,
-    "coin": executeCoinflip,
+    "coin": executeCoinFlip,
     "dice": executeDiceRoll,
     "random": executeCalculator,
     "calculator": executeRandom,
@@ -322,11 +322,11 @@ function executeDate(args: string): ToolResult {
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
 
-function executeCoinflip(_args: string): ToolResult {
+function executeCoinFlip(_args: string): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
 
     return {
-        toolType: 'coinflip',
+        toolType: 'coin',
         args: _args,
         content: result,
         displayReplacement: `[🪙 Coin flip: ${result}]`,
