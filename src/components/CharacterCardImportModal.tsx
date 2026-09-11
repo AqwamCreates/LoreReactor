@@ -3,16 +3,27 @@ import type React from 'react';
 import { useState, useRef } from 'react';
 import type { Character, Context, Sampler, tool } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
-import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
+import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { uploadCharacterImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 const DEFAULT_TOOLS: Record<tool, boolean> = {
-    Dice: true,
     pick: true,
+    date: false,
+    coin: true,
+    dice: true,
+    random: true,
+    rng: false,
+    timer: false,
+    stopwatch: false,
     calculator: false,
     web: false,
+    lookup: false,
+    map: false,
+    audio: false,
+    note: false,
+    inventory: false,
 };
 
 interface CharacterCardImportModalProps {
@@ -109,6 +120,7 @@ export function CharacterCardImportModal({
             const chatImpatienceSensitivity = getChatImpatienceSensitivityValueFromText(traitText);
             const memoryRetentionWeight = getMemoryRetentionWeightValueFromText(traitText);
             const contextSensitivity = getContextSensitivityValueFromText(traitText);
+            const maximumActionStamina = Math.round(getMaximumActionStaminaValueFromText(traitText));
 
             // Assign default sampler if available
             const defaultSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
@@ -131,6 +143,7 @@ export function CharacterCardImportModal({
                 chatImpatienceSensitivity,
                 memoryRetentionWeight,
                 contextSensitivity,
+                maximumActionStamina,
                 tools: { ...DEFAULT_TOOLS },
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
@@ -269,7 +282,7 @@ export function CharacterCardImportModal({
                                     <div><strong>Dialogue Examples:</strong> {preview.character.dialoguePrompt ? 'Yes' : 'No'}</div>
                                 </div>
                                 <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
-                                    Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Stamina={preview.character.maximumChatStamina} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
+                                    Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Action Stamina={preview.character.maximumActionStamina} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
                                 </div>
                             </div>
 

@@ -10,6 +10,7 @@ const DEFAULT_SKIP_PROBABILITY_VALUE = 0;
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1;
 const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1;
+const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 5;
 
 interface Modifier {
     keywords: string[];
@@ -110,6 +111,16 @@ const CONTEXT_RELEVANCE_SENSITIVITY_RULES: TraitRule[] = [
     { keywords: ['naive', 'innocent', 'gullible', 'trusting', 'unsuspecting', 'credulous'], value: 0.7 },
     { keywords: ['blind', 'deaf', 'senseless', 'unfeeling', 'numb', 'imperceptive', 'insensible'], value: 0.1 },
     { keywords: ['catatonic', 'unconscious', 'comatose', 'vegetative', 'inert'], value: 0 },
+];
+
+const MAXIMUM_ACTION_STAMINA_RULES: TraitRule[] = [
+    { keywords: ['hyperactive', 'restless', 'fidgety', 'kinetic', 'perpetual motion', 'can\'t sit still', 'always moving', 'boundless energy'], value: 10 },
+    { keywords: ['athletic', 'agile', 'nimble', 'spry', 'active', 'physical', 'fit', 'mobile', 'adventurous', 'explorer'], value: 7 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'standard', 'typical'], value: 5 },
+    { keywords: ['sedentary', 'inactive', 'lazy', 'sluggish', 'lethargic', 'couch potato', 'stationary'], value: 3 },
+    { keywords: ['frail', 'weak', 'delicate', 'fragile', 'elderly', 'infirm', 'decrepit'], value: 2 },
+    { keywords: ['bedridden', 'immobilized', 'crippled', 'disabled', 'paralyzed', 'wheelchair-bound'], value: 1 },
+    { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'inert', 'dead'], value: 0 },
 ];
 
 // --- Core Detection Logic ---
@@ -264,4 +275,8 @@ export function getMemoryRetentionWeightValueFromText(text: string) {
 
 export function getContextSensitivityValueFromText(text: string) {
     return detectValue(text, CONTEXT_RELEVANCE_SENSITIVITY_RULES, DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE, false);
+}
+
+export function getMaximumActionStaminaValueFromText(text: string) {
+    return detectValue(text, MAXIMUM_ACTION_STAMINA_RULES, DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE, false);
 }

@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -1454,29 +1454,14 @@ export function createNewInteractionData(character: Character): InteractionData 
     };
 }
 
-export function createInteractionMessage(
-    character: Character,
-    options?: { locationIndex?: number; remainingChatStamina?: number; parentId?: string | null }
-): InteractionMessage {
-    const now = Date.now();
-    return {
-        messageType: 'interaction',
-        id: uuidv4(),
-        character: { ...character },
-        remainingChatStamina: options?.remainingChatStamina,
-        locationIndex: options?.locationIndex,
-        parentInteractionMessageId: options?.parentId ?? null,
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-    };
-}
-
 export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
-    const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
-    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
+    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
+    const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
+    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
+    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
     const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
     const now = Date.now();
 
@@ -1487,6 +1472,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
         textContent,
         files: options?.files ?? [],
         remainingChatStamina,
+        remainingActionStamina,
         isNameRevealed,
         locationIndex: options?.locationIndex,
         isPartial: options?.isPartial || undefined,

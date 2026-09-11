@@ -170,6 +170,7 @@ export function ProfileEditorModal({
     const [chatImpatienceSensitivity, setChatImpatienceSensitivity] = useState<number>(-1);
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(-1);
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
+    const [maximumActionStamina, setMaximumActionStamina] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [volume, setVolume] = useState<number>(-1);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
@@ -233,6 +234,7 @@ export function ProfileEditorModal({
             setChatImpatienceSensitivity(existingProfile.chatImpatienceSensitivity ?? -1);
             setMemoryRetentionWeight(existingProfile.memoryRetentionWeight ?? -1);
             setContextSensitivity(existingProfile.contextSensitivity ?? -1);
+            setMaximumActionStamina(existingProfile.maximumActionStamina ?? -1);
             setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
             setVolume(existingProfile.volume ?? -1);
             setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
@@ -258,7 +260,8 @@ export function ProfileEditorModal({
             setUseCurrentDateAndTime(false); setUseWeather(false); setWeatherApiKey(''); setUseTimeElapsed(false);
             setForceEqualInitiative(false); setChatProbability(0); setMaximumChatStamina(0);
             setNameSensitivity(-1); setSkipProbability(-1); setChatImpatienceSensitivity(-1);
-            setMemoryRetentionWeight(-1); setContextSensitivity(-1); setCacheLevel(0); setVolume(-1);
+            setMemoryRetentionWeight(-1); setContextSensitivity(-1); setMaximumActionStamina(-1);
+            setCacheLevel(0); setVolume(-1);
             setStripThinkTokens(false);
             setTools({ ...DEFAULT_TOOLS });
             setEnableMemoryWriting(0); setEnableMemoryReading(0);
@@ -288,6 +291,7 @@ export function ProfileEditorModal({
             forceEqualInitiative, chatProbability, maximumChatStamina,
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
             memoryRetentionWeight, contextSensitivity,
+            maximumActionStamina,
             cacheInvalidationReductionLevel: cacheLevel, volume, stripThinkTokens,
             tools: { ...tools },
             enableMemoryWriting, enableMemoryReading,
@@ -438,6 +442,12 @@ export function ProfileEditorModal({
                         <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} />
                     </div>
 
+                    {/* Agentic Roleplay Section */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Agentic Roleplay</span>
+                        <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters may act independently in the background based on their individual stats (initiative, stamina, skip probability). All participants are eligible." />
+                    </div>
+
                     {/* Display Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Display</span>
@@ -453,8 +463,7 @@ export function ProfileEditorModal({
                             <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                         </div>
 
-                        <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters may respond unprompted after each user message based on their individual stats (initiative, chat probability, stamina, etc.). All participants are eligible." />
-                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' spaced />
+                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
                         <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." spaced />
                     </div>
 
@@ -492,16 +501,20 @@ export function ProfileEditorModal({
                     {/* Turn Sequencing Overrides */}
                     <div className="editor-section">
                         <span className="editor-section-title">Turn Sequencing</span>
+                        <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
+                            -1 = defer to each character's own setting. Set a value to override all participants uniformly.
+                        </div>
 
                         <ProfileCheckbox checked={forceEqualInitiative} onChange={setForceEqualInitiative} label="Force Equal Initiative" hint="All participants get equal initiative weight regardless of character settings." />
 
-                        {renderOverrideSlider('Chat Probability Override', chatProbability, -1, 1, 0.05, 2, setChatProbability, '-1 = disabled (use per-character setting). Slide right to override all participants.', chatProbability === -1 ? '(Character default)' : undefined)}
-                        {renderOverrideSlider('Maximum Chat Stamina Override', maximumChatStamina, -1, 10, 1, 0, (val) => setMaximumChatStamina(Math.round(val)), '-1 = disabled (use per-character setting). Slide right to set a shared stamina cap.', maximumChatStamina === -1 ? '(Character default)' : undefined)}
-                        {renderOverrideSlider('Name Sensitivity Override', nameSensitivity, -1, 10, 0.5, 1, setNameSensitivity, '-1 = defer to character default. 0 = disabled. N = multiplier per name mention in latest message.', nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : undefined)}
-                        {renderOverrideSlider('Skip Probability Override', skipProbability, -1, 1, 0.05, 2, setSkipProbability, '-1 = defer to character. 0 = disabled. 0–1 = probability of skipping turn even when selected.', skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : undefined)}
-                        {renderOverrideSlider('Chat Impatience Override', chatImpatienceSensitivity, -1, 5, 0.1, 1, setChatImpatienceSensitivity, '-1 = defer to character. 0 = disabled. Higher values make quiet characters speak sooner.', chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : undefined)}
-                        {renderOverrideSlider('Memory Retention Override', memoryRetentionWeight, -1, 2, 0.1, 1, setMemoryRetentionWeight, '-1 = defer to character. 0 = minimal history. 1 = full history. Controls how far back memories reach.', memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : undefined)}
-                        {renderOverrideSlider('Context Sensitivity Override', contextSensitivity, -1, 2, 0.1, 1, setContextSensitivity, '-1 = defer to character. 0 = never activate context. 1 = normal. Controls how readily context entries trigger.', contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : undefined)}
+                        {renderOverrideSlider('Chat Probability Override', chatProbability, -1, 1, 0.05, 2, setChatProbability, 'Probability of initiating a chat message when selected.', chatProbability === -1 ? '(Character default)' : undefined)}
+                        {renderOverrideSlider('Maximum Chat Stamina Override', maximumChatStamina, -1, 10, 1, 0, (val) => setMaximumChatStamina(Math.round(val)), 'Maximum paragraphs the character can produce.', maximumChatStamina === -1 ? '(Character default)' : undefined)}
+                        {renderOverrideSlider('Name Sensitivity Override', nameSensitivity, -1, 10, 0.5, 1, setNameSensitivity, 'Multiplier per name mention in latest message. 0 = off.', nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Skip Probability Override', skipProbability, -1, 1, 0.05, 2, setSkipProbability, 'Probability of skipping an action even when selected.', skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Chat Impatience Override', chatImpatienceSensitivity, -1, 5, 0.1, 1, setChatImpatienceSensitivity, 'Higher values make quiet characters speak sooner. 0 = off.', chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : undefined)}
+                        {renderOverrideSlider('Memory Retention Override', memoryRetentionWeight, -1, 2, 0.1, 1, setMemoryRetentionWeight, 'How far back memories reach. 0 = minimal, 1 = full.', memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : undefined)}
+                        {renderOverrideSlider('Context Sensitivity Override', contextSensitivity, -1, 2, 0.1, 1, setContextSensitivity, 'How readily context entries trigger. 0 = never.', contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : undefined)}
+                        {renderOverrideSlider('Maximum Action Stamina Override', maximumActionStamina, -1, 10, 1, 0, (val) => setMaximumActionStamina(Math.round(val)), 'Silent actions (movement, non-chat interactions) before needing rest.', maximumActionStamina === -1 ? '(Character default)' : undefined)}
                     </div>
 
                     {/* Cache Invalidation Reduction */}
@@ -533,7 +546,7 @@ export function ProfileEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Tools</span>
                         <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
-                            Tri-state override for runtime tool use. -1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.
+                            -1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.
                         </div>
                         {allToolKeys.map(toolName => (
                             <div key={toolName} style={{ marginBottom: '12px' }}>
@@ -551,7 +564,7 @@ export function ProfileEditorModal({
                                     stepValue={1}
                                     decimals={0}
                                     onChange={(val) => handleToolChange(toolName, Math.round(val))}
-                                    description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
+                                    description=""
                                 />
                             </div>
                         ))}
@@ -560,8 +573,11 @@ export function ProfileEditorModal({
                     {/* Memory */}
                     <div className="editor-section">
                         <span className="editor-section-title">Memory</span>
-                        {renderOverrideSlider('Memory Reading Override', enableMemoryReading, -1, 1, 1, 0, (val) => setEnableMemoryReading(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)')}
-                        {renderOverrideSlider('Memory Writing Override', enableMemoryWriting, -1, 1, 1, 0, (val) => setEnableMemoryWriting(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)')}
+                        <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
+                            -1 = force off for all. 0 = use each character's own setting. 1 = force on for all.
+                        </div>
+                        {renderOverrideSlider('Memory Reading Override', enableMemoryReading, -1, 1, 1, 0, (val) => setEnableMemoryReading(Math.round(val)), '', enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)')}
+                        {renderOverrideSlider('Memory Writing Override', enableMemoryWriting, -1, 1, 1, 0, (val) => setEnableMemoryWriting(Math.round(val)), '', enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)')}
                     </div>
 
                     {/* Input Strategy Order */}

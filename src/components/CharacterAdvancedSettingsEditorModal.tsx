@@ -49,6 +49,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     skipProbabilityStr: string;
     memoryRetentionWeightStr: string;
     contextSensitivityStr: string;
+    maximumActionStaminaStr: string;
     numberOfMessagesToDisableThinkPromptStr: string;
     numberOfMessagesToDisableMetaThinkInstructionsStr: string;
     numberOfMessagesToDisableDialoguePromptStr: string;
@@ -66,6 +67,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onChatImpatienceSensitivityChange: (val: string) => void;
     onMemoryRetentionWeightChange: (val: string) => void;
     onContextSensitivityChange: (val: string) => void;
+    onMaximumActionStaminaChange: (val: string) => void;
     onDisableThinkChange: (val: string) => void;
     onDisableMetaChange: (val: string) => void;
     onDisableDialogueChange: (val: string) => void;
@@ -86,6 +88,7 @@ export function CharacterAdvancedSettingsEditorModal({
     skipProbabilityStr,
     memoryRetentionWeightStr,
     contextSensitivityStr,
+    maximumActionStaminaStr,
     numberOfMessagesToDisableThinkPromptStr,
     numberOfMessagesToDisableMetaThinkInstructionsStr,
     numberOfMessagesToDisableDialoguePromptStr,
@@ -98,6 +101,7 @@ export function CharacterAdvancedSettingsEditorModal({
     onInitiativeWeightChange,
     onChatProbabilityChange,
     onMaximumChatStaminaChange,
+    onMaximumActionStaminaChange,
     onNameSensitivityChange,
     onSkipProbabilityChange,
     onChatImpatienceSensitivityChange,
@@ -180,6 +184,11 @@ export function CharacterAdvancedSettingsEditorModal({
                                 <label className="editor-label editor-label-small">Context Sensitivity</label>
                                 <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => onContextSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Maximum Action Stamina</label>
+                                <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => onMaximumActionStaminaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions (movement, non-chat interactions) the character can perform before needing to rest. Range: 0 - ∞.</div>
                             </div>
                         </div>
                     </div>

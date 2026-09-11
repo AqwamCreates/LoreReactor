@@ -46,7 +46,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     const enableWebSearchText = getRenderSubTextForTriStates(tools.web, "Web Search");
     const enableCalculatorText = getRenderSubTextForTriStates(tools.calculator, "Calculator");
     const enablePickText = getRenderSubTextForTriStates(tools.pick, "Pick");
-    const enableRollText = getRenderSubTextForTriStates(tools.Dice, "Dice"); 
+    const enableRollText = getRenderSubTextForTriStates(tools.dice, "Dice"); 
     const enableMemoryReadingText = getRenderSubTextForTriStates(profile.enableMemoryReading, "Memory Read");
     const enableMemoryWritingText = getRenderSubTextForTriStates(profile.enableMemoryWriting, "Memory Write");
 

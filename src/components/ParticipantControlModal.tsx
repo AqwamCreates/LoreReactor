@@ -26,6 +26,7 @@ export function ParticipantControlModal({
     onInjectFirstMessage,
 }: ParticipantControlModalProps) {
     const [staminaOverrides, setStaminaOverrides] = useState<Record<string, number>>({});
+    const [actionStaminaOverrides, setActionStaminaOverrides] = useState<Record<string, number>>({});
     const [locationOverrides, setLocationOverrides] = useState<Record<string, number | ''>>({});
     const [selectedCharId, setSelectedCharId] = useState<string>('');
     const [customMessageText, setCustomMessageText] = useState('');
@@ -33,14 +34,17 @@ export function ParticipantControlModal({
     useEffect(() => {
         if (isOpen && interactionData) {
             const staminaOv: Record<string, number> = {};
+            const actionStaminaOv: Record<string, number> = {};
             const locationOv: Record<string, number | ''> = {};
             for (const p of interactionData.participants) {
                 const lastMsg = [...interactionData.interactionHistory].reverse().find(m => m.character.id === p.id);
                 staminaOv[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
+                actionStaminaOv[p.id] = lastMsg?.remainingActionStamina ?? p.maximumActionStamina ?? 5;
                 const locIdx = getCurrentLocationIndex(interactionData, p);
                 locationOv[p.id] = locIdx !== undefined ? locIdx : '';
             }
             setStaminaOverrides(staminaOv);
+            setActionStaminaOverrides(actionStaminaOv);
             setLocationOverrides(locationOv);
             setSelectedCharId('');
             setCustomMessageText('');
@@ -51,6 +55,10 @@ export function ParticipantControlModal({
 
     const handleStaminaChange = (charId: string, value: number) => {
         setStaminaOverrides(prev => ({ ...prev, [charId]: value }));
+    };
+
+    const handleActionStaminaChange = (charId: string, value: number) => {
+        setActionStaminaOverrides(prev => ({ ...prev, [charId]: value }));
     };
 
     const handleLocationChange = (charId: string, value: string) => {
@@ -71,6 +79,14 @@ export function ParticipantControlModal({
             const idx = lastMsgInrolls[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = { ...updatedHistory[idx], remainingChatStamina: stamina };
+            }
+        }
+
+        // Apply action stamina overrides to latest message per character
+        for (const [charId, actionStamina] of Object.entries(actionStaminaOverrides)) {
+            const idx = lastMsgInrolls[charId];
+            if (idx !== undefined) {
+                updatedHistory[idx] = { ...updatedHistory[idx], remainingActionStamina: actionStamina };
             }
         }
 
@@ -243,6 +259,40 @@ export function ParticipantControlModal({
                                                 step="1"
                                             />
                                             <span className="participant-control-stamina-max">/ {maxStamina}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Action Stamina Overrides */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Action Stamina</span>
+                        <div className="entity-ref-hint">
+                            Override remaining action stamina for each participant. Controls how many silent actions (movement, non-chat interactions) they can perform before needing rest. Applies to the latest message from each character.
+                        </div>
+
+                        <div className="participant-control-stamina-list">
+                            {interactionData.participants.map(p => {
+                                const maxActionStamina = p.maximumActionStamina ?? 5;
+                                const current = actionStaminaOverrides[p.id] ?? maxActionStamina;
+
+                                return (
+                                    <div key={p.id} className="participant-control-stamina-row">
+                                        <span className="participant-control-stamina-name">{p.name}</span>
+                                        <div className="participant-control-stamina-input-group">
+                                            <label className="participant-control-stamina-label">Stamina:</label>
+                                            <input
+                                                type="number"
+                                                value={current}
+                                                onChange={e => handleActionStaminaChange(p.id, Number(e.target.value) || 0)}
+                                                className="editor-input participant-control-stamina-input"
+                                                min="0"
+                                                max={maxActionStamina * 2}
+                                                step="1"
+                                            />
+                                            <span className="participant-control-stamina-max">/ {maxActionStamina}</span>
                                         </div>
                                     </div>
                                 );
