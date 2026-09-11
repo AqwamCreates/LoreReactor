@@ -15,3 +15,6 @@ export const gemmaThinkEndString = "<channel|>";
 
 export const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
 export const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
+
+export const generalStartString = `${contextStartString}${thinkStartString}`
+export const generalEndString = `${thinkEndString}${contextEndString}`

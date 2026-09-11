@@ -171,7 +171,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "calculator" | "web"
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "calculator" | "web" | "audio" | "inventory"
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;
@@ -226,25 +226,32 @@ export interface RawCharacter extends RawData {
   memories: Record<string, string[]>;
 }
 
+//  ─── Inventory ─────────────────────────────
+
+export type inventoryInfo = string | number
+
+export type Inventory = Record<string, inventoryInfo>
+
 // ─── Message Types (Discriminated Union) ─────────────────────────────
 
-interface MessageBase {
+export interface BaseMessage {
   id: string;
   character: Character;
   remainingChatStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
+  inventory?: Inventory,
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
 
-export interface InteractionMessage extends MessageBase {
+export interface InteractionMessage extends BaseMessage {
   messageType: 'interaction';
 }
 
-export interface ChatMessage extends MessageBase {
+export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
   files?: string[];
@@ -257,22 +264,23 @@ export type HistoryMessage = InteractionMessage | ChatMessage;
 
 // ─── Raw Message Types (Discriminated Union) ─────────────────────────
 
-interface RawMessageBase {
+export interface RawBaseMessage {
   characterId: string;
   remainingChatStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
+  inventory?: Inventory,
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
 
-export interface RawInteractionMessage extends RawMessageBase {
+export interface RawInteractionMessage extends RawBaseMessage {
   messageType: 'interaction';
 }
 
-export interface RawChatMessage extends RawMessageBase {
+export interface RawChatMessage extends RawBaseMessage {
   messageType: 'chat';
   textContent: string;
   files?: string[];
@@ -585,6 +593,8 @@ export interface AudioTrack extends ObjectData {
     filename: string;
     loop: boolean;
     volume: number;
+    audioCategory: audioCategory;
+    playableByParticipant: boolean;
     startFadeDurationMs: number;
     endFadeDurationMs: number;
     regularExpressionActivationTrigger?: string;
@@ -593,13 +603,15 @@ export interface AudioTrack extends ObjectData {
     contextBindings: string[]
     characterBindings: string[];
     priority: number; // higher = overrides lower
-    audioCategory: audioCategory;
+
 }
 
 export interface RawAudioTrack extends RawData {
     filename: string;
     loop: boolean;
     volume: number;
+    audioCategory: audioCategory;
+    playableByParticipant: boolean;
     startFadeDurationMs: number;
     endFadeDurationMs: number;
     regularExpressionActivationTrigger?: string;
@@ -607,6 +619,5 @@ export interface RawAudioTrack extends RawData {
     locationBindings: string[];
     contextBindings: string[];
     characterBindings: string[];
-    priority: number;
-    audioCategory: audioCategory;
+    priority: number; 
 }

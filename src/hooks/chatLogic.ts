@@ -6,27 +6,29 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from './storage';
 import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
+import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
 import { resolveModelContextFromSamplerParameters } from '../utilities/modelContextResolver';
 import { defaultInputStrategy } from '../defaults';
 
 const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
-    pick: `${contextStartString}${thinkStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`,
-    date: `${contextStartString}${thinkStartString}To get the current date and time, I write ${toolStartSring}date${toolEndString}. The current date and time will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
-    dice: `${contextStartString}${thinkStartString}To roll dice, I write ${toolStartSring}dice <dice notation>${toolEndString}. Examples: ${toolStartSring}Dice 2d6+3${toolEndString}, ${toolStartSring}Dice d20${toolEndString}, ${toolStartSring}Dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
-    coin: `${contextStartString}${thinkStartString}To flip a coin, I write ${toolStartSring}coin${toolEndString}. The result (heads or tails) will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
-    random: `${contextStartString}${thinkStartString}To generate a random number, I write ${toolStartSring}random <min>, <max>${toolEndString}. A random integer between min and max (inclusive) will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
-    calculator: `${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`,
-    web: `${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`,
+    pick: `${generalStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${generalEndString}`,
+    date: `${generalStartString}To get the current date and time, I write ${toolStartSring}date${toolEndString}. The current date and time will replace my tool call so I can reference it in my response.${generalEndString}`,
+    coin: `${generalStartString}To flip a coin, I write ${toolStartSring}coin${toolEndString}. The result (heads or tails) will replace my tool call so I can reference it in my response.${generalEndString}`,
+    dice: `${generalStartString}To roll dice, I write ${toolStartSring}dice <dice notation>${toolEndString}. Examples: ${toolStartSring}dice 2d6+3${toolEndString}, ${toolStartSring}dice d20${toolEndString}, ${toolStartSring}dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${generalEndString}`,
+    random: `${generalStartString}To generate a random number, I write ${toolStartSring}random <minimum>, <maximum>${toolEndString}. A random integer between minimum and maximum (inclusive) will replace my tool call so I can reference it in my response.${generalEndString}`,
+    calculator: `${generalStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${generalEndString}`,
+    web: `${generalStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${generalEndString}`,
+    audio: `${generalStartString}To play an audio track, I write ${toolStartSring}audio play <track name>${toolEndString}. To stop a playing track, I write ${toolStartSring}audio stop <track name>${toolEndString}. Only tracks marked as playable by participants can be controlled this way. Tool calls are replaced with confirmation.${generalEndString}`,
+    inventory: `${generalStartString}To manage inventory, I write ${toolStartSring}inventory add <item> <quantity>${toolEndString} to add items, ${toolStartSring}inventory remove <item> <quantity>${toolEndString} to remove items, ${toolStartSring}inventory set <item> <value>${toolEndString} to set an item's value (number or text), or ${toolStartSring}inventory list${toolEndString} to view current inventory. Tool calls are replaced with confirmation or the current inventory state.${generalEndString}`,
 };
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
 const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
-const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating new text to ensure the existing texts satisfies the prompts.";
+const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts.";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns.";
 const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.";
 
@@ -49,7 +51,7 @@ const startOfContextLine = `${contextStartString}Start Of The Context.${contextE
 const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
 
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
-const stuckAtLocationLine = `${contextStartString}${thinkStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${thinkEndString}${contextEndString}`;
+const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
@@ -105,12 +107,12 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
 
-    const initialString = `${contextStartString}${thinkStartString} I am`;
+    const initialString = `${generalStartString} I am`;
 
-    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${thinkEndString}${contextEndString}`;
-    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${thinkEndString}${contextEndString}`;
-    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${thinkEndString}${contextEndString}`;
-    return `${initialString} have no energy left to speak.${thinkEndString}${contextEndString}`;
+    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${generalEndString}`;
+    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${generalEndString}`;
+    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${generalEndString}`;
+    return `${initialString} have no energy left to speak.${generalEndString}`;
 }
 
 export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
@@ -463,7 +465,6 @@ export function createChatHistoryPrompt(
             const cutoff = Math.max(0, processedMessages.length - windowSize);
             for (let i = 0; i < processedMessages.length; i++) {
                 const msg = processedMessages[i].msg;
-                // Use per-model summary if available for messages outside the window
                 if (i < cutoff && msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
                     processedMessages[i].text = msg.modelTextContentSummaries[modelId];
                     hasBeenSummarized = true;
@@ -826,12 +827,12 @@ export async function buildPromptAndStopPatterns(
     if (cacheLevel >= 3) {
         for (const p of interactionData.participants) {
             if (p.thinkPrompt) {
-                thinkPromptLines.push(`${contextStartString}${thinkStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${thinkEndString}${contextEndString}`);
+                thinkPromptLines.push(`${generalStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${generalEndString}`);
             }
         }
     } else if (thinkPrompt) {
         thinkPrompt = replacePlaceholders(thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        thinkPromptLines.push(`${contextStartString}${thinkStartString}${thinkPrompt}${thinkEndString}${contextEndString}`);
+        thinkPromptLines.push(`${generalStartString}${thinkPrompt}${generalEndString}`);
     }
 
     // META THINK BLOCK
@@ -841,7 +842,7 @@ export async function buildPromptAndStopPatterns(
     const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
-    let constructedMetaThinkLines = `${contextStartString}${thinkStartString}${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
+    let constructedMetaThinkLines = `${generalStartString}${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
 
     let hasBeenSummarized = false;
 
@@ -861,7 +862,7 @@ export async function buildPromptAndStopPatterns(
 
     const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`;
 
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${thinkEndString}${contextEndString}`;
+    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${generalEndString}`;
 
     metaThinkLines.push(constructedMetaThinkLines);
 
@@ -890,6 +891,25 @@ export async function buildPromptAndStopPatterns(
         locationLines.push(endOfLocationLine);
     }
 
+    // INVENTORY BLOCK
+    const inventoryLines: string[] = [];
+
+    // Find the latest message with inventory data for this character
+    let latestInventory: Record<string, string | number> | undefined;
+    for (let i = interactionHistory.length - 1; i >= 0; i--) {
+        const msg = interactionHistory[i];
+        if (msg.character.id === characterId && msg.inventory && Object.keys(msg.inventory).length > 0) {
+            latestInventory = msg.inventory;
+            break;
+        }
+    }
+
+    if (latestInventory && Object.keys(latestInventory).length > 0) {
+        const inventoryEntries = Object.entries(latestInventory);
+        const formattedEntries = inventoryEntries.map(([key, value]) => `${key}: ${value}`).join('\n');
+        inventoryLines.push(`${contextStartString}[Current Inventory]\n${formattedEntries}${contextEndString}`);
+    }
+
     let latitude: number | undefined = location?.latitude;
     let longitude: number | undefined = location?.longitude;
 
@@ -910,7 +930,7 @@ export async function buildPromptAndStopPatterns(
 
     if (useCurrentDateAndTime && localTimestamp) {
         const dateAndTime = getDateAndTimeString(localTimestamp)
-        dateAndTimeLines.push(`${contextStartString}${thinkStartString}Today's date and time is ${dateAndTime}.${thinkEndString}${contextEndString}`);
+        dateAndTimeLines.push(`${generalStartString}Today's date and time is ${dateAndTime}.${generalEndString}`);
     }
 
     // WEATHER BLOCK
@@ -920,7 +940,7 @@ export async function buildPromptAndStopPatterns(
     if (useWeather && weatherApiKey && latitude && longitude) {
         const weatherLine = await fetchCurrentWeather(latitude, longitude, weatherApiKey);
         if (weatherLine) {
-            weatherLines.push(`${contextStartString}${thinkStartString}${weatherLine}${thinkEndString}${contextEndString}`);
+            weatherLines.push(`${generalStartString}${weatherLine}${generalEndString}`);
         }
     }
 
@@ -944,7 +964,7 @@ export async function buildPromptAndStopPatterns(
 
         const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
 
-        timeElapsedLines.push(`${contextStartString}${thinkStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the duration. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${thinkEndString}${contextEndString}`);
+        timeElapsedLines.push(`${generalStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${generalEndString}`);
     }
 
     const dialoguePromptLines: string[] = [];
@@ -990,9 +1010,9 @@ export async function buildPromptAndStopPatterns(
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
-        toolInstructions.push(`${contextStartString}${thinkStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
+        toolInstructions.push(`${generalStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${generalEndString}`);
 
-        toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${thinkEndString}${contextEndString}`);
+        toolInstructions.push(`${generalStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${generalEndString}`);
 
         for (const toolName of enabledToolNames) {
             const instruction = TOOL_INSTRUCTION_MAP[toolName];
@@ -1004,13 +1024,13 @@ export async function buildPromptAndStopPatterns(
     const fatigueLines: string[] = [];
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${contextStartString}${thinkStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}.${thinkEndString}${contextEndString}`;
+        const remainingChatStaminaInstructions = `${generalStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}.${generalEndString}`;
         if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) fatigueLines.push(fatigue);
     }
 
-    const textInjectionLines = []
+    const textInjectionLines: string[] = [];
 
     if (contextLines.length > 0) {
         textInjectionLines.push(contextAuthorityInstructions);
@@ -1021,7 +1041,7 @@ export async function buildPromptAndStopPatterns(
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
-    const characterResponsePriming = `${contextStartString}${thinkStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${thinkEndString}${contextEndString}`;
+    const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
 
     textInjectionLines.push(characterResponsePriming)
@@ -1037,6 +1057,7 @@ export async function buildPromptAndStopPatterns(
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Location': locationLines,
+        'Inventory': inventoryLines,
         'Weather': weatherLines,
         'Date And Time': dateAndTimeLines,
         'Time Elapsed': timeElapsedLines,
@@ -1189,7 +1210,7 @@ export async function prepareRequestBody(
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    initialPrompt = `${contextStartString}${thinkStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${thinkEndString}${contextEndString}`;
+                    initialPrompt = `${generalStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
                     isCharacterImageInjected = true;
                 }
             }
@@ -1212,7 +1233,7 @@ export async function prepareRequestBody(
                     }
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
                     const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
-                    initialPrompt = `${initialPrompt}${contextStartString}${thinkStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${thinkEndString}${contextEndString}`;
+                    initialPrompt = `${initialPrompt}${generalStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${generalEndString}`;
                 }
             }
         }

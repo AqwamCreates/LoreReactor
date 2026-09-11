@@ -747,6 +747,8 @@ export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> 
         filename: raw.filename,
         loop: raw.loop ?? false,
         volume: raw.volume ?? 1,
+        audioCategory: raw.audioCategory ?? 'ambient',
+        playableByParticipant: raw.playableByParticipant ?? false,
         startFadeDurationMs: raw.startFadeDurationMs ?? 1000,
         endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
         regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
@@ -755,7 +757,6 @@ export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> 
         contextBindings: raw.contextBindings ?? [],
         characterBindings: raw.characterBindings ?? [],
         priority: raw.priority ?? 0,
-        audioCategory: raw.audioCategory ?? 'ambient',
         firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
     };

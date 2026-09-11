@@ -90,10 +90,11 @@ async function processToolInvocations(
     rawText: string,
     character: Character,
     profile: InteractionData['Profile'],
+    nextMessage: import('../types').ChatMessage,
+    interactionData: InteractionData,
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
     const effectiveTools = getEffectiveTools(character, profile);
 
-    // Check if any tool is enabled at all
     const anyToolEnabled = Object.values(effectiveTools).some(v => v);
     if (!anyToolEnabled) return null;
 
@@ -103,14 +104,13 @@ async function processToolInvocations(
     if (result.toolInvocations.length === 0) return null;
 
     const enabledInvocations = result.toolInvocations.filter(inv => {
-        // Map parser tool types to the tool type union
         const toolName = inv.toolType as tool;
         return effectiveTools[toolName] ?? false;
     });
 
     if (enabledInvocations.length === 0) return null;
 
-    const toolResults = await executeTools(enabledInvocations);
+    const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData);
 
     let resumeText = rawText;
     let displayText = rawText;
@@ -171,7 +171,6 @@ export class GenerationOrchestrator {
         const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
         const protagonistFileBase64s = getProtagonistFileBase64s(dataWithRegen);
 
-        // Determine model ID for per-model summary selection
         const modelId = selectedModel?.id || '';
 
         const statsDelta: TurnStats = {
@@ -185,13 +184,15 @@ export class GenerationOrchestrator {
         let latestExpression: string | null = null;
         let previousExpression: string | null = null;
 
+        // Create the message upfront so tool executors can mutate it (inventory, audio, etc.)
+        const aiMessage = createChatMessage(dataWithRegen, character, '');
+
         try {
             let rawText: string;
             let currentExistingText = existingCharacterText || '';
             let accumulatedDisplayText = '';
             let finalBudgetData: BudgetData | null = null;
 
-            // ─── Shared stream callback factory ─────────────────────
             const createStreamCallbacks = (
                 streamToolParser: ToolInvocationParser,
                 accumulator: StreamingAccumulator,
@@ -224,7 +225,6 @@ export class GenerationOrchestrator {
             });
 
             if (strat) {
-                // ─── Budget Strategy Path ───────────────────────────
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
                     const existing = runningModels[modelId];
                     if (existing?.port) return existing.port;
@@ -258,7 +258,6 @@ export class GenerationOrchestrator {
                 bse.setRunningModels(runningModels);
                 bse.setLoadLocalModel(loadLocalModel);
 
-                // Load or initialize budget data
                 let bd: BudgetData | null = finalBudgetData;
                 if (!bd) {
                     try { bd = await loadRawBudgetData(); } catch (e) { console.warn('Failed to load budget data:', e); }
@@ -296,7 +295,7 @@ export class GenerationOrchestrator {
                     if (requestCost > 0) statsDelta.numberOfRequests++;
                     statsDelta.totalCost += requestCost;
 
-                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
+                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile, aiMessage, dataWithRegen);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -313,7 +312,6 @@ export class GenerationOrchestrator {
                     currentExistingText = toolResult.resumeText;
                 }
             } else {
-                // ─── Direct Model Path ──────────────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }
@@ -365,7 +363,7 @@ export class GenerationOrchestrator {
                         }
                     }
 
-                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile);
+                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile, aiMessage, dataWithRegen);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -389,7 +387,9 @@ export class GenerationOrchestrator {
 
             const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, dataWithRegen);
-            const aiMessage = createChatMessage(dataWithRegen, character, displayText);
+
+            // Finalize the message with the completed text
+            aiMessage.textContent = displayText;
             const paragraphs = countParagraphs(displayText);
             if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
 

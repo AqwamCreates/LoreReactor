@@ -39,6 +39,7 @@ export function AudioTrackEditorModal({
     const [endFadeDurationMs, setEndFadeDurationMs] = useState(1000);
     const [audioCategory, setAudioCategory] = useState<audioCategory>('ambient');
     const [priority, setPriority] = useState(0);
+    const [playableByParticipant, setPlayableByParticipant] = useState(false);
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
@@ -69,6 +70,7 @@ export function AudioTrackEditorModal({
                 setEndFadeDurationMs(existingTrack.endFadeDurationMs ?? 1000);
                 setAudioCategory(existingTrack.audioCategory ?? 'ambient');
                 setPriority(existingTrack.priority ?? 0);
+                setPlayableByParticipant(existingTrack.playableByParticipant ?? false);
                 setRegexActivationTrigger(existingTrack.regularExpressionActivationTrigger || '');
                 setRegexDeactivationTrigger(existingTrack.regularExpressionDeactivationTrigger || '');
                 setLocationBindings(existingTrack.locationBindings ?? []);
@@ -85,6 +87,7 @@ export function AudioTrackEditorModal({
                 setEndFadeDurationMs(1000);
                 setAudioCategory('ambient');
                 setPriority(0);
+                setPlayableByParticipant(false);
                 setRegexActivationTrigger('');
                 setRegexDeactivationTrigger('');
                 setLocationBindings([]);
@@ -217,6 +220,7 @@ export function AudioTrackEditorModal({
             endFadeDurationMs,
             audioCategory,
             priority,
+            playableByParticipant,
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
             regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
@@ -353,6 +357,16 @@ export function AudioTrackEditorModal({
                                 <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} className="editor-checkbox-input" />
                                 <span>Loop</span>
                             </label>
+                        </div>
+
+                        <div className="context-field-group">
+                            <label className="editor-checkbox-label">
+                                <input type="checkbox" checked={playableByParticipant} onChange={(e) => setPlayableByParticipant(e.target.checked)} className="editor-checkbox-input" />
+                                <span>Playable by Participant</span>
+                            </label>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                When enabled, AI participants can trigger this track via their messages. When disabled, only the user/protagonist can activate it.
+                            </div>
                         </div>
 
                         <div className="context-field-group">
