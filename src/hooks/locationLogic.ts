@@ -1,20 +1,19 @@
 import type { Character, InteractionData, Location } from '../types';
+import { findPreviousInteractionMessage } from './chatLogic';
 import { v4 as uuidv4 } from 'uuid';
+
 
 /**
  * Get the current location index for a character from their last interaction entry.
  */
+
 export function getCurrentLocationIndex(interactionData: InteractionData, character: Character) {
     const locations = interactionData.locations
     if (!locations) return undefined
     if (locations.length <= 0) return undefined
-    const interactionHistory = interactionData.interactionHistory
-    for (let i = interactionHistory.length - 1; i >= 0; i--) {
-        if (interactionHistory[i].character.id === character.id && interactionHistory[i].locationIndex !== undefined) {
-            return interactionHistory[i].locationIndex;
-        }
-    }
-    return undefined;
+    const message = findPreviousInteractionMessage(interactionData, character.id)
+    if (!message) return undefined
+    return message.locationIndex;
 }
 
 export function getCurrentLocation(interactionData: InteractionData, character: Character){
