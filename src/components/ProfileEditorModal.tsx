@@ -38,7 +38,9 @@ const TOOL_LABELS: Record<tool, string> = {
     dice: 'Roll Dice',
     random: 'Random Number',
     calculator: 'Calculator',
+    audio: 'Audio',
     web: 'Web Search',
+    inventory: 'Inventory',
 };
 
 const DEFAULT_TOOLS: Record<tool, number> = {

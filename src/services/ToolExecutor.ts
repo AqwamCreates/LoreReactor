@@ -453,7 +453,7 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
     // All checks passed — play or stop directly
     const audioEngine = getAudioEngine();
     if (subcommand === 'play') {
-        audioEngine.playTrack(track);
+        audioEngine.startTrack(track);
         return {
             toolType: 'audio',
             args,

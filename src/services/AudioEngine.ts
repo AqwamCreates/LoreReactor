@@ -79,7 +79,7 @@ export class AudioEngine {
         }
     }
 
-    private startTrack(track: AudioTrack): void {
+    startTrack(track: AudioTrack): void {
         if (this.activeTracks.has(track.id)) return;
 
         const ctx = this.ensureContext();
@@ -122,7 +122,7 @@ export class AudioEngine {
         });
     }
 
-    private stopTrack(trackId: string): void {
+    stopTrack(trackId: string): void {
         const state = this.activeTracks.get(trackId);
         if (!state) return;
 
