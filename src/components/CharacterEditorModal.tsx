@@ -28,7 +28,7 @@ const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const DEFAULT_TOOLS: Record<tool, boolean> = {
-    Dice: true,
+    dice: true,
     pick: true,
     calculator: false,
     web: false,

@@ -8,8 +8,16 @@ const TOOL_LABELS: Record<tool, string> = {
     coin: 'Coin Flip',
     dice: 'Roll Dice',
     random: 'Random Number',
+    rng: 'RNG Table',
+    timer: 'Timer',
+    stopwatch: 'Stopwatch',
     calculator: 'Calculator',
     web: 'Web Search',
+    lookup: 'Look Up',
+    map: 'Map',
+    audio: 'Audio',
+    note: 'Note',
+    inventory: 'Inventory',
 };
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {

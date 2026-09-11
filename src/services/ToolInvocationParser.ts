@@ -2,9 +2,9 @@
 
 import { toolStartSring, toolEndString } from "../stringList";
 
-const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'audio', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
+const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'rng', 'lookup', 'map', 'audio', 'note', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
 
-const characterSpecificTools = ['calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 
 /*
 

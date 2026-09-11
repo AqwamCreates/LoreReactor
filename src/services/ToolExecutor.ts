@@ -20,6 +20,8 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "dice": executeDiceRoll,
     "random": executeRandom,
     "rng": executeRng,
+    "timer": executeTimer,
+    "stopwatch": executeStopwatch,
     "calculator": executeCalculator,
     "web": executeWeb,
     "lookup": executeLookup,
@@ -331,6 +333,318 @@ function executeRng(args: string, nextMessage: BaseMessage, interactionData: Int
         content: matchedEntry.result,
         displayReplacement: `[🎲 ${tableContext.name}: rolled ${roll} → ${matchedEntry.result}]`,
     };
+}
+
+// ─── Timer / Stopwatch Helpers ──────────────────────────────────────
+
+interface TimerEntry { name: string; targetTimestamp: number }
+interface StopwatchEntry { name: string; startTimestamp: number; pausedElapsedMs?: number }
+
+function parseDurationToMs(input: string): number | null {
+    const trimmed = input.trim().toLowerCase();
+    let totalMs = 0;
+    let matched = false;
+
+    const hourMatch = trimmed.match(/(\d+)\s*h(?:ours?|r)?/);
+    if (hourMatch) { totalMs += parseInt(hourMatch[1], 10) * 3600000; matched = true; }
+
+    const minMatch = trimmed.match(/(\d+)\s*m(?:in(?:utes?|s)?)?/);
+    if (minMatch) { totalMs += parseInt(minMatch[1], 10) * 60000; matched = true; }
+
+    const secMatch = trimmed.match(/(\d+)\s*s(?:ec(?:onds?|s)?)?/);
+    if (secMatch) { totalMs += parseInt(secMatch[1], 10) * 1000; matched = true; }
+
+    if (!matched) {
+        // Try plain number as seconds
+        const plainNum = parseInt(trimmed, 10);
+        if (!isNaN(plainNum) && plainNum > 0) return plainNum * 1000;
+        return null;
+    }
+
+    return totalMs > 0 ? totalMs : null;
+}
+
+function formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(Math.abs(ms) / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
+}
+
+function loadTimers(inventory: Inventory | undefined): TimerEntry[] {
+    if (!inventory || typeof inventory['__timers__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__timers__'] as string); } catch { return []; }
+}
+
+function saveTimers(inventory: Inventory, timers: TimerEntry[]): void {
+    if (timers.length === 0) { delete inventory['__timers__']; } else { inventory['__timers__'] = JSON.stringify(timers); }
+}
+
+function loadStopwatches(inventory: Inventory | undefined): StopwatchEntry[] {
+    if (!inventory || typeof inventory['__stopwatches__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__stopwatches__'] as string); } catch { return []; }
+}
+
+function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): void {
+    if (stopwatches.length === 0) { delete inventory['__stopwatches__']; } else { inventory['__stopwatches__'] = JSON.stringify(stopwatches); }
+}
+
+// ─── Timer ──────────────────────────────────────────────────────────
+
+function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty timer command. Use "timer set <name> <duration>", "timer check [name]", "timer delete <name>", or "timer list"]';
+        return { toolType: 'timer', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+
+    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
+    const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+    const timers = loadTimers(inventory);
+    const now = Date.now();
+
+    switch (subcommand) {
+        case 'set': {
+            if (parts.length < 3) {
+                const errorContent = '[Error: Usage: timer set <name> <duration>. Duration examples: "5m", "1h 30m", "90s"]';
+                return { toolType: 'timer', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts[1];
+            const durationStr = parts.slice(2).join(' ');
+            const durationMs = parseDurationToMs(durationStr);
+            if (!durationMs) {
+                const errorContent = `[Error: Invalid duration "${durationStr}". Use formats like "5m", "1h 30m", "90s".]`;
+                return { toolType: 'timer', args, content: errorContent, displayReplacement: errorContent };
+            }
+            // Remove existing timer with same name
+            const filtered = timers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
+            filtered.push({ name, targetTimestamp: now + durationMs });
+            saveTimers(inventory, filtered);
+            nextMessage.inventory = inventory;
+            return {
+                toolType: 'timer',
+                args,
+                content: `Timer "${name}" set for ${formatDuration(durationMs)}.`,
+                displayReplacement: `[⏱️ Timer "${name}" set: ${formatDuration(durationMs)}]`,
+            };
+        }
+
+        case 'check': {
+            const specificName = parts.slice(1).join(' ').toLowerCase();
+            if (specificName) {
+                const timer = timers.find(t => t.name.toLowerCase() === specificName);
+                if (!timer) {
+                    return { toolType: 'timer', args, content: `No timer named "${specificName}".`, displayReplacement: `[⏱️ No timer: "${specificName}"]` };
+                }
+                const remaining = timer.targetTimestamp - now;
+                if (remaining <= 0) {
+                    return { toolType: 'timer', args, content: `Timer "${timer.name}" has EXPIRED.`, displayReplacement: `[⏱️ "${timer.name}": EXPIRED]` };
+                }
+                return { toolType: 'timer', args, content: `Timer "${timer.name}": ${formatDuration(remaining)} remaining.`, displayReplacement: `[⏱️ "${timer.name}": ${formatDuration(remaining)} left]` };
+            }
+            // Check all
+            if (timers.length === 0) {
+                return { toolType: 'timer', args, content: 'No active timers.', displayReplacement: '[⏱️ No active timers]' };
+            }
+            const statuses = timers.map(t => {
+                const remaining = t.targetTimestamp - now;
+                return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(remaining)} remaining`;
+            });
+            return { toolType: 'timer', args, content: statuses.join('\n'), displayReplacement: `[⏱️ ${timers.length} timer(s)]` };
+        }
+
+        case 'delete': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: timer delete <name>]';
+                return { toolType: 'timer', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const idx = timers.findIndex(t => t.name.toLowerCase() === name);
+            if (idx === -1) {
+                return { toolType: 'timer', args, content: `No timer named "${name}".`, displayReplacement: `[⏱️ No timer: "${name}"]` };
+            }
+            const deletedName = timers[idx].name;
+            timers.splice(idx, 1);
+            saveTimers(inventory, timers);
+            nextMessage.inventory = inventory;
+            return { toolType: 'timer', args, content: `Timer "${deletedName}" deleted.`, displayReplacement: `[⏱️ Deleted: "${deletedName}"]` };
+        }
+
+        case 'list': {
+            if (timers.length === 0) {
+                return { toolType: 'timer', args, content: 'No active timers.', displayReplacement: '[⏱️ No active timers]' };
+            }
+            const lines = timers.map(t => {
+                const remaining = t.targetTimestamp - now;
+                return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(remaining)} remaining`;
+            });
+            return { toolType: 'timer', args, content: lines.join('\n'), displayReplacement: `[⏱️ ${timers.length} timer(s)]` };
+        }
+
+        default: {
+            const errorContent = `[Error: Unknown timer command "${subcommand}". Use set, check, delete, or list.]`;
+            return { toolType: 'timer', args, content: errorContent, displayReplacement: errorContent };
+        }
+    }
+}
+
+// ─── Stopwatch ──────────────────────────────────────────────────────
+
+function executeStopwatch(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty stopwatch command. Use "stopwatch start <name>", "stopwatch stop <name>", "stopwatch pause <name>", "stopwatch resume <name>", "stopwatch check [name]", "stopwatch reset <name>", or "stopwatch list"]';
+        return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+
+    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
+    const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+    const stopwatches = loadStopwatches(inventory);
+    const now = Date.now();
+
+    switch (subcommand) {
+        case 'start': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: stopwatch start <name>]';
+                return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ');
+            // Remove existing stopwatch with same name
+            const filtered = stopwatches.filter(s => s.name.toLowerCase() !== name.toLowerCase());
+            filtered.push({ name, startTimestamp: now });
+            saveStopwatches(inventory, filtered);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" started.`, displayReplacement: `[⏱️ Stopwatch "${name}" started]` };
+        }
+
+        case 'pause': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: stopwatch pause <name>]';
+                return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name);
+            if (!sw) {
+                return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: `[⏱️ No stopwatch: "${name}"]` };
+            }
+            if (sw.pausedElapsedMs !== undefined) {
+                return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" is already paused.`, displayReplacement: `[⏱️ "${sw.name}" already paused]` };
+            }
+            sw.pausedElapsedMs = now - sw.startTimestamp;
+            saveStopwatches(inventory, stopwatches);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" paused at ${formatDuration(sw.pausedElapsedMs)}.`, displayReplacement: `[⏱️ "${sw.name}" paused: ${formatDuration(sw.pausedElapsedMs)}]` };
+        }
+
+        case 'resume': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: stopwatch resume <name>]';
+                return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name);
+            if (!sw) {
+                return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: `[⏱️ No stopwatch: "${name}"]` };
+            }
+            if (sw.pausedElapsedMs === undefined) {
+                return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" is not paused.`, displayReplacement: `[⏱️ "${sw.name}" not paused]` };
+            }
+            // Adjust startTimestamp so elapsed stays continuous
+            sw.startTimestamp = now - sw.pausedElapsedMs;
+            delete sw.pausedElapsedMs;
+            saveStopwatches(inventory, stopwatches);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" resumed.`, displayReplacement: `[⏱️ "${sw.name}" resumed]` };
+        }
+
+        case 'stop': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: stopwatch stop <name>]';
+                return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const idx = stopwatches.findIndex(s => s.name.toLowerCase() === name);
+            if (idx === -1) {
+                return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: `[⏱️ No stopwatch: "${name}"]` };
+            }
+            const sw = stopwatches[idx];
+            const elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
+            stopwatches.splice(idx, 1);
+            saveStopwatches(inventory, stopwatches);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" stopped at ${formatDuration(elapsed)}.`, displayReplacement: `[⏱️ "${sw.name}" stopped: ${formatDuration(elapsed)}]` };
+        }
+
+        case 'reset': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: stopwatch reset <name>]';
+                return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name);
+            if (!sw) {
+                return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: `[⏱️ No stopwatch: "${name}"]` };
+            }
+            sw.startTimestamp = now;
+            delete sw.pausedElapsedMs;
+            saveStopwatches(inventory, stopwatches);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}" reset.`, displayReplacement: `[⏱️ "${sw.name}" reset]` };
+        }
+
+        case 'check': {
+            const specificName = parts.slice(1).join(' ').toLowerCase();
+            if (specificName) {
+                const sw = stopwatches.find(s => s.name.toLowerCase() === specificName);
+                if (!sw) {
+                    return { toolType: 'stopwatch', args, content: `No stopwatch named "${specificName}".`, displayReplacement: `[⏱️ No stopwatch: "${specificName}"]` };
+                }
+                const elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
+                const status = sw.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
+                return { toolType: 'stopwatch', args, content: `Stopwatch "${sw.name}": ${formatDuration(elapsed)} (${status})`, displayReplacement: `[⏱️ "${sw.name}": ${formatDuration(elapsed)} ${status}]` };
+            }
+            if (stopwatches.length === 0) {
+                return { toolType: 'stopwatch', args, content: 'No active stopwatches.', displayReplacement: '[⏱️ No active stopwatches]' };
+            }
+            const statuses = stopwatches.map(s => {
+                const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
+                const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
+                return `${s.name}: ${formatDuration(elapsed)} (${status})`;
+            });
+            return { toolType: 'stopwatch', args, content: statuses.join('\n'), displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
+        }
+
+        case 'list': {
+            if (stopwatches.length === 0) {
+                return { toolType: 'stopwatch', args, content: 'No active stopwatches.', displayReplacement: '[⏱️ No active stopwatches]' };
+            }
+            const lines = stopwatches.map(s => {
+                const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
+                const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
+                return `${s.name}: ${formatDuration(elapsed)} (${status})`;
+            });
+            return { toolType: 'stopwatch', args, content: lines.join('\n'), displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
+        }
+
+        default: {
+            const errorContent = `[Error: Unknown stopwatch command "${subcommand}". Use start, stop, pause, resume, check, reset, or list.]`;
+            return { toolType: 'stopwatch', args, content: errorContent, displayReplacement: errorContent };
+        }
+    }
 }
 
 // ─── Calculator ─────────────────────────────────────────────────────

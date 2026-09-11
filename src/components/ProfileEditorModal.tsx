@@ -4,6 +4,7 @@ import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, Summariz
 import { SliderInput } from './SliderInput';
 import './main.css';
 import { defaultInputStrategy } from '../defaults';
+import { timerify } from 'perf_hooks';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -38,6 +39,8 @@ const TOOL_LABELS: Record<tool, string> = {
     dice: 'Roll Dice',
     random: 'Random Number',
     rng: 'RNG Table',
+    timer: 'Timer',
+    stopwatch: 'Stopwatch',
     calculator: 'Calculator',
     web: 'Web Search',
     lookup: 'Look Up',
@@ -54,6 +57,8 @@ const DEFAULT_TOOLS: Record<tool, number> = {
     dice: 0,
     random: 0,
     rng: 0,
+    stopwatch: 0,
+    timer: 0,
     calculator: 0,
     web: 0,
     lookup: 0,
