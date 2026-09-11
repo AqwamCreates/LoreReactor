@@ -19,9 +19,13 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "coin": executeCoinFlip,
     "dice": executeDiceRoll,
     "random": executeRandom,
+    "rng": executeRng,
     "calculator": executeCalculator,
     "web": executeWeb,
+    "lookup": executeLookup,
+    "map": executeMap,
     "audio": executeAudio,
+    "note": executeNote,
     "inventory": executeInventory,
 };
 
@@ -53,7 +57,7 @@ export async function executeTools(invocations: ToolInvocation[], nextMessage: B
 
 // ─── Random Pick ────────────────────────────────────────────────────
 
-function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeRandomPick(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty pick list. Use format like "pick: option1, option2, option3"]';
         return { toolType: 'pick', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -91,7 +95,7 @@ function executeRandomPick(expression: string, _nextMessage: BaseMessage, _inter
 
 // ─── Date ────────────────────────────────────────────────────────────
 
-function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeDate(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
 
@@ -127,7 +131,7 @@ function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: 
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
 
-function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeCoinFlip(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
 
     return {
@@ -145,7 +149,7 @@ interface RollGroup {
     sides: number;
 }
 
-function executeDiceRoll(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeDiceRoll(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty dice expression. Use format like "2d6", "1d20+5", "d8"]';
         return { toolType: 'dice', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -216,7 +220,7 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
 
 // ─── Random Number ───────────────────────────────────────────────────
 
-function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeRandom(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -260,9 +264,78 @@ function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData
     };
 }
 
+// ─── RNG Table ─────────────────────────────────────────────────────
+
+function executeRng(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty RNG table query. Use "rng <table name>" to roll on a named table defined in contexts.]';
+        return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Find a context whose name matches the table name (case-insensitive)
+    const tableName = trimmed.toLowerCase();
+    const tableContext = (interactionData.contexts || []).find(c =>
+        c.name?.toLowerCase() === tableName && c.text
+    );
+
+    if (!tableContext || !tableContext.text) {
+        const errorContent = `[Error: RNG table "${trimmed}" not found. Create a context with the table name and entries formatted as "1-10: outcome text" per line.]`;
+        return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Parse table entries: lines matching "min-max: result" or "number: result"
+    const lines = tableContext.text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const entries: { min: number; max: number; result: string }[] = [];
+    let globalMax = 0;
+
+    for (const line of lines) {
+        const rangeMatch = line.match(/^(\d+)\s*[-–]\s*(\d+)\s*[:=]\s*(.+)$/);
+        const singleMatch = line.match(/^(\d+)\s*[:=]\s*(.+)$/);
+
+        if (rangeMatch) {
+            const min = parseInt(rangeMatch[1], 10);
+            const max = parseInt(rangeMatch[2], 10);
+            const result = rangeMatch[3].trim();
+            entries.push({ min, max, result });
+            if (max > globalMax) globalMax = max;
+        } else if (singleMatch) {
+            const val = parseInt(singleMatch[1], 10);
+            const result = singleMatch[2].trim();
+            entries.push({ min: val, max: val, result });
+            if (val > globalMax) globalMax = val;
+        }
+    }
+
+    if (entries.length === 0) {
+        const errorContent = `[Error: Table "${trimmed}" has no valid entries. Format each line as "1-10: outcome" or "5: outcome".]`;
+        return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const roll = Math.floor(Math.random() * globalMax) + 1;
+    const matchedEntry = entries.find(e => roll >= e.min && roll <= e.max);
+
+    if (!matchedEntry) {
+        return {
+            toolType: 'rng',
+            args,
+            content: `Rolled ${roll} on "${tableContext.name}" — no entry covers this range.`,
+            displayReplacement: `[🎲 ${tableContext.name}: rolled ${roll}, no match]`,
+        };
+    }
+
+    return {
+        toolType: 'rng',
+        args,
+        content: matchedEntry.result,
+        displayReplacement: `[🎲 ${tableContext.name}: rolled ${roll} → ${matchedEntry.result}]`,
+    };
+}
+
 // ─── Calculator ─────────────────────────────────────────────────────
 
-function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
+function executeCalculator(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty expression]';
         return { toolType: 'calculator', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -314,7 +387,7 @@ function executeCalculator(expression: string, _nextMessage: BaseMessage, _inter
 
 // ─── Web (Search + Fetch) ────────────────────────────────────────────
 
-async function executeWeb(query: string, _nextMessage: BaseMessage, _interactionData: InteractionData): Promise<ToolResult> {
+async function executeWeb(query: string, nextMessage: BaseMessage, interactionData: InteractionData): Promise<ToolResult> {
     if (!query.trim()) {
         const errorContent = '[Error: Empty web query]';
         return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
@@ -373,6 +446,138 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
             displayReplacement: `[🌐 ${label}]\n\n${errorContent}`,
         };
     }
+}
+
+// ─── Lookup ────────────────────────────────────────────────────────
+
+function executeLookup(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const query = args.trim().toLowerCase();
+
+    if (!query) {
+        const errorContent = '[Error: Empty lookup query. Use "lookup <keyword>" to search contexts and lore.]';
+        return { toolType: 'lookup', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const contexts = interactionData.contexts || [];
+    const matches: { name: string; snippet: string }[] = [];
+
+    for (const ctx of contexts) {
+        const searchText = `${ctx.name || ''} ${ctx.description || ''} ${ctx.text || ''}`.toLowerCase();
+        if (searchText.includes(query)) {
+            // Extract a relevant snippet around the match
+            const matchIndex = searchText.indexOf(query);
+            const start = Math.max(0, matchIndex - 50);
+            const end = Math.min(searchText.length, matchIndex + query.length + 100);
+            let snippet = (ctx.text || ctx.description || '').substring(start, end).trim();
+            if (start > 0) snippet = '...' + snippet;
+            if (end < searchText.length) snippet = snippet + '...';
+            matches.push({ name: ctx.name || 'Untitled', snippet });
+        }
+    }
+
+    if (matches.length === 0) {
+        return {
+            toolType: 'lookup',
+            args,
+            content: `No context entries found matching "${args.trim()}".`,
+            displayReplacement: `[🔍 No results for "${args.trim()}"]`,
+        };
+    }
+
+    const content = matches.map(m => `[${m.name}] ${m.snippet}`).join('\n\n');
+    return {
+        toolType: 'lookup',
+        args,
+        content,
+        displayReplacement: `[🔍 Found ${matches.length} result(s) for "${args.trim()}"]`,
+    };
+}
+
+// ─── Map / Distance ────────────────────────────────────────────────
+
+function executeMap(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty map query. Use "map <location name>" for distance from current location, or "map <loc1> to <loc2>" for distance between two locations.]';
+        return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const locations = interactionData.locations || [];
+    if (locations.length === 0) {
+        const errorContent = '[Error: No locations available.]';
+        return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Parse "loc1 to loc2" or just "loc1" (from current location)
+    const toMatch = trimmed.match(/^(.+?)\s+to\s+(.+)$/i);
+    let fromLoc, toLoc;
+
+    if (toMatch) {
+        fromLoc = locations.find(l => l.name.toLowerCase() === toMatch[1].trim().toLowerCase());
+        toLoc = locations.find(l => l.name.toLowerCase() === toMatch[2].trim().toLowerCase());
+    } else {
+        // Find current location
+        let currentLocationIndex: number | undefined;
+        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
+            if (interactionData.interactionHistory[i].locationIndex !== undefined) {
+                currentLocationIndex = interactionData.interactionHistory[i].locationIndex;
+                break;
+            }
+        }
+        if (currentLocationIndex !== undefined) {
+            fromLoc = locations[currentLocationIndex];
+        }
+        toLoc = locations.find(l => l.name.toLowerCase() === trimmed.toLowerCase());
+    }
+
+    if (!toLoc) {
+        const errorContent = `[Error: Location "${trimmed}" not found.]`;
+        return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    if (!fromLoc) {
+        const errorContent = '[Error: No current location set. Use "map <loc1> to <loc2>" format instead.]';
+        return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    if (fromLoc.id === toLoc.id) {
+        return {
+            toolType: 'map',
+            args,
+            content: `Already at "${toLoc.name}".`,
+            displayReplacement: `[🗺️ Already at "${toLoc.name}"]`,
+        };
+    }
+
+    // Check direct distance map first
+    const directDistance = fromLoc.locationDistances?.[toLoc.id];
+    let distanceKm: number;
+
+    if (directDistance !== undefined) {
+        distanceKm = directDistance;
+    } else {
+        // Calculate from lat/lng using Haversine formula
+        const R = 6371; // Earth radius in km
+        const dLat = (toLoc.latitude - fromLoc.latitude) * Math.PI / 180;
+        const dLon = (toLoc.longitude - fromLoc.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(fromLoc.latitude * Math.PI / 180) * Math.cos(toLoc.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distanceKm = R * c;
+    }
+
+    const rounded = Math.round(distanceKm * 10) / 10;
+    // Rough travel time estimates
+    const walkHours = Math.round((distanceKm / 5) * 10) / 10; // ~5 km/h walking
+    const rideHours = Math.round((distanceKm / 30) * 10) / 10; // ~30 km/h riding
+
+    const content = `Distance from "${fromLoc.name}" to "${toLoc.name}": ${rounded} km. Estimated travel: ~${walkHours}h walking, ~${rideHours}h riding.`;
+    return {
+        toolType: 'map',
+        args,
+        content,
+        displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]`,
+    };
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────
@@ -468,6 +673,95 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
             content: `Stopped "${trackName}"`,
             displayReplacement: `[🔇 Stopped "${trackName}"]`,
         };
+    }
+}
+
+// ─── Note ──────────────────────────────────────────────────────────
+
+function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty note command. Use "note set <key> <text>", "note get <key>", "note delete <key>", or "note list"]';
+        return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+
+    // Carry forward previous notes state (stored in inventory under __notes__ key as JSON string)
+    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
+    let notes: Record<string, string> = {};
+    if (currentMessage?.inventory && typeof currentMessage.inventory['__notes__'] === 'string') {
+        try { notes = JSON.parse(currentMessage.inventory['__notes__'] as string); } catch { notes = {}; }
+    }
+
+    switch (subcommand) {
+        case 'list': {
+            const entries = Object.entries(notes);
+            if (entries.length === 0) {
+                return { toolType: 'note', args, content: 'No notes recorded.', displayReplacement: '[📝 No notes]' };
+            }
+            const formatted = entries.map(([k, v]) => `${k}: ${v}`).join('\n');
+            return { toolType: 'note', args, content: formatted, displayReplacement: `[📝 ${entries.length} note(s)]` };
+        }
+
+        case 'set': {
+            if (parts.length < 3) {
+                const errorContent = '[Error: Usage: note set <key> <text>]';
+                return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const key = parts[1];
+            const text = parts.slice(2).join(' ');
+            if (!key || !text) {
+                const errorContent = '[Error: Both key and text are required.]';
+                return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+            }
+            notes[key] = text;
+            // Persist notes into inventory
+            const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+            inventory['__notes__'] = JSON.stringify(notes);
+            nextMessage.inventory = inventory;
+            return { toolType: 'note', args, content: `Note "${key}" saved.`, displayReplacement: `[📝 Saved: "${key}"]` };
+        }
+
+        case 'get': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: note get <key>]';
+                return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const key = parts[1];
+            const value = notes[key];
+            if (value === undefined) {
+                return { toolType: 'note', args, content: `No note found for "${key}".`, displayReplacement: `[📝 Not found: "${key}"]` };
+            }
+            return { toolType: 'note', args, content: value, displayReplacement: `[📝 ${key}: ${value}]` };
+        }
+
+        case 'delete': {
+            if (parts.length < 2) {
+                const errorContent = '[Error: Usage: note delete <key>]';
+                return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+            }
+            const key = parts[1];
+            if (notes[key] === undefined) {
+                return { toolType: 'note', args, content: `No note found for "${key}".`, displayReplacement: `[📝 Not found: "${key}"]` };
+            }
+            delete notes[key];
+            const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+            if (Object.keys(notes).length === 0) {
+                delete inventory['__notes__'];
+            } else {
+                inventory['__notes__'] = JSON.stringify(notes);
+            }
+            nextMessage.inventory = inventory;
+            return { toolType: 'note', args, content: `Note "${key}" deleted.`, displayReplacement: `[📝 Deleted: "${key}"]` };
+        }
+
+        default: {
+            const errorContent = `[Error: Unknown note command "${subcommand}". Use set, get, delete, or list.]`;
+            return { toolType: 'note', args, content: errorContent, displayReplacement: errorContent };
+        }
     }
 }
 

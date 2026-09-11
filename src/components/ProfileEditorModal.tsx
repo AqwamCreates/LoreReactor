@@ -37,9 +37,13 @@ const TOOL_LABELS: Record<tool, string> = {
     coin: 'Coin Flip',
     dice: 'Roll Dice',
     random: 'Random Number',
+    rng: 'RNG Table',
     calculator: 'Calculator',
-    audio: 'Audio',
     web: 'Web Search',
+    lookup: 'Look Up',
+    map: 'Map',
+    audio: 'Audio',
+    note: 'Note',
     inventory: 'Inventory',
 };
 
@@ -49,8 +53,14 @@ const DEFAULT_TOOLS: Record<tool, number> = {
     coin: 0,
     dice: 0,
     random: 0,
+    rng: 0,
     calculator: 0,
     web: 0,
+    lookup: 0,
+    map: 0,
+    audio: 0,
+    note: 0,
+    inventory: 0,
 };
 
 /** Merge saved tools with defaults so all keys always exist */
