@@ -5,7 +5,7 @@ import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina, getEffectiveTools, isToolEnabled } from '../hooks/characterLogic';
+import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina, getEffectiveTools } from '../hooks/characterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';

@@ -989,6 +989,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         id,
         name: rawProfile.name || 'Unknown Profile',
         description: rawProfile.description,
+        autonomousMode: rawProfile.autonomousMode,
         volume: rawProfile.volume,
         forceNameReveal: rawProfile.forceNameReveal ?? false,
         enableCharacterExpression: rawProfile.enableCharacterExpression ?? false,

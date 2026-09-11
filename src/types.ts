@@ -478,6 +478,7 @@ export interface RawPromptBlock extends RawData {
 
 }
 export interface Profile extends ObjectData {
+  autonomousMode: boolean;
   volume: number; // -1 is audio-specific, >= 0 is override
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
@@ -513,6 +514,7 @@ export interface Profile extends ObjectData {
 }
 
 export interface RawProfile extends RawData {
+  autonomousMode: boolean;
   volume: number; // -1 is audio-specific, >= 0 is override
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;

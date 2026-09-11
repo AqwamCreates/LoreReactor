@@ -5,17 +5,39 @@ import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
 
 const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
-    Dice: true,
     pick: true,
+    date: false,
+    coin: true,
+    dice: true,
+    random: true,
+    rng: false,
+    timer: false,
+    stopwatch: false,
     calculator: false,
     web: false,
+    lookup: false,
+    map: false,
+    audio: false,
+    note: false,
+    inventory: false,
 };
 
 const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
-    Dice: 0,
     pick: 0,
+    date: 0,
+    coin: 0,
+    dice: 0,
+    random: 0,
+    rng: 0,
+    timer: 0,
+    stopwatch: 0,
     calculator: 0,
     web: 0,
+    lookup: 0,
+    map: 0,
+    audio: 0,
+    note: 0,
+    inventory: 0,
 };
 
 function ensureId(obj: Record<string, unknown>): string {
@@ -112,8 +134,8 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         characterBindings: (l.characterBindings as string[]) || [],
         globalWeight: (l.globalWeight as number) ?? 1,
         characterWeights: (l.characterWeights as Record<string, number>) || {},
-        latitude: (l.latitude as number) ?? undefined,
-        longitude: (l.longitude as number) ?? undefined,
+        latitude: (l.latitude as number) ?? 0,
+        longitude: (l.longitude as number) ?? 0,
         locationDistances: (l.locationDistances as Record<string, number>) || {},
         useBase64Encoding: (l.useBase64Encoding as boolean) ?? false,
         firstCreatedTimestamp: now,
@@ -134,6 +156,7 @@ function fillAudioTrackDefaults(t: Record<string, unknown>): AudioTrack {
         endFadeDurationMs: (t.endFadeDurationMs as number) ?? 1000,
         audioCategory: (t.audioCategory as AudioTrack['audioCategory']) ?? 'ambient',
         priority: (t.priority as number) ?? 0,
+        playableByParticipant: (t.playableByParticipant as boolean) ?? false,
         regularExpressionActivationTrigger: (t.regularExpressionActivationTrigger as string) || undefined,
         regularExpressionDeactivationTrigger: (t.regularExpressionDeactivationTrigger as string) || undefined,
         locationBindings: (t.locationBindings as string[]) || [],
@@ -170,6 +193,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         id: ensureId(p),
         name: (p.name as string) || 'Unnamed',
         description: (p.description as string) || undefined,
+        autonomousMode: (p.autonomousMode as boolean) ?? false,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,

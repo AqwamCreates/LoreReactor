@@ -28,10 +28,21 @@ const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const DEFAULT_TOOLS: Record<tool, boolean> = {
-    dice: true,
     pick: true,
+    date: false,
+    coin: true,
+    dice: true,
+    random: true,
+    rng: false,
+    timer: false,
+    stopwatch: false,
     calculator: false,
     web: false,
+    lookup: false,
+    map: false,
+    audio: false,
+    note: false,
+    inventory: false,
 };
 
 const tokenEngine = getLanguageModelEngine();

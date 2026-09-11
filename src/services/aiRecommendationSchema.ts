@@ -24,10 +24,10 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "chatImpatienceSensitivity": "number (0-1, default 0.2)", "skipProbability": "number (0-1, default 0.1)",
     "memoryRetentionWeight": "number (0-1, default 0.5)", "contextSensitivity": "number (0-1, default 0.5)",
     "doNotInjectCharacterImage": "boolean (default false)",
-    "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
-    "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
-    "numberOfMessagesToDisableDialoguePrompt": "number (default 0)",
-    "tools": {"Dice": "boolean (default true)", "pick": "boolean (default true)", "calculator": "boolean (default false)", "web": "boolean (default false)"},
+    "numberOfMessagesToDisableThinkPrompt": "number (default 1)",
+    "numberOfMessagesToDisableMetaThinkInstructions": "number (default 1)",
+    "numberOfMessagesToDisableDialoguePrompt": "number (default 1)",
+    "tools": {"pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)", "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)", "calculator": "boolean (default false)", "web": "boolean (default false)", "lookup": "boolean (default false)", "map": "boolean (default false)", "audio": "boolean (default false)", "note": "boolean (default false)", "inventory": "boolean (default false)"},
     "enableMemoryWriting": "boolean (default false)", "enableMemoryReading": "boolean (default false)"
   }]`);
     }
@@ -74,6 +74,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "startFadeDurationMs": "number (default 1000)", "endFadeDurationMs": "number (default 1000)",
     "audioCategory": "'ambient' | 'music' | 'sound effect' (default 'ambient')",
     "priority": "number (default 0)",
+    "playableByParticipant": "boolean (default false)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "locationBindings": ["location name or ID strings"],
@@ -98,6 +99,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     if (includeProfile) {
         parts.push(`  "profile": {
     "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "autonomousMode": "boolean (default false)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
     "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",
@@ -116,7 +118,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "narrateNormalText": "boolean (default true)", "narrateQuotedText": "boolean (default false)",
     "narrateBoldedText": "boolean (default false)", "narrateItalicizedText": "boolean (default false)",
     "stripThinkTokens": "boolean (default true)",
-    "tools": {"Dice": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)"},
+    "tools": {"pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)", "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)", "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "lookup": "number (-1, 0, or 1, default 0)", "map": "number (-1, 0, or 1, default 0)", "audio": "number (-1, 0, or 1, default 0)", "note": "number (-1, 0, or 1, default 0)", "inventory": "number (-1, 0, or 1, default 0)"},
     "enableMemoryWriting": "number (-1, 0, or 1, default 0)", "enableMemoryReading": "number (-1, 0, or 1, default 0)",
     "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. ${defaultInputStrategy.join(", ")}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]
