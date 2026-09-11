@@ -333,7 +333,7 @@ export function BudgetControlModal({
                 <div className="modal-header">
                     <h2>Budget Control</h2>
                     <div className="modal-header-actions">
-                        <button type="button" className="close-btn close-btn-spaced" onClick={onClose}>×</button>
+                        <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
 
@@ -356,7 +356,7 @@ export function BudgetControlModal({
                                     ) : (
                                         <div className="editor-error-message" style={{ marginTop: '4px', fontSize: '0.7rem' }}>No active budget strategy. Activate one from the Budget Strategies manager first.</div>
                                     )}
-                                    <button type="button" className="budget-btn budget-btn-primary" disabled={!currentStrategy || isSaving} onClick={handleCreate} style={{ marginTop: '8px' }}>
+                                    <button type="button" className="budget-button budget-button-primary" disabled={!currentStrategy || isSaving} onClick={handleCreate} style={{ marginTop: '8px' }}>
                                         Create Budget Data
                                     </button>
                                 </div>
@@ -535,24 +535,24 @@ export function BudgetControlModal({
                                                 <span className="budget-stat-value">{formatTimestamp(latestError)}</span>
                                             </div>
                                         </div>
-                                        <div className="budget-btn-group" style={{ marginTop: '10px' }}>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearModelLastUsedTimestamps)}>Clear Used</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearQuotaTimestamps)}>Clear Quotas</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearErrorTimestamps)}>Clear Errors</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving} onClick={() => runAction(clearDurationTimestamps)}>Clear Duration</button>
-                                            <button type="button" className="budget-btn budget-btn-danger" disabled={isSaving} onClick={() => runAction(clearAllModelTelemetry)}>Clear All</button>
+                                        <div className="budget-button-group" style={{ marginTop: '10px' }}>
+                                            <button type="button" className="budget-button" disabled={isSaving} onClick={() => runAction(clearModelLastUsedTimestamps)}>Clear Used</button>
+                                            <button type="button" className="budget-button" disabled={isSaving} onClick={() => runAction(clearQuotaTimestamps)}>Clear Quotas</button>
+                                            <button type="button" className="budget-button" disabled={isSaving} onClick={() => runAction(clearErrorTimestamps)}>Clear Errors</button>
+                                            <button type="button" className="budget-button" disabled={isSaving} onClick={() => runAction(clearDurationTimestamps)}>Clear Duration</button>
+                                            <button type="button" className="budget-button budget-button-danger" disabled={isSaving} onClick={() => runAction(clearAllModelTelemetry)}>Clear All</button>
                                         </div>
                                     </div>
 
                                     {/* Reset Schedule */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Reset Schedule</span>
-                                        <div className="budget-btn-group" style={{ marginBottom: '10px' }}>
+                                        <div className="budget-button-group" style={{ marginBottom: '10px' }}>
                                             {RESET_PRESETS.map(preset => (
                                                 <button
                                                     key={preset.label}
                                                     type="button"
-                                                    className={`budget-btn ${budgetData.resetDuration === preset.value ? 'budget-btn-active' : ''}`}
+                                                    className={`budget-button ${budgetData.resetDuration === preset.value ? 'budget-button-active' : ''}`}
                                                     disabled={isSaving}
                                                     onClick={() => handlePresetResetDuration(preset.value)}
                                                 >
@@ -565,7 +565,7 @@ export function BudgetControlModal({
                                                 <label className="budget-control-label">Custom Hours</label>
                                                 <input type="number" className="budget-control-input" min="0" step="1" value={customResetHours} onChange={e => setCustomResetHours(Number(e.target.value) || 0)} />
                                             </div>
-                                            <button type="button" className="budget-btn budget-btn-primary budget-btn-action" disabled={isSaving} onClick={handleCustomResetDuration}>Apply</button>
+                                            <button type="button" className="budget-button budget-button-primary budget-button-action" disabled={isSaving} onClick={handleCustomResetDuration}>Apply</button>
                                         </div>
                                     </div>
 
@@ -580,14 +580,14 @@ export function BudgetControlModal({
                                                 <label className="budget-control-label">Speed α (current: {(budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})</label>
                                                 <input type="text" inputMode="decimal" className="budget-control-input" placeholder={(budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)} value={speedAlpha} onChange={e => setSpeedAlpha(e.target.value)} />
                                             </div>
-                                            <button type="button" className="budget-btn budget-btn-primary budget-btn-action" disabled={isSaving || speedAlpha.trim() === ''} onClick={handleSpeedAlphaSave}>Save</button>
+                                            <button type="button" className="budget-button budget-button-primary budget-button-action" disabled={isSaving || speedAlpha.trim() === ''} onClick={handleSpeedAlphaSave}>Save</button>
                                         </div>
                                         <div className="budget-control-row">
                                             <div className="budget-control-field">
                                                 <label className="budget-control-label">TTFT α (current: {(budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)})</label>
                                                 <input type="text" inputMode="decimal" className="budget-control-input" placeholder={(budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3).toFixed(3)} value={ttftAlpha} onChange={e => setTtftAlpha(e.target.value)} />
                                             </div>
-                                            <button type="button" className="budget-btn budget-btn-primary budget-btn-action" disabled={isSaving || ttftAlpha.trim() === ''} onClick={handleTtftAlphaSave}>Save</button>
+                                            <button type="button" className="budget-button budget-button-primary budget-button-action" disabled={isSaving || ttftAlpha.trim() === ''} onClick={handleTtftAlphaSave}>Save</button>
                                         </div>
                                     </div>
 
@@ -600,13 +600,13 @@ export function BudgetControlModal({
                                                 <input type="text" inputMode="decimal" className="budget-control-input" placeholder="0.0000" value={budgetAdjustAmount} onChange={e => setBudgetAdjustAmount(e.target.value)} />
                                             </div>
                                         </div>
-                                        <div className="budget-btn-group" style={{ marginTop: '8px' }}>
-                                            <button type="button" className="budget-btn budget-btn-primary" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleAddBudgetSpent}>+ Add</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleSubtractBudgetSpent}>− Subtract</button>
-                                            <button type="button" className="budget-btn" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleSetBudgetSpent} style={{ borderColor: 'var(--accent)' }}>Set Exact</button>
+                                        <div className="budget-button-group" style={{ marginTop: '8px' }}>
+                                            <button type="button" className="budget-button budget-button-primary" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleAddBudgetSpent}>+ Add</button>
+                                            <button type="button" className="budget-button" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleSubtractBudgetSpent}>− Subtract</button>
+                                            <button type="button" className="budget-button" disabled={isSaving || budgetAdjustAmount.trim() === ''} onClick={handleSetBudgetSpent} style={{ borderColor: 'var(--accent)' }}>Set Exact</button>
                                         </div>
                                         <div style={{ marginTop: '10px' }}>
-                                            <button type="button" className="budget-btn budget-btn-danger" disabled={isSaving} onClick={() => runAction(resetBudget)}>Reset Budget Now</button>
+                                            <button type="button" className="budget-button budget-button-danger" disabled={isSaving} onClick={() => runAction(resetBudget)}>Reset Budget Now</button>
                                         </div>
                                     </div>
                                 </>

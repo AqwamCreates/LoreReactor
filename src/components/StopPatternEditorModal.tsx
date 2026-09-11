@@ -160,13 +160,13 @@ export function StopPatternEditorModal({
                 <div className="modal-header">
                     <h2>{existingStopPattern ? 'Edit Stop Pattern' : 'Create New Stop Pattern'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingStopPattern && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>
                                 Clone
                             </button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
@@ -267,7 +267,7 @@ export function StopPatternEditorModal({
                                     <button
                                         type="button"
                                         onClick={handleTestActivationRegex}
-                                        className="editor-btn editor-btn-save"
+                                        className="editor-button editor-button-save"
                                         style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
                                         disabled={!activationTestText.trim()}
                                     >
@@ -330,7 +330,7 @@ export function StopPatternEditorModal({
                                     <button
                                         type="button"
                                         onClick={handleTestDeactivationRegex}
-                                        className="editor-btn editor-btn-save"
+                                        className="editor-button editor-button-save"
                                         style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
                                         disabled={!deactivationTestText.trim()}
                                     >

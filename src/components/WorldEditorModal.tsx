@@ -141,16 +141,16 @@ export function WorldEditorModal({
                 <div className="modal-header">
                     <h2>{existingWorld ? (isCloned ? 'Clone World' : 'Edit World') : 'Create New World'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingWorld && !isCloned && (
                             <>
                                 {onLoadWorld && (
-                                    <button type="button" className="editor-btn editor-btn-cancel" onClick={handleLoad} style={{ borderColor: 'var(--accent)' }}>Load</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={handleLoad} style={{ borderColor: 'var(--accent)' }}>Load</button>
                                 )}
-                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>Clone</button>
+                                <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>
                             </>
                         )}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={!name.trim()}>Save</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!name.trim()}>Save</button>
                     </div>
                 </div>
 
@@ -175,7 +175,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Characters ({charIds.length})</span>
                             {currentCharacterIds.length > 0 && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyCharsFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyCharsFromChat}>
                                     Copy From Chat
                                 </button>
                             )}
@@ -190,7 +190,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Contexts ({ctxIds.length})</span>
                             {currentContextIds.length > 0 && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyCtxsFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyCtxsFromChat}>
                                     Copy From Chat
                                 </button>
                             )}
@@ -205,7 +205,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Locations ({locIds.length})</span>
                             {currentLocationIds.length > 0 && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyLocsFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyLocsFromChat}>
                                     Copy From Chat
                                 </button>
                             )}
@@ -220,7 +220,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Audio Tracks ({audioTrackIds.length})</span>
                             {(currentAudioTrackIds?.length ?? 0) > 0 && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyAudioFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyAudioFromChat}>
                                     Copy From Chat
                                 </button>
                             )}
@@ -235,7 +235,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Prompt Blocks ({promptBlockIds.length})</span>
                             {(currentPromptBlockIds?.length ?? 0) > 0 && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyPromptBlocksFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyPromptBlocksFromChat}>
                                     Copy From Chat
                                 </button>
                             )}
@@ -250,7 +250,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Profile</span>
                             {currentProfileId && (
-                                <button type="button" className="budget-btn budget-btn-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyProfileFromChat}>
+                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyProfileFromChat}>
                                     Copy from Chat
                                 </button>
                             )}

@@ -129,7 +129,7 @@ export function CharacterMemoryEditorModal({
                         {totalMemories > 0 && !showMassDeleteConfirm && (
                             <button
                                 type="button"
-                                className="editor-btn editor-btn-cancel"
+                                className="editor-button editor-button-cancel"
                                 onClick={() => setShowMassDeleteConfirm(true)}
                                 style={{ color: '#ff4444' }}
                             >
@@ -143,7 +143,7 @@ export function CharacterMemoryEditorModal({
                                 </span>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     onClick={handleMassDelete}
                                     style={{ color: '#ff4444' }}
                                 >
@@ -151,7 +151,7 @@ export function CharacterMemoryEditorModal({
                                 </button>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     onClick={() => setShowMassDeleteConfirm(false)}
                                 >
                                     Cancel
@@ -159,10 +159,10 @@ export function CharacterMemoryEditorModal({
                             </>
                         )}
                         {hasChanges && !showMassDeleteConfirm && (
-                            <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveAndClose}>Save</button>
+                            <button type="button" className="editor-button editor-button-save" onClick={handleSaveAndClose}>Save</button>
                         )}
                         {!showMassDeleteConfirm && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClose}>
                                 {hasChanges ? 'Discard' : 'Close'}
                             </button>
                         )}
@@ -205,8 +205,8 @@ export function CharacterMemoryEditorModal({
                                                                 autoFocus
                                                             />
                                                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                                                <button type="button" className="editor-btn editor-btn-cancel" onClick={handleCancelEdit}>Cancel</button>
-                                                                <button type="button" className="editor-btn editor-btn-save" onClick={handleSaveEdit}>Save</button>
+                                                                <button type="button" className="editor-button editor-button-cancel" onClick={handleCancelEdit}>Cancel</button>
+                                                                <button type="button" className="editor-button editor-button-save" onClick={handleSaveEdit}>Save</button>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -235,7 +235,7 @@ export function CharacterMemoryEditorModal({
                                                                 <div style={{ display: 'flex', gap: '6px' }}>
                                                                     <button
                                                                         type="button"
-                                                                        className="toolbar-btn"
+                                                                        className="toolbar-button"
                                                                         onClick={() => handleStartEdit(mem)}
                                                                         title="Edit memory"
                                                                         style={{ fontSize: '0.65rem' }}
@@ -244,7 +244,7 @@ export function CharacterMemoryEditorModal({
                                                                     </button>
                                                                     <button
                                                                         type="button"
-                                                                        className="toolbar-btn"
+                                                                        className="toolbar-button"
                                                                         onClick={() => handleDelete(mem.id)}
                                                                         title="Delete memory"
                                                                         style={{ fontSize: '0.65rem', color: '#ff4444' }}

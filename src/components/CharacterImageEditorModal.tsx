@@ -83,8 +83,8 @@ export function CharacterImageEditorModal({
                 <div className="modal-header">
                     <h2>Character Emotion Images</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={!!uploadingEmotion}>Cancel</button>
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSave} disabled={!!uploadingEmotion}>Save</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={!!uploadingEmotion}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!!uploadingEmotion}>Save</button>
                     </div>
                 </div>
 
@@ -112,7 +112,7 @@ export function CharacterImageEditorModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemove(emotion)}
-                                                    className="editor-image-remove-btn"
+                                                    className="editor-image-remove-button"
                                                     title={`Remove ${emotion} image`}
                                                 >×</button>
                                             )}

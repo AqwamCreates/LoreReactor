@@ -253,9 +253,9 @@ export function AudioTrackEditorModal({
                 <div className="modal-header">
                     <h2>{existingTrack ? 'Edit Audio Track' : 'Create New Audio Track'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingTrack && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {existingTrack && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
                     </div>
                 </div>
 
@@ -276,7 +276,7 @@ export function AudioTrackEditorModal({
                         <label className="editor-label">Audio File <span className="context-required-asterisk">*</span></label>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input type="text" value={filename} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} />
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
                                 {isUploading ? '⏳' : '📁 Upload'}
                             </button>
                         </div>
@@ -305,7 +305,7 @@ export function AudioTrackEditorModal({
                                 <button
                                     type="button"
                                     onClick={handleTogglePreview}
-                                    className={`editor-btn ${isPreviewPlaying ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                    className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`}
                                     style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}
                                 >
                                     {isPreviewPlaying ? '⏹ Stop' : '▶ Play'}
@@ -328,7 +328,7 @@ export function AudioTrackEditorModal({
                                         key={cat.value}
                                         type="button"
                                         onClick={() => setAudioCategory(cat.value)}
-                                        className={`editor-btn ${audioCategory === cat.value ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                        className={`editor-button ${audioCategory === cat.value ? 'editor-button-save' : 'editor-button-cancel'}`}
                                         style={{ fontSize: '0.75rem', padding: '4px 12px', minHeight: '28px' }}
                                     >
                                         {cat.icon} {cat.label}
@@ -396,7 +396,7 @@ export function AudioTrackEditorModal({
                                 <label className="editor-label editor-label-small">Test Activation Pattern</label>
                                 <div className="context-test-row">
                                     <input type="text" value={activationTestText} onChange={(e) => { setActivationTestText(e.target.value); setActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestActivationRegex(); } }} className="editor-input context-test-input" placeholder="She walks into the dark forest" />
-                                    <button type="button" onClick={handleTestActivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!activationTestText.trim()}>Test</button>
+                                    <button type="button" onClick={handleTestActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!activationTestText.trim()}>Test</button>
                                 </div>
                                 {activationTestResult !== null && (
                                     <div className={`context-test-result ${activationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>

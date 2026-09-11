@@ -553,7 +553,7 @@ export function AlternateTimelinesModal({
                 <div className="modal-header">
                     <h2>Interaction Branching</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>
                             Close
                         </button>
                     </div>

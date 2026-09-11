@@ -110,7 +110,7 @@ export function SettingsModal({
                 <div className="modal-header">
                     <h2>Settings</h2>
                     <div className="modal-header-actions">
-                        <button type="button" className="close-btn close-btn-spaced" onClick={onClose}>×</button>
+                        <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
 

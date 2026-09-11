@@ -425,13 +425,13 @@ export function ModelEditorModal({
                                 💾 {displayVRAM} GB
                             </div>
                         )}
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingModel && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>
                                 Clone
                             </button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
@@ -468,7 +468,7 @@ export function ModelEditorModal({
                             <button 
                                 type="button" 
                                 onClick={() => modelFileRef.current?.click()} 
-                                className="editor-btn editor-btn-cancel"
+                                className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
@@ -497,7 +497,7 @@ export function ModelEditorModal({
                             <button 
                                 type="button" 
                                 onClick={() => mmprojFileRef.current?.click()} 
-                                className="editor-btn editor-btn-cancel"
+                                className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
@@ -527,7 +527,7 @@ export function ModelEditorModal({
                             <button 
                                 type="button" 
                                 onClick={() => loraFileRef.current?.click()} 
-                                className="editor-btn editor-btn-cancel"
+                                className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
@@ -573,7 +573,7 @@ export function ModelEditorModal({
                             <button
                                 type="button"
                                 onClick={() => setShowApiKey(!showApiKey)}
-                                className="editor-btn"
+                                className="editor-button"
                                 style={{
                                     padding: '6px 10px',
                                     width: 'auto',
@@ -700,7 +700,7 @@ export function ModelEditorModal({
                                 <button 
                                     type="button" 
                                     onClick={() => draftFileRef.current?.click()} 
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     style={{ padding: '6px 12px' }}
                                 >
                                     📁

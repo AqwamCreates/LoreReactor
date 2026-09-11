@@ -432,14 +432,14 @@ export function ChatInspectionModal({
                         {canGoBack && (
                             <button
                                 type="button"
-                                className="editor-btn editor-btn-cancel"
+                                className="editor-button editor-button-cancel"
                                 onClick={handleBack}
                                 style={{ fontSize: '0.7rem', padding: '4px 8px', minHeight: '28px' }}
                             >
                                 ← Back
                             </button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Close</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Close</button>
                     </div>
                 </div>
 

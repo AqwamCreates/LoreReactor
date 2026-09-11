@@ -52,6 +52,7 @@ import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import './main.css';
 import { ChatMinimap } from './ChatMinimap';
+import { ChatScrollButtons } from './ChatScrollButtons';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
@@ -774,6 +775,10 @@ function App() {
                                 containerRef={chatHistoryRef}
                                 currentCharacterId={currentCharacter?.id}
                             />
+                        )}
+
+                        {interactionData && InteractionMessages.length > 3 && viewMode === 'ladder' && (
+                            <ChatScrollButtons containerRef={chatHistoryRef} />
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             {isEditingTitle

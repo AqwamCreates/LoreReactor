@@ -68,7 +68,7 @@ export const ChatMinimap = React.memo(function ChatMinimap({
         container.addEventListener('scroll', onScroll, { passive: true });
         onScroll();
         return () => container.removeEventListener('scroll', onScroll);
-    }, [containerRef, messages.length]);
+    }, [containerRef]);
 
     if (messages.length === 0) return null;
 
@@ -95,7 +95,6 @@ export const ChatMinimap = React.memo(function ChatMinimap({
                         height: `${Math.max(8, indicatorHeight)}%`,
                     }}
                 />
-                <div className="chat-minimap-tap-hint">💬</div>
             </div>
 
             {/* Expanded state */}

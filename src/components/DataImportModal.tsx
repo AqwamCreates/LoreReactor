@@ -135,7 +135,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                 <div className="modal-header">
                     <h2>Import Data</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose} disabled={isImporting}>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={handleClose} disabled={isImporting}>
                             {importResult ? 'Close' : 'Cancel'}
                         </button>
                     </div>
@@ -153,7 +153,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 You can choose which items to import after loading.<br />
                                 Existing entities with matching IDs will be overwritten.
                             </div>
-                            <button type="button" className="editor-btn editor-btn-save entity-upload-btn"
+                            <button type="button" className="editor-button editor-button-save entity-upload-button"
                                 onClick={() => fileInputRef.current?.click()}>
                                 Choose File
                             </button>
@@ -227,8 +227,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                             </div>
 
                             <div className="entity-action-buttons">
-                                <button type="button" className="editor-btn editor-btn-cancel" onClick={reset}>Choose Different File</button>
-                                <button type="button" className="editor-btn editor-btn-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
+                                <button type="button" className="editor-button editor-button-cancel" onClick={reset}>Choose Different File</button>
+                                <button type="button" className="editor-button editor-button-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
                                     Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
                                 </button>
                             </div>

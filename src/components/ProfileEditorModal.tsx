@@ -367,9 +367,9 @@ export function ProfileEditorModal({
                 <div className="modal-header">
                     <h2>{existingProfile ? 'Edit Profile' : 'Create New Profile'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        {existingProfile && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>Clone</button>}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
+                        {existingProfile && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>}
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
@@ -508,9 +508,9 @@ export function ProfileEditorModal({
                                         <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                        <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                        <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-btn" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
-                                        <button type="button" onClick={() => removeBlock(index)} className="toolbar-btn" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                        <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                        <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
+                                        <button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
                                     </div>
                                 </div>
                             ))}
@@ -552,9 +552,9 @@ export function ProfileEditorModal({
                                                 <span style={STEP_NAME_STYLE}>{index + 1}. {step.name}</span>
                                             </div>
                                             <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-btn" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                                <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-btn" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
-                                                <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-btn" title="Remove step" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                                <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                                <button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button>
+                                                <button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-button" title="Remove step" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
                                                 <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                                             </div>
                                         </div>

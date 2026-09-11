@@ -205,7 +205,7 @@ export function CharacterCardImportModal({
                 <div className="modal-header">
                     <h2>Import Character Card</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose} disabled={isSaving || isProcessing}>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={handleClose} disabled={isSaving || isProcessing}>
                             {preview ? 'Cancel' : 'Close'}
                         </button>
                     </div>
@@ -225,7 +225,7 @@ export function CharacterCardImportModal({
                             </div>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-save entity-upload-btn"
+                                    className="editor-button editor-button-save entity-upload-button"
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     Choose File
@@ -307,7 +307,7 @@ export function CharacterCardImportModal({
                             <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     onClick={() => { reset(); }}
                                     disabled={isSaving}
                                     style={{ flex: 1 }}
@@ -316,7 +316,7 @@ export function CharacterCardImportModal({
                                 </button>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-save"
+                                    className="editor-button editor-button-save"
                                     onClick={handleConfirmSave}
                                     disabled={isSaving}
                                     style={{ flex: 1 }}

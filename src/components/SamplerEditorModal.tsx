@@ -321,13 +321,13 @@ export function SamplerEditorModal({
                 <div className="modal-header">
                     <h2>{existingSampler ? 'Edit Sampler' : 'Create New Sampler'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingSampler && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>
                                 Clone
                             </button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>Save</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
                 <div className="modal-body editor-modal-body">
@@ -416,7 +416,7 @@ export function SamplerEditorModal({
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemoveParam(key)}
-                                                            className="sampler-stop-remove-btn slider-remove-inline"
+                                                            className="sampler-stop-remove-button slider-remove-inline"
                                                             title={`Remove ${config.label}`}
                                                         >
                                                             ×
@@ -436,7 +436,7 @@ export function SamplerEditorModal({
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemoveParam(key)}
-                                                            className="sampler-stop-remove-btn"
+                                                            className="sampler-stop-remove-button"
                                                             title={`Remove ${config.label}`}
                                                         >
                                                             ×
@@ -446,7 +446,7 @@ export function SamplerEditorModal({
                                                         {config.isBoolean ? (
                                                             <button
                                                                 type="button"
-                                                                className={`editor-btn ${parameters[key] ? 'editor-btn-save' : 'editor-btn-cancel'}`}
+                                                                className={`editor-button ${parameters[key] ? 'editor-button-save' : 'editor-button-cancel'}`}
                                                                 onClick={() => handleParameterChange(key, !parameters[key])}
                                                                 style={{ padding: '2px 12px', fontSize: '0.7rem' }}
                                                             >
@@ -512,7 +512,7 @@ export function SamplerEditorModal({
                                         <button
                                             type="button"
                                             onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
-                                            className="sampler-stop-remove-btn"
+                                            className="sampler-stop-remove-button"
                                             title="Remove stop pattern"
                                         >
                                             ×

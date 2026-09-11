@@ -17,7 +17,7 @@ interface ContextBarProps {
 
 function NavButton({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
     return (
-        <button type="button" className="nav-btn nav-btn-icon-only" onClick={onClick} title={label}>
+        <button type="button" className="nav-button nav-button-icon-only" onClick={onClick} title={label}>
             <span>{icon}</span>
         </button>
     );

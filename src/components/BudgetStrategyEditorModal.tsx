@@ -237,13 +237,13 @@ export function BudgetStrategyEditorModal({
                 <div className="modal-header">
                     <h2>{existingStrategy ? 'Edit Budget Strategy' : 'Create Budget Strategy'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingStrategy && (
-                            <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>
                                 Clone
                             </button>
                         )}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit}>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>
                             Save
                         </button>
                     </div>

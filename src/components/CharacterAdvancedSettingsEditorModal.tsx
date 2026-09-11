@@ -95,7 +95,7 @@ export function CharacterAdvancedSettingsEditorModal({
                 <div className="modal-header">
                     <h2>Advanced Settings</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-save" onClick={onClose}>Done</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={onClose}>Done</button>
                     </div>
                 </div>
 
@@ -224,7 +224,7 @@ export function CharacterAdvancedSettingsEditorModal({
                                 return (
                                     <div key={id} className="sampler-stop-item">
                                         <div className="sampler-stop-info"><span className="sampler-stop-name">{sp.name}</span><span className="sampler-stop-pattern">{sp.pattern}</span></div>
-                                        <button type="button" onClick={() => onStopPatternToggle(id)} className="sampler-stop-remove-btn" title="Remove stop pattern">×</button>
+                                        <button type="button" onClick={() => onStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>
                                     </div>
                                 );
                             })}

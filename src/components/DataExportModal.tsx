@@ -116,7 +116,7 @@ export function DataExportModal({
                 <div className="modal-header">
                     <h2>Export Data</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClose} disabled={isExporting}>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={handleClose} disabled={isExporting}>
                             {summary ? 'Close' : 'Cancel'}
                         </button>
                     </div>
@@ -162,7 +162,7 @@ export function DataExportModal({
                                 </label>
                             </div>
 
-                            <button type="button" className="editor-btn editor-btn-save entity-generate-btn"
+                            <button type="button" className="editor-button editor-button-save entity-generate-button"
                                 onClick={handleExport} disabled={totalSelected === 0}>
                                 ⬇️ Export {totalSelected > 0 ? `${totalSelected} Selected` : ''}
                             </button>

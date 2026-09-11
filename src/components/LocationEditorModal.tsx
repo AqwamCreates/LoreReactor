@@ -343,9 +343,9 @@ export function LocationEditorModal({
                 <div className="modal-header">
                     <h2>{existingLocation ? 'Edit Location' : 'Create New Location'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingLocation && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {existingLocation && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
                     </div>
                 </div>
 
@@ -374,7 +374,7 @@ export function LocationEditorModal({
                             {imagePreviews.map((preview, index) => (
                                 <div key={index} className="editor-image-square active">
                                     <img src={preview} alt={`Location image ${index + 1}`} />
-                                    <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-btn">×</button>
+                                    <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
                                 </div>
                             ))}
                             <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
@@ -476,7 +476,7 @@ export function LocationEditorModal({
                                                     <button
                                                         type="button"
                                                         onClick={() => handleTestBgImageRegex(index)}
-                                                        className="editor-btn editor-btn-save context-test-btn"
+                                                        className="editor-button editor-button-save context-test-button"
                                                         disabled={!testText.trim()}
                                                     >Test</button>
                                                 </div>
@@ -512,7 +512,7 @@ export function LocationEditorModal({
                                 <label className="editor-label editor-label-small">Test Activation Pattern</label>
                                 <div className="context-test-row">
                                     <input type="text" value={activationTestText} onChange={(e) => { setActivationTestText(e.target.value); setActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestActivationRegex(); } }} className="editor-input context-test-input" placeholder="She walks into the dark forest" />
-                                    <button type="button" onClick={handleTestActivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!activationTestText.trim()}>Test</button>
+                                    <button type="button" onClick={handleTestActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!activationTestText.trim()}>Test</button>
                                 </div>
                                 {activationTestResult !== null && (
                                     <div className={`context-test-result ${activationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>

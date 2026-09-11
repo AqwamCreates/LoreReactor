@@ -601,7 +601,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 <button
                                     type="button"
                                     onClick={handleCancelEditing}
-                                    className="edit-btn edit-btn-cancel"
+                                    className="edit-button edit-button-cancel"
                                 >
                                     Cancel
                                 </button>
@@ -610,7 +610,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     type="button"
                                     onClick={onRegenerateFromEdit}
                                     disabled={!isModelReady || isLoading}
-                                    className="edit-btn edit-btn-regenerate"
+                                    className="edit-button edit-button-regenerate"
                                     title={isLoading ? 'Generation in progress...' : 'Save changes and regenerate response'}
                                     style={!isModelReady || isLoading ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                                 >
@@ -620,7 +620,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 <button
                                     type="button"
                                     onClick={onSaveEdit}
-                                    className="edit-btn edit-btn-save"
+                                    className="edit-button edit-button-save"
                                 >
                                     Save
                                 </button>
@@ -646,7 +646,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                                 type="button"
                                                 onClick={() => onResumeGeneration(message.id)}
                                                 disabled={!isModelReady || isLoading}
-                                                className="toolbar-btn"
+                                                className="toolbar-button"
                                                 title={isLoading ? 'Generation in progress...' : 'Resume interrupted generation'}
                                                 style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
@@ -657,7 +657,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onCopyText(message.textContent)}
-                                            className="toolbar-btn"
+                                            className="toolbar-button"
                                             title="Copy text to clipboard"
                                         >
                                             📋
@@ -666,7 +666,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onStartEditing(message.id, message.textContent)}
-                                            className="toolbar-btn"
+                                            className="toolbar-button"
                                         >
                                             ✎
                                         </button>
@@ -676,7 +676,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                                 type="button"
                                                 onClick={() => onRegenerateFromMessage(message.id, 'ai')}
                                                 disabled={!isModelReady || isLoading}
-                                                className="toolbar-btn"
+                                                className="toolbar-button"
                                                 title={isLoading ? 'Generation in progress...' : 'Regenerate this Response'}
                                                 style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
@@ -689,7 +689,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                                 type="button"
                                                 onClick={() => onRegenerateFromMessage(message.id, 'user')}
                                                 disabled={!isModelReady || isLoading}
-                                                className="toolbar-btn"
+                                                className="toolbar-button"
                                                 title={isLoading ? 'Generation in progress...' : 'Regenerate Your Input'}
                                                 style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
@@ -700,7 +700,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onBranch(message.id)}
-                                            className="toolbar-btn"
+                                            className="toolbar-button"
                                             title="Branch from here"
                                         >
                                             🌿
@@ -709,7 +709,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onClone(message.id)}
-                                            className="toolbar-btn"
+                                            className="toolbar-button"
                                             title="Clone chat up to here"
                                         >
                                             ⑂
@@ -718,7 +718,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onDelete(message.id)}
-                                            className="toolbar-btn delete-btn"
+                                            className="toolbar-button delete-button"
                                             style={{ color: '#ff4444' }}
                                         >
                                             🗑
@@ -727,7 +727,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onSetMassDelete(message.id)}
-                                            className="toolbar-btn mass-delete-btn"
+                                            className="toolbar-button mass-delete-button"
                                             style={{ color: '#ff9900' }}
                                         >
                                             🗑️↓
@@ -740,7 +740,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={onMassDeleteConfirm}
-                                            className="toolbar-btn btn-confirm"
+                                            className="toolbar-button button-confirm"
                                         >
                                             Confirm
                                         </button>
@@ -748,7 +748,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={onCancelMassDelete}
-                                            className="toolbar-btn btn-cancel"
+                                            className="toolbar-button button-cancel"
                                         >
                                             Cancel
                                         </button>

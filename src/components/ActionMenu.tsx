@@ -57,19 +57,19 @@ export function ActionMenu({
             {showActionFormat ? (
                 <div className="action-format-panel" onClick={e => e.stopPropagation()}>
                     <div className="action-format-row">
-                        <button type="button" className={`action-format-btn ${actionWrap === '*' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
-                        <button type="button" className={`action-format-btn ${actionWrap === '()' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
-                        <button type="button" className={`action-format-btn ${actionWrap === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
+                        <button type="button" className={`action-format-button ${actionWrap === '*' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
+                        <button type="button" className={`action-format-button ${actionWrap === '()' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
+                        <button type="button" className={`action-format-button ${actionWrap === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
                     </div>
                     <div className="action-format-row">
-                        <button type="button" className={`action-format-btn ${actionCase === 'first' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
-                        <button type="button" className={`action-format-btn ${actionCase === 'pascal' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
-                        <button type="button" className={`action-format-btn ${actionCase === 'lower' ? 'action-format-btn-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
+                        <button type="button" className={`action-format-button ${actionCase === 'first' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
+                        <button type="button" className={`action-format-button ${actionCase === 'pascal' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
+                        <button type="button" className={`action-format-button ${actionCase === 'lower' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
                     </div>
                     <div className="action-format-row">
-                        <button type="button" className={`action-format-btn ${actionPunctuation === '.' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
-                        <button type="button" className={`action-format-btn ${actionPunctuation === '-' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
-                        <button type="button" className={`action-format-btn ${actionPunctuation === 'none' ? 'action-format-btn-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
+                        <button type="button" className={`action-format-button ${actionPunctuation === '.' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
+                        <button type="button" className={`action-format-button ${actionPunctuation === '-' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
+                        <button type="button" className={`action-format-button ${actionPunctuation === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
                     </div>
                 </div>
             ) : (

@@ -138,7 +138,7 @@ export function ParticipantControlModal({
                 <div className="modal-header">
                     <h2>Participant Control</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                     </div>
                 </div>
 
@@ -175,7 +175,7 @@ export function ParticipantControlModal({
                             <div className="participant-control-button-row">
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-save"
+                                    className="editor-button editor-button-save"
                                     disabled={!selectedCharId || !customMessageText.trim()}
                                     onClick={handleSendCustomMessage}
                                 >
@@ -183,7 +183,7 @@ export function ParticipantControlModal({
                                 </button>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     disabled={!selectedCharId || !customMessageText.trim()}
                                     onClick={handleInjectCustomMessage}
                                 >
@@ -198,7 +198,7 @@ export function ParticipantControlModal({
                             <div className="participant-control-button-row">
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-save"
+                                    className="editor-button editor-button-save"
                                     disabled={!selectedCharId}
                                     onClick={handleForceFirstMessage}
                                 >
@@ -206,7 +206,7 @@ export function ParticipantControlModal({
                                 </button>
                                 <button
                                     type="button"
-                                    className="editor-btn editor-btn-cancel"
+                                    className="editor-button editor-button-cancel"
                                     disabled={!selectedCharId}
                                     onClick={handleInjectFirstMessage}
                                 >
@@ -287,7 +287,7 @@ export function ParticipantControlModal({
                     {/* Apply Button */}
                     <button
                         type="button"
-                        className="editor-btn editor-btn-save participant-control-apply-btn"
+                        className="editor-button editor-button-save participant-control-apply-button"
                         onClick={applyOverrides}
                     >
                         Apply Overrides

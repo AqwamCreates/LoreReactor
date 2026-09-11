@@ -249,9 +249,9 @@ export function PromptBlockEditorModal({
                 <div className="modal-header">
                     <h2>{existingBlock ? 'Edit Prompt Block' : 'Create New Prompt Block'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingBlock && <button type="button" className="editor-btn editor-btn-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        <button type="button" className="editor-btn editor-btn-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                        {existingBlock && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
                     </div>
                 </div>
 
@@ -284,7 +284,7 @@ export function PromptBlockEditorModal({
                             {imagePreviews.map((preview, index) => (
                                 <div key={index} className="editor-image-square active">
                                     <img src={preview} alt={`Block image ${index + 1}`} />
-                                    <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-btn">×</button>
+                                    <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
                                 </div>
                             ))}
                             <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
@@ -315,7 +315,7 @@ export function PromptBlockEditorModal({
                                 <label className="editor-label editor-label-small">Test Activation Pattern</label>
                                 <div className="context-test-row">
                                     <input type="text" value={activationTestText} onChange={(e) => { setActivationTestText(e.target.value); setActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestActivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!activationTestText.trim()}>Test</button>
+                                    <button type="button" onClick={handleTestActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!activationTestText.trim()}>Test</button>
                                 </div>
                                 {activationTestResult !== null && (
                                     <div className={`context-test-result ${activationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
@@ -339,7 +339,7 @@ export function PromptBlockEditorModal({
                                 <label className="editor-label editor-label-small">Test Deactivation Pattern</label>
                                 <div className="context-test-row">
                                     <input type="text" value={deactivationTestText} onChange={(e) => { setDeactivationTestText(e.target.value); setDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestDeactivationRegex} className="editor-btn editor-btn-save context-test-btn" disabled={!deactivationTestText.trim()}>Test</button>
+                                    <button type="button" onClick={handleTestDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!deactivationTestText.trim()}>Test</button>
                                 </div>
                                 {deactivationTestResult !== null && (
                                     <div className={`context-test-result ${deactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>

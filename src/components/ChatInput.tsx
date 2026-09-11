@@ -39,7 +39,7 @@ export function ChatInput({
                     {isModelLoading && <span className="model-status-spinner" />}
                     <span className="model-status-text">{modelStatusMessage}</span>
                     {!selectedModelId && (
-                        <button type="button" className="model-status-action-btn" onClick={onOpenModels}>Open Language Models</button>
+                        <button type="button" className="model-status-action-button" onClick={onOpenModels}>Open Language Models</button>
                     )}
                 </div>
             )}
@@ -57,9 +57,9 @@ export function ChatInput({
             )}
 
             <div className="input-area">
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-btn">📎</button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-button">📎</button>
                 <input ref={fileInputRef} type="file" multiple hidden onChange={onFileSelected} />
-                <button type="button" onClick={onToggleMicrophone} disabled={isLoading || !isModelReady} className={`attach-button toolbar-btn ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
+                <button type="button" onClick={onToggleMicrophone} disabled={isLoading || !isModelReady} className={`attach-button toolbar-button ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
                 <textarea
                     ref={textareaRef}
                     value={inputText}
