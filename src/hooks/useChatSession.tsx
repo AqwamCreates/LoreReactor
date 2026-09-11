@@ -302,7 +302,7 @@ export function useChatSession() {
         setLatency(0);
     }, [releaseLock, resetStream, setLatency, setInteractionData, streamingTextRef]);
 
-    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, allPromptBlocks: PromptBlock[]) => {
+    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !currentChar) return;
@@ -336,7 +336,7 @@ export function useChatSession() {
         setStreamingCharacter(targetChar);
         setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
-            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '', allPromptBlocks);
+            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (result) {
                 await saveRawInteractionData(result);

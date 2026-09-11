@@ -31,35 +31,7 @@ interface InteractionBranchingModalProps {
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 140;
 
-function getLayoutedElements(nodes: Node[], edges: Edge[]) {
-    const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
-
-    for (const node of nodes) {
-        g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-    }
-    for (const edge of edges) {
-        g.setEdge(edge.source, edge.target);
-    }
-
-    dagre.layout(g);
-
-    const layoutedNodes = nodes.map(node => {
-        const pos = g.node(node.id);
-        return {
-            ...node,
-            targetPosition: Position.Top,
-            sourcePosition: Position.Bottom,
-            position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-        };
-    });
-
-    return { nodes: layoutedNodes, edges };
-}
-
-// ─── Custom Branch Node ──────────────────────────────────────────────
-
-interface BranchNodeData {
+type BranchNodeData = Record<string, unknown> & {
     label: string;
     messageCount: number;
     lastActive: string;
@@ -83,26 +55,62 @@ interface BranchNodeData {
     onRenameChange: (val: string) => void;
     onRenameSubmit: () => void;
     onRenameCancel: () => void;
+};
+
+type BranchFlowNode = Node<BranchNodeData, 'branchNode'>;
+
+function getLayoutedElements(nodes: BranchFlowNode[], edges: Edge[]): { nodes: BranchFlowNode[]; edges: Edge[] } {
+    const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
+
+    for (const node of nodes) {
+        g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    }
+
+    for (const edge of edges) {
+        g.setEdge(edge.source, edge.target);
+    }
+
+    dagre.layout(g);
+
+    const layoutedNodes: BranchFlowNode[] = nodes.map(node => {
+        const pos = g.node(node.id);
+        return {
+            ...node,
+            targetPosition: Position.Top,
+            sourcePosition: Position.Bottom,
+            position: {
+                x: pos.x - NODE_WIDTH / 2,
+                y: pos.y - NODE_HEIGHT / 2,
+            },
+        };
+    });
+
+    return { nodes: layoutedNodes, edges };
 }
 
-function BranchNode({ data }: NodeProps<Node<BranchNodeData>>) {
+// ─── Custom Branch Node ──────────────────────────────────────────────
+
+function BranchNode({ data }: NodeProps<BranchFlowNode>) {
     const borderColor = data.isCurrent ? '#4ade80' : data.isAncestor ? '#60a5fa' : '#f59e0b';
     const bgColor = data.isCurrent ? 'rgba(74, 222, 128, 0.12)' : data.isAncestor ? 'rgba(96, 165, 250, 0.08)' : 'rgba(245, 158, 11, 0.06)';
     const textColor = data.isCurrent ? '#4ade80' : data.isAncestor ? '#93c5fd' : '#fbbf24';
 
     return (
-        <div style={{
-            border: `2px solid ${borderColor}`,
-            background: bgColor,
-            borderRadius: '10px',
-            padding: '10px 12px',
-            width: `${NODE_WIDTH}px`,
-            minHeight: `${NODE_HEIGHT}px`,
-            boxShadow: data.isCurrent ? `0 0 14px ${borderColor}` : undefined,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-        }}>
+        <div
+            style={{
+                border: `2px solid ${borderColor}`,
+                background: bgColor,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                width: `${NODE_WIDTH}px`,
+                minHeight: `${NODE_HEIGHT}px`,
+                boxShadow: data.isCurrent ? `0 0 14px ${borderColor}` : undefined,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+            }}
+        >
             <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: 'none' }} />
             <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none' }} />
 
@@ -113,38 +121,87 @@ function BranchNode({ data }: NodeProps<Node<BranchNodeData>>) {
                         type="text"
                         value={data.renameValue}
                         onChange={e => data.onRenameChange(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') data.onRenameSubmit(); if (e.key === 'Escape') data.onRenameCancel(); }}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') data.onRenameSubmit();
+                            if (e.key === 'Escape') data.onRenameCancel();
+                        }}
                         autoFocus
                         style={{
-                            flex: 1, background: 'var(--social-bg)', border: '1px solid var(--accent)',
-                            color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px',
-                            fontSize: '0.75rem', outline: 'none', minWidth: 0,
+                            flex: 1,
+                            background: 'var(--social-bg)',
+                            border: '1px solid var(--accent)',
+                            color: 'var(--text-h)',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            outline: 'none',
+                            minWidth: 0,
                         }}
                     />
-                    <button onClick={data.onRenameSubmit} style={{ fontSize: '0.75rem', cursor: 'pointer', background: 'none', border: 'none', color: '#4ade80', padding: '2px 4px' }}>✓</button>
-                    <button onClick={data.onRenameCancel} style={{ fontSize: '0.75rem', cursor: 'pointer', background: 'none', border: 'none', color: '#ef4444', padding: '2px 4px' }}>✕</button>
+                    <button
+                        onClick={data.onRenameSubmit}
+                        style={{
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            background: 'none',
+                            border: 'none',
+                            color: '#4ade80',
+                            padding: '2px 4px',
+                        }}
+                    >
+                        ✓
+                    </button>
+                    <button
+                        onClick={data.onRenameCancel}
+                        style={{
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            background: 'none',
+                            border: 'none',
+                            color: '#ef4444',
+                            padding: '2px 4px',
+                        }}
+                    >
+                        ✕
+                    </button>
                 </div>
             ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
                     <div
                         style={{
-                            fontWeight: 'bold', fontSize: '0.75rem', color: textColor,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            flex: 1, minWidth: 0,
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            color: textColor,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            minWidth: 0,
                         }}
                         title={data.label}
                     >
-                        {data.isCurrent ? '● ' : ''}{data.label}
+                        {data.isCurrent ? '● ' : ''}
+                        {data.label}
                     </div>
                     <button
-                        onClick={e => { e.stopPropagation(); data.onStartRename(); }}
+                        onClick={e => {
+                            e.stopPropagation();
+                            data.onStartRename();
+                        }}
                         style={{
-                            fontSize: '0.65rem', cursor: 'pointer', background: 'none',
-                            border: 'none', color: textColor, opacity: 0.6, padding: '2px 4px',
+                            fontSize: '0.65rem',
+                            cursor: 'pointer',
+                            background: 'none',
+                            border: 'none',
+                            color: textColor,
+                            opacity: 0.6,
+                            padding: '2px 4px',
                             flexShrink: 0,
                         }}
                         title="Rename"
-                    >✏️</button>
+                    >
+                        ✏️
+                    </button>
                 </div>
             )}
 
@@ -167,28 +224,55 @@ function BranchNode({ data }: NodeProps<Node<BranchNodeData>>) {
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: '4px', marginTop: 'auto' }}>
                 <button
-                    onClick={e => { e.stopPropagation(); data.onInspect(); }}
+                    onClick={e => {
+                        e.stopPropagation();
+                        data.onInspect();
+                    }}
                     style={{
-                        flex: 1, fontSize: '0.7rem', padding: '6px 0', cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
-                        borderRadius: '4px', color: 'var(--text-h)',
+                        flex: 1,
+                        fontSize: '0.7rem',
+                        padding: '6px 0',
+                        cursor: 'pointer',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '4px',
+                        color: 'var(--text-h)',
                     }}
                     title="Inspect"
-                >👁️</button>
+                >
+                    👁️
+                </button>
+
                 <button
-                    onClick={e => { e.stopPropagation(); data.onOpen(); }}
+                    onClick={e => {
+                        e.stopPropagation();
+                        data.onOpen();
+                    }}
                     style={{
-                        flex: 1, fontSize: '0.7rem', padding: '6px 0', cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
-                        borderRadius: '4px', color: 'var(--text-h)',
+                        flex: 1,
+                        fontSize: '0.7rem',
+                        padding: '6px 0',
+                        cursor: 'pointer',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '4px',
+                        color: 'var(--text-h)',
                     }}
                     title="Open"
-                >📂</button>
+                >
+                    📂
+                </button>
+
                 <button
-                    onClick={e => { e.stopPropagation(); if (data.canDelete) data.onDelete(); }}
+                    onClick={e => {
+                        e.stopPropagation();
+                        if (data.canDelete) data.onDelete();
+                    }}
                     disabled={!data.canDelete}
                     style={{
-                        flex: 1, fontSize: '0.7rem', padding: '6px 0',
+                        flex: 1,
+                        fontSize: '0.7rem',
+                        padding: '6px 0',
                         cursor: data.canDelete ? 'pointer' : 'not-allowed',
                         background: data.canDelete ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.02)',
                         border: `1px solid ${data.canDelete ? 'rgba(239, 68, 68, 0.3)' : 'var(--border)'}`,
@@ -197,51 +281,65 @@ function BranchNode({ data }: NodeProps<Node<BranchNodeData>>) {
                         opacity: data.canDelete ? 1 : 0.5,
                     }}
                     title={data.deleteTooltip}
-                >🗑️</button>
+                >
+                    🗑️
+                </button>
             </div>
         </div>
     );
 }
 
-const nodeTypes = { branchNode: BranchNode };
+const nodeTypes = {
+    branchNode: BranchNode,
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function getRelativeTime(timestamp: number): string {
     const diff = Date.now() - timestamp;
     const seconds = Math.floor(diff / 1000);
+
     if (seconds < 60) return 'just now';
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
+
     const days = Math.floor(hours / 24);
     if (days < 30) return `${days}d ago`;
+
     return new Date(timestamp).toLocaleDateString();
 }
 
 function getAncestorIds(interactions: InteractionData[], startId: string): Set<string> {
     const ancestors = new Set<string>();
     const map = new Map(interactions.map(i => [i.id, i]));
+
     let current = map.get(startId);
     while (current?.parentInteractionDataId) {
         ancestors.add(current.parentInteractionDataId);
         current = map.get(current.parentInteractionDataId);
     }
+
     return ancestors;
 }
 
 function getDescendantIds(childMap: Map<string, string[]>, startId: string): Set<string> {
     const descendants = new Set<string>();
     const queue = [startId];
+
     while (queue.length > 0) {
         const id = queue.shift()!;
         const children = childMap.get(id) || [];
+
         for (const childId of children) {
             descendants.add(childId);
             queue.push(childId);
         }
     }
+
     return descendants;
 }
 
@@ -262,52 +360,84 @@ export function InteractionBranchingModal({
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const { childMap, ancestorIds, relevantInteractions } = useMemo(() => {
-        const cm = new Map<string, string[]>();
         const interactionMap = new Map(allInteractions.map(i => [i.id, i]));
 
         let rootId = currentInteractionId;
         let current = interactionMap.get(currentInteractionId);
+
         while (current?.parentInteractionDataId && interactionMap.has(current.parentInteractionDataId)) {
             rootId = current.parentInteractionDataId;
             current = interactionMap.get(rootId);
         }
 
+        const fullChildMap = new Map<string, string[]>();
+
+        for (const interaction of allInteractions) {
+            if (!fullChildMap.has(interaction.id)) {
+                fullChildMap.set(interaction.id, []);
+            }
+
+            if (interaction.parentInteractionDataId) {
+                if (!fullChildMap.has(interaction.parentInteractionDataId)) {
+                    fullChildMap.set(interaction.parentInteractionDataId, []);
+                }
+                fullChildMap.get(interaction.parentInteractionDataId)!.push(interaction.id);
+            }
+        }
+
         const treeIds = new Set<string>();
         const queue = [rootId];
+
         while (queue.length > 0) {
             const id = queue.shift()!;
             if (treeIds.has(id)) continue;
+
             treeIds.add(id);
-            if (!cm.has(id)) cm.set(id, []);
+
+            const children = fullChildMap.get(id) || [];
+            for (const childId of children) {
+                queue.push(childId);
+            }
         }
 
-        for (const interaction of allInteractions) {
-            if (!treeIds.has(interaction.id)) continue;
-            if (interaction.parentInteractionDataId && treeIds.has(interaction.parentInteractionDataId)) {
-                if (!cm.has(interaction.parentInteractionDataId)) cm.set(interaction.parentInteractionDataId, []);
-                cm.get(interaction.parentInteractionDataId)!.push(interaction.id);
-            }
+        const filteredChildMap = new Map<string, string[]>();
+
+        for (const id of treeIds) {
+            const children = (fullChildMap.get(id) || []).filter(childId => treeIds.has(childId));
+            filteredChildMap.set(id, children);
         }
 
         const ancestors = getAncestorIds(allInteractions, currentInteractionId);
         const relevant = allInteractions.filter(i => treeIds.has(i.id));
 
-        return { childMap: cm, ancestorIds: ancestors, relevantInteractions: relevant };
+        return {
+            childMap: filteredChildMap,
+            ancestorIds: ancestors,
+            relevantInteractions: relevant,
+        };
     }, [allInteractions, currentInteractionId]);
 
     const { nodes, edges } = useMemo(() => {
-        if (relevantInteractions.length === 0) return { nodes: [] as Node[], edges: [] as Edge[] };
+        if (relevantInteractions.length === 0) {
+            return { nodes: [] as BranchFlowNode[], edges: [] as Edge[] };
+        }
 
-        const rawNodes: Node<BranchNodeData>[] = relevantInteractions.map(interaction => {
+        const rawNodes: BranchFlowNode[] = relevantInteractions.map(interaction => {
             const isCurrent = interaction.id === currentInteractionId;
             const isAncestor = ancestorIds.has(interaction.id);
             const children = childMap.get(interaction.id) || [];
             const hasChildren = children.length > 0;
             const descendants = getDescendantIds(childMap, interaction.id);
-            const canDelete = !hasChildren || descendants.size === 0;
-            const deleteTooltip = hasChildren
-                ? `Cannot delete: has ${descendants.size} dependent branch${descendants.size !== 1 ? 'es' : ''}`
-                : 'Delete this branch';
+
+            const canDelete = !hasChildren && interaction.id !== currentInteractionId;
+
+            const deleteTooltip = interaction.id === currentInteractionId
+                ? 'Cannot delete the active chat from here'
+                : hasChildren
+                    ? `Cannot delete: has ${descendants.size} dependent branch${descendants.size !== 1 ? 'es' : ''}`
+                    : confirmDeleteId === interaction.id
+                        ? 'Tap again to confirm'
+                        : 'Delete this branch';
 
             return {
                 id: interaction.id,
@@ -326,20 +456,30 @@ export function InteractionBranchingModal({
                     isCurrent,
                     isAncestor,
                     hasChildren,
-                    onOpen: () => { onSwitchChat(interaction.id); onClose(); },
-                    onInspect: () => onInspectChat(interaction.id),
+                    onOpen: () => {
+                        onSwitchChat(interaction.id);
+                        onClose();
+                    },
+                    onInspect: () => {
+                        onInspectChat(interaction.id);
+                    },
                     onDelete: () => {
+                        if (!canDelete) return;
+
                         if (confirmDeleteId === interaction.id) {
                             onDeleteChat(interaction.id);
                             setConfirmDeleteId(null);
                         } else {
                             setConfirmDeleteId(interaction.id);
-                            setTimeout(() => setConfirmDeleteId(null), 3000);
+                            window.setTimeout(() => setConfirmDeleteId(null), 3000);
                         }
                     },
-                    canDelete: canDelete && confirmDeleteId !== interaction.id,
-                    deleteTooltip: confirmDeleteId === interaction.id ? 'Tap again to confirm' : deleteTooltip,
-                    onStartRename: () => { setRenamingId(interaction.id); setRenameValue(interaction.name || ''); },
+                    canDelete,
+                    deleteTooltip,
+                    onStartRename: () => {
+                        setRenamingId(interaction.id);
+                        setRenameValue(interaction.name || '');
+                    },
                     isRenaming: renamingId === interaction.id,
                     renameValue: renamingId === interaction.id ? renameValue : '',
                     onRenameChange: setRenameValue,
@@ -350,42 +490,66 @@ export function InteractionBranchingModal({
                             setRenameValue('');
                         }
                     },
-                    onRenameCancel: () => { setRenamingId(null); setRenameValue(''); },
+                    onRenameCancel: () => {
+                        setRenamingId(null);
+                        setRenameValue('');
+                    },
                 },
             };
         });
 
         const rawEdges: Edge[] = [];
+
         for (const [parentId, childIds] of childMap.entries()) {
             for (const childId of childIds) {
+                const isActiveEdge = parentId === currentInteractionId || childId === currentInteractionId;
+
                 rawEdges.push({
                     id: `e-${parentId}-${childId}`,
                     source: parentId,
                     target: childId,
                     type: 'smoothstep',
-                    animated: parentId === currentInteractionId || childId === currentInteractionId,
+                    animated: isActiveEdge,
                     style: {
-                        stroke: parentId === currentInteractionId || childId === currentInteractionId ? '#4ade80' : 'rgba(255,255,255,0.15)',
-                        strokeWidth: parentId === currentInteractionId || childId === currentInteractionId ? 2 : 1,
-                        opacity: parentId === currentInteractionId || childId === currentInteractionId ? 0.9 : 0.4,
+                        stroke: isActiveEdge ? '#4ade80' : 'rgba(255,255,255,0.15)',
+                        strokeWidth: isActiveEdge ? 2 : 1,
+                        opacity: isActiveEdge ? 0.9 : 0.4,
                     },
-                    pathOptions: { borderRadius: 12 },
                 });
             }
         }
 
         return getLayoutedElements(rawNodes, rawEdges);
-    }, [relevantInteractions, currentInteractionId, ancestorIds, childMap, confirmDeleteId, renamingId, renameValue, onSwitchChat, onClose, onInspectChat, onDeleteChat, onRenameChat]);
+    }, [
+        relevantInteractions,
+        currentInteractionId,
+        ancestorIds,
+        childMap,
+        confirmDeleteId,
+        renamingId,
+        renameValue,
+        onSwitchChat,
+        onClose,
+        onInspectChat,
+        onDeleteChat,
+        onRenameChat,
+    ]);
 
     if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh' }}>
+            <div
+                className="modal-content editor-modal-content"
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: '900px', maxHeight: '90vh' }}
+            >
                 <div className="modal-header">
                     <h2>Interaction Branching</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>Close</button>
+                        <button type="button" className="editor-btn editor-btn-cancel" onClick={onClose}>
+                            Close
+                        </button>
                     </div>
                 </div>
 

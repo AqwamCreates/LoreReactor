@@ -354,7 +354,6 @@ export function ChatInspectionModal({
                                 strokeWidth: isSourceActive ? 2 : 1,
                                 opacity: isSourceActive ? 0.9 : 0.3,
                             },
-                            pathOptions: { borderRadius: 12 },
                         });
                     }
                 }

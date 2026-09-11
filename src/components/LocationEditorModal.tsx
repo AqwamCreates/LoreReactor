@@ -420,7 +420,7 @@ export function LocationEditorModal({
                                                                 const next = { ...prev, bgImageRegex: { ...(prev.bgImageRegex || {}) } };
                                                                 if (next.bgImageRegex) {
                                                                     delete next.bgImageRegex[index];
-                                                                    if (Object.keys(next.bgImageRegex).length === 0) delete next.bgImageRegex;
+                                                                    if (Object.keys(next.bgImageRegex).length === 0) next.bgImageRegex = {};
                                                                 }
                                                                 return next;
                                                             });
