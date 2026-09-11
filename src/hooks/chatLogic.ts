@@ -60,6 +60,19 @@ function getDateAndTimeString(localTimestamp: number): string {
         hour12: true,
     });
 }
+
+/**
+ * Select the best per-model summary for the current model.
+ * Returns the summary generated for this exact modelId if available,
+ * otherwise falls back to the original textContent.
+ */
+function selectModelSummary(msg: ChatMessage, modelId: string): string {
+    if (msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
+        return msg.modelTextContentSummaries[modelId];
+    }
+    return msg.textContent;
+}
+
 export function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
     if (!text) return text;
     const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
@@ -402,6 +415,7 @@ export function createChatHistoryPrompt(
     interactionData: InteractionData, 
     character: Character, 
     revealIndexByCharacterId: Map<string, number>,
+    modelId: string,
 ): { chatHistoryPrompt: string; hasBeenSummarized: boolean } {
     const interactionHistory = interactionData.interactionHistory;
     const participants = interactionData.participants;
@@ -425,7 +439,7 @@ export function createChatHistoryPrompt(
     let processedMessages = chatMessagesOnly.map((msg) => ({
         msg,
         idx: interactionHistory.indexOf(msg),
-        text: msg.textContent,
+        text: selectModelSummary(msg, modelId),
     }));
 
     let hasBeenSummarized = false;
@@ -435,8 +449,10 @@ export function createChatHistoryPrompt(
             const windowSize = step.slidingWindowSize ?? 10;
             const cutoff = Math.max(0, processedMessages.length - windowSize);
             for (let i = 0; i < processedMessages.length; i++) {
-                if (i < cutoff && processedMessages[i].msg.textContentSummary) {
-                    processedMessages[i].text = processedMessages[i].msg.textContentSummary!;
+                const msg = processedMessages[i].msg;
+                // Use per-model summary if available for messages outside the window
+                if (i < cutoff && msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
+                    processedMessages[i].text = msg.modelTextContentSummaries[modelId];
                     hasBeenSummarized = true;
                 }
             }
@@ -564,6 +580,7 @@ export async function buildPromptAndStopPatterns(
     character: Character,
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
+    modelId: string,
     runtimePort?: number
 ): Promise<BuildResult> {
     const interactionHistory = interactionData.interactionHistory;
@@ -826,7 +843,7 @@ export async function buildPromptAndStopPatterns(
     if (interactionHistory.length > 0) {
         chatHistoryLines.push(startOfChatHistoryLine);
 
-        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
+        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
 
         chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
 
@@ -1058,10 +1075,6 @@ export async function buildPromptAndStopPatterns(
     }
 
     // Assemble prompt following inputStrategy order exactly.
-    // Each entry is either a built-in PromptBlockType string or a custom
-    // prompt block UUID string. Each custom block UUID resolves individually
-    // at whatever position it appears — they are NOT grouped together and
-    // do NOT need to be adjacent to each other.
     const promptLines: string[] = [];
     const usedBuiltInTypes = new Set<string>();
 
@@ -1073,25 +1086,20 @@ export async function buildPromptAndStopPatterns(
             }
             usedBuiltInTypes.add(entry);
         } else {
-            // Entry is a custom prompt block UUID — resolve this specific block
             const block = promptBlockById.get(entry);
             if (!block) continue;
             if (!block.textContent || !block.textContent.trim()) continue;
 
-            // Character binding check
             if (!isPromptBlockCharacterBound(block, characterId)) continue;
 
-            // Context binding check
             if (block.contextBindings && block.contextBindings.length > 0) {
                 if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
             }
 
-            // Location binding check
             if (block.locationBindings && block.locationBindings.length > 0) {
                 if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
             }
 
-            // Regex activation/deactivation check
             if (block.regularExpressionActivationTrigger) {
                 if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
                 if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
@@ -1129,12 +1137,13 @@ export async function prepareRequestBody(
     character: Character,
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
+    modelId: string,
     protagonistFileBase64s?: string[],
     runtimePort?: number
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, runtimePort);
+    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId, runtimePort);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
@@ -1393,6 +1402,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
         isNameRevealed,
         locationIndex: options?.locationIndex,
         isPartial: options?.isPartial || undefined,
+        modelTextContentSummaries: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionMessageId: lastMessageId,

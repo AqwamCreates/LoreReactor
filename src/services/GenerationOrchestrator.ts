@@ -171,6 +171,9 @@ export class GenerationOrchestrator {
         const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
         const protagonistFileBase64s = getProtagonistFileBase64s(dataWithRegen);
 
+        // Determine model ID for per-model summary selection
+        const modelId = selectedModel?.id || '';
+
         const statsDelta: TurnStats = {
             numberOfRequests: 0,
             numberOfCacheInvalidations: 0,
@@ -278,8 +281,7 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    // Orchestrator builds the request body, then passes it to the budget engine
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     rawText = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -349,13 +351,13 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s, ep);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const rp = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
                         const rep = rp || (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s, ep);
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
                         const rc: LanguageModelContext = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: selectedModel.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) {

@@ -250,7 +250,7 @@ export interface ChatMessage extends MessageBase {
   textContent: string;
   files?: string[];
   isPartial?: boolean;
-  textContentSummary?: string;
+  modelTextContentSummaries: Record<string, string>;
   kvCachePath?: string;
 }
 
@@ -278,7 +278,7 @@ export interface RawChatMessage extends RawMessageBase {
   textContent: string;
   files?: string[];
   isPartial?: boolean;
-  textContentSummary?: string;
+  modelTextContentSummaries: Record<string, string>;
   kvCachePath?: string;
 }
 

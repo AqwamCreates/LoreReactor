@@ -330,7 +330,7 @@ export function AppModals({
                         onSelect={(m: LanguageModel) => modelModal.open(m)}
                         onDelete={onDeleteModel}
                         onCreateNew={() => modelModal.open()}
-                        renderSubtext={(m: LanguageModel) => renderModelSubtext(m, runningModels, selectedModelId, activeStrategy)}
+                        renderSubtext={(m: LanguageModel) => renderModelSubtext(m, runningModels, selectedModelId)}
                         emptyMessage="No models available."
                         actionLabel="Delete"
                         orderedListMode={false}

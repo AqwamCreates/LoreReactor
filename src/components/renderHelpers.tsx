@@ -13,31 +13,14 @@ export function renderModelSubtext(
     model: LanguageModel,
     runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
     selectedModelId: string | null,
-    activeStrategy?: BudgetStrategy | null,
 ): React.ReactNode {
     const ms = runningModels[model.id];
     const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
-
-    let poolLabel: React.ReactNode = null;
-    if (activeStrategy) {
-        const inOnline = activeStrategy.onlineModels.some(m => m.id === model.id);
-        const inLocal = activeStrategy.localModels.some(m => m.id === model.id);
-        const tier = activeStrategy.modelCostTiers?.[model.id];
-        const tierText = tier !== undefined ? `T${tier}` : 'T0';
-        if (inOnline && inLocal) {
-            poolLabel = <span style={{ fontSize: '0.7rem', background: '#a855f7', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Online+Local {tierText}</span>;
-        } else if (inOnline) {
-            poolLabel = <span style={{ fontSize: '0.7rem', background: '#22c55e', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Online {tierText}</span>;
-        } else if (inLocal) {
-            poolLabel = <span style={{ fontSize: '0.7rem', background: '#f97316', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Budget: Local {tierText}</span>;
-        }
-    }
 
     return (
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
             {!!model.mmproj && <span style={{ fontSize: '0.7rem', background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Multi-Modal</span>}
             {isCloud && <span style={{ fontSize: '0.7rem', background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cloud</span>}
-            {poolLabel}
             {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
             {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
             {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
