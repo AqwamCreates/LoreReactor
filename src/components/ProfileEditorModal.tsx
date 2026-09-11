@@ -104,7 +104,7 @@ function ProfileCheckbox({
 // ─── Main Component ──────────────────────────────────────────────────
 
 export function ProfileEditorModal({
-    isOpen, onClose, onSave, existingProfile,
+    isOpen, onClose, onSave, existingProfile, allPromptBlocks = [],
 }: ProfileEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -299,7 +299,7 @@ export function ProfileEditorModal({
     // Missing built-in blocks that aren't in the strategy
     const missingBuiltInBlocks = ALL_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     // Prompt blocks not yet in the strategy
-    const availablePromptBlocks = allPromptBlocks.filter(pb => !inputStrategy.includes(pb.id));
+    const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 
     // --- Summarization step drag handlers ---
     const handleStepDragStart = (e: React.DragEvent, index: number) => {
@@ -526,7 +526,7 @@ export function ProfileEditorModal({
                                         {missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}
                                     </optgroup>}
                                     {availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">
-                                        {availablePromptBlocks.map(pb => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}
+                                        {availablePromptBlocks.map((pb: PromptBlock) => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}
                                     </optgroup>}
                                 </select>
                             </div>
