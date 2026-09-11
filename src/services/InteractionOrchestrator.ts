@@ -1,6 +1,6 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, generateActionStamina, consumeChatStamina, consumeActionStamina, regenerateActionStaminaForCharacter, regenerateChatStaminaForCharacter } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveChatImpatienceSensitivity, generateChatStaminaForMessage, generateActionStaminaForMessage, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -161,7 +161,7 @@ export async function runTurnSequence(
                 const prevActionStamina = lastMsg?.remainingActionStamina;
 
                 // Regenerate action stamina before recording movement (resting from talking)
-                regenerateActionStaminaForCharacter(workingData, picked);
+                generateActionStaminaForInteractionData(workingData, picked);
 
                 // Filter by reachability first (with conditional regex), then sample from reachable locations only
                 const pLoc = getCurrentLocationIndex(workingData, picked);
@@ -171,7 +171,7 @@ export async function runTurnSequence(
                     // Consume 1 action stamina for the move
                     const postRegenMsg = getLastInteractionForCharacter(workingData.interactionHistory, picked.id);
                     if (postRegenMsg && postRegenMsg.remainingActionStamina !== undefined) {
-                        consumeActionStamina(postRegenMsg, 1);
+                        consumeActionStaminaForMessage(postRegenMsg, 1);
                     }
 
                     const silent = createSilentInteraction(
@@ -247,7 +247,7 @@ export async function runTurnSequence(
         if (!selectedSpeaker) break;
 
         // Regenerate chat stamina before speaking (resting from moving)
-        regenerateChatStaminaForCharacter(workingData, selectedSpeaker);
+        generateChatStaminaForInteractionData(workingData, selectedSpeaker);
 
         // Chat probability gate — does this character want to speak?
         const effectiveProb = getEffectiveChatProbability(selectedSpeaker, profile);
@@ -274,7 +274,7 @@ export async function runTurnSequence(
             // Consume chat stamina based on paragraph count
             const paragraphs = countParagraphs(newLastEntry.textContent);
             if (paragraphs > 0) {
-                consumeChatStamina(newLastEntry, paragraphs);
+                consumeChatStaminaForMessage(newLastEntry, paragraphs);
             }
 
             // Resolve location using resultData (not stale workingData)

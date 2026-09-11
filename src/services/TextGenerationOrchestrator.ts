@@ -1,11 +1,11 @@
-// src/services/GenerationOrchestrator.ts
+// src/services/TextGenerationOrchestrator.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina, getEffectiveTools } from '../hooks/characterLogic';
+import { consumeChatStaminaForMessage, generateChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
@@ -59,23 +59,6 @@ export interface TurnExecutionParams {
     existingCharacterText?: string;
     allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
-}
-
-// ─── Internal Utilities ─────────────────────────────────────────────
-
-function regenerateStaminaForTurn(data: InteractionData, character: Character): InteractionData {
-    const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return data;
-
-    const prevMsg = findPreviousMessage(data, character.id);
-    if (!prevMsg) return data;
-    if (prevMsg.messageType !== 'chat' || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;
-
-    const idx = data.interactionHistory.findIndex(m => m.id === prevMsg.id);
-    if (idx === -1) return data;
-
-    generateChatStamina(character, data.interactionHistory[idx]);
-    return data;
 }
 
 function getDynamicParagraphLimit(char: Character, data: InteractionData): number {
@@ -154,7 +137,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
 
 // ─── Orchestrator ───────────────────────────────────────────────────
 
-export class GenerationOrchestrator {
+export class TextGenerationOrchestrator {
     private languageModelEngine = getLanguageModelEngine();
 
     async executeTurn(params: TurnExecutionParams): Promise<{ result: TurnResult } | { error: TurnError }> {
@@ -167,9 +150,9 @@ export class GenerationOrchestrator {
         const strat = strategyOverride ?? activeStrategy;
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
 
-        const dataWithRegen = regenerateStaminaForTurn(data, character);
-        const maxPara = getDynamicParagraphLimit(character, dataWithRegen);
-        const protagonistFileBase64s = getProtagonistFileBase64s(dataWithRegen);
+        generateChatStaminaForInteractionData(data, character);
+        const maxPara = getDynamicParagraphLimit(character, data);
+        const protagonistFileBase64s = getProtagonistFileBase64s(data);
 
         const modelId = selectedModel?.id || '';
 
@@ -185,7 +168,7 @@ export class GenerationOrchestrator {
         let previousExpression: string | null = null;
 
         // Create the message upfront so tool executors can mutate it (inventory, audio, etc.)
-        const aiMessage = createChatMessage(dataWithRegen, character, '');
+        const aiMessage = createChatMessage(data, character, '');
 
         try {
             let rawText: string;
@@ -212,7 +195,7 @@ export class GenerationOrchestrator {
 
                     callbacks?.onDisplayText(displayOut);
 
-                    const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
+                    const enableExpression = data.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
                         if (sentiment && sentiment.topEmotion !== previousExpression) {
@@ -280,7 +263,7 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     rawText = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -295,7 +278,7 @@ export class GenerationOrchestrator {
                     if (requestCost > 0) statsDelta.numberOfRequests++;
                     statsDelta.totalCost += requestCost;
 
-                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile, aiMessage, dataWithRegen);
+                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -349,13 +332,13 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const rp = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
                         const rep = rp || (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
+                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
                         const rc: LanguageModelContext = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: selectedModel.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) {
@@ -363,7 +346,7 @@ export class GenerationOrchestrator {
                         }
                     }
 
-                    const toolResult = await processToolInvocations(rawText, character, dataWithRegen.Profile, aiMessage, dataWithRegen);
+                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -386,14 +369,14 @@ export class GenerationOrchestrator {
             }
 
             const finalDisplayText = accumulatedDisplayText || rawText;
-            const displayText = convertIdsToDisplayNames(finalDisplayText, dataWithRegen);
+            const displayText = convertIdsToDisplayNames(finalDisplayText, data);
 
             // Finalize the message with the completed text
             aiMessage.textContent = displayText;
             const paragraphs = countParagraphs(displayText);
-            if (paragraphs > 0) consumeChatStamina(aiMessage, paragraphs);
+            if (paragraphs > 0) consumeChatStaminaForMessage(aiMessage, paragraphs);
 
-            const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
+            const enableExpression = data.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawText);
                 if (sentiment) {
@@ -402,7 +385,7 @@ export class GenerationOrchestrator {
                 }
             }
 
-            const updatedData = addMessageToInteractionData(dataWithRegen, aiMessage);
+            const updatedData = addMessageToInteractionData(data, aiMessage);
 
             return {
                 result: {

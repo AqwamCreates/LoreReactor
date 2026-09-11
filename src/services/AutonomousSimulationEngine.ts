@@ -1,6 +1,6 @@
 // src/services/AutonomousSimulationEngine.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStaminaForMessage, consumeChatStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -73,7 +73,7 @@ function regenerateStaminaInPlace(data: InteractionData, character: Character): 
             const entry = data.interactionHistory[i];
             if (entry.remainingChatStamina === undefined) return;
             if (entry.remainingChatStamina >= maxStamina) return;
-            generateChatStamina(character, entry);
+            generateChatStaminaForMessage(character, entry);
             return;
         }
     }
@@ -216,7 +216,7 @@ export class AutonomousSimulationEngine {
                 const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
                 if (newLastEntry && newLastEntry.character.id === character.id && hasTextContent(newLastEntry)) {
                     const paragraphs = (newLastEntry.textContent.match(/\n\n/g) || []).length + 1;
-                    if (paragraphs > 0) consumeChatStamina(newLastEntry, paragraphs);
+                    if (paragraphs > 0) consumeChatStaminaForMessage(newLastEntry, paragraphs);
 
                     if (hasLocations) {
                         const currentLoc = getCurrentLocationIndex(resultData, character);

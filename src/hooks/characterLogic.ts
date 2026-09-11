@@ -180,17 +180,17 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     return multiplier;
 }
 
-export function consumeChatStamina(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
+export function consumeChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
     if (interactionMessage.messageType === 'interaction' || interactionMessage.remainingChatStamina === undefined) return;
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
-export function consumeActionStamina(interactionMessage: HistoryMessage, amountOfActionStaminaConsumed: number) {
+export function consumeActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaConsumed: number) {
     if (interactionMessage.messageType === 'chat' || interactionMessage.remainingActionStamina === undefined) return;
     interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amountOfActionStaminaConsumed);
 }
 
-export function generateChatStamina(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+export function generateChatStaminaForMessage(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
     const maximumChatStamina = getEffectiveMaximumChatStamina(character, profile);
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 
@@ -223,13 +223,15 @@ export function generateChatStamina(character: Character, interactionMessage: Hi
 
     const amountOfChatStaminaGenerated = lo + 1;
 
-    interactionMessage.remainingChatStamina = Math.min(
+    const newRemainingChatStamina = Math.min(
         maximumChatStamina,
         remainingChatStamina + amountOfChatStaminaGenerated
     );
+
+    interactionMessage.remainingChatStamina = newRemainingChatStamina
 }
 
-export function generateActionStamina(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+export function generateActionStaminaForMessage(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
     const remainingActionStamina = interactionMessage.remainingActionStamina;
 
@@ -262,32 +264,35 @@ export function generateActionStamina(character: Character, interactionMessage: 
 
     const amountOfActionStaminaGenerated = lo + 1;
 
-    interactionMessage.remainingActionStamina = Math.min(
+    const newRemainingActionStamina = Math.min(
         maximumActionStamina,
         remainingActionStamina + amountOfActionStaminaGenerated
     );
+
+    interactionMessage.remainingActionStamina = newRemainingActionStamina
+
 }
 
 /**
  * Regenerate chat stamina for a character based on their previous interaction.
  * Mutates the interactionHistory in place by updating the character's last entry.
  */
-export function regenerateChatStaminaForCharacter(data: InteractionData, character: Character): void {
+export function generateChatStaminaForInteractionData(data: InteractionData, character: Character) {
     const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return;
+    if (maxStamina === Number.POSITIVE_INFINITY) return
     const previousMessage = findPreviousMessage(data, character.id)
     if (!previousMessage) return
-    generateChatStamina(character, previousMessage);
+    generateChatStaminaForMessage(character, previousMessage);
 }
 
 /**
  * Regenerate action stamina for a character based on their previous interaction.
  * Mutates the interactionHistory in place by updating the character's last entry.
  */
-export function regenerateActionStaminaForCharacter(data: InteractionData, character: Character): void {
+export function generateActionStaminaForInteractionData(data: InteractionData, character: Character) {
     const maxStamina = getEffectiveMaximumActionStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return;
+    if (maxStamina === Number.POSITIVE_INFINITY) return
     const previousMessage = findPreviousMessage(data, character.id)
     if (!previousMessage) return
-    generateActionStamina(character, previousMessage);
+    generateActionStaminaForMessage(character, previousMessage);
 }

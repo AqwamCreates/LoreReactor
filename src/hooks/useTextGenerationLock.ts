@@ -1,8 +1,8 @@
-// src/hooks/useGenerationLock.ts
+// src/hooks/useTextGenerationLock.ts
 import { useCallback, useRef } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 
-export function useGenerationLock() {
+export function useTextGenerationLock() {
     const isLoading = useSessionStore(s => s.isLoading);
     const isLoadingRef = useRef(false);
 

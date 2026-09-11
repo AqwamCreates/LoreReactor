@@ -6,7 +6,7 @@ import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayName
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
-import { consumeChatStamina } from './characterLogic';
+import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
@@ -14,11 +14,11 @@ import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useThrottledStream } from './useThrottledStream';
-import { useGenerationLock } from './useGenerationLock';
+import { useTextGenerationLock } from './useTextGenerationLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
-import { useGeneration } from './useGeneration';
+import { useTextGeneration } from './useTextGeneration';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
 import { useSessionStore } from '../store/useSessionStore';
 
@@ -120,11 +120,11 @@ export function useChatSession() {
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
-    const { acquireLock, releaseLock, isLoadingRef } = useGenerationLock();
+    const { acquireLock, releaseLock, isLoadingRef } = useTextGenerationLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, setStreamingText, streamingTextRef);
     const { speakMessage } = useCharacterVoice();
     const { processMemoryTrigger } = useMemoryTrigger();
-    const { handleServerResponse } = useGeneration({
+    const { handleServerResponse } = useTextGeneration({
         setBudgetData,
         setStats,
         setLatency,
@@ -340,7 +340,7 @@ export function useChatSession() {
             const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
                 const paragraphs = (t.match(/\n\n/g) || []).length + 1;
-                if (paragraphs > 0) consumeChatStamina(updated.interactionHistory[idx], paragraphs);
+                if (paragraphs > 0) consumeChatStaminaForMessage(updated.interactionHistory[idx], paragraphs);
                 const withPartial = [...updated.interactionHistory];
                 const targetMsg = withPartial[idx];
                 if (targetMsg.messageType === 'chat') {

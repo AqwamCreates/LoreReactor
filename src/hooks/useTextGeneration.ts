@@ -1,10 +1,10 @@
-// src/hooks/useGeneration.ts
+// src/hooks/useTextGeneration.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock } from '../types';
 import { useSessionStore } from '../store/useSessionStore';
-import { GenerationOrchestrator, type TurnStreamCallbacks } from '../services/GenerationOrchestrator';
+import { TextGenerationOrchestrator, type TurnStreamCallbacks } from '../services/TextGenerationOrchestrator';
 
-interface UseGenerationOptions {
+interface UseTextGenerationOptions {
     setBudgetData: (bd: import('../types').BudgetData) => void;
     setStats: React.Dispatch<React.SetStateAction<{ numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number }>>;
     setLatency: (speed: number) => void;
@@ -17,9 +17,9 @@ interface UseGenerationOptions {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const orchestrator = new GenerationOrchestrator();
+const orchestrator = new TextGenerationOrchestrator();
 
-export function useGeneration(options: UseGenerationOptions) {
+export function useTextGeneration(options: UseTextGenerationOptions) {
     const {
         setBudgetData, setStats, setLatency, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
