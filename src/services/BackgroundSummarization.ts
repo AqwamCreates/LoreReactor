@@ -25,7 +25,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
 
         let tokens = 0;
         for (const m of data.interactionHistory) {
-            if (m.kind === 'chat') tokens += await engine.countTokens(m.textContent);
+            if (m.messageType === 'chat') tokens += await engine.countTokens(m.textContent);
         }
 
         const triggered = checkTriggerThreshold(data, tokens, ctxLen);
@@ -54,7 +54,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
                     ...updated,
                     interactionHistory: updated.interactionHistory.map(m => {
                         const s = summaries.get(m.id);
-                        if (s && m.kind === 'chat') {
+                        if (s && m.messageType === 'chat') {
                             const chatMsg = m as ChatMessage;
                             return {
                                 ...chatMsg,
@@ -87,7 +87,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
             setData(updated);
 
             const countModelSummaries = (history: typeof data.interactionHistory) =>
-                history.filter(m => m.kind === 'chat' && (m as ChatMessage).modelTextContentSummaries?.[modelId]).length;
+                history.filter(m => m.messageType === 'chat' && (m as ChatMessage).modelTextContentSummaries?.[modelId]).length;
 
             const ns = triggered.strategyType === 'Sliding Window Replace'
                 ? countModelSummaries(updated.interactionHistory) - countModelSummaries(data.interactionHistory)

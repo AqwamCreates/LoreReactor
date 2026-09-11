@@ -42,8 +42,11 @@ export function renderBudgetStrategySubtext(strategy: BudgetStrategy): React.Rea
 }
 
 export function renderProfileSubtext(profile: Profile): React.ReactNode {
-    const enableWebSearchText = getRenderSubTextForTriStates(profile.enableWebSearch, "Web Search");
-    const enableCalculatorText = getRenderSubTextForTriStates(profile.enableCalculator, "Calculator");
+    const tools = profile?.tools
+    const enableWebSearchText = getRenderSubTextForTriStates(tools.web, "Web Search");
+    const enableCalculatorText = getRenderSubTextForTriStates(tools.calculator, "Calculator");
+    const enablePickText = getRenderSubTextForTriStates(tools.pick, "Pick");
+    const enableRollText = getRenderSubTextForTriStates(tools.roll, "Dice"); 
     const enableMemoryReadingText = getRenderSubTextForTriStates(profile.enableMemoryReading, "Memory Read");
     const enableMemoryWritingText = getRenderSubTextForTriStates(profile.enableMemoryWriting, "Memory Write");
 
@@ -56,6 +59,8 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
     if (enableWebSearchText) flags.push(enableWebSearchText as string);
     if (enableCalculatorText) flags.push(enableCalculatorText as string);
+    if (enablePickText) flags.push(enablePickText as string);
+    if (enableRollText) flags.push(enableRollText as string);
     if (enableMemoryReadingText) flags.push(enableMemoryReadingText as string);
     if (enableMemoryWritingText) flags.push(enableMemoryWritingText as string);
     if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.chatImpatienceSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Chat Stats Override');

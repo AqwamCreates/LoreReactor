@@ -23,12 +23,12 @@ function buildDisplayNameCache(interactionData: InteractionData): DisplayNameCac
     }
 
     const chatMessages = interactionData.interactionHistory.filter(
-        (m): m is ChatMessage => m.kind === 'chat'
+        (m): m is ChatMessage => m.messageType === 'chat'
     );
 
     const chatToFullIndex = new Map<ChatMessage, number>();
     for (let i = 0; i < interactionData.interactionHistory.length; i++) {
-        if (interactionData.interactionHistory[i].kind === 'chat') {
+        if (interactionData.interactionHistory[i].messageType === 'chat') {
             chatToFullIndex.set(interactionData.interactionHistory[i] as ChatMessage, i);
         }
     }

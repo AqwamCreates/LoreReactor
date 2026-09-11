@@ -1,5 +1,5 @@
 // src/hooks/characterLogic.ts
-import type { Character, InteractionData, HistoryMessage, Profile } from "../types";
+import type { Character, InteractionData, HistoryMessage, Profile, tool } from "../types";
 
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
     const characterValue = character[key] as number;
@@ -14,6 +14,29 @@ function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, characte
     if (profileValue === undefined || profileValue === 0) return characterValue;
     if (profileValue < 0) return false;
     return true;
+}
+
+function getEffectiveToolRecord(character: Character, profile?: Profile): Record<tool, boolean> {
+    const characterTools = character.tools;
+    const profileTools = profile?.tools;
+
+    if (!profileTools) return { ...characterTools };
+
+    const result = {} as Record<tool, boolean>;
+    for (const key of Object.keys(characterTools) as tool[]) {
+        const profileValue = profileTools[key];
+        if (profileValue === undefined || profileValue === 0) {
+            // Defer to character setting
+            result[key] = characterTools[key];
+        } else if (profileValue < 0) {
+            // Force off
+            result[key] = false;
+        } else {
+            // Force on
+            result[key] = true;
+        }
+    }
+    return result;
 }
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
@@ -69,12 +92,13 @@ export function getEffectiveEnableMemoryReading(character: Character, profile?: 
     return getEffectiveTriStateBoolean("enableMemoryReading", character, profile);
 }
 
-export function getEffectiveEnableWebSearch(character: Character, profile?: Profile): boolean {
-    return getEffectiveTriStateBoolean("enableWebSearch", character, profile);
+export function getEffectiveTools(character: Character, profile?: Profile): Record<tool, boolean> {
+    return getEffectiveToolRecord(character, profile);
 }
 
-export function getEffectiveEnableCalculator(character: Character, profile?: Profile): boolean {
-    return getEffectiveTriStateBoolean("enableCalculator", character, profile);
+export function isToolEnabled(character: Character, toolName: tool, profile?: Profile): boolean {
+    const effectiveTools = getEffectiveTools(character, profile);
+    return effectiveTools[toolName] ?? false;
 }
 
 export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {
@@ -85,9 +109,9 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     if (history.length === 0) return 1;
 
     const latestMessage = history[history.length - 1];
+    if (latestMessage.messageType !== 'chat') return 1;
     if (latestMessage.character.id === character.id) return 1;
 
-    if (latestMessage.kind === "interaction") return 1;
     const textLower = latestMessage.textContent.toLowerCase();
     const fullNameLower = character.name.toLowerCase().trim();
 
@@ -152,12 +176,12 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
 }
 
 export function consumeChatStamina(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
-    if (interactionMessage.kind === "interaction" || interactionMessage.remainingChatStamina === undefined) return;
+    if (interactionMessage.messageType === 'interaction' || interactionMessage.remainingChatStamina === undefined) return;
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
 export function generateChatStamina(character: Character, interactionMessage: HistoryMessage) {
-    const maximumChatStamina = character.maximumChatStamina;
+    const maximumChatStamina = getEffectiveMaximumChatStamina(character);
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;

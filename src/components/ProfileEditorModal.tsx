@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType } from '../types';
+import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
 import { defaultInputStrategy } from '../defaults';
@@ -31,6 +31,20 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
     'Sliding Window Replace', 'Periodic Compression', 'Recursive Summary', 'Observation Masking',
 ];
 
+const TOOL_LABELS: Record<tool, string> = {
+    roll: 'Dice Roll',
+    pick: 'Random Pick',
+    calculator: 'Calculator',
+    web: 'Web Search',
+};
+
+const DEFAULT_TOOLS: Record<tool, number> = {
+    roll: 0,
+    pick: 0,
+    calculator: 0,
+    web: 0,
+};
+
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
@@ -46,7 +60,7 @@ function isBuiltInBlockType(value: string): value is PromptBlockType {
     return (defaultInputStrategy as string[]).includes(value);
 }
 
-// ─── Shared Styles ───────────────────────────────────────────────────
+// ─── Shared Styles ──────────────────────────────────────────────────
 
 const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' };
 const CHECKBOX_SPACED_STYLE: CSSProperties = { marginTop: '8px' };
@@ -68,7 +82,7 @@ const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, font
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
-// ─── Reusable Checkbox Component ─────────────────────────────────────
+// ─── Reusable Checkbox Component ────────────────────────────────────
 
 function ProfileCheckbox({
     checked, onChange, label, hint, spaced = false,
@@ -93,7 +107,7 @@ function ProfileCheckbox({
     );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────
 
 export function ProfileEditorModal({
     isOpen, onClose, onSave, existingProfile, allPromptBlocks = [],
@@ -123,8 +137,7 @@ export function ProfileEditorModal({
     const [cacheLevel, setCacheLevel] = useState<number>(0);
     const [volume, setVolume] = useState<number>(-1);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
-    const [enableWebSearch, setEnableWebSearch] = useState<number>(0);
-    const [enableCalculator, setEnableCalculator] = useState<number>(0);
+    const [tools, setTools] = useState<Record<tool, number>>({ ...DEFAULT_TOOLS });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
     const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
     const [narrateNormalText, setNarrateNormalText] = useState(true);
@@ -151,6 +164,10 @@ export function ProfileEditorModal({
         if (isBuiltInBlockType(entry)) return entry;
         const pb = promptBlockById.get(entry);
         return pb ? `🧱 ${pb.name}` : `🧱 (Unknown Block)`;
+    };
+
+    const handleToolChange = (toolName: tool, value: number) => {
+        setTools(prev => ({ ...prev, [toolName]: value }));
     };
 
     useEffect(() => {
@@ -182,8 +199,7 @@ export function ProfileEditorModal({
             setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
             setVolume(existingProfile.volume ?? -1);
             setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-            setEnableWebSearch(existingProfile.enableWebSearch ?? 0);
-            setEnableCalculator(existingProfile.enableCalculator ?? 0);
+            setTools(existingProfile.tools ?? { ...DEFAULT_TOOLS });
             setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
             setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
             setNarrateNormalText(existingProfile.narrateNormalText ?? true);
@@ -206,7 +222,8 @@ export function ProfileEditorModal({
             setNameSensitivity(-1); setSkipProbability(-1); setChatImpatienceSensitivity(-1);
             setMemoryRetentionWeight(-1); setContextSensitivity(-1); setCacheLevel(0); setVolume(-1);
             setStripThinkTokens(false);
-            setEnableWebSearch(0); setEnableCalculator(0); setEnableMemoryWriting(0); setEnableMemoryReading(0);
+            setTools({ ...DEFAULT_TOOLS });
+            setEnableMemoryWriting(0); setEnableMemoryReading(0);
             setNarrateNormalText(true); setNarrateQuotedText(false); setNarrateBoldedText(false); setNarrateItalicizedText(false);
             setInputStrategy([]);
             setSummarizationSteps(getDefaultSummarizationSteps());
@@ -233,7 +250,8 @@ export function ProfileEditorModal({
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
             memoryRetentionWeight, contextSensitivity,
             cacheInvalidationReductionLevel: cacheLevel, volume, stripThinkTokens,
-            enableWebSearch, enableCalculator, enableMemoryWriting, enableMemoryReading,
+            tools: { ...tools },
+            enableMemoryWriting, enableMemoryReading,
             narrateNormalText, narrateQuotedText, narrateBoldedText, narrateItalicizedText,
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
@@ -468,15 +486,25 @@ export function ProfileEditorModal({
                     {/* Strip Think Tokens */}
                     <div className="editor-section">
                         <span className="editor-section-title">Output Processing</span>
-                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove <think>...</think> blocks from displayed output. The model still uses them internally." />
+                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove ... blocks from displayed output. The model still uses them internally." />
                     </div>
 
                     {/* Tools */}
                     <div className="editor-section">
                         <span className="editor-section-title">Tools</span>
-                        <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>Enable runtime tool use during generation. These are not prompt injections — they allow the model to invoke tools while chatting.</div>
-                        {renderOverrideSlider('Web Search Override', enableWebSearch, -1, 1, 1, 0, (val) => setEnableWebSearch(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableWebSearch === 0 ? '(Character default)' : enableWebSearch === -1 ? '(Force Off)' : '(Force On)')}
-                        {renderOverrideSlider('Calculator Override', enableCalculator, -1, 1, 1, 0, (val) => setEnableCalculator(Math.round(val)), '-1 = force off for all. 0 = use each character\'s own setting. 1 = force on for all.', enableCalculator === 0 ? '(Character default)' : enableCalculator === -1 ? '(Force Off)' : '(Force On)')}
+                        <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
+                            Tri-state override for runtime tool use. -1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.
+                        </div>
+                        {(Object.keys(tools) as tool[]).map(toolName => (
+                            renderOverrideSlider(
+                                `${TOOL_LABELS[toolName]} Override`,
+                                tools[toolName],
+                                -1, 1, 1, 0,
+                                (val) => handleToolChange(toolName, Math.round(val)),
+                                `-1 = force off for all. 0 = use each character's own setting. 1 = force on for all.`,
+                                tools[toolName] === 0 ? '(Character default)' : tools[toolName] === -1 ? '(Force Off)' : '(Force On)',
+                            )
+                        ))}
                     </div>
 
                     {/* Memory */}

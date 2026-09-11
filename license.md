@@ -116,7 +116,7 @@ The User acknowledges and agrees that, in the event Licensor have a reasonable b
 
 ## Liability
 
-The LoreReactor is provided "AS IS" and without warranty of any kind. Licensor shall not be liable for any damages or losses, including but not limited to direct, indirect, incidental, consequential, or punitive damages arising out of the use or inability to use the LoreReactor.
+The LoreReactor is provided "AS IS" and without warranty of any messageType. Licensor shall not be liable for any damages or losses, including but not limited to direct, indirect, incidental, consequential, or punitive damages arising out of the use or inability to use the LoreReactor.
 
 ## Governing Law
 

@@ -182,7 +182,7 @@ export function useChatSession() {
             const lmCtx = ep ? { runtimePort: ep } : undefined;
             let total = 0;
             for (const m of interactionData.interactionHistory) {
-                if (m.kind === 'chat') total += await languageModelEngine.countTokens(m.textContent, lmCtx);
+                if (m.messageType === 'chat') total += await languageModelEngine.countTokens(m.textContent, lmCtx);
             }
             if (!cancelled) setNumberOfTokens(total);
         })();
@@ -239,7 +239,7 @@ export function useChatSession() {
         const h = base.interactionHistory;
         if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
             const lastMsg = h[h.length - 1];
-            if (lastMsg.kind === 'chat') {
+            if (lastMsg.messageType === 'chat') {
                 const ph = [...h];
                 ph[ph.length - 1] = { ...lastMsg, textContent: dt, isPartial: true };
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
@@ -283,7 +283,7 @@ export function useChatSession() {
                 if (paragraphs > 0) consumeChatStamina(updated.interactionHistory[idx], paragraphs);
                 const withPartial = [...updated.interactionHistory];
                 const targetMsg = withPartial[idx];
-                if (targetMsg.kind === 'chat') {
+                if (targetMsg.messageType === 'chat') {
                     withPartial[idx] = { ...targetMsg, isPartial: true, lastUpdatedTimestamp: Date.now() };
                 }
                 setInteractionData({ ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() });
@@ -319,7 +319,7 @@ export function useChatSession() {
         const hasLocations = ud.locations && ud.locations.length > 0;
         if (hasLocations) {
             const protagonistMsg = ud.interactionHistory[ud.interactionHistory.length - 1];
-            if (protagonistMsg && protagonistMsg.character.id === currentChar.id && protagonistMsg.kind === 'chat') {
+            if (protagonistMsg && protagonistMsg.character.id === currentChar.id && protagonistMsg.messageType === 'chat') {
                 const currentLoc = getCurrentLocationIndex(ud, currentChar);
                 const regexLoc = findLocationByRegex(ud.locations, protagonistMsg.textContent, currentChar);
                 const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
@@ -342,7 +342,7 @@ export function useChatSession() {
                 await saveRawInteractionData(result);
                 setInteractionData(result);
                 const lm = result.interactionHistory[result.interactionHistory.length - 1];
-                if (lm && lm.kind === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
@@ -371,7 +371,7 @@ export function useChatSession() {
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                if (protagonistMsg && protagonistMsg.character.id === currentChar.id && protagonistMsg.kind === 'chat') {
+                if (protagonistMsg && protagonistMsg.character.id === currentChar.id && protagonistMsg.messageType === 'chat') {
                     const currentLoc = getCurrentLocationIndex(td, currentChar);
                     const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, currentChar);
                     const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
@@ -398,7 +398,7 @@ export function useChatSession() {
                     activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.kind === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);
@@ -413,7 +413,7 @@ export function useChatSession() {
         const msgIndex = currentInteractionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
         const msg = currentInteractionData.interactionHistory[msgIndex];
-        if (msg.kind !== 'chat' || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
+        if (msg.messageType !== 'chat' || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
@@ -436,11 +436,11 @@ export function useChatSession() {
             if (!result) return;
 
             const foundMsg = result.interactionHistory.find(m => m.id === messageId);
-            const msgText = foundMsg && foundMsg.kind === 'chat' ? foundMsg.textContent : existingText;
+            const msgText = foundMsg && foundMsg.messageType === 'chat' ? foundMsg.textContent : existingText;
             const edited = await editMessage(result, messageId, msgText);
 
             const foundEdited = edited.interactionHistory.find(m => m.id === messageId);
-            if (foundEdited && foundEdited.kind === 'chat' && !foundEdited.isPartial) {
+            if (foundEdited && foundEdited.messageType === 'chat' && !foundEdited.isPartial) {
                 const finalData = await clearPartialFlag(edited, messageId);
                 setInteractionData(finalData);
                 await saveRawInteractionData(finalData);
@@ -449,7 +449,7 @@ export function useChatSession() {
                 await saveRawInteractionData(edited);
             }
 
-            const finalText = foundEdited && foundEdited.kind === 'chat' ? foundEdited.textContent : '';
+            const finalText = foundEdited && foundEdited.messageType === 'chat' ? foundEdited.textContent : '';
             if (char.id !== currentInteractionData.protagonist.id) speakMessage(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -509,7 +509,7 @@ export function useChatSession() {
                     activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.kind === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
+                if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);

@@ -1,6 +1,20 @@
 // src/components/CharacterAdvancedSettingsEditorModal.tsx
-import type { Sampler } from '../types';
+import type { Sampler, tool } from '../types';
 import './main.css';
+
+const TOOL_LABELS: Record<tool, string> = {
+    roll: 'Dice Roll',
+    pick: 'Random Pick',
+    calculator: 'Calculator',
+    web: 'Web Search',
+};
+
+const TOOL_DESCRIPTIONS: Record<tool, string> = {
+    roll: 'Allow this character to roll dice (e.g. 2d6+3) during conversation.',
+    pick: 'Allow this character to randomly pick from a list of options.',
+    calculator: 'Allow this character to perform calculations during conversation.',
+    web: 'Allow this character to search the web during conversation.',
+};
 
 interface CharacterAdvancedSettingsEditorModalProps {
     isOpen: boolean;
@@ -16,10 +30,9 @@ interface CharacterAdvancedSettingsEditorModalProps {
     numberOfMessagesToDisableThinkPromptStr: string;
     numberOfMessagesToDisableMetaThinkInstructionsStr: string;
     numberOfMessagesToDisableDialoguePromptStr: string;
+    tools: Record<tool, boolean>;
     enableMemoryWriting: boolean;
     enableMemoryReading: boolean;
-    enableWebSearch: boolean;
-    enableCalculator: boolean;
     selectedStopPatternIds: string[];
     allSamplers: Sampler[];
     isUploading: boolean;
@@ -34,10 +47,9 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onDisableThinkChange: (val: string) => void;
     onDisableMetaChange: (val: string) => void;
     onDisableDialogueChange: (val: string) => void;
+    onToolToggle: (toolName: tool) => void;
     onEnableMemoryWritingChange: (val: boolean) => void;
     onEnableMemoryReadingChange: (val: boolean) => void;
-    onEnableWebSearchChange: (val: boolean) => void;
-    onEnableCalculatorChange: (val: boolean) => void;
     onStopPatternToggle: (id: string) => void;
 }
 
@@ -55,10 +67,9 @@ export function CharacterAdvancedSettingsEditorModal({
     numberOfMessagesToDisableThinkPromptStr,
     numberOfMessagesToDisableMetaThinkInstructionsStr,
     numberOfMessagesToDisableDialoguePromptStr,
+    tools,
     enableMemoryWriting,
     enableMemoryReading,
-    enableWebSearch,
-    enableCalculator,
     selectedStopPatternIds,
     allSamplers,
     isUploading,
@@ -73,10 +84,9 @@ export function CharacterAdvancedSettingsEditorModal({
     onDisableThinkChange,
     onDisableMetaChange,
     onDisableDialogueChange,
+    onToolToggle,
     onEnableMemoryWritingChange,
     onEnableMemoryReadingChange,
-    onEnableWebSearchChange,
-    onEnableCalculatorChange,
     onStopPatternToggle,
 }: CharacterAdvancedSettingsEditorModalProps) {
     if (!isOpen) return null;
@@ -177,20 +187,23 @@ export function CharacterAdvancedSettingsEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
                             Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                         </div>
-                        <label className="editor-checkbox-label">
-                            <input type="checkbox" checked={enableWebSearch} onChange={(e) => onEnableWebSearchChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                            <span>Enable Web Search</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Allow this character to search the web during conversation.
-                        </div>
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input type="checkbox" checked={enableCalculator} onChange={(e) => onEnableCalculatorChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                            <span>Enable Calculator</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Allow this character to perform calculations during conversation.
-                        </div>
+                        {(Object.keys(tools) as tool[]).map(toolName => (
+                            <div key={toolName} style={{ marginBottom: '8px' }}>
+                                <label className="editor-checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={tools[toolName]}
+                                        onChange={() => onToolToggle(toolName)}
+                                        className="editor-checkbox-input"
+                                        disabled={isUploading}
+                                    />
+                                    <span>{TOOL_LABELS[toolName]}</span>
+                                </label>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                    {TOOL_DESCRIPTIONS[toolName]}
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
                     {/* Memory Toggles */}

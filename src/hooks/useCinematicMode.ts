@@ -56,7 +56,7 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
     if (protagonistId) {
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
-            if (msg.kind === 'chat' && msg.character.id === protagonistId) {
+            if (msg.messageType === 'chat' && msg.character.id === protagonistId) {
                 lastUserText = msg.textContent;
                 break;
             }
@@ -128,7 +128,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
     // Filter to only chat messages using discriminated union
     const chatMessages = useMemo(() => {
         if (!interactionData) return [];
-        return interactionData.interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
+        return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [interactionData]);
 
     // Portrait URL cache — memoized so it only rebuilds when chatMessages

@@ -19,7 +19,7 @@ export function useAmbientNarration(
     const generateAmbientNarration = useCallback(async (data: InteractionData, signal: AbortSignal): Promise<InteractionData | null> => {
         const recentMessages = data.interactionHistory
             .filter(m => m.character.id !== '__ambient_narrator__')
-            .filter((m): m is ChatMessage => m.kind === 'chat')
+            .filter((m): m is ChatMessage => m.messageType === 'chat')
             .slice(-8);
 
         const recentText = recentMessages.map(m => m.textContent).join('\n');
@@ -27,7 +27,7 @@ export function useAmbientNarration(
 
         const recentAmbient = data.interactionHistory
             .filter(m => m.character.id === '__ambient_narrator__')
-            .filter((m): m is ChatMessage => m.kind === 'chat')
+            .filter((m): m is ChatMessage => m.messageType === 'chat')
             .slice(-5)
             .map(m => m.textContent);
 

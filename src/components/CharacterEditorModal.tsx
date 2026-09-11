@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import type { LanguageModelContext } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../hooks/storage';
@@ -13,7 +13,7 @@ import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import './main.css';
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
 const DEFAULT_CHAT_PROBABILITY = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
@@ -26,6 +26,13 @@ const DEFAULT_DISABLE_THINK_PROMPT = 1;
 const DEFAULT_DISABLE_META_THINK = 1;
 const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
+
+const DEFAULT_TOOLS: Record<tool, boolean> = {
+    roll: true,
+    pick: true,
+    calculator: false,
+    web: false,
+};
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -85,10 +92,9 @@ export function CharacterEditorModal({
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(DEFAULT_DISABLE_META_THINK));
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
 
+    const [tools, setTools] = useState<Record<tool, boolean>>({ ...DEFAULT_TOOLS });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
     const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(false);
-    const [enableWebSearch, setEnableWebSearch] = useState<boolean>(false);
-    const [enableCalculator, setEnableCalculator] = useState<boolean>(false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>({});
 
@@ -113,10 +119,12 @@ export function CharacterEditorModal({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    // Track whether the modal was previously open and for which character,
-    // so sub-modals are only reset on a genuinely fresh open.
     const previousOpenRef = useRef(false);
     const previousCharacterIdRef = useRef<string | null>(null);
+
+    const handleToolToggle = useCallback((toolName: tool) => {
+        setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
+    }, []);
 
     const getModelContext = useCallback((): LanguageModelContext | undefined => {
         if (!selectedModel) return undefined;
@@ -193,10 +201,9 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setTools(existingCharacter.tools ?? { ...DEFAULT_TOOLS });
             setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
             setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
-            setEnableWebSearch(existingCharacter.enableWebSearch ?? false);
-            setEnableCalculator(existingCharacter.enableCalculator ?? false);
             setMemories(existingCharacter.memories ?? {});
             countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
             countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
@@ -215,8 +222,8 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setTools({ ...DEFAULT_TOOLS });
             setEnableMemoryWriting(false); setEnableMemoryReading(false);
-            setEnableWebSearch(false); setEnableCalculator(false);
             setMemories({});
             setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
         }
@@ -287,8 +294,8 @@ export function CharacterEditorModal({
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
+        setTools({ ...DEFAULT_TOOLS });
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
-        setEnableWebSearch(false); setEnableCalculator(false);
         setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
@@ -412,8 +419,9 @@ export function CharacterEditorModal({
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
-            enableMemoryWriting, enableMemoryReading,
-            enableWebSearch, enableCalculator,
+            tools: { ...tools },
+            enableMemoryWriting,
+            enableMemoryReading,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -534,10 +542,9 @@ export function CharacterEditorModal({
                 numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
                 numberOfMessagesToDisableMetaThinkInstructionsStr={numberOfMessagesToDisableMetaThinkInstructionsStr}
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
+                tools={tools}
                 enableMemoryWriting={enableMemoryWriting}
                 enableMemoryReading={enableMemoryReading}
-                enableWebSearch={enableWebSearch}
-                enableCalculator={enableCalculator}
                 selectedStopPatternIds={selectedStopPatternIds}
                 allSamplers={allSamplers}
                 isUploading={isUploading}
@@ -552,10 +559,9 @@ export function CharacterEditorModal({
                 onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}
                 onDisableMetaChange={setNumberOfMessagesToDisableMetaThinkInstructionsStr}
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
+                onToolToggle={handleToolToggle}
                 onEnableMemoryWritingChange={setEnableMemoryWriting}
                 onEnableMemoryReadingChange={setEnableMemoryReading}
-                onEnableWebSearchChange={setEnableWebSearch}
-                onEnableCalculatorChange={setEnableCalculator}
                 onStopPatternToggle={handleStopPatternToggle}
             />
 

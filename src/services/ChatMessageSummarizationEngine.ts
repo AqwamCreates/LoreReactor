@@ -21,7 +21,7 @@ export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
 ): Promise<string | null> {
-    const text = message.kind === 'chat' ? message.textContent : '';
+    const text = message.messageType === 'chat' ? message.textContent : '';
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
     const requestBody: Record<string, unknown> = {
         prompt,
@@ -39,7 +39,7 @@ export async function generateMessageSummary(
  * Check if a chat message already has a per-model summary for the given modelId.
  */
 function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
-    if (msg.kind !== 'chat') return false;
+    if (msg.messageType !== 'chat') return false;
     const chatMsg = msg as ChatMessage;
     return !!(chatMsg.modelTextContentSummaries?.[modelId]);
 }
@@ -57,7 +57,7 @@ export async function generateMissingSummaries(
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
     const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize = history.slice(0, cutoff).filter(m => m.kind === 'chat' && !hasModelSummary(m, modelId));
+    const toSummarize = history.slice(0, cutoff).filter(m => m.messageType === 'chat' && !hasModelSummary(m, modelId));
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, maxTokens);
@@ -76,7 +76,7 @@ async function compressChunk(
     maxTokens = 512,
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
-        `${m.character.name}: ${m.kind === 'chat' ? m.textContent : ''}`
+        `${m.character.name}: ${m.messageType === 'chat' ? m.textContent : ''}`
     ).join('\n\n');
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
     const requestBody: Record<string, unknown> = {

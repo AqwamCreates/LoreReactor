@@ -1,23 +1,22 @@
 // src/services/GenerationOrchestrator.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina } from '../hooks/characterLogic';
+import { consumeChatStamina, generateChatStamina, getEffectiveMaximumChatStamina, getEffectiveTools, isToolEnabled } from '../hooks/characterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
-import { getEffectiveEnableWebSearch, getEffectiveEnableCalculator } from '../hooks/characterLogic';
 import { executeTools } from './ToolExecutor';
 import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
 import { StreamingAccumulator } from './StreamingAccumulator';
 
-// ─── Result Types ────────────────────────────────────────────────────
+// ─── Result Types ───────────────────────────────────────────────────
 
 export interface TurnStats {
     numberOfRequests: number;
@@ -62,7 +61,7 @@ export interface TurnExecutionParams {
     callbacks?: TurnStreamCallbacks;
 }
 
-// ─── Internal Utilities ──────────────────────────────────────────────
+// ─── Internal Utilities ─────────────────────────────────────────────
 
 function regenerateStaminaForTurn(data: InteractionData, character: Character): InteractionData {
     const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
@@ -70,7 +69,7 @@ function regenerateStaminaForTurn(data: InteractionData, character: Character): 
 
     const prevMsg = findPreviousMessage(data, character.id);
     if (!prevMsg) return data;
-    if (prevMsg.kind !== 'chat' || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;
+    if (prevMsg.messageType !== 'chat' || prevMsg.remainingChatStamina === undefined || prevMsg.remainingChatStamina >= maxStamina) return data;
 
     const idx = data.interactionHistory.findIndex(m => m.id === prevMsg.id);
     if (idx === -1) return data;
@@ -80,7 +79,7 @@ function regenerateStaminaForTurn(data: InteractionData, character: Character): 
 }
 
 function getDynamicParagraphLimit(char: Character, data: InteractionData): number {
-    const max = char.maximumChatStamina ?? 4;
+    const max = getEffectiveMaximumChatStamina(char, data.Profile) ?? 4;
     if (data.participants.filter(p => p.id !== data.protagonist.id).length > 1) return max;
     const prev = [...data.interactionHistory].reverse().find(m => m.character.id === char.id);
     const ratio = Math.max(0, Math.min(1, (prev?.remainingChatStamina ?? max) / max));
@@ -92,10 +91,11 @@ async function processToolInvocations(
     character: Character,
     profile: InteractionData['Profile'],
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
-    const webSearchEnabled = getEffectiveEnableWebSearch(character, profile);
-    const calculatorEnabled = getEffectiveEnableCalculator(character, profile);
+    const effectiveTools = getEffectiveTools(character, profile);
 
-    if (!webSearchEnabled && !calculatorEnabled) return null;
+    // Check if any tool is enabled at all
+    const anyToolEnabled = Object.values(effectiveTools).some(v => v);
+    if (!anyToolEnabled) return null;
 
     const parser = new ToolInvocationParser();
     const result = parser.processChunk(rawText);
@@ -103,9 +103,9 @@ async function processToolInvocations(
     if (result.toolInvocations.length === 0) return null;
 
     const enabledInvocations = result.toolInvocations.filter(inv => {
-        if (inv.toolType === 'search') return webSearchEnabled;
-        if (inv.toolType === 'calculator') return calculatorEnabled;
-        return false;
+        // Map parser tool types to the tool type union
+        const toolName = inv.toolType as tool;
+        return effectiveTools[toolName] ?? false;
     });
 
     if (enabledInvocations.length === 0) return null;
@@ -134,7 +134,7 @@ function countParagraphs(text: string): number {
 
 function getProtagonistFileBase64s(data: InteractionData): string[] | undefined {
     const lastUserMsg = [...data.interactionHistory].reverse().find(
-        (m): m is import('../types').ChatMessage => m.character.id === data.protagonist.id && m.kind === 'chat'
+        (m): m is import('../types').ChatMessage => m.character.id === data.protagonist.id && m.messageType === 'chat'
     );
     if (lastUserMsg?.files?.length) return lastUserMsg.files;
     return undefined;
@@ -152,7 +152,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
     return { message: e.message || 'Unknown inference error', type: 'inference' };
 }
 
-// ─── Orchestrator ────────────────────────────────────────────────────
+// ─── Orchestrator ───────────────────────────────────────────────────
 
 export class GenerationOrchestrator {
     private languageModelEngine = getLanguageModelEngine();
@@ -191,7 +191,7 @@ export class GenerationOrchestrator {
             let accumulatedDisplayText = '';
             let finalBudgetData: BudgetData | null = null;
 
-            // ─── Shared stream callback factory ──────────────────────
+            // ─── Shared stream callback factory ─────────────────────
             const createStreamCallbacks = (
                 streamToolParser: ToolInvocationParser,
                 accumulator: StreamingAccumulator,
@@ -224,7 +224,7 @@ export class GenerationOrchestrator {
             });
 
             if (strat) {
-                // ─── Budget Strategy Path ────────────────────────────
+                // ─── Budget Strategy Path ───────────────────────────
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
                     const existing = runningModels[modelId];
                     if (existing?.port) return existing.port;
@@ -313,7 +313,7 @@ export class GenerationOrchestrator {
                     currentExistingText = toolResult.resumeText;
                 }
             } else {
-                // ─── Direct Model Path ───────────────────────────────
+                // ─── Direct Model Path ──────────────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }

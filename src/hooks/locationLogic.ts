@@ -278,7 +278,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                 const locationIndex = sampleInitialLocationForCharacter(locations, fallback);
                 if (locationIndex !== undefined) {
                     newHistory.push({
-                        kind: 'interaction',
+                        messageType: 'interaction',
                         id: uuidv4(),
                         character: { ...fallback },
                         locationIndex,
@@ -302,7 +302,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
             const locationIndex = sampleInitialLocationForCharacter(locations, picked);
             if (locationIndex !== undefined) {
                 newHistory.push({
-                    kind: 'interaction',
+                    messageType: 'interaction',
                     id: uuidv4(),
                     character: { ...picked },
                     locationIndex,

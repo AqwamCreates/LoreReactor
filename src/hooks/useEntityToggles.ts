@@ -47,7 +47,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
             // Check if this character has any actual chat messages
             const hasChatMessages = interactionData.interactionHistory.some(
-                m => m.character.id === charId && m.kind === 'chat'
+                m => m.character.id === charId && m.messageType === 'chat'
             );
 
             if (!hasChatMessages) {

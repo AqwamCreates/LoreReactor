@@ -4,13 +4,13 @@ import { toolStartSring, toolEndString } from "../stringList";
 
 const characterAgnosticTools = ['roll', 'pick']
 
-const characterSpecificTools = ['search', 'calculator'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+const characterSpecificTools = ['calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 
 /*
 
-search: For expressing curiosity or ignorance.
-
 calculator: For people who are capable of doing mental math or very serious about being accurate.
+
+web: For expressing curiosity or ignorance.
 
 */
 

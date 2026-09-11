@@ -1,11 +1,11 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from './storage';
-import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
+import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
@@ -425,7 +425,7 @@ export function createChatHistoryPrompt(
     const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
     
-    const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.kind === 'chat');
+    const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
 
@@ -491,7 +491,7 @@ export function createChatHistoryPrompt(
         }
     }
 
-    // ─── Location-scoped filtering ───────────────────────────────────
+    // ─── Location-scoped filtering ──────────────────────────────────
     let currentLocationIndex: number | undefined;
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         if (interactionHistory[i].locationIndex !== undefined) {
@@ -613,8 +613,7 @@ export async function buildPromptAndStopPatterns(
     const useTimeElapsed = profile?.useTimeElapsed;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
-    const enableWebSearch = getEffectiveEnableWebSearch(character, profile);
-    const enableCalculator = getEffectiveEnableCalculator(character, profile);
+    const effectiveTools = getEffectiveTools(character, profile);
     const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile);
     const enableMemoryWriting = getEffectiveEnableMemoryWriting(character, profile);
 
@@ -628,7 +627,7 @@ export async function buildPromptAndStopPatterns(
     const textContentArray: string[] = [];
 
     for (const msg of interactionHistory) {
-        if (msg.kind === 'chat') {
+        if (msg.messageType === 'chat') {
             characterIdArray.push(msg.character.id);
             textContentArray.push(msg.textContent);
         }
@@ -637,7 +636,7 @@ export async function buildPromptAndStopPatterns(
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
     const numberOfMessagesByParticipant = interactionHistory.filter(
-        msg => msg.character.id === characterId && msg.kind === 'chat'
+        msg => msg.character.id === characterId && msg.messageType === 'chat'
     ).length;
 
     const isCacheMoreThanLevelZero = (cacheLevel > 0);
@@ -976,24 +975,29 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
+    // TOOL INSTRUCTIONS BLOCK — dynamically built from effective tools
     const toolInstructions: string[] = [];
-    const enableTools = enableWebSearch || enableCalculator;
+    const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
-    if (enableTools) {
+    if (enabledToolNames.length > 0) {
         toolInstructions.push(`${contextStartString}${thinkStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
         toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${thinkEndString}${contextEndString}`);
 
-        if (enableWebSearch) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}search <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`);
-        }
+        const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
+            roll: `${contextStartString}${thinkStartString}To roll dice, I write ${toolStartSring}roll <dice notation>${toolEndString}. Examples: ${toolStartSring}roll 2d6+3${toolEndString}, ${toolStartSring}roll d20${toolEndString}, ${toolStartSring}roll 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
+            pick: `${contextStartString}${thinkStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`,
+            calculator: `${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`,
+            web: `${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`,
+        };
 
-        if (enableCalculator) {
-            toolInstructions.push(`${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`);
+        for (const toolName of enabledToolNames) {
+            const instruction = TOOL_INSTRUCTION_MAP[toolName];
+            if (instruction) toolInstructions.push(instruction);
         }
     }
 
-        // FATIGUE BLOCK
+    // FATIGUE BLOCK
     const fatigueLines: string[] = [];
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
@@ -1294,7 +1298,7 @@ export async function prepareRequestBody(
     }
 
     const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
-        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.kind === 'chat'
+        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.messageType === 'chat'
     );
 
     if (lastUserMsg?.files?.length) {
@@ -1326,7 +1330,7 @@ export function convertIdsToDisplayNames(text: string, interactionData: Interact
     let result = text;
 
     if (stripThinkTokens) {
-        result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
+        result = result.replace(/[\s\S]*?<\/think>/g, '');
         result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
         result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
     }
@@ -1367,7 +1371,7 @@ export function createInteractionMessage(
 ): InteractionMessage {
     const now = Date.now();
     return {
-        kind: 'interaction',
+        messageType: 'interaction',
         id: uuidv4(),
         character: { ...character },
         remainingChatStamina: options?.remainingChatStamina,
@@ -1388,7 +1392,7 @@ export function createChatMessage(interactionData: InteractionData, character: C
     const now = Date.now();
 
     return {
-        kind: 'chat',
+        messageType: 'chat',
         id: uuidv4(),
         character: { ...character },
         textContent,
@@ -1420,8 +1424,8 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
     return {
         ...interactionData,
         interactionHistory: interactionHistory.map((message, idx) => {
-            if (idx === index && message.kind === 'chat') return { ...message, textContent: newText, kvCachePath: undefined };
-            if (idx > index && message.kind === 'chat') return { ...message, kvCachePath: undefined };
+            if (idx === index && message.messageType === 'chat') return { ...message, textContent: newText, kvCachePath: undefined };
+            if (idx > index && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
             return message;
         })
     };
@@ -1433,7 +1437,7 @@ export function deleteInteractionMessage(interactionData: InteractionData, messa
     if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
     const newHistory = interactionHistory.filter(m => m.id !== messageId);
     const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex && message.kind === 'chat') return { ...message, kvCachePath: undefined };
+        if (idx >= targetIndex && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
         return message;
     });
     return { newHistory: finalHistory, invalidatedIds: [messageId] };

@@ -121,7 +121,7 @@ function detectNamePermissionSequence(
     return false;
   }
 
-  if (previousMessageBySameCharacter.kind !== 'chat') return false;
+  if (previousMessageBySameCharacter.messageType !== 'chat') return false;
 
   // 2. Check if that previous message contained a permission question
   const wasPermissionAsked = matchesAnyPattern(
@@ -141,7 +141,7 @@ function detectNamePermissionSequence(
 }
 
 export function detectName(interactionHistory: HistoryMessage[], characterId: string, characterName: string, text: string) {
-  const nameQuestionRecentlyAsked = interactionHistory.some(msg => msg.kind === 'chat' && detectNameQuestion(msg.textContent));
+  const nameQuestionRecentlyAsked = interactionHistory.some(msg => msg.messageType === 'chat' && detectNameQuestion(msg.textContent));
 
   if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
 

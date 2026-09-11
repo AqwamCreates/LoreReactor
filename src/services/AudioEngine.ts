@@ -262,7 +262,7 @@ export class AudioEngine {
         const history = interactionData.interactionHistory;
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
-            if (msg.kind === 'chat' && (msg as ChatMessage).textContent) {
+            if (msg.messageType === 'chat' && (msg as ChatMessage).textContent) {
                 return (msg as ChatMessage).textContent;
             }
         }

@@ -36,7 +36,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
     const safeAutoSave = useCallback(async (data: InteractionData | null) => {
         if (!data) return;
-        const msgs = data.interactionHistory.filter(m => m.kind === 'chat');
+        const msgs = data.interactionHistory.filter(m => m.messageType === 'chat');
         if (msgs.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
         try { await saveRawInteractionData(data); } catch (e) { console.error('Auto-save failed:', e); }
     }, []);

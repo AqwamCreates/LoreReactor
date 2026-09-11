@@ -1,11 +1,38 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, tool } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
 
+const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
+    roll: true,
+    pick: true,
+    calculator: false,
+    web: false,
+};
+
+const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
+    roll: 0,
+    pick: 0,
+    calculator: 0,
+    web: 0,
+};
+
 function ensureId(obj: Record<string, unknown>): string {
     return (typeof obj.id === 'string' && obj.id.length > 0) ? obj.id : uuidv4();
+}
+
+function parseToolsRecord(raw: unknown, defaults: Record<tool, boolean>): Record<tool, boolean>;
+function parseToolsRecord(raw: unknown, defaults: Record<tool, number>): Record<tool, number>;
+function parseToolsRecord(raw: unknown, defaults: Record<string, boolean | number>): Record<string, boolean | number> {
+    if (!raw || typeof raw !== 'object') return { ...defaults };
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults)) {
+        if (key in (raw as Record<string, unknown>)) {
+            (result as Record<string, unknown>)[key] = (raw as Record<string, unknown>)[key];
+        }
+    }
+    return result;
 }
 
 function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
@@ -32,8 +59,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         numberOfMessagesToDisableThinkPrompt: (c.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
         numberOfMessagesToDisableMetaThinkInstructions: (c.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
         numberOfMessagesToDisableDialoguePrompt: (c.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
-        enableWebSearch: (c.enableWebSearch as boolean) ?? false,
-        enableCalculator: (c.enableCalculator as boolean) ?? false,
+        tools: parseToolsRecord(c.tools, DEFAULT_CHARACTER_TOOLS) as Record<tool, boolean>,
         enableMemoryWriting: (c.enableMemoryWriting as boolean) ?? false,
         enableMemoryReading: (c.enableMemoryReading as boolean) ?? false,
         memories: {},
@@ -171,8 +197,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         narrateBoldedText: (p.narrateBoldedText as boolean) ?? false,
         narrateItalicizedText: (p.narrateItalicizedText as boolean) ?? false,
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
-        enableWebSearch: (p.enableWebSearch as number) ?? 0,
-        enableCalculator: (p.enableCalculator as number) ?? 0,
+        tools: parseToolsRecord(p.tools, DEFAULT_PROFILE_TOOLS) as Record<tool, number>,
         enableMemoryWriting: (p.enableMemoryWriting as number) ?? 0,
         enableMemoryReading: (p.enableMemoryReading as number) ?? 0,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location'],

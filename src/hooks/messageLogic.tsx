@@ -26,7 +26,7 @@ export async function markLastMessageAsPartial(currentChat: InteractionData): Pr
 
     // Only mark AI messages (not user messages) as partial
     if (lastMsg.character.id === currentChat.protagonist.id) return currentChat;
-    if (lastMsg.kind !== 'chat' || lastMsg.isPartial) return currentChat;
+    if (lastMsg.messageType !== 'chat' || lastMsg.isPartial) return currentChat;
 
     const updatedHistory = [...history];
     updatedHistory[lastIndex] = { ...lastMsg, isPartial: true };
@@ -49,7 +49,7 @@ export async function clearPartialFlag(currentChat: InteractionData, messageId: 
     if (index === -1) return currentChat;
 
     const msg = currentChat.interactionHistory[index];
-    if (msg.kind !== 'chat' || !msg.isPartial) return currentChat;
+    if (msg.messageType !== 'chat' || !msg.isPartial) return currentChat;
 
     const updatedHistory = [...currentChat.interactionHistory];
     updatedHistory[index] = { ...msg, isPartial: false };

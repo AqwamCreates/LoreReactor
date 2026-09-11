@@ -1,12 +1,19 @@
 // src/components/CharacterCardImportModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
-import type { Character, Context, Sampler } from '../types';
+import type { Character, Context, Sampler, tool } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText } from '../hooks/chatTraitsDetection';
 import { uploadCharacterImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
+
+const DEFAULT_TOOLS: Record<tool, boolean> = {
+    roll: true,
+    pick: true,
+    calculator: false,
+    web: false,
+};
 
 interface CharacterCardImportModalProps {
     isOpen: boolean;
@@ -124,8 +131,7 @@ export function CharacterCardImportModal({
                 chatImpatienceSensitivity,
                 memoryRetentionWeight,
                 contextSensitivity,
-                enableWebSearch: false,
-                enableCalculator: false,
+                tools: { ...DEFAULT_TOOLS },
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
                 memories: {},

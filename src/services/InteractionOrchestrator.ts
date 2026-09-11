@@ -11,7 +11,7 @@ type TurnExecutor = (data: InteractionData, character: Character, signal: AbortS
  * Check if a HistoryMessage has text content (is a spoken message).
  */
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
-    return msg.kind === 'chat';
+    return msg.messageType === 'chat';
 }
 
 /**
@@ -63,7 +63,7 @@ function createSilentInteraction(
 ): InteractionMessage {
     const now = Date.now();
     return {
-        kind: 'interaction',
+        messageType: 'interaction',
         id: uuidv4(),
         character: { ...character },
         remainingChatStamina: previousStamina,

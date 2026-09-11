@@ -171,6 +171,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
+export type tool = "roll" | "pick" | "calculator" | "web"
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;
@@ -192,8 +193,7 @@ export interface Character extends ObjectData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
-  enableWebSearch: boolean,
-  enableCalculator: boolean,
+  tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   memories: Record<string, Memory[]>;
@@ -220,8 +220,7 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
-  enableWebSearch: boolean,
-  enableCalculator: boolean,
+  tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   memories: Record<string, string[]>;
@@ -242,11 +241,11 @@ interface MessageBase {
 }
 
 export interface InteractionMessage extends MessageBase {
-  kind: 'interaction';
+  messageType: 'interaction';
 }
 
 export interface ChatMessage extends MessageBase {
-  kind: 'chat';
+  messageType: 'chat';
   textContent: string;
   files?: string[];
   isPartial?: boolean;
@@ -270,11 +269,11 @@ interface RawMessageBase {
 }
 
 export interface RawInteractionMessage extends RawMessageBase {
-  kind: 'interaction';
+  messageType: 'interaction';
 }
 
 export interface RawChatMessage extends RawMessageBase {
-  kind: 'chat';
+  messageType: 'chat';
   textContent: string;
   files?: string[];
   isPartial?: boolean;
@@ -498,8 +497,7 @@ export interface Profile extends ObjectData {
   narrateBoldedText: boolean;
   narrateItalicizedText: boolean;
   stripThinkTokens: boolean;
-  enableWebSearch: number,
-  enableCalculator: number,
+  tools: Record<tool, number>;
   enableMemoryWriting: number;
   enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.
@@ -534,8 +532,7 @@ export interface RawProfile extends RawData {
   narrateBoldedText: boolean;
   narrateItalicizedText: boolean;
   stripThinkTokens: boolean;
-  enableWebSearch: number,
-  enableCalculator: number,
+  tools: Record<tool, number>;
   enableMemoryWriting: number;
   enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.

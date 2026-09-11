@@ -771,7 +771,7 @@ function App() {
                         <header className="app-header"><div className="header-content"><div className="header-top">
                         {interactionData && InteractionMessages.length > 5 && (
                             <ChatMinimap
-                                messages={InteractionMessages.filter((m): m is ChatMessage => m.kind === 'chat')}
+                                messages={InteractionMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
                                 containerRef={chatHistoryRef}
                                 currentCharacterId={currentCharacter?.id}
                             />
