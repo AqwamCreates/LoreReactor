@@ -19,7 +19,7 @@ import { AIRecommendationModal } from './AIRecommendationModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
-import { InteractionBranchingModal } from './InteractionBranchingModal';
+import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../store/useSessionStore';
@@ -483,7 +483,7 @@ export function AppModals({
                     onOpenImportData={modals.importData.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenChatBranching={modals.branchingVisualization.open}
+                    onOpenAlternateTimelines={modals.branchingVisualization.open}
                 />
             )}
 
@@ -559,7 +559,7 @@ export function AppModals({
 
             {/* Interaction Branching Visualization */}
             {modals.branchingVisualization.isOpen && (
-                <InteractionBranchingModal
+                <AlternateTimelinesModal
                     isOpen={modals.branchingVisualization.isOpen}
                     onClose={modals.branchingVisualization.close}
                     currentInteractionId={interactionData?.id ?? ''}

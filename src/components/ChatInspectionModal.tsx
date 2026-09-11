@@ -130,6 +130,42 @@ function getRelativeTime(timestamp: number): string {
     return new Date(timestamp).toLocaleDateString();
 }
 
+/**
+ * Haversine distance in km between two coordinate pairs.
+ */
+function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+/**
+ * Get distance between two locations.
+ * Prioritizes author-defined locationDistances, falls back to Haversine from lat/lng.
+ * Returns null if neither source is available.
+ */
+function getLocationDistanceKm(locA: Location, locB: Location): number | null {
+    // Priority 1: explicit locationDistances
+    const explicitAB = locA.locationDistances?.[locB.id];
+    if (explicitAB !== undefined) return explicitAB;
+
+    const explicitBA = locB.locationDistances?.[locA.id];
+    if (explicitBA !== undefined) return explicitBA;
+
+    // Priority 2: Haversine from coordinates
+    if (locA.latitude != null && locA.longitude != null &&
+        locB.latitude != null && locB.longitude != null) {
+        return haversineDistanceKm(locA.latitude, locA.longitude, locB.latitude, locB.longitude);
+    }
+
+    return null;
+}
+
 function useCharacterPortraits(characters: Character[]): Map<string, string | null> {
     const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
 
@@ -249,13 +285,11 @@ export function ChatInspectionModal({
 
         const ITERATIONS = 80;
         for (let iter = 0; iter < ITERATIONS; iter++) {
+            // Distance-based attraction: use locationDistances first, fall back to Haversine
             for (let i = 0; i < chat.locations.length; i++) {
-                const locA = chat.locations[i];
-                const distances = locA.locationDistances || {};
-
-                for (const [targetId, distKm] of Object.entries(distances)) {
-                    const j = locIndexMap.get(targetId);
-                    if (j === undefined || i === j) continue;
+                for (let j = i + 1; j < chat.locations.length; j++) {
+                    const distKm = getLocationDistanceKm(chat.locations[i], chat.locations[j]);
+                    if (distKm === null) continue;
 
                     const dx = positions[j].x - positions[i].x;
                     const dy = positions[j].y - positions[i].y;
@@ -279,6 +313,7 @@ export function ChatInspectionModal({
                 }
             }
 
+            // Minimum separation repulsion
             for (let i = 0; i < chat.locations.length; i++) {
                 for (let j = i + 1; j < chat.locations.length; j++) {
                     const dx = positions[j].x - positions[i].x;
@@ -327,35 +362,36 @@ export function ChatInspectionModal({
             if (loc.locationBindings) {
                 const isSourceActive = loc.id === currentLoc?.id || (locParticipants.get(loc.id)?.length ?? 0) > 0;
                 for (const boundId of loc.locationBindings) {
-                    if (chat.locations.some(l => l.id === boundId)) {
-                        const distKm = loc.locationDistances?.[boundId];
-                        const label = distKm !== undefined ? `${distKm}km` : undefined;
+                    const boundLoc = chat.locations.find(l => l.id === boundId);
+                    if (!boundLoc) continue;
 
-                        graphEdges.push({
-                            id: `e-${edgeIdx++}`,
-                            source: loc.id,
-                            target: boundId,
-                            type: 'smoothstep',
-                            animated: isSourceActive,
-                            label,
-                            labelStyle: {
-                                fontSize: '0.55rem',
-                                fill: isSourceActive ? '#fbbf24' : 'rgba(255,255,255,0.4)',
-                                fontWeight: 500,
-                            },
-                            labelBgStyle: {
-                                fill: 'var(--social-bg, #1a1a2e)',
-                                fillOpacity: 0.8,
-                                rx: 4, ry: 4,
-                            },
-                            labelBgPadding: [4, 2] as [number, number],
-                            style: {
-                                stroke: isSourceActive ? '#f59e0b' : 'rgba(255, 255, 255, 0.12)',
-                                strokeWidth: isSourceActive ? 2 : 1,
-                                opacity: isSourceActive ? 0.9 : 0.3,
-                            },
-                        });
-                    }
+                    const distKm = getLocationDistanceKm(loc, boundLoc);
+                    const label = distKm !== null ? `${Math.round(distKm)}km` : undefined;
+
+                    graphEdges.push({
+                        id: `e-${edgeIdx++}`,
+                        source: loc.id,
+                        target: boundId,
+                        type: 'smoothstep',
+                        animated: isSourceActive,
+                        label,
+                        labelStyle: {
+                            fontSize: '0.55rem',
+                            fill: isSourceActive ? '#fbbf24' : 'rgba(255,255,255,0.4)',
+                            fontWeight: 500,
+                        },
+                        labelBgStyle: {
+                            fill: 'var(--social-bg, #1a1a2e)',
+                            fillOpacity: 0.8,
+                            rx: 4, ry: 4,
+                        },
+                        labelBgPadding: [4, 2] as [number, number],
+                        style: {
+                            stroke: isSourceActive ? '#f59e0b' : 'rgba(255, 255, 255, 0.12)',
+                            strokeWidth: isSourceActive ? 2 : 1,
+                            opacity: isSourceActive ? 0.9 : 0.3,
+                        },
+                    });
                 }
             }
         }

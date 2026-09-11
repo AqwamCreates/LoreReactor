@@ -670,7 +670,7 @@ function App() {
         handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [handleDeleteChat]);
 
-    // ─── Rename chat wrapper for InteractionBranchingModal ───────────
+    // ─── Rename chat wrapper for AlternateTimelinesModal ───────────
     const handleRenameChat = useCallback(async (id: string, name: string) => {
         const loaded = await loadRawInteractionData(id, allCharacters);
         if (!loaded) { addToast('Chat not found.', 'error'); return; }

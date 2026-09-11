@@ -28,10 +28,10 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         description: 'Generate new characters, contexts, locations, audio tracks, prompt blocks, and worlds using your loaded model.',
     },
     {
-        id: 'interaction-branching',
+        id: 'alternate-timelines',
         icon: '🌿',
-        label: 'Interaction Branching Visualization',
-        description: 'View and manage the branching timeline tree of the current chat session.',
+        label: 'Alternate Timelines',
+        description: 'View and manage the timeline tree of the current chat session.',
     },
     {
         id: 'import-character-card',
@@ -89,7 +89,7 @@ export function SettingsModal({
             case 'ai-recommendation':
                 onOpenAIRecommendation();
                 break;
-            case 'interaction-branching':
+            case 'alternate-timelines':
                 onOpenChatBranching();
                 break;
             case 'import-character-card':

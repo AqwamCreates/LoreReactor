@@ -1,4 +1,4 @@
-// src/components/InteractionBranchingModal.tsx
+// src/components/AlternateTimelinesModal.tsx
 import { useMemo, useState } from 'react';
 import type { InteractionData } from '../types';
 import {
@@ -15,7 +15,7 @@ import * as dagre from '@dagrejs/dagre';
 import '@xyflow/react/dist/style.css';
 import './main.css';
 
-interface InteractionBranchingModalProps {
+interface AlternateTimelinesModalProps {
     isOpen: boolean;
     onClose: () => void;
     currentInteractionId: string;
@@ -109,6 +109,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
+                pointerEvents: 'auto',
             }}
         >
             <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: 'none' }} />
@@ -139,7 +140,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                         }}
                     />
                     <button
-                        onClick={data.onRenameSubmit}
+                        onClick={e => { e.stopPropagation(); data.onRenameSubmit(); }}
                         style={{
                             fontSize: '0.75rem',
                             cursor: 'pointer',
@@ -147,12 +148,14 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                             border: 'none',
                             color: '#4ade80',
                             padding: '2px 4px',
+                            position: 'relative',
+                            zIndex: 10,
                         }}
                     >
                         ✓
                     </button>
                     <button
-                        onClick={data.onRenameCancel}
+                        onClick={e => { e.stopPropagation(); data.onRenameCancel(); }}
                         style={{
                             fontSize: '0.75rem',
                             cursor: 'pointer',
@@ -160,6 +163,8 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                             border: 'none',
                             color: '#ef4444',
                             padding: '2px 4px',
+                            position: 'relative',
+                            zIndex: 10,
                         }}
                     >
                         ✕
@@ -197,6 +202,8 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                             opacity: 0.6,
                             padding: '2px 4px',
                             flexShrink: 0,
+                            position: 'relative',
+                            zIndex: 10,
                         }}
                         title="Rename"
                     >
@@ -222,7 +229,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
             </div>
 
             {/* Action buttons */}
-            <div style={{ display: 'flex', gap: '4px', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', gap: '4px', marginTop: 'auto', position: 'relative', zIndex: 10 }}>
                 <button
                     onClick={e => {
                         e.stopPropagation();
@@ -345,7 +352,7 @@ function getDescendantIds(childMap: Map<string, string[]>, startId: string): Set
 
 // ─── Component ───────────────────────────────────────────────────────
 
-export function InteractionBranchingModal({
+export function AlternateTimelinesModal({
     isOpen,
     onClose,
     currentInteractionId,
@@ -354,7 +361,7 @@ export function InteractionBranchingModal({
     onDeleteChat,
     onInspectChat,
     onRenameChat,
-}: InteractionBranchingModalProps) {
+}: AlternateTimelinesModalProps) {
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -429,15 +436,14 @@ export function InteractionBranchingModal({
             const hasChildren = children.length > 0;
             const descendants = getDescendantIds(childMap, interaction.id);
 
-            const canDelete = !hasChildren && interaction.id !== currentInteractionId;
+            // Can delete any leaf node (no children), regardless of whether it's the active chat
+            const canDelete = !hasChildren;
 
-            const deleteTooltip = interaction.id === currentInteractionId
-                ? 'Cannot delete the active chat from here'
-                : hasChildren
-                    ? `Cannot delete: has ${descendants.size} dependent branch${descendants.size !== 1 ? 'es' : ''}`
-                    : confirmDeleteId === interaction.id
-                        ? 'Tap again to confirm'
-                        : 'Delete this branch';
+            const deleteTooltip = hasChildren
+                ? `Cannot delete: has ${descendants.size} dependent branch${descendants.size !== 1 ? 'es' : ''}`
+                : confirmDeleteId === interaction.id
+                    ? 'Tap again to confirm'
+                    : 'Delete this branch';
 
             return {
                 id: interaction.id,
