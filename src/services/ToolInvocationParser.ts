@@ -2,6 +2,20 @@
 
 import { toolStartSring, toolEndString } from "../stringList";
 
+const characterAgnosticTools = ['roll', 'pick']
+
+const characterSpecificTools = ['search', 'calculator'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+
+/*
+
+search: For expressing curiosity or ignorance.
+
+calculator: For people who are capable of doing mental math or very serious about being accurate.
+
+*/
+
+const validTools = [...characterAgnosticTools, ...characterSpecificTools]
+
 export interface ToolInvocation {
     /** The full matched string including markers, e.g. "${toolStartSring}search: weather in Tokyo:tool|" */
     rawMatch: string;
@@ -49,11 +63,7 @@ export class ToolInvocationParser {
 
         while (i < input.length) {
             if (this.state === 'NORMAL') {
-                    const debugIdx = input.indexOf(':|');
-    if (debugIdx !== -1 && debugIdx < input.length - 10) {
-        console.log('[PARSER DEBUG] Found ":|" at index', debugIdx, 
-            'surrounding bytes:', JSON.stringify(input.slice(debugIdx, debugIdx + 30)));
-    }
+
                 // Look for start marker
                 const startIdx = input.indexOf(toolStartSring, i);
 
@@ -217,5 +227,5 @@ function parseToolContent(content: string): ToolInvocation | null {
 }
 
 function isValidToolType(type: string): boolean {
-    return type === 'search' || type === 'calculator';
+    return validTools.includes(type);
 }

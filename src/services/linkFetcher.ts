@@ -273,8 +273,6 @@ function extractStructuredContent(text: string): string {
             continue;
         }
 
-        if (trimmed.length > 200) continue;
-
         kept.push(trimmed);
     }
 

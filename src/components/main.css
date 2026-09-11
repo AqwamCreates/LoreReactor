@@ -342,6 +342,7 @@
 }
 
 .edit-textarea {
+    text-align: inherit;
     display: block;
     width: 100%;
     min-width: 0;
