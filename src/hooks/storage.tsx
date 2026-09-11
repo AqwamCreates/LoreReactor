@@ -700,7 +700,7 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         characterBindings: rawLocation.characterBindings,
         globalWeight: rawLocation.globalWeight ?? 1,
         characterWeights: rawLocation.characterWeights ?? {},
-        Latitude: rawLocation.latitude ?? 0,
+        latitude: rawLocation.latitude ?? 0,
         longitude: rawLocation.longitude ?? 0,
         locationDistances: rawLocation.locationDistances?? {},
         useBase64Encoding: rawLocation.useBase64Encoding ?? false,

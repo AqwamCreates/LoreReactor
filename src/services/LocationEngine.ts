@@ -40,8 +40,10 @@ export function getLocalTimeFromCoordinates(latitude: number, longitude: number)
 
     const dt = DateTime.now().setZone(timezones[0]);
     if (!dt.isValid) return null;
+    const seconds = dt.toUnixInteger()
+    const milliseconds = seconds * 1000
 
-    return dt.toUnixInteger();
+    return milliseconds;
 }
 
 export async function fetchCurrentWeather(latitude: number, longitude: number, apiKey: string): Promise<string | null> {

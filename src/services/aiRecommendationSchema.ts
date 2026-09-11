@@ -59,6 +59,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
     "characterBindings": ["character name or ID strings"],
     "globalWeight": "number (0-10, default 1)", "characterWeights": {"character name or ID": weight},
+    "latitude": "number (-90 to 90, optional, real-world latitude for local weather and time)",
+    "longitude": "number (-180 to 180, optional, real-world longitude for local weather and time)",
     "locationDistances": {"location name or ID": "distance in km (number)"},
     "useBase64Encoding": "boolean (default false)"
   }]`);
@@ -95,9 +97,12 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     if (includeProfile) {
         parts.push(`  "profile": {
     "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
     "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",
+    "forceNoLocationImageInjection": "boolean (default false)",
     "useCurrentDateAndTime": "boolean (default false)", "useWeather": "boolean (default false)",
+    "weatherApiKey": "string (OpenWeather API key, required if useWeather is true)",
     "useTimeElapsed": "boolean (default false)",
     "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
     "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
@@ -112,7 +117,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "stripThinkTokens": "boolean (default true)",
     "enableWebSearch": "number (0 or 1, default 0)", "enableCalculator": "number (0 or 1, default 0)",
     "enableMemoryWriting": "number (0 or 1, default 0)", "enableMemoryReading": "number (0 or 1, default 0)",
-    "inputStrategy": ["PromptBlockType array"],
+    "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. Built-in types: 'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]
   }`);
     }

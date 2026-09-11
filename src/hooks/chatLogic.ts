@@ -49,7 +49,7 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const tokenEngine = getLanguageModelEngine();
 
 function getDateAndTimeString(localTimestamp: number): string {
-    const dateAndTime = new Date(localTimestamp * 1000);
+    const dateAndTime = new Date(localTimestamp);
     return dateAndTime.toLocaleString('en-US', {
         weekday: 'long',
         year: 'numeric',
