@@ -26,8 +26,16 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     coin: 'Allow this character to flip a coin during conversation.',
     dice: 'Allow this character to roll dice (e.g. 2d6+3) during conversation.',
     random: 'Allow this character to generate random numbers during conversation.',
+    rng: 'Allow this character to roll on named RNG tables defined in contexts.',
+    timer: 'Allow this character to set, check, and manage countdown timers.',
+    stopwatch: 'Allow this character to start, pause, resume, and stop stopwatches.',
     calculator: 'Allow this character to perform calculations during conversation.',
     web: 'Allow this character to search the web during conversation.',
+    lookup: 'Allow this character to search contexts and lore by keyword.',
+    map: 'Allow this character to check distances between locations.',
+    audio: 'Allow this character to play and stop audio tracks during conversation.',
+    note: 'Allow this character to save, retrieve, and manage persistent notes.',
+    inventory: 'Allow this character to add, remove, set, and list inventory items.',
 };
 
 interface CharacterAdvancedSettingsEditorModalProps {

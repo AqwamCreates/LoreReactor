@@ -78,6 +78,18 @@ function getDateAndTimeString(localTimestamp: number): string {
     });
 }
 
+function formatTimerDuration(ms: number): string {
+    const totalSeconds = Math.floor(Math.abs(ms) / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
+}
+
 /**
  * Select the best per-model summary for the current model.
  * Returns the summary generated for this exact modelId if available,
@@ -897,7 +909,7 @@ export async function buildPromptAndStopPatterns(
         locationLines.push(endOfLocationLine);
     }
 
-    // INVENTORY BLOCK
+    // INVENTORY / NOTES / TIMERS / STOPWATCHES BLOCK
     const inventoryLines: string[] = [];
 
     // Find the latest message with inventory data for this character
@@ -911,9 +923,56 @@ export async function buildPromptAndStopPatterns(
     }
 
     if (latestInventory && Object.keys(latestInventory).length > 0) {
-        const inventoryEntries = Object.entries(latestInventory);
-        const formattedEntries = inventoryEntries.map(([key, value]) => `${key}: ${value}`).join('\n');
-        inventoryLines.push(`${contextStartString}[Current Inventory]\n${formattedEntries}${contextEndString}`);
+        const now = Date.now();
+
+        // Separate internal keys from user-visible inventory
+        const userInventoryEntries: string[] = [];
+        let notes: Record<string, string> = {};
+        let timers: { name: string; targetTimestamp: number }[] = [];
+        let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
+
+        for (const [key, value] of Object.entries(latestInventory)) {
+            if (key === '__notes__') {
+                try { notes = JSON.parse(value as string); } catch { /* ignore */ }
+            } else if (key === '__timers__') {
+                try { timers = JSON.parse(value as string); } catch { /* ignore */ }
+            } else if (key === '__stopwatches__') {
+                try { stopwatches = JSON.parse(value as string); } catch { /* ignore */ }
+            } else {
+                userInventoryEntries.push(`${key}: ${value}`);
+            }
+        }
+
+        // User-visible inventory items
+        if (userInventoryEntries.length > 0) {
+            inventoryLines.push(`${contextStartString}[Current Inventory]\n${userInventoryEntries.join('\n')}${contextEndString}`);
+        }
+
+        // Notes
+        const noteEntries = Object.entries(notes);
+        if (noteEntries.length > 0) {
+            const formattedNotes = noteEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
+            inventoryLines.push(`${contextStartString}[Active Notes]\n${formattedNotes}${contextEndString}`);
+        }
+
+        // Timers — compute live status
+        if (timers.length > 0) {
+            const timerStatuses = timers.map(t => {
+                const remaining = t.targetTimestamp - now;
+                return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatTimerDuration(remaining)} remaining`;
+            });
+            inventoryLines.push(`${contextStartString}[Active Timers]\n${timerStatuses.join('\n')}${contextEndString}`);
+        }
+
+        // Stopwatches — compute live elapsed
+        if (stopwatches.length > 0) {
+            const swStatuses = stopwatches.map(s => {
+                const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
+                const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
+                return `${s.name}: ${formatTimerDuration(elapsed)} (${status})`;
+            });
+            inventoryLines.push(`${contextStartString}[Active Stopwatches]\n${swStatuses.join('\n')}${contextEndString}`);
+        }
     }
 
     let latitude: number | undefined = location?.latitude;
