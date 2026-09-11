@@ -308,7 +308,7 @@ export function AudioTrackEditorModal({
                                     className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`}
                                     style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}
                                 >
-                                    {isPreviewPlaying ? '⏹ Stop' : '▶ Play'}
+                                    {isPreviewPlaying ? '⏹' : '▶'}
                                 </button>
                                 <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
                                     {isPreviewPlaying ? 'Playing...' : 'Click to preview at current volume & loop settings'}

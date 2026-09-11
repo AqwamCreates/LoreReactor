@@ -677,7 +677,7 @@
 .context-bar {
     display: flex;
     gap: clamp(4px, 0.6vw, 8px);
-    padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 2px clamp(10px, 1.5vw, 16px);
+    padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 5px clamp(10px, 1.5vw, 16px);
     background: var(--bg);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
@@ -858,6 +858,8 @@
 }
 
 .send-button {
+    width: 48px;
+    min-width: 48px;
     cursor: pointer;
     white-space: nowrap;
     display: flex;
@@ -865,7 +867,7 @@
     justify-content: center;
     font-size: 0.875rem;
     font-weight: bold;
-    padding: 0 clamp(12px, 2vw, 20px);
+    padding: 0;
     margin-bottom: 0;
     border-radius: 12px;
     min-height: 44px;
@@ -875,11 +877,11 @@
     box-sizing: border-box;
     background: var(--accent-bg);
     color: var(--accent);
-    border: 2px solid transparent;
+    border: none;
 }
 
 .send-button:hover:not(:disabled) {
-    border-color: var(--accent-border);
+    box-shadow: 0 0 0 2px var(--accent-border);
 }
 
 .send-button-disabled {
@@ -2846,6 +2848,12 @@
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     z-index: 40;
     position: relative;
+}
+
+.mode-cinematic .view-mode-toggle.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
 }
 
 .mode-cinematic .view-mode-toggle:hover {

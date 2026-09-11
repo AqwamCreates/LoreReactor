@@ -74,7 +74,7 @@ export function ChatInput({
                     onClick={isLoading ? onStopGeneration : onSend}
                     disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)}
                     className={`send-button ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
-                >{isLoading ? '⏹ Stop' : !isModelReady ? '⏳ Wait' : 'Send'}</button>
+                >{isLoading ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
             </div>
         </div>
     );
