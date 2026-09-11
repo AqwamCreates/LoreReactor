@@ -21,11 +21,13 @@
     "onnxruntime-web": "^1.29.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "tz-lookup": "^6.1.25",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/cors": "^2.8.19",
+    "@types/luxon": "^3.7.5",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

@@ -1,5 +1,5 @@
 // src/services/LocationEngine.ts
-import { find } from 'geo-tz';
+import tzlookup from 'tz-lookup';
 import { DateTime } from 'luxon';
 
 function degreesToCompass(degrees: number): string {
@@ -30,20 +30,28 @@ export async function getLocation(): Promise<{ latitude: number; longitude: numb
     }
 }
 
+
 /**
- * Get accurate local time string from coordinates using IANA timezone database.
- * Handles DST, political timezone boundaries, and half-hour offsets correctly.
+ * Returns the current local time in epoch milliseconds for a given coordinate set.
+ * Safe for both browser and Node.js environments.
  */
 export function getLocalTimeFromCoordinates(latitude: number, longitude: number): number | null {
-    const timezones = find(latitude, longitude);
-    if (!timezones || timezones.length === 0) return null;
+  // Validate coordinates
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return null;
+    }
 
-    const dt = DateTime.now().setZone(timezones[0]);
-    if (!dt.isValid) return null;
-    const seconds = dt.toUnixInteger()
-    const milliseconds = seconds * 1000
+    try {
+        // Returns an IANA timezone string (e.g., "America/New_York")
+        const timezone = tzlookup(latitude, longitude);
+        const dt = DateTime.now().setZone(timezone);
+        if (!dt.isValid) return null;
 
-    return milliseconds;
+        return dt.toMillis();
+    } catch {
+        // tz-lookup throws an error if coordinates fall outside defined boundaries (e.g., oceans/Antarctica)
+        return null;
+    }
 }
 
 export async function fetchCurrentWeather(latitude: number, longitude: number, apiKey: string): Promise<string | null> {
