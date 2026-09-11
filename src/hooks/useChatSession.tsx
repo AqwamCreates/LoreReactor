@@ -14,11 +14,11 @@ import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useThrottledStream } from './useThrottledStream';
-import { useTextGenerationLock } from './useTextGenerationLock';
+import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
-import { useTextGeneration } from './useTextGeneration';
+import { useCharacterResponse } from './useCharacterResponse';
 import { runBackgroundSummarization } from '../services/BackgroundSummarization';
 import { useSessionStore } from '../store/useSessionStore';
 
@@ -120,11 +120,11 @@ export function useChatSession() {
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
-    const { acquireLock, releaseLock, isLoadingRef } = useTextGenerationLock();
+    const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingCharacter, setStreamingText, streamingTextRef);
     const { speakMessage } = useCharacterVoice();
     const { processMemoryTrigger } = useMemoryTrigger();
-    const { handleServerResponse } = useTextGeneration({
+    const { handleServerResponse } = useCharacterResponse({
         setBudgetData,
         setStats,
         setLatency,

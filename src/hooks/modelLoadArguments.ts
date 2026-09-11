@@ -3,7 +3,7 @@ import type { LanguageModel } from '../types';
 
 /**
  * Build llama-server CLI args from a LanguageModel's parameters.
- * Shared between useModelManager (manual load) and useTextGeneration (budget strategy auto-load).
+ * Shared between useModelManager (manual load) and useCharacterResponse (budget strategy auto-load).
  */
 export function buildModelLoadArguments(model: LanguageModel): string[] {
     const params = model.parameters || {};

@@ -1,10 +1,10 @@
-// src/hooks/useTextGeneration.ts
+// src/hooks/useCharacterResponse.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock } from '../types';
 import { useSessionStore } from '../store/useSessionStore';
 import { CharacterActor, type TurnStreamCallbacks } from '../services/CharacterActor';
 
-interface UseTextGenerationOptions {
+interface UseCharacterResponseOptions {
     setBudgetData: (bd: import('../types').BudgetData) => void;
     setStats: React.Dispatch<React.SetStateAction<{ numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number }>>;
     setLatency: (speed: number) => void;
@@ -17,9 +17,9 @@ interface UseTextGenerationOptions {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const orchestrator = new CharacterActor();
+const characterActor = new CharacterActor();
 
-export function useTextGeneration(options: UseTextGenerationOptions) {
+export function useCharacterResponse(options: UseCharacterResponseOptions) {
     const {
         setBudgetData, setStats, setLatency, setTimeToFirstToken,
         setCurrentCharacterExpression, previousExpressionRef,
@@ -53,7 +53,7 @@ export function useTextGeneration(options: UseTextGenerationOptions) {
             },
         };
 
-        const outcome = await orchestrator.executeTurn({
+        const outcome = await characterActor.executeTurn({
             data,
             character,
             signal,
