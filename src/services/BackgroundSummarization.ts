@@ -1,5 +1,5 @@
 // src/services/BackgroundSummarization.ts
-import type { InteractionData, BudgetStrategy } from '../types';
+import type { InteractionData, BudgetStrategy, ChatMessage } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
@@ -19,6 +19,7 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
     try {
         const model = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
+        const modelId = model?.id || '';
         const ctxLen = model?.contextLength || 8192;
         const engine = getLanguageModelEngine();
 
@@ -47,13 +48,22 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
 
         if (triggered.strategyType === 'Sliding Window Replace' && triggered.slidingWindowSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Sliding Window Replace' && s.enabled)?.summaryTokenBudget ?? 256;
-            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, budget);
+            const summaries = await generateMissingSummaries(updated, triggered.slidingWindowSize, modelId, budget);
             if (summaries.size > 0) {
                 updated = {
                     ...updated,
                     interactionHistory: updated.interactionHistory.map(m => {
                         const s = summaries.get(m.id);
-                        if (s && m.kind === 'chat') return { ...m, textContentSummary: s };
+                        if (s && m.kind === 'chat') {
+                            const chatMsg = m as ChatMessage;
+                            return {
+                                ...chatMsg,
+                                modelTextContentSummaries: {
+                                    ...chatMsg.modelTextContentSummaries,
+                                    [modelId]: s,
+                                },
+                            };
+                        }
                         return m;
                     }),
                 };
@@ -76,8 +86,11 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
             await saveRawInteractionData(updated);
             setData(updated);
 
+            const countModelSummaries = (history: typeof data.interactionHistory) =>
+                history.filter(m => m.kind === 'chat' && (m as ChatMessage).modelTextContentSummaries?.[modelId]).length;
+
             const ns = triggered.strategyType === 'Sliding Window Replace'
-                ? updated.interactionHistory.filter(m => m.kind === 'chat' && m.textContentSummary).length - data.interactionHistory.filter(m => m.kind === 'chat' && m.textContentSummary).length
+                ? countModelSummaries(updated.interactionHistory) - countModelSummaries(data.interactionHistory)
                 : 0;
             const nc = (triggered.strategyType === 'Periodic Compression' || triggered.strategyType === 'Recursive Summary')
                 ? (updated.contexts?.length ?? 0) - (data.contexts?.length ?? 0)

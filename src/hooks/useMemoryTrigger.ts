@@ -27,6 +27,7 @@ export function useMemoryTrigger() {
 
         const model = useSessionStore.getState().selectedModel;
         if (!model) return;
+        const modelId = model.id || '';
         const models = useSessionStore.getState().runningModels;
         const port = model?.id ? models[model.id]?.port : undefined;
         const ep = port || (model?.parameters as Record<string, string>)?._runtimePort;
@@ -57,7 +58,7 @@ export function useMemoryTrigger() {
 
             if (relevantMessages.length === 0) continue;
 
-            const summaryContext = await generateCharacterMemory(data, character, 512);
+            const summaryContext = await generateCharacterMemory(data, character, modelId, 512);
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
@@ -73,7 +74,7 @@ export function useMemoryTrigger() {
             character.memories[other.id] = [newMemory];
         }
 
-        const globalSummaryContext = await generateCharacterMemory(data, character, 512);
+        const globalSummaryContext = await generateCharacterMemory(data, character, modelId, 512);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),

@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
@@ -36,18 +36,28 @@ export async function generateMessageSummary(
 }
 
 /**
+ * Check if a chat message already has a per-model summary for the given modelId.
+ */
+function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
+    if (msg.kind !== 'chat') return false;
+    const chatMsg = msg as ChatMessage;
+    return !!(chatMsg.modelTextContentSummaries?.[modelId]);
+}
+
+/**
  * Generates summaries for all messages outside the sliding window
- * that don't already have a summary.
+ * that don't already have a summary for this specific model.
  */
 export async function generateMissingSummaries(
     interactionData: InteractionData,
     windowSize: number,
+    modelId: string,
     maxTokens = 256,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
     const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize = history.slice(0, cutoff).filter(m => m.kind === 'chat' && !m.textContentSummary);
+    const toSummarize = history.slice(0, cutoff).filter(m => m.kind === 'chat' && !hasModelSummary(m, modelId));
     if (toSummarize.length === 0) return results;
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, maxTokens);
@@ -87,6 +97,7 @@ async function compressChunk(
 export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
+    modelId: string,
     maxTokens = 512,
 ): Promise<Context | null> {
     const history = interactionData.interactionHistory;
@@ -100,7 +111,7 @@ export async function generateCharacterMemory(
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId);
+    const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
 
     const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
 
@@ -144,7 +155,7 @@ export async function generatePeriodicCompression(
     interactionData: InteractionData,
     compressionInterval: number,
     compressionChunkSize: number,
-    maxTokens: number = 512,
+    maxTokens = 512,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
