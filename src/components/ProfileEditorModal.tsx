@@ -51,6 +51,19 @@ const DEFAULT_TOOLS: Record<tool, number> = {
     web: 0,
 };
 
+/** Merge saved tools with defaults so all keys always exist */
+function mergeToolsWithDefaults(saved: Partial<Record<tool, number>> | undefined): Record<tool, number> {
+    const merged = { ...DEFAULT_TOOLS };
+    if (saved) {
+        for (const key of Object.keys(DEFAULT_TOOLS) as tool[]) {
+            if (key in saved && typeof saved[key] === 'number') {
+                merged[key] = saved[key]!;
+            }
+        }
+    }
+    return merged;
+}
+
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
@@ -205,7 +218,7 @@ export function ProfileEditorModal({
             setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
             setVolume(existingProfile.volume ?? -1);
             setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
-            setTools(existingProfile.tools ?? { ...DEFAULT_TOOLS });
+            setTools(mergeToolsWithDefaults(existingProfile.tools));
             setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
             setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
             setNarrateNormalText(existingProfile.narrateNormalText ?? true);
@@ -312,9 +325,7 @@ export function ProfileEditorModal({
     };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
-    // Missing built-in blocks that aren't in the strategy
     const missingBuiltInBlocks = defaultInputStrategy.filter(b => !inputStrategy.includes(b));
-    // Prompt blocks not yet in the strategy
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 
     // --- Summarization step drag handlers ---
