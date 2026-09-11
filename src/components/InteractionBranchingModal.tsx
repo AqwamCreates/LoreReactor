@@ -1,5 +1,5 @@
 // src/components/InteractionBranchingModal.tsx
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { InteractionData } from '../types';
 import {
     ReactFlow,

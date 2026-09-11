@@ -559,11 +559,6 @@ export function createChatHistoryPrompt(
     return { chatHistoryPrompt, hasBeenSummarized };
 }
 
-const resolveDisablePrompt = (profileValue: number | undefined, characterValue: number): number => {
-    if (profileValue === undefined || profileValue === -1) return characterValue;
-    return profileValue;
-};
-
 export async function buildPromptAndStopPatterns(
     interactionData: InteractionData,
     character: Character,

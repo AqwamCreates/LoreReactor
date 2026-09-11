@@ -1,5 +1,5 @@
 // src/services/GenerationOrchestrator.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
@@ -58,6 +58,7 @@ export interface TurnExecutionParams {
     activeStrategy: BudgetStrategy | null;
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
+    allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
 }
 
@@ -160,7 +161,7 @@ export class GenerationOrchestrator {
         const {
             data, character, signal,
             selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, callbacks,
+            strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
         } = params;
 
         const strat = strategyOverride ?? activeStrategy;
@@ -277,10 +278,16 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
+                    // Orchestrator builds the request body, then passes it to the budget engine
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s);
+
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
-                    rawText = await bse.generateStream(dataWithRegen, character, { signal } as AbortController, cb, protagonistFileBase64s);
+                    rawText = await bse.generateStream(body, { signal } as AbortController, cb);
 
                     finalBudgetData = bse.getBudgetData();
+                    if (!finalBudgetData) {
+                        return { error: { message: 'Failed to get budget data', type: 'budget' } };
+                    }
                     await saveRawBudgetData(finalBudgetData);
 
                     const requestCost = finalBudgetData.budgetSpent - bd.budgetSpent;
@@ -342,13 +349,13 @@ export class GenerationOrchestrator {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, protagonistFileBase64s, ep);
+                    const { body } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s, ep);
                     rawText = await doStream(body, lmCtx);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
                         const rp = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
                         const rep = rp || (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, protagonistFileBase64s, ep);
+                        const { body: rb } = await prepareRequestBody(dataWithRegen, character, currentExistingText, allPromptBlocks, protagonistFileBase64s, ep);
                         const rc: LanguageModelContext = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: selectedModel.model, runtimePort: rep };
                         rawText = await doStream(rb, rc);
                         if (!rawText || !rawText.trim()) {
@@ -374,11 +381,11 @@ export class GenerationOrchestrator {
                 }
             }
 
-            if (!rawText! || !rawText!.trim()) {
+            if (!rawText || !rawText.trim()) {
                 return { error: { message: 'Empty response from model', type: 'inference' } };
             }
 
-            const finalDisplayText = accumulatedDisplayText || rawText!;
+            const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, dataWithRegen);
             const aiMessage = createChatMessage(dataWithRegen, character, displayText);
             const paragraphs = countParagraphs(displayText);
@@ -386,7 +393,7 @@ export class GenerationOrchestrator {
 
             const enableExpression = dataWithRegen.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
-                const sentiment = await sentimentEngine.analyze(rawText!);
+                const sentiment = await sentimentEngine.analyze(rawText);
                 if (sentiment) {
                     aiMessage.characterExpression = sentiment.topEmotion;
                     latestExpression = sentiment.topEmotion;
@@ -403,7 +410,7 @@ export class GenerationOrchestrator {
                     latencyMsPerToken: latestLatency,
                     timeToFirstTokenMs: latestTtft,
                     expression: latestExpression,
-                    rawText: rawText!,
+                    rawText: rawText,
                     displayText,
                 },
             };

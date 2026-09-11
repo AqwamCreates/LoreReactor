@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, PromptBlock } from '../types';
 import { saveRawInteractionData, loadRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
@@ -302,7 +302,7 @@ export function useChatSession() {
         setLatency(0);
     }, [releaseLock, resetStream, setLatency, setInteractionData, streamingTextRef]);
 
-    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
+    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, allPromptBlocks: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !currentChar) return;
@@ -312,7 +312,7 @@ export function useChatSession() {
         const d = useSessionStore.getState().interactionData; if (!d) { releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine(); } catch { /* ignore */ }
+        getAudioEngine().initialize();
 
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentChar, actionText));
 
@@ -336,7 +336,7 @@ export function useChatSession() {
         setStreamingCharacter(targetChar);
         setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
         try {
-            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
+            const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '', allPromptBlocks);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (result) {
                 await saveRawInteractionData(result);
@@ -348,7 +348,7 @@ export function useChatSession() {
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
     }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage]);
 
-    const sendMessage = useCallback(async (text: string, files?: File[]) => {
+    const sendMessage = useCallback(async (text: string, files?: File[], allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !currentChar || (!text.trim() && (!files || !files.length))) return;
@@ -356,7 +356,7 @@ export function useChatSession() {
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine(); } catch { /* ignore */ }
+        getAudioEngine().initialize();
 
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
@@ -385,7 +385,7 @@ export function useChatSession() {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 resetStream();
                 setStreamingCharacter(c);
-                return handleServerResponse(d, c, s, ot, undefined, '');
+                return handleServerResponse(d, c, s, ot, undefined, '', allPromptBlocks);
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
@@ -407,7 +407,7 @@ export function useChatSession() {
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
     }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
 
-    const resumeGeneration = useCallback(async (messageId: string) => {
+    const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
         if (!currentInteractionData) return;
         const msgIndex = currentInteractionData.interactionHistory.findIndex(m => m.id === messageId);
@@ -419,7 +419,7 @@ export function useChatSession() {
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine(); } catch { /* ignore */ }
+        getAudioEngine().initialize();
 
         const existingText = msg.textContent;
         const char = msg.character;
@@ -432,7 +432,7 @@ export function useChatSession() {
         setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
 
         try {
-            const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText);
+            const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText, allPromptBlocks);
             if (!result) return;
 
             const foundMsg = result.interactionHistory.find(m => m.id === messageId);
@@ -463,14 +463,14 @@ export function useChatSession() {
         }
     }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData]);
 
-    const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user') => {
+    const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user', allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         // Initialize audio context on user gesture (browser autoplay policy)
-        try { getAudioEngine(); } catch { /* ignore */ }
+        getAudioEngine().initialize();
 
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
@@ -496,7 +496,7 @@ export function useChatSession() {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 resetStream();
                 setStreamingCharacter(c);
-                return handleServerResponse(d, c, s, ot, undefined, '');
+                return handleServerResponse(d, c, s, ot, undefined, '', allPromptBlocks);
             };
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentInteractionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
@@ -518,13 +518,13 @@ export function useChatSession() {
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
     }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
 
-    const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character) => {
+    const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character, allPromptBlocks?: PromptBlock[]) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
         if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) return;
         isProcessingSilentlyRef.current = true;
         const s = char.sampler;
         const silent: Character = { ...char, sampler: { ...s, id: s?.id || uuidv4(), name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
-        try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, ''); }
+        try { await handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, '', allPromptBlocks); }
         catch (e) { console.warn('Silent image processing failed:', e); }
         finally { isProcessingSilentlyRef.current = false; }
     }, [handleServerResponse, isLoadingRef, isModelReadyForGeneration]);

@@ -84,7 +84,7 @@ async function compressChunk(
 /**
  * Creates a character-specific memory entry.
  */
-export async function makeCharacterMemory(
+export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
     maxTokens = 512,

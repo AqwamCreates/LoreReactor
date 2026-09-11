@@ -1,5 +1,5 @@
 // src/components/ChatInspectionModal.tsx
-import React, { useMemo, useEffect, useState, useRef } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import type { InteractionData, Location, Character } from '../types';
 import { getCharacterImageUrlWithFallBack } from '../hooks/storage';
 import { getCurrentLocation } from '../hooks/locationLogic';
@@ -25,7 +25,7 @@ interface ChatInspectionModalProps {
 
 // ─── Custom Location Node ────────────────────────────────────────────
 
-interface LocationNodeData {
+interface LocationNodeData extends Record<string, unknown> {
     name: string;
     isCurrent: boolean;
     hasParticipants: boolean;

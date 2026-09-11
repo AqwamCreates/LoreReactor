@@ -39,7 +39,8 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
     let currentLocIndex: number | undefined;
     const history = interactionData.interactionHistory;
     for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].locationIndex !== undefined && history[i].locationIndex >= 0) {
+        const locationIndex = history[i].locationIndex
+        if (locationIndex !== undefined && locationIndex >= 0) {
             currentLocIndex = history[i].locationIndex;
             break;
         }

@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { Character, InteractionData, Memory } from '../types';
 import { saveRawCharacter } from './storage';
 import { getEffectiveEnableMemoryWriting } from './characterLogic';
-import { makeCharacterMemory } from '../services/ChatMessageSummarizationEngine';
+import { generateCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { memoryWriteTrigger } from '../stringList';
 import { v4 as uuidv4 } from 'uuid';
 import { useSessionStore } from '../store/useSessionStore';
@@ -57,7 +57,7 @@ export function useMemoryTrigger() {
 
             if (relevantMessages.length === 0) continue;
 
-            const summaryContext = await makeCharacterMemory(data, character, 512);
+            const summaryContext = await generateCharacterMemory(data, character, 512);
             if (!summaryContext || !summaryContext.text) continue;
 
             const newMemory: Memory = {
@@ -73,7 +73,7 @@ export function useMemoryTrigger() {
             character.memories[other.id] = [newMemory];
         }
 
-        const globalSummaryContext = await makeCharacterMemory(data, character, 512);
+        const globalSummaryContext = await generateCharacterMemory(data, character, 512);
         if (globalSummaryContext?.text) {
             const globalMemory: Memory = {
                 id: uuidv4(),

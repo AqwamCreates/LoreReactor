@@ -174,6 +174,8 @@ export function AppModals({
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((c: Character) => void) | null>(null);
     const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((c: Context) => void) | null>(null);
     const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((l: Location) => void) | null>(null);
+    const [aiAudioTrackSaveRedirect, setAiAudioTrackSaveRedirect] = useState<((t: AudioTrack) => void) | null>(null);
+    const [aiPromptBlockSaveRedirect, setAiPromptBlockSaveRedirect] = useState<((b: PromptBlock) => void) | null>(null);
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((p: Profile) => void) | null>(null);
 
     // Lazy-load chat shells when chat list modal opens
@@ -302,7 +304,7 @@ export function AppModals({
                     onDelete={onDeleteWorld}
                     onCreateNew={() => worldModal.open()}
                     renderSubtext={(w: World) =>
-                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
                     }
                     emptyMessage="No worlds saved yet."
                     actionLabel="Delete"
@@ -534,14 +536,16 @@ export function AppModals({
                         locationModal.open(loc ?? undefined);
                     }}
                     onOpenAudioTrackEditor={(track, onApplyToRecommendation) => {
+                        setAiAudioTrackSaveRedirect(() => onApplyToRecommendation);
                         audioTrackModal.open(track ?? undefined);
+                    }}
+                    onOpenPromptBlockEditor={(block, onApplyToRecommendation) => {
+                        setAiPromptBlockSaveRedirect(() => onApplyToRecommendation);
+                        promptBlockModal.open(block ?? undefined);
                     }}
                     onOpenProfileEditor={(profile, onApplyToRecommendation) => {
                         setAiProfileSaveRedirect(() => onApplyToRecommendation);
                         profileModal.open(profile ?? undefined);
-                    }}
-                    onOpenPromptBlockEditor={(block, onApplyToRecommendation) => {
-                        promptBlockModal.open(block ?? undefined);
                     }}
                     allSamplers={allSamplers}
                     allCharacters={allCharacters}
@@ -597,6 +601,7 @@ export function AppModals({
                     allContexts={allContexts}
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
+                    allPromptBlocks={allPromptBlocks}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
                     allModels={allModels}
@@ -679,8 +684,18 @@ export function AppModals({
             {audioTrackModal.isOpen && (
                 <AudioTrackEditorModal
                     isOpen={audioTrackModal.isOpen}
-                    onClose={audioTrackModal.close}
-                    onSave={audioTrackModal.handleSave}
+                    onClose={() => {
+                        setAiAudioTrackSaveRedirect(null);
+                        audioTrackModal.close();
+                    }}
+                    onSave={(t: AudioTrack) => {
+                        if (aiAudioTrackSaveRedirect) {
+                            aiAudioTrackSaveRedirect(t);
+                            addToast('Applied audio track changes to AI recommendation.', 'success');
+                        } else {
+                            audioTrackModal.handleSave(t);
+                        }
+                    }}
                     existingTrack={audioTrackModal.itemToEdit}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
@@ -701,6 +716,7 @@ export function AppModals({
                     allLocations={allLocations}
                     allProfiles={allProfiles}
                     allAudioTracks={allAudioTracks}
+                    allPromptBlocks={allPromptBlocks}
                     currentCharacterIds={interactionData?.participants.map(p => p.id) || []}
                     currentContextIds={interactionData?.contexts?.map(c => c.id) || []}
                     currentLocationIds={interactionData?.locations?.map(l => l.id) || []}
@@ -735,8 +751,18 @@ export function AppModals({
             {promptBlockModal.isOpen && (
                 <PromptBlockEditorModal
                     isOpen={promptBlockModal.isOpen}
-                    onClose={promptBlockModal.close}
-                    onSave={promptBlockModal.handleSave}
+                    onClose={() => {
+                        setAiPromptBlockSaveRedirect(null);
+                        promptBlockModal.close();
+                    }}
+                    onSave={(b: PromptBlock) => {
+                        if (aiPromptBlockSaveRedirect) {
+                            aiPromptBlockSaveRedirect(b);
+                            addToast('Applied prompt block changes to AI recommendation.', 'success');
+                        } else {
+                            promptBlockModal.handleSave(b);
+                        }
+                    }}
                     existingBlock={promptBlockModal.itemToEdit}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
@@ -782,6 +808,7 @@ export function AppModals({
                         }
                     }}
                     existingProfile={profileModal.itemToEdit}
+                    allPromptBlocks={allPromptBlocks}
                 />
             )}
         </>

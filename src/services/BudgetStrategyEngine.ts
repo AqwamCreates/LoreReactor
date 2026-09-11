@@ -1,7 +1,6 @@
 // src/services/BudgetStrategyEngine.ts
-import type { BudgetStrategy, BudgetData, Character, InteractionData, LanguageModel } from '../types';
+import type { BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { getLanguageModelEngine, type StreamCallbacks, type StreamResult } from './LanguageModelEngine';
-import { prepareRequestBody } from '../hooks/chatLogic';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { buildContextFromModel } from '../utilities/modelContextResolver';
 
@@ -22,32 +21,26 @@ function buildPricing(model: LanguageModel): ModelPricing {
     };
 }
 
-function computeComplexityScore(interactionData: InteractionData): number {
-    const history = interactionData.interactionHistory;
-    if (history.length === 0) return 0;
+function computeComplexityScore(promptText: string): number {
+    if (!promptText || promptText.length === 0) return 0;
 
-    const recentMessages = history.slice(-20);
-    const combinedText = recentMessages
-        .filter((m): m is import('../types').ChatMessage => m.kind === 'chat')
-        .map(m => m.textContent)
-        .join('\n');
-    const totalLen = combinedText.length || 1;
+    const totalLen = promptText.length;
 
-    const curlyBrackets = (combinedText.match(/[{}]/g) || []).length;
-    const squareBrackets = (combinedText.match(/[\[\]]/g) || []).length;
-    const colons = (combinedText.match(/:/g) || []).length;
-    const asterisks = (combinedText.match(/\*/g) || []).length;
-    const underscores = (combinedText.match(/_/g) || []).length;
-    const backticks = (combinedText.match(/`/g) || []).length;
-    const pipes = (combinedText.match(/\|/g) || []).length;
-    const angleBrackets = (combinedText.match(/[<>]/g) || []).length;
-    const hashMarks = (combinedText.match(/#/g) || []).length;
-    const dashes = (combinedText.match(/---+/g) || []).length;
-    const tabs = (combinedText.match(/\t/g) || []).length;
-    const carriageReturns = (combinedText.match(/\r/g) || []).length;
-    const carets = (combinedText.match(/\^/g) || []).length;
-    const slashes = (combinedText.match(/[\\/]/g) || []).length;
-    const atSigns = (combinedText.match(/@/g) || []).length;
+    const curlyBrackets = (promptText.match(/[{}]/g) || []).length;
+    const squareBrackets = (promptText.match(/[\[\]]/g) || []).length;
+    const colons = (promptText.match(/:/g) || []).length;
+    const asterisks = (promptText.match(/\*/g) || []).length;
+    const underscores = (promptText.match(/_/g) || []).length;
+    const backticks = (promptText.match(/`/g) || []).length;
+    const pipes = (promptText.match(/\|/g) || []).length;
+    const angleBrackets = (promptText.match(/[<>]/g) || []).length;
+    const hashMarks = (promptText.match(/#/g) || []).length;
+    const dashes = (promptText.match(/---+/g) || []).length;
+    const tabs = (promptText.match(/\t/g) || []).length;
+    const carriageReturns = (promptText.match(/\r/g) || []).length;
+    const carets = (promptText.match(/\^/g) || []).length;
+    const slashes = (promptText.match(/[\\/]/g) || []).length;
+    const atSigns = (promptText.match(/@/g) || []).length;
 
     const syntaxSymbolCount = curlyBrackets + squareBrackets + colons +
         asterisks + underscores + backticks + pipes + angleBrackets +
@@ -174,24 +167,28 @@ export class BudgetStrategyEngine {
 
     // ─── Streaming Generation ────────────────────────────────────────
 
+    /**
+     * Stream a generation using a pre-built request body.
+     * The caller is responsible for building the request body (via prepareRequestBody).
+     * This engine handles model selection, budget tracking, failover, and retry logic only.
+     */
     async generateStream(
-        interactionData: InteractionData,
-        character: Character,
+        requestBody: Record<string, unknown>,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
-        userFilesBase64?: string[],
     ): Promise<string> {
-        const useOnline = await this.shouldUseOnline(interactionData);
-
         this.failedOnlineIds.clear();
         this.failedLocalIds.clear();
+
+        const useOnline = await this.shouldUseOnline(requestBody);
 
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
         const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
         const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
 
-        const complexityScore = computeComplexityScore(interactionData);
+        const promptText = (requestBody.prompt as string) || '';
+        const complexityScore = computeComplexityScore(promptText);
         const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
         let perTurnMaxTier: number | undefined;
         if (tierValues.length === 0) {
@@ -230,18 +227,14 @@ export class BudgetStrategyEngine {
 
             const primaryCtx = buildContextFromModel(selectedModel, this.runningModels);
             const pricing = buildPricing(selectedModel);
-            const runtimePort = primaryCtx.runtimePort;
             const sessionStart = Date.now();
 
             try {
-                const { body: rawBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, runtimePort);
-                const body = rawBody as Record<string, unknown>;
-
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                 let result: StreamResult;
                 try {
                     result = await this.engine.generateStream(
-                        body,
+                        requestBody,
                         timeoutCtrl,
                         wrappedCallbacks,
                         primaryCtx,
@@ -271,12 +264,11 @@ export class BudgetStrategyEngine {
                     this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                 }
 
-                const promptTokens = await this.engine.countTokens((body.prompt as string) || '');
+                const promptTokens = await this.engine.countTokens(promptText);
                 const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                // Check for broken response — rotate to next model
                 const fullOutput = accumulatedPartialText + result.text;
                 if (!fullOutput.trim()) {
                     this.recordBroken(selectedModel.id);
@@ -285,7 +277,6 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                // Check for censorship refusal — rotate to next model
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(selectedModel.id);
                     primaryFailedSet.add(selectedModel.id);
@@ -327,18 +318,14 @@ export class BudgetStrategyEngine {
 
                 const fallbackCtx = buildContextFromModel(selectedModel, this.runningModels);
                 const fallbackPricing = buildPricing(selectedModel);
-                const fallbackPort = fallbackCtx.runtimePort;
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: rawFallbackBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, fallbackPort);
-                    const fallbackBody = rawFallbackBody as Record<string, unknown>;
-
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
                     try {
                         result = await this.engine.generateStream(
-                            fallbackBody,
+                            requestBody,
                             timeoutCtrl,
                             wrappedCallbacks,
                             fallbackCtx,
@@ -368,12 +355,11 @@ export class BudgetStrategyEngine {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
-                    const promptTokens = await this.engine.countTokens((fallbackBody.prompt as string) || '');
+                    const promptTokens = await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                    // Check for broken response — rotate to next model
                     const fullOutput = accumulatedPartialText + result.text;
                     if (!fullOutput.trim()) {
                         this.recordBroken(selectedModel.id);
@@ -382,7 +368,6 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
-                    // Check for censorship refusal — rotate to next model
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(selectedModel.id);
                         fallbackFailedSet.add(selectedModel.id);
@@ -426,18 +411,14 @@ export class BudgetStrategyEngine {
                 }
 
                 const freeCtx = buildContextFromModel(freeModel, this.runningModels);
-                const freePort = freeCtx.runtimePort;
                 const sessionStart = Date.now();
 
                 try {
-                    const { body: rawFreeBody } = await prepareRequestBody(interactionData, character, accumulatedPartialText, userFilesBase64, freePort);
-                    const freeBody = rawFreeBody as Record<string, unknown>;
-
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
                     try {
                         result = await this.engine.generateStream(
-                            freeBody,
+                            requestBody,
                             timeoutCtrl,
                             wrappedCallbacks,
                             freeCtx,
@@ -469,7 +450,6 @@ export class BudgetStrategyEngine {
 
                     this.recordSuccess(freeModel.id, 0);
 
-                    // Check for broken response — rotate to next free model
                     const fullOutput = accumulatedPartialText + result.text;
                     if (!fullOutput.trim()) {
                         this.recordBroken(freeModel.id);
@@ -478,7 +458,6 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
-                    // Check for censorship refusal — rotate to next free model
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(freeModel.id);
                         allFailedIds.add(freeModel.id);
@@ -519,7 +498,7 @@ export class BudgetStrategyEngine {
         this.failedOnlineIds.clear();
         this.failedLocalIds.clear();
 
-        const useOnline = await this.shouldUseOnline(undefined);
+        const useOnline = await this.shouldUseOnline(requestBody);
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
         const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
@@ -553,7 +532,6 @@ export class BudgetStrategyEngine {
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                // Check for broken response — rotate
                 if (!result.text.trim()) {
                     this.recordBroken(selectedModel.id);
                     primaryFailedSet.add(selectedModel.id);
@@ -561,7 +539,6 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                // Check for censorship refusal — rotate
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(selectedModel.id);
                     primaryFailedSet.add(selectedModel.id);
@@ -613,7 +590,6 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                    // Check for broken response — rotate
                     if (!result.text.trim()) {
                         this.recordBroken(selectedModel.id);
                         fallbackFailedSet.add(selectedModel.id);
@@ -621,7 +597,6 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
-                    // Check for censorship refusal — rotate
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(selectedModel.id);
                         fallbackFailedSet.add(selectedModel.id);
@@ -669,7 +644,6 @@ export class BudgetStrategyEngine {
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 this.recordSuccess(freeModel.id, 0);
 
-                // Check for broken response — rotate
                 if (!result.text.trim()) {
                     this.recordBroken(freeModel.id);
                     allFailedIds.add(freeModel.id);
@@ -677,7 +651,6 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                // Check for censorship refusal — rotate
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(freeModel.id);
                     allFailedIds.add(freeModel.id);
@@ -932,22 +905,22 @@ export class BudgetStrategyEngine {
 
     // ─── Online vs Local Decision ────────────────────────────────────
 
-    private async shouldUseOnline(interactionData?: InteractionData): Promise<boolean> {
+    private async shouldUseOnline(requestBody: Record<string, unknown>): Promise<boolean> {
         if (this.strategy.onlineModels.length === 0) return false;
         if (this.strategy.localModels.length === 0) return true;
         if (this.budgetData.budgetSpent >= this.strategy.maximumBudget) return false;
 
-        if (interactionData) {
-            let numberOfTokens = 0;
-            for (const m of interactionData.interactionHistory) {
-                if (m.kind === 'chat') numberOfTokens += await this.engine.countTokens(m.textContent);
-            }
+        const promptText = (requestBody.prompt as string) || '';
 
+        // Context size check via token count
+        if (promptText.length > 0) {
+            const numberOfTokens = await this.engine.countTokens(promptText);
             if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
-
-            const complexityScore = computeComplexityScore(interactionData);
-            if (complexityScore !== undefined && complexityScore >= this.strategy.switchOnComplexityScore) return true;
         }
+
+        // Complexity score check
+        const complexityScore = computeComplexityScore(promptText);
+        if (complexityScore >= this.strategy.switchOnComplexityScore) return true;
 
         const roll = Math.random() * 100;
         return roll < this.strategy.switchProbability;

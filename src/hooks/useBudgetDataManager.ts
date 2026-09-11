@@ -42,6 +42,8 @@ function createDefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAU
         averageLatencyMsPerTokenExponentialMovingAverageSmoothing: 0.3,
         averageTimeToFirstTokenExponentialMovingAverageSmoothing: 0.3,
         modelLastUsedTimestamps: {},
+        modelCensorshipHitCount: {},
+        modelBrokenCount: {},
         modelLastQuotaHitTimeStamps: {},
         modelLastErrorHitTimeStamps: {},
         modelUsedCount: {},

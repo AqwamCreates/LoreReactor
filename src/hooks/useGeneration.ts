@@ -1,6 +1,6 @@
 // src/hooks/useGeneration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, PromptBlock } from '../types';
 import { useSessionStore } from '../store/useSessionStore';
 import { GenerationOrchestrator, type TurnStreamCallbacks } from '../services/GenerationOrchestrator';
 
@@ -32,6 +32,7 @@ export function useGeneration(options: UseGenerationOptions) {
         onToken?: (text: string) => void,
         strategyOverride?: import('../types').BudgetStrategy | null,
         existingCharacterText?: string,
+        allPromptBlocks?: PromptBlock[],
     ): Promise<InteractionData | null> => {
 
         const selectedModel = useSessionStore.getState().selectedModel;
@@ -61,6 +62,7 @@ export function useGeneration(options: UseGenerationOptions) {
             activeStrategy,
             strategyOverride,
             existingCharacterText,
+            allPromptBlocks: allPromptBlocks ?? [],
             callbacks,
         });
 
