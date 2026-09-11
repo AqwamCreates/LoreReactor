@@ -102,12 +102,6 @@ export const ChatMinimap = React.memo(function ChatMinimap({
             <div className="chat-minimap-expanded-content">
                 <div className="chat-minimap-header">
                     💬 Messages ({messages.length})
-                    <button
-                        className="chat-minimap-close-btn"
-                        onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
-                    >
-                        ✕
-                    </button>
                 </div>
 
                 <div ref={stripRef} className="chat-minimap-list">

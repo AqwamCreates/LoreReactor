@@ -3673,7 +3673,7 @@ BUDGET CONTROL MODAL — DEDICATED STYLES
 }
 
 /* =============================================================================
-CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
+CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP ONLY, HIDDEN ON MOBILE)
 ============================================================================= */
 .chat-minimap {
     position: absolute;
@@ -3692,10 +3692,10 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
     cursor: pointer;
 }
 
-/* Desktop: expand on hover */
+/* Desktop: expand on hover to 1/4 of viewport */
 @media (hover: hover) and (pointer: fine) {
     .chat-minimap:hover {
-        width: 200px;
+        width: 25vw;
         background: var(--bg);
         border-left: 1px solid var(--border);
         backdrop-filter: blur(8px);
@@ -3711,33 +3711,6 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
         opacity: 1;
         pointer-events: auto;
     }
-
-    .chat-minimap:hover .chat-minimap-tap-hint {
-        display: none;
-    }
-}
-
-/* Mobile: expand on tap via .chat-minimap-expanded class */
-.chat-minimap-expanded {
-    width: 200px;
-    background: var(--bg);
-    border-left: 1px solid var(--border);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-.chat-minimap-expanded .chat-minimap-collapsed {
-    opacity: 0;
-    pointer-events: none;
-}
-
-.chat-minimap-expanded .chat-minimap-expanded-content {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.chat-minimap-expanded .chat-minimap-tap-hint {
-    display: none;
 }
 
 /* Collapsed — just a thin line with viewport dot */
@@ -3765,37 +3738,7 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
     transition: top 0.1s ease-out;
 }
 
-/* Mobile tap hint icon */
-.chat-minimap-tap-hint {
-    display: none;
-    position: absolute;
-    bottom: 16px;
-    right: 4px;
-    font-size: 0.75rem;
-    opacity: 0.6;
-}
-
-@media (hover: none), (pointer: coarse) {
-    .chat-minimap-tap-hint {
-        display: block;
-    }
-
-    .chat-minimap {
-        width: 40px;
-    }
-
-    .chat-minimap-collapsed {
-        width: 40px;
-        opacity: 0.7;
-    }
-
-    .chat-minimap-viewport-dot {
-        right: 0;
-        width: 10px;
-    }
-}
-
-/* Expanded content — hidden by default, shown on hover/tap */
+/* Expanded content — hidden by default, shown on hover */
 .chat-minimap-expanded-content {
     display: flex;
     flex-direction: column;
@@ -3821,38 +3764,6 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
     align-items: center;
     gap: 8px;
     text-align: center;
-}
-
-.chat-minimap-close-btn {
-    display: none;
-    background: transparent;
-    border: none;
-    color: var(--text-h);
-    font-size: 0.85rem;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    opacity: 0.5;
-    transition: opacity 0.15s;
-    min-width: 28px;
-    min-height: 28px;
-    line-height: 1;
-    position: absolute;
-    right: 4px;
-    top: 4px;
-}
-
-.chat-minimap-close-btn:hover {
-    opacity: 1;
-    background: var(--social-bg);
-}
-
-@media (hover: none), (pointer: coarse) {
-    .chat-minimap-close-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
 }
 
 .chat-minimap-list {
@@ -3926,7 +3837,13 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP) / TAP-TO-TOGGLE (MOBILE)
     color: var(--accent) !important;
 }
 
-/* Hide in cinematic mode */
+/* Hide on mobile and in cinematic mode */
+@media (hover: none), (pointer: coarse) {
+    .chat-minimap {
+        display: none;
+    }
+}
+
 .mode-cinematic .chat-minimap {
     display: none;
 }
