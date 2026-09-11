@@ -224,7 +224,7 @@ export function LocationEditorModal({
         }
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
 
-        // Clean up bg image settings for removed index and shift higher indices down
+        // Clean up bg image settings for removed index and shift higher inrolls down
         setBgImageRegexTriggers(prev => {
             const next: Record<number, string> = {};
             for (const [k, v] of Object.entries(prev)) {

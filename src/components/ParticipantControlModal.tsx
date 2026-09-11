@@ -63,12 +63,12 @@ export function ParticipantControlModal({
         const updatedHistory = [...interactionData.interactionHistory];
 
         // Apply stamina overrides to latest message per character
-        const lastMsgIndices: Record<string, number> = {};
+        const lastMsgInrolls: Record<string, number> = {};
         for (let i = 0; i < updatedHistory.length; i++) {
-            lastMsgIndices[updatedHistory[i].character.id] = i;
+            lastMsgInrolls[updatedHistory[i].character.id] = i;
         }
         for (const [charId, stamina] of Object.entries(staminaOverrides)) {
-            const idx = lastMsgIndices[charId];
+            const idx = lastMsgInrolls[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = { ...updatedHistory[idx], remainingChatStamina: stamina };
             }
@@ -76,7 +76,7 @@ export function ParticipantControlModal({
 
         // Apply location overrides to latest message per character
         for (const [charId, locIdx] of Object.entries(locationOverrides)) {
-            const idx = lastMsgIndices[charId];
+            const idx = lastMsgInrolls[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = {
                     ...updatedHistory[idx],

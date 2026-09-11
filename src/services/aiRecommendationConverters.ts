@@ -5,14 +5,14 @@ import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
 
 const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
-    roll: true,
+    Dice: true,
     pick: true,
     calculator: false,
     web: false,
 };
 
 const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
-    roll: 0,
+    Dice: 0,
     pick: 0,
     calculator: 0,
     web: 0,

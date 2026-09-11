@@ -2,7 +2,7 @@
 
 import { toolStartSring, toolEndString } from "../stringList";
 
-const characterAgnosticTools = ['roll', 'pick']
+const characterAgnosticTools = ['Dice', 'pick']
 
 const characterSpecificTools = ['calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 
@@ -17,9 +17,9 @@ web: For expressing curiosity or ignorance.
 const validTools = [...characterAgnosticTools, ...characterSpecificTools]
 
 export interface ToolInvocation {
-    /** The full matched string including markers, e.g. "${toolStartSring}search: weather in Tokyo:tool|" */
+    /** The full matched string including markers, e.g. "${toolStartSring}web: weather in Tokyo:tool|" */
     rawMatch: string;
-    /** The tool type, e.g. "search" or "calculator" */
+    /** The tool type, e.g. "web" or "calculator" */
     toolType: string;
     /** The arguments after the tool type, e.g. "weather in Tokyo" */
     args: string;

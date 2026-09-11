@@ -75,10 +75,10 @@ export function sampleLocationByWeight(locations: Location[], character: Charact
 
     if (pool.length === 0 || totalWeight <= 0) return undefined;
 
-    let roll = Math.random() * totalWeight;
+    let Dice = Math.random() * totalWeight;
     for (const entry of pool) {
-        roll -= entry.weight;
-        if (roll <= 0) return entry.index;
+        Dice -= entry.weight;
+        if (Dice <= 0) return entry.index;
     }
 
     return pool[pool.length - 1].index;
@@ -151,10 +151,10 @@ export function sampleReachableLocationByWeight(
 
     if (pool.length === 0 || totalWeight <= 0) return undefined;
 
-    let roll = Math.random() * totalWeight;
+    let Dice = Math.random() * totalWeight;
     for (const entry of pool) {
-        roll -= entry.weight;
-        if (roll <= 0) return entry.originalIndex;
+        Dice -= entry.weight;
+        if (Dice <= 0) return entry.originalIndex;
     }
 
     return pool[pool.length - 1].originalIndex;
@@ -191,10 +191,10 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
 
     if (pool.length === 0 || totalWeight <= 0) return undefined;
 
-    let roll = Math.random() * totalWeight;
+    let Dice = Math.random() * totalWeight;
     for (const entry of pool) {
-        roll -= entry.weight;
-        if (roll <= 0) return entry.index;
+        Dice -= entry.weight;
+        if (Dice <= 0) return entry.index;
     }
 
     return pool[pool.length - 1].index;
@@ -291,11 +291,11 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                 continue;
             }
 
-            let roll = Math.random() * totalWeight;
+            let Dice = Math.random() * totalWeight;
             let picked: Character | null = null;
             for (const entry of pool) {
-                roll -= entry.weight;
-                if (roll <= 0) { picked = entry.char; break; }
+                Dice -= entry.weight;
+                if (Dice <= 0) { picked = entry.char; break; }
             }
             if (!picked) picked = pool[pool.length - 1].char;
 

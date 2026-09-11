@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
 const DEFAULT_TOOLS: Record<tool, boolean> = {
-    roll: true,
+    Dice: true,
     pick: true,
     calculator: false,
     web: false,

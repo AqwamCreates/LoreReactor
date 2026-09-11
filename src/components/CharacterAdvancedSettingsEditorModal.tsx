@@ -3,14 +3,14 @@ import type { Sampler, tool } from '../types';
 import './main.css';
 
 const TOOL_LABELS: Record<tool, string> = {
-    roll: 'Dice Roll',
+    Dice: 'Dice Dice',
     pick: 'Random Pick',
     calculator: 'Calculator',
     web: 'Web Search',
 };
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {
-    roll: 'Allow this character to roll dice (e.g. 2d6+3) during conversation.',
+    Dice: 'Allow this character to Dice Dice (e.g. 2d6+3) during conversation.',
     pick: 'Allow this character to randomly pick from a list of options.',
     calculator: 'Allow this character to perform calculations during conversation.',
     web: 'Allow this character to search the web during conversation.',

@@ -32,14 +32,14 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 ];
 
 const TOOL_LABELS: Record<tool, string> = {
-    roll: 'Dice Roll',
+    Dice: 'Dice Dice',
     pick: 'Random Pick',
     calculator: 'Calculator',
     web: 'Web Search',
 };
 
 const DEFAULT_TOOLS: Record<tool, number> = {
-    roll: 0,
+    Dice: 0,
     pick: 0,
     calculator: 0,
     web: 0,

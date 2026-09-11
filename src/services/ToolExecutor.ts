@@ -10,18 +10,24 @@ export interface ToolResult {
     displayReplacement: string;
 }
 
+const toolFunctions: Record<string, (args: string) => ToolResult | Promise<ToolResult>> = {
+
+    "pick": executeRandomPick,
+    "date": executeDate,
+    "coin": executeCoinflip,
+    "dice": executeDiceRoll,
+    "random": executeCalculator,
+    "calculator": executeRandom,
+    "web": executeWeb,
+
+}
+
 export async function executeTool(invocation: ToolInvocation): Promise<ToolResult> {
-    switch (invocation.toolType) {
-        case 'search':
-            return executeSearch(invocation.args);
-        case 'calculator':
-            return executeCalculator(invocation.args);
-        case 'roll':
-            return executeDiceRoll(invocation.args);
-        case 'pick':
-            return executeRandomPick(invocation.args);
-        default: {
-            console.warn(`Unknown tool type: ${invocation.toolType}`);
+    const executeFunction = toolFunctions[invocation.toolType as string] 
+    
+    if (!executeFunction){
+
+        console.warn(`Unknown tool type: ${invocation.toolType}`);
             const errorContent = `[Error: Unknown tool "${invocation.toolType}"]`;
             return {
                 toolType: invocation.toolType,
@@ -29,8 +35,11 @@ export async function executeTool(invocation: ToolInvocation): Promise<ToolResul
                 content: errorContent,
                 displayReplacement: errorContent,
             };
-        }
+
     }
+    
+    return executeFunction(invocation.args)
+    
 }
 
 export async function executeTools(invocations: ToolInvocation[]): Promise<ToolResult[]> {
@@ -42,19 +51,20 @@ export async function executeTools(invocations: ToolInvocation[]): Promise<ToolR
     return results;
 }
 
-// ─── Search ──────────────────────────────────────────────────────────
+// ─── Web (Search + Fetch) ────────────────────────────────────────────
 
-async function executeSearch(query: string): Promise<ToolResult> {
+async function executeWeb(query: string): Promise<ToolResult> {
     if (!query.trim()) {
-        const errorContent = '[Error: Empty search query]';
-        return { toolType: 'search', args: query, content: errorContent, displayReplacement: errorContent };
+        const errorContent = '[Error: Empty web query]';
+        return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
     }
 
     try {
         let urlToFetch: string;
         const trimmedQuery = query.trim();
+        const isDirectUrl = /^https?:\/\//i.test(trimmedQuery);
 
-        if (/^https?:\/\//i.test(trimmedQuery)) {
+        if (isDirectUrl) {
             urlToFetch = trimmedQuery;
         } else {
             urlToFetch = buildSearchUrl([trimmedQuery], 'DuckDuckGo');
@@ -72,35 +82,39 @@ async function executeSearch(query: string): Promise<ToolResult> {
         if (validResults.length === 0) {
             const errorMsg = results[0]?.error || 'No content retrieved';
             const errorContent = `[Error: ${errorMsg}]`;
+            const label = isDirectUrl ? `Fetched: "${trimmedQuery}"` : `Searched: "${trimmedQuery}"`;
             return {
-                toolType: 'search',
+                toolType: 'web',
                 args: query,
                 content: errorContent,
-                displayReplacement: `[🔍 Searched: "${trimmedQuery}"]\n\n${errorContent}`,
+                displayReplacement: `[🌐 ${label}]\n\n${errorContent}`,
             };
         }
 
         const result = validResults[0];
+        const label = isDirectUrl ? `Fetched: "${trimmedQuery}"` : `Searched: "${trimmedQuery}"`;
 
         return {
-            toolType: 'search',
+            toolType: 'web',
             args: query,
             content: result.content,
-            displayReplacement: `[🔍 Searched: "${trimmedQuery}"]\n\n${result.content}`,
+            displayReplacement: `[🌐 ${label}]\n\n${result.content}`,
         };
     } catch (e) {
-        console.warn('Search execution failed:', e);
-        const errorContent = `[Error: Search failed - ${(e as Error).message}]`;
+        console.warn('Web execution failed:', e);
+        const errorContent = `[Error: Web request failed - ${(e as Error).message}]`;
+        const isDirectUrl = /^https?:\/\//i.test(query.trim());
+        const label = isDirectUrl ? `Fetched: "${query.trim()}"` : `Searched: "${query.trim()}"`;
         return {
-            toolType: 'search',
+            toolType: 'web',
             args: query,
             content: errorContent,
-            displayReplacement: `[🔍 Searched: "${query.trim()}"]\n\n${errorContent}`,
+            displayReplacement: `[🌐 ${label}]\n\n${errorContent}`,
         };
     }
 }
 
-// ─── Calculator ──────────────────────────────────────────────────────
+// ─── Calculator ─────────────────────────────────────────────────────
 
 function executeCalculator(expression: string): ToolResult {
     if (!expression.trim()) {
@@ -152,23 +166,23 @@ function executeCalculator(expression: string): ToolResult {
     }
 }
 
-// ─── Dice Roll ───────────────────────────────────────────────────────
+// ─── Dice Dice ──────────────────────────────────────────────────────
 
-interface DiceGroup {
+interface RollGroup {
     count: number;
     sides: number;
 }
 
-function parseDiceExpression(expr: string): { groups: DiceGroup[]; modifier: number; rolls: number[]; total: number } | null {
+function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: number; rolls: number[]; total: number } | null {
     const sanitized = expr.trim().toLowerCase().replace(/\s+/g, '');
     if (!sanitized) return null;
 
-    const diceGroupRegex = /(\d*)d(\d+)/gi;
-    const groups: DiceGroup[] = [];
+    const rollGroupRegex = /(\d*)d(\d+)/gi;
+    const groups: RollGroup[] = [];
     let match: RegExpExecArray | null;
     let lastIndex = 0;
 
-    while ((match = diceGroupRegex.exec(sanitized)) !== null) {
+    while ((match = rollGroupRegex.exec(sanitized)) !== null) {
         const count = match[1] ? parseInt(match[1], 10) : 1;
         const sides = parseInt(match[2], 10);
 
@@ -196,29 +210,28 @@ function parseDiceExpression(expr: string): { groups: DiceGroup[]; modifier: num
         }
     }
 
-    const diceSum = allRolls.reduce((sum, r) => sum + r, 0);
-    const total = diceSum + modifier;
+    const rollSum = allRolls.reduce((sum, r) => sum + r, 0);
+    const total = rollSum + modifier;
 
     return { groups, modifier, rolls: allRolls, total };
 }
 
 function executeDiceRoll(expression: string): ToolResult {
     if (!expression.trim()) {
-        const errorContent = '[Error: Empty dice expression. Use format like "2d6", "1d20+5", "d8"]';
-        return { toolType: 'roll', args: expression, content: errorContent, displayReplacement: errorContent };
+        const errorContent = '[Error: Empty Dice expression. Use format like "2d6", "1d20+5", "d8"]';
+        return { toolType: 'Dice', args: expression, content: errorContent, displayReplacement: errorContent };
     }
 
-    const result = parseDiceExpression(expression.trim());
+    const result = parseRollExpression(expression.trim());
 
     if (!result) {
-        const errorContent = `[Error: Invalid dice notation "${expression.trim()}". Use format like "2d6", "1d20+5", "d8"]`;
-        return { toolType: 'roll', args: expression, content: errorContent, displayReplacement: errorContent };
+        const errorContent = `[Error: Invalid Dice notation "${expression.trim()}". Use format like "2d6", "1d20+5", "d8"]`;
+        return { toolType: 'Dice', args: expression, content: errorContent, displayReplacement: errorContent };
     }
 
     const rollsStr = result.rolls.join(', ');
     const modStr = result.modifier > 0 ? ` + ${result.modifier}` : result.modifier < 0 ? ` - ${Math.abs(result.modifier)}` : '';
 
-    // Build label from groups
     const label = result.groups.length === 1
         ? `${result.groups[0].count}d${result.groups[0].sides}`
         : result.groups.map(g => `${g.count}d${g.sides}`).join(' + ');
@@ -226,10 +239,10 @@ function executeDiceRoll(expression: string): ToolResult {
     const content = `${result.total}`;
     const displayReplacement = `[🎲 ${label}${modStr} → [${rollsStr}] = ${result.total}]`;
 
-    return { toolType: 'roll', args: expression, content, displayReplacement };
+    return { toolType: 'Dice', args: expression, content, displayReplacement };
 }
 
-// ─── Random Pick ─────────────────────────────────────────────────────
+// ─── Random Pick ────────────────────────────────────────────────────
 
 function executeRandomPick(expression: string): ToolResult {
     if (!expression.trim()) {
@@ -264,5 +277,106 @@ function executeRandomPick(expression: string): ToolResult {
         args: expression,
         content: picked,
         displayReplacement: `[🎯 Picked (${index + 1}/${options.length}): "${picked}"]`,
+    };
+}
+
+// ─── Date ────────────────────────────────────────────────────────────
+
+function executeDate(args: string): ToolResult {
+    const now = new Date();
+
+    // If args specify a timezone offset or format, respect it
+    // Otherwise use local time
+    const trimmed = args.trim().toLowerCase();
+
+    let dateStr: string;
+
+    if (trimmed === 'iso') {
+        dateStr = now.toISOString();
+    } else if (trimmed === 'unix' || trimmed === 'timestamp') {
+        dateStr = Math.floor(now.getTime() / 1000).toString();
+    } else if (trimmed === 'time') {
+        dateStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } else if (trimmed === 'date') {
+        dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } else {
+        // Default: full human-readable
+        dateStr = now.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+        });
+    }
+
+    return {
+        toolType: 'date',
+        args,
+        content: dateStr,
+        displayReplacement: `[📅 ${dateStr}]`,
+    };
+}
+
+// ─── Coin Flip ───────────────────────────────────────────────────────
+
+function executeCoinflip(_args: string): ToolResult {
+    const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+
+    return {
+        toolType: 'coinflip',
+        args: _args,
+        content: result,
+        displayReplacement: `[🪙 Coin flip: ${result}]`,
+    };
+}
+
+// ─── Random Number ───────────────────────────────────────────────────
+
+function executeRandom(args: string): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Empty range. Use format like "1-100" or "1-6"]';
+        return { toolType: 'random', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Parse "min-max" or "min to max" or just "max" (defaults min to 1)
+    let min: number;
+    let max: number;
+
+    const dashMatch = trimmed.match(/^(-?\d+)\s*[-–—]\s*(-?\d+)$/);
+    const toMatch = trimmed.match(/^(-?\d+)\s+to\s+(-?\d+)$/i);
+
+    if (dashMatch) {
+        min = parseInt(dashMatch[1], 10);
+        max = parseInt(dashMatch[2], 10);
+    } else if (toMatch) {
+        min = parseInt(toMatch[1], 10);
+        max = parseInt(toMatch[2], 10);
+    } else {
+        // Single number — treat as 1 to N
+        const single = parseInt(trimmed, 10);
+        if (isNaN(single) || single < 1) {
+            const errorContent = `[Error: Invalid range "${trimmed}". Use format like "1-100" or "1-6"]`;
+            return { toolType: 'random', args, content: errorContent, displayReplacement: errorContent };
+        }
+        min = 1;
+        max = single;
+    }
+
+    if (min > max) {
+        [min, max] = [max, min];
+    }
+
+    const result = Math.floor(Math.random() * (max - min + 1)) + min;
+
+    return {
+        toolType: 'random',
+        args,
+        content: result.toString(),
+        displayReplacement: `[🎲 Random(${min}-${max}): ${result}]`,
     };
 }

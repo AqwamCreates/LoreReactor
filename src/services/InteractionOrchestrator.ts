@@ -125,7 +125,7 @@ export async function runTurnSequence(
         const protagonistLoc = getCurrentLocationIndex(workingData, workingData.protagonist);
         const hasLocations = workingData.locations && workingData.locations.length > 0;
 
-        // Non-co-located AI participants roll location in initiative-weighted order
+        // Non-co-located AI participants Dice location in initiative-weighted order
         if (hasLocations) {
             const lastParentId = workingData.interactionHistory.length > 0
                 ? workingData.interactionHistory[workingData.interactionHistory.length - 1].id
@@ -155,11 +155,11 @@ export async function runTurnSequence(
                 if (pool.length === 0 || totalWeight <= 0) break;
 
                 // Weighted random pick
-                let roll = Math.random() * totalWeight;
+                let Dice = Math.random() * totalWeight;
                 let picked: Character | null = null;
                 for (const entry of pool) {
-                    roll -= entry.weight;
-                    if (roll <= 0) { picked = entry.char; break; }
+                    Dice -= entry.weight;
+                    if (Dice <= 0) { picked = entry.char; break; }
                 }
                 if (!picked) picked = pool[pool.length - 1].char;
 
@@ -234,11 +234,11 @@ export async function runTurnSequence(
             if (initPool.length === 0 || totalWeight <= 0) {
                 selectedSpeaker = eligible[0];
             } else {
-                let roll = Math.random() * totalWeight;
+                let Dice = Math.random() * totalWeight;
                 selectedSpeaker = initPool[initPool.length - 1].char;
                 for (const entry of initPool) {
-                    roll -= entry.weight;
-                    if (roll <= 0) {
+                    Dice -= entry.weight;
+                    if (Dice <= 0) {
                         selectedSpeaker = entry.char;
                         break;
                     }

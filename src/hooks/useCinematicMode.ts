@@ -95,10 +95,10 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
             }
         }
         if (pool.length > 0 && totalWeight > 0) {
-            let roll = Math.random() * totalWeight;
+            let Dice = Math.random() * totalWeight;
             for (const entry of pool) {
-                roll -= entry.weight;
-                if (roll <= 0) {
+                Dice -= entry.weight;
+                if (Dice <= 0) {
                     return getLocationImageUrl(loc.images[entry.index]);
                 }
             }

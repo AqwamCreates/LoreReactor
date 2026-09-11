@@ -197,14 +197,14 @@ export function generateChatStamina(character: Character, interactionMessage: Hi
         weights.push(cumulativeWeight);
     }
 
-    const roll = Math.random() * cumulativeWeight;
+    const Dice = Math.random() * cumulativeWeight;
 
     let lo = 0;
     let hi = weights.length - 1;
 
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (weights[mid] < roll) {
+        if (weights[mid] < Dice) {
             lo = mid + 1;
         } else {
             hi = mid;

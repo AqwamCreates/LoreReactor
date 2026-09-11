@@ -27,7 +27,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
     "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
     "numberOfMessagesToDisableDialoguePrompt": "number (default 0)",
-    "tools": {"roll": "boolean (default true)", "pick": "boolean (default true)", "calculator": "boolean (default false)", "web": "boolean (default false)"},
+    "tools": {"Dice": "boolean (default true)", "pick": "boolean (default true)", "calculator": "boolean (default false)", "web": "boolean (default false)"},
     "enableMemoryWriting": "boolean (default false)", "enableMemoryReading": "boolean (default false)"
   }]`);
     }
@@ -116,7 +116,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "narrateNormalText": "boolean (default true)", "narrateQuotedText": "boolean (default false)",
     "narrateBoldedText": "boolean (default false)", "narrateItalicizedText": "boolean (default false)",
     "stripThinkTokens": "boolean (default true)",
-    "tools": {"roll": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)"},
+    "tools": {"Dice": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)"},
     "enableMemoryWriting": "number (-1, 0, or 1, default 0)", "enableMemoryReading": "number (-1, 0, or 1, default 0)",
     "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. ${defaultInputStrategy.join(", ")}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]

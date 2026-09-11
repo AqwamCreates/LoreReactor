@@ -922,8 +922,8 @@ export class BudgetStrategyEngine {
         const complexityScore = computeComplexityScore(promptText);
         if (complexityScore >= this.strategy.switchOnComplexityScore) return true;
 
-        const roll = Math.random() * 100;
-        return roll < this.strategy.switchProbability;
+        const Dice = Math.random() * 100;
+        return Dice < this.strategy.switchProbability;
     }
 }
 
