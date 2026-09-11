@@ -234,7 +234,7 @@ function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: str
 
 /** Check if a string is a built-in PromptBlockType vs a custom block UUID */
 function isBuiltInBlockType(value: string): value is PromptBlockType {
-    return (DEFAULT_INPUT_STRATEGY as string[]).includes(value) || value === 'Tool Instructions';
+    return (defaultInputStrategy as string[]).includes(value) || value === 'Tool Instructions';
 }
 
 const getImageBase64 = async (url: string): Promise<string | null> => {
@@ -610,7 +610,7 @@ export async function buildPromptAndStopPatterns(
     const weatherApiKey = profile?.weatherApiKey
     const useTimeElapsed = profile?.useTimeElapsed;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
-    const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
+    const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
     const enableWebSearch = getEffectiveEnableWebSearch(character, profile);
     const enableCalculator = getEffectiveEnableCalculator(character, profile);
     const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile);
