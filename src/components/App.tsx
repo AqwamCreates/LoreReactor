@@ -30,7 +30,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack, PromptBlock } from '../types';
+import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack, PromptBlock, ChatMessage } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -51,6 +51,7 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import './main.css';
+import { ChatMinimap } from './ChatMinimap';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
@@ -760,13 +761,20 @@ function App() {
                 )}
 
                 {interactionData && <>
-                    {viewMode === 'cinematic' && centerAvatar && portraitUrlCache.get(`cinematic:${centerAvatar.id}`) && (
-                        <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action">
-                            <img src={portraitUrlCache.get(`cinematic:${centerAvatar.id}`)!} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                        </div>
-                    )}
+                        {viewMode === 'cinematic' && centerAvatar && portraitUrlCache.get(`cinematic:${centerAvatar.id}`) && (
+                            <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action">
+                                <img src={portraitUrlCache.get(`cinematic:${centerAvatar.id}`)!} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            </div>
+                        )}
 
-                    <header className="app-header"><div className="header-content"><div className="header-top">
+                        <header className="app-header"><div className="header-content"><div className="header-top">
+                        {interactionData && InteractionMessages.length > 5 && (
+                            <ChatMinimap
+                                messages={InteractionMessages.filter((m): m is ChatMessage => m.kind === 'chat')}
+                                containerRef={chatHistoryRef}
+                                currentCharacterId={currentCharacter?.id}
+                            />
+                        )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             {isEditingTitle
                                 ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
