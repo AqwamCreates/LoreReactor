@@ -32,15 +32,21 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 ];
 
 const TOOL_LABELS: Record<tool, string> = {
-    Dice: 'Dice Dice',
     pick: 'Random Pick',
+    date: 'Current Date & Time',
+    coin: 'Coin Flip',
+    dice: 'Roll Dice',
+    random: 'Random Number',
     calculator: 'Calculator',
     web: 'Web Search',
 };
 
 const DEFAULT_TOOLS: Record<tool, number> = {
-    Dice: 0,
     pick: 0,
+    date: 0,
+    coin: 0,
+    dice: 0,
+    random: 0,
     calculator: 0,
     web: 0,
 };
@@ -373,6 +379,8 @@ export function ProfileEditorModal({
 
     if (!isOpen) return null;
 
+    const allToolKeys = Object.keys(TOOL_LABELS) as tool[];
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -495,15 +503,25 @@ export function ProfileEditorModal({
                         <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
                             Tri-state override for runtime tool use. -1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.
                         </div>
-                        {(Object.keys(tools) as tool[]).map(toolName => (
-                            renderOverrideSlider(
-                                `${TOOL_LABELS[toolName]} Override`,
-                                tools[toolName],
-                                -1, 1, 1, 0,
-                                (val) => handleToolChange(toolName, Math.round(val)),
-                                `-1 = force off for all. 0 = use each character's own setting. 1 = force on for all.`,
-                                tools[toolName] === 0 ? '(Character default)' : tools[toolName] === -1 ? '(Force Off)' : '(Force On)',
-                            )
+                        {allToolKeys.map(toolName => (
+                            <div key={toolName} style={{ marginBottom: '12px' }}>
+                                <div style={SLIDER_HEADER_STYLE}>
+                                    <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{TOOL_LABELS[toolName]} Override</label>
+                                    <span style={SLIDER_VALUE_STYLE}>
+                                        {tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}
+                                    </span>
+                                </div>
+                                <SliderInput
+                                    label=""
+                                    value={tools[toolName]}
+                                    minimumValue={-1}
+                                    maximumValue={1}
+                                    stepValue={1}
+                                    decimals={0}
+                                    onChange={(val) => handleToolChange(toolName, Math.round(val))}
+                                    description="-1 = force off for all. 0 = use each character's own setting. 1 = force on for all."
+                                />
+                            </div>
                         ))}
                     </div>
 
