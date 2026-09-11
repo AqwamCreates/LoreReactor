@@ -187,6 +187,7 @@ export interface Character extends ObjectData {
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
+  maximumActionStamina: number;
   sampler?: Sampler | undefined;
   stopPatterns?: StopPattern[];
   doNotInjectCharacterImage?: boolean;
@@ -214,6 +215,7 @@ export interface RawCharacter extends RawData {
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
+  maximumActionStamina: number;
   samplerId?: string | undefined;
   stopPatternIds?: number[];
   doNotInjectCharacterImage?: boolean;
@@ -238,6 +240,7 @@ export interface BaseMessage {
   id: string;
   character: Character;
   remainingChatStamina?: number;
+  remainingActionStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
@@ -267,6 +270,7 @@ export type HistoryMessage = InteractionMessage | ChatMessage;
 export interface RawBaseMessage {
   characterId: string;
   remainingChatStamina?: number;
+  remainingActionStamina?: number;
   isNameRevealed?: boolean;
   locationIndex?: number;
   characterExpression?: string;
@@ -500,6 +504,7 @@ export interface Profile extends ObjectData {
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
+  maximumActionStamina: number;
   cacheInvalidationReductionLevel: number;
   narrateNormalText: boolean;
   narrateQuotedText: boolean;
@@ -535,6 +540,7 @@ export interface RawProfile extends RawData {
   chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
+  maximumActionStamina: number;
   contextSensitivity: number;
   cacheInvalidationReductionLevel: number;
   narrateNormalText: boolean;

@@ -4,6 +4,7 @@ import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageMo
 import { saveRawInteractionData, loadRawBudgetData } from './storage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
+import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { editMessage, clearPartialFlag } from './messageLogic';
 import { consumeChatStamina } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
@@ -115,6 +116,7 @@ export function useChatSession() {
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
     const activeStrategyIdRef = useRef<string | null>(null);
+    const autonomousEngineRef = useRef(new AutonomousSimulationEngine());
 
     // ─── Extracted Hooks ─────────────────────────────────────────────
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -222,6 +224,64 @@ export function useChatSession() {
 
         engine.evaluate(interactionData);
     }, [interactionData]);
+
+    // ─── Autonomous Simulation ───────────────────────────────────────
+    useEffect(() => {
+        const engine = autonomousEngineRef.current;
+        const autonomousEnabled = interactionData?.Profile?.autonomousMode ?? false;
+
+        if (autonomousEnabled && interactionData) {
+            const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
+                resetStream();
+                setStreamingCharacter(c);
+                return handleServerResponse(d, c, s, throttledSetStreamingText, undefined, '');
+            };
+
+            const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
+
+            engine.start(
+                executor,
+                checkCanAct,
+                () => useSessionStore.getState().interactionData,
+                (data) => {
+                    useSessionStore.setState({ interactionData: data });
+                },
+            );
+        } else {
+            engine.stop();
+        }
+
+        return () => { engine.stop(); };
+    }, [interactionData?.Profile?.autonomousMode, handleServerResponse, throttledSetStreamingText, resetStream, setStreamingCharacter, interactionData, isLoadingRef]);
+
+    // Pause autonomous simulation when tab is hidden
+    useEffect(() => {
+        const engine = autonomousEngineRef.current;
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                engine.stop();
+            } else {
+                // Re-start if autonomous mode is still enabled
+                const data = useSessionStore.getState().interactionData;
+                if (data?.Profile?.autonomousMode) {
+                    const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
+                        resetStream();
+                        setStreamingCharacter(c);
+                        return handleServerResponse(d, c, s, throttledSetStreamingText, undefined, '');
+                    };
+                    const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
+                    engine.start(
+                        executor,
+                        checkCanAct,
+                        () => useSessionStore.getState().interactionData,
+                        (data) => { useSessionStore.setState({ interactionData: data }); },
+                    );
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [handleServerResponse, throttledSetStreamingText, resetStream, setStreamingCharacter, isLoadingRef]);
 
     // ─── Helpers ─────────────────────────────────────────────────────
     const isModelReadyForGeneration = useCallback((): boolean => {

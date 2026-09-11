@@ -4,7 +4,6 @@ import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, Summariz
 import { SliderInput } from './SliderInput';
 import './main.css';
 import { defaultInputStrategy } from '../defaults';
-import { timerify } from 'perf_hooks';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -57,8 +56,8 @@ const DEFAULT_TOOLS: Record<tool, number> = {
     dice: 0,
     random: 0,
     rng: 0,
-    stopwatch: 0,
     timer: 0,
+    stopwatch: 0,
     calculator: 0,
     web: 0,
     lookup: 0,
@@ -150,6 +149,7 @@ export function ProfileEditorModal({
 }: ProfileEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
+    const [autonomousMode, setAutonomousMode] = useState(false);
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
@@ -212,6 +212,7 @@ export function ProfileEditorModal({
         if (existingProfile) {
             setName(existingProfile.name || '');
             setDescription(existingProfile.description || '');
+            setAutonomousMode(existingProfile.autonomousMode ?? false);
             setForceNameReveal(existingProfile.forceNameReveal ?? false);
             setEnableCharacterExpression(existingProfile.enableCharacterExpression ?? false);
             setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
@@ -250,6 +251,7 @@ export function ProfileEditorModal({
             );
         } else {
             setName(''); setDescription('');
+            setAutonomousMode(false);
             setForceNameReveal(false); setEnableCharacterExpression(false);
             setForceNoCharacterImageInjection(false); setForceNoContextImageInjection(false); setForceNoLocationImageInjection(false);
             setNumberOfMessagesToDisableThinkPrompt(-1); setNumberOfMessagesToDisableMetaThinkInstructions(-1); setNumberOfMessagesToDisableDialoguePrompt(-1);
@@ -278,6 +280,7 @@ export function ProfileEditorModal({
         const now = Date.now();
         return {
             id, name: profileName, description: description.trim() || undefined,
+            autonomousMode,
             forceNameReveal, enableCharacterExpression,
             forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection,
             numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt,
@@ -450,7 +453,8 @@ export function ProfileEditorModal({
                             <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                         </div>
 
-                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
+                        <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters may respond unprompted after each user message based on their individual stats (initiative, chat probability, stamina, etc.). All participants are eligible." />
+                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' spaced />
                         <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." spaced />
                     </div>
 

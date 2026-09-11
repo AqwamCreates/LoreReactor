@@ -72,6 +72,10 @@ export function getEffectiveContextSensitivity(character: Character, profile?: P
     return getEffectiveNumeric("contextSensitivity", character, profile);
 }
 
+export function getEffectiveMaximumActionStamina(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("maximumActionStamina", character, profile);
+}
+
 export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableThinkPrompt", character, profile);
 }
