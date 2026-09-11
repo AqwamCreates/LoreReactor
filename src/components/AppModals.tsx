@@ -466,7 +466,6 @@ export function AppModals({
                     emptyMessage="No extensions available."
                     actionLabel="Delete"
                     orderedListMode={true}
-                    currentOrderIds={(interactionData as InteractionData)?.extensions?.map((e: Extension) => e.id) || []}
                     onToggleOrder={onToggleExtension}
                 />
             )}

@@ -136,7 +136,7 @@ function detectFormatSegments(text: string): DetectedSegment[] {
 
     allMatches.sort((a, b) => {
         if (a.start !== b.start) return a.start - b.start;
-        return (b.end - b.start) - (a.end - a.start);
+        return (b.end - b.start) - (a.end - b.start);
     });
 
     const accepted: RawMatch[] = [];
@@ -611,7 +611,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     onClick={onRegenerateFromEdit}
                                     disabled={!isModelReady || isLoading}
                                     className="edit-btn edit-btn-regenerate"
-                                    title="Save changes and regenerate response"
+                                    title={isLoading ? 'Generation in progress...' : 'Save changes and regenerate response'}
                                     style={!isModelReady || isLoading ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                                 >
                                     Regenerate
@@ -645,10 +645,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             <button
                                                 type="button"
                                                 onClick={() => onResumeGeneration(message.id)}
-                                                disabled={!isModelReady}
+                                                disabled={!isModelReady || isLoading}
                                                 className="toolbar-btn"
-                                                title="Resume interrupted generation"
-                                                style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                                                title={isLoading ? 'Generation in progress...' : 'Resume interrupted generation'}
+                                                style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
                                                 ▶
                                             </button>
@@ -675,10 +675,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             <button
                                                 type="button"
                                                 onClick={() => onRegenerateFromMessage(message.id, 'ai')}
-                                                disabled={!isModelReady}
+                                                disabled={!isModelReady || isLoading}
                                                 className="toolbar-btn"
-                                                title="Regenerate this Response"
-                                                style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                                                title={isLoading ? 'Generation in progress...' : 'Regenerate this Response'}
+                                                style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
                                                 ↻
                                             </button>
@@ -688,10 +688,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             <button
                                                 type="button"
                                                 onClick={() => onRegenerateFromMessage(message.id, 'user')}
-                                                disabled={!isModelReady}
+                                                disabled={!isModelReady || isLoading}
                                                 className="toolbar-btn"
-                                                title="Regenerate Your Input"
-                                                style={!isModelReady ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                                                title={isLoading ? 'Generation in progress...' : 'Regenerate Your Input'}
+                                                style={!isModelReady || isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                             >
                                                 ↻
                                             </button>

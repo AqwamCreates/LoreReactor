@@ -1,4 +1,6 @@
-// src/services/WeatherService.ts
+// src/services/LocationEngine.ts
+import { find } from 'geo-tz';
+import { DateTime } from 'luxon';
 
 function degreesToCompass(degrees: number): string {
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -6,7 +8,7 @@ function degreesToCompass(degrees: number): string {
     return directions[index];
 }
 
-async function getLocation(): Promise<{ lat: number; lon: number } | null> {
+export async function getLocation(): Promise<{ latitude: number; longitude: number } | null> {
     if (!navigator.geolocation) return null;
 
     try {
@@ -19,8 +21,8 @@ async function getLocation(): Promise<{ lat: number; lon: number } | null> {
         });
 
         return {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
         };
     } catch {
         console.warn('Geolocation unavailable or denied.');
@@ -28,14 +30,23 @@ async function getLocation(): Promise<{ lat: number; lon: number } | null> {
     }
 }
 
-export async function fetchCurrentWeather(apiKey?: string): Promise<string | null> {
-    if (!apiKey)return null;
+/**
+ * Get accurate local time string from coordinates using IANA timezone database.
+ * Handles DST, political timezone boundaries, and half-hour offsets correctly.
+ */
+export function getLocalTimeFromCoordinates(latitude: number, longitude: number): number | null {
+    const timezones = find(latitude, longitude);
+    if (!timezones || timezones.length === 0) return null;
 
-    const location = await getLocation();
-    if (!location) return null;
+    const dt = DateTime.now().setZone(timezones[0]);
+    if (!dt.isValid) return null;
 
+    return dt.toUnixInteger();
+}
+
+export async function fetchCurrentWeather(latitude: number, longitude: number, apiKey: string): Promise<string | null> {
     try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${location.lat}&lon=${location.lon}&appid=${apiKey}&units=metric`;
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`;
         const response = await fetch(url);
         if (!response.ok) {
             console.warn(`Weather API returned ${response.status}`);

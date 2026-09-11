@@ -113,6 +113,11 @@ export function CharacterEditorModal({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+    // Track whether the modal was previously open and for which character,
+    // so sub-modals are only reset on a genuinely fresh open.
+    const previousOpenRef = useRef(false);
+    const previousCharacterIdRef = useRef<string | null>(null);
+
     const getModelContext = useCallback((): LanguageModelContext | undefined => {
         if (!selectedModel) return undefined;
         const runtimePort = selectedModel.id && runningModels?.[selectedModel.id]?.port;
@@ -137,8 +142,18 @@ export function CharacterEditorModal({
     useEffect(() => { return () => { Object.values(tokenCountTimeoutsRef.current).forEach(clearTimeout); }; }, []);
 
     useEffect(() => {
-        if (!isOpen) return;
-        
+        if (!isOpen) {
+            previousOpenRef.current = false;
+            return;
+        }
+
+        const currentCharId = existingCharacter?.id ?? null;
+        const isFreshOpen = !previousOpenRef.current || previousCharacterIdRef.current !== currentCharId;
+        previousOpenRef.current = true;
+        previousCharacterIdRef.current = currentCharId;
+
+        if (!isFreshOpen) return;
+
         setSubmitError(null);
         setAutoDetected({ iw: null, cp: null, ms: null });
         setShowAdvancedSettings(false);

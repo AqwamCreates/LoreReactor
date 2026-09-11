@@ -4,10 +4,10 @@ import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getPromptBlockImageUrl } from './storage';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from './storage';
 import { getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveEnableCalculator, getEffectiveEnableWebSearch, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString } from '../stringList';
-import { fetchCurrentWeather } from '../services/WeatherService';
+import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
 import { resolveModelContextFromSamplerParameters } from '../utilities/modelContextResolver';
 
@@ -48,8 +48,9 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = getLanguageModelEngine();
 
-function getCurrentDateAndTimeString(): string {
-    return new Date().toLocaleString('en-US', {
+function getDateAndTimeString(localTimestamp: number): string {
+    const dateAndTime = new Date(localTimestamp * 1000);
+    return dateAndTime.toLocaleString('en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -59,7 +60,6 @@ function getCurrentDateAndTimeString(): string {
         hour12: true,
     });
 }
-
 export function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
     if (!text) return text;
     const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
@@ -589,6 +589,7 @@ export async function buildPromptAndStopPatterns(
     const profile = interactionData.Profile;
     const useCurrentDateAndTime = profile?.useCurrentDateAndTime;
     const useWeather = profile?.useWeather;
+    const weatherApiKey = profile?.weatherApiKey
     const useTimeElapsed = profile?.useTimeElapsed;
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? DEFAULT_INPUT_STRATEGY;
@@ -877,17 +878,35 @@ export async function buildPromptAndStopPatterns(
         if (fatigue) fatigueLines.push(fatigue);
     }
 
+    let latitude: number | undefined = location?.latitude;
+    let longitude: number | undefined = location?.longitude;
+
+    if (!latitude || !longitude) {
+        const geoLocation = await getLocation();
+        if (geoLocation) {
+            latitude = geoLocation.latitude;
+            longitude = geoLocation.longitude;
+        }
+    }
+
+    let localTimestamp: number | null = null;
+
+    if (latitude && longitude) localTimestamp = getLocalTimeFromCoordinates(latitude, longitude)
+
+    // DATE AND TIME BLOCK
     const dateAndTimeLines: string[] = [];
 
-    if (useCurrentDateAndTime) {
-        const dateAndTimeString = getCurrentDateAndTimeString();
-        dateAndTimeLines.push(`${contextStartString}${thinkStartString}Today's date and time is ${dateAndTimeString}.${thinkEndString}${contextEndString}`);
+    if (useCurrentDateAndTime && localTimestamp) {
+        const dateAndTime = getDateAndTimeString(localTimestamp)
+        dateAndTimeLines.push(`${contextStartString}${thinkStartString}Today's date and time is ${dateAndTime}.${thinkEndString}${contextEndString}`);
     }
+
+    // WEATHER BLOCK
 
     const weatherLines: string[] = [];
 
-    if (useWeather) {
-        const weatherLine = await fetchCurrentWeather(profile?.weatherApiKey);
+    if (useWeather && weatherApiKey && latitude && longitude) {
+        const weatherLine = await fetchCurrentWeather(latitude, longitude, weatherApiKey);
         if (weatherLine) {
             weatherLines.push(`${contextStartString}${thinkStartString}${weatherLine}${thinkEndString}${contextEndString}`);
         }
@@ -895,10 +914,9 @@ export async function buildPromptAndStopPatterns(
 
     const timeElapsedLines: string[] = [];
 
-    if (useTimeElapsed && interactionHistory.length > 0) {
-        const now = Date.now();
+    if (useTimeElapsed && localTimestamp && interactionHistory.length > 0) {
         const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
-        const diffMs = Math.max(0, now - lastMsgTimestamp);
+        const diffMs = Math.max(0, localTimestamp - lastMsgTimestamp);
 
         const totalSeconds = Math.floor(diffMs / 1000);
         const numberOfDays = Math.floor(totalSeconds / 86400);
@@ -1226,7 +1244,8 @@ export async function prepareRequestBody(
     if (!profile?.forceNoContextImageInjection && activeLocationImages.length > 0) {
         const locationImagePromises = activeLocationImages.map(async (filename) => {
             try {
-                const imageUrl = `/user_data/location_data/${filename}`;
+                const imageUrl = getLocationImageUrl(filename);
+                if (!imageUrl) return null;
                 const response = await fetch(imageUrl);
                 if (!response.ok) return null;
                 const blob = await response.blob();

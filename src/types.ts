@@ -107,6 +107,8 @@ export interface Location extends ObjectData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
+  latitude: number;
+  longitude: number;
   locationDistances: Record<string, number>; // In km.
   useBase64Encoding: boolean;
 }
@@ -122,7 +124,9 @@ export interface RawLocation extends RawData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
-  locationDistances: Record<string, number>; // In km.
+  latitude: number;
+  longitude: number;
+  locationDistances?: Record<string, number>; // In km.
   useBase64Encoding: boolean;
 }
 
