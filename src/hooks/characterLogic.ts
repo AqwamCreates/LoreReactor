@@ -1,5 +1,6 @@
 // src/hooks/characterLogic.ts
 import type { Character, InteractionData, HistoryMessage, Profile, tool } from "../types";
+import { findPreviousMessage } from "./chatLogic";
 
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
     const characterValue = character[key] as number;
@@ -184,8 +185,13 @@ export function consumeChatStamina(interactionMessage: HistoryMessage, amountOfC
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
-export function generateChatStamina(character: Character, interactionMessage: HistoryMessage) {
-    const maximumChatStamina = getEffectiveMaximumChatStamina(character);
+export function consumeActionStamina(interactionMessage: HistoryMessage, amountOfActionStaminaConsumed: number) {
+    if (interactionMessage.messageType === 'chat' || interactionMessage.remainingActionStamina === undefined) return;
+    interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amountOfActionStaminaConsumed);
+}
+
+export function generateChatStamina(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+    const maximumChatStamina = getEffectiveMaximumChatStamina(character, profile);
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
@@ -221,4 +227,67 @@ export function generateChatStamina(character: Character, interactionMessage: Hi
         maximumChatStamina,
         remainingChatStamina + amountOfChatStaminaGenerated
     );
+}
+
+export function generateActionStamina(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+    const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
+    const remainingActionStamina = interactionMessage.remainingActionStamina;
+
+    if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
+    if (remainingActionStamina === undefined) return;
+    if (remainingActionStamina >= maximumActionStamina) return;
+
+    const weights: number[] = [];
+    let cumulativeWeight = 0;
+
+    for (let k = 1; k <= maximumActionStamina; k++) {
+        const weight = Math.log(1 + k);
+        cumulativeWeight += weight;
+        weights.push(cumulativeWeight);
+    }
+
+    const Dice = Math.random() * cumulativeWeight;
+
+    let lo = 0;
+    let hi = weights.length - 1;
+
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (weights[mid] < Dice) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+
+    const amountOfActionStaminaGenerated = lo + 1;
+
+    interactionMessage.remainingActionStamina = Math.min(
+        maximumActionStamina,
+        remainingActionStamina + amountOfActionStaminaGenerated
+    );
+}
+
+/**
+ * Regenerate chat stamina for a character based on their previous interaction.
+ * Mutates the interactionHistory in place by updating the character's last entry.
+ */
+export function regenerateChatStaminaForCharacter(data: InteractionData, character: Character): void {
+    const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
+    if (maxStamina === Number.POSITIVE_INFINITY) return;
+    const previousMessage = findPreviousMessage(data, character.id)
+    if (!previousMessage) return
+    generateChatStamina(character, previousMessage);
+}
+
+/**
+ * Regenerate action stamina for a character based on their previous interaction.
+ * Mutates the interactionHistory in place by updating the character's last entry.
+ */
+export function regenerateActionStaminaForCharacter(data: InteractionData, character: Character): void {
+    const maxStamina = getEffectiveMaximumActionStamina(character, data.Profile);
+    if (maxStamina === Number.POSITIVE_INFINITY) return;
+    const previousMessage = findPreviousMessage(data, character.id)
+    if (!previousMessage) return
+    generateActionStamina(character, previousMessage);
 }

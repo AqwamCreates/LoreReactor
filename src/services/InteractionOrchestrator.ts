@@ -1,9 +1,10 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, consumeChatStamina } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveChatImpatienceSensitivity, generateChatStamina, generateActionStamina, consumeChatStamina, consumeActionStamina, regenerateActionStaminaForCharacter, regenerateChatStaminaForCharacter } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
+import { findPreviousMessage } from '../hooks/chatLogic';
 
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<InteractionData | null>
 
@@ -33,32 +34,14 @@ function countParagraphs(text: string): number {
 }
 
 /**
- * Regenerate stamina for a character based on their previous interaction.
- * Mutates the interactionHistory in place by updating the character's last entry.
- */
-function regenerateChatStaminaForCharacter(data: InteractionData, character: Character): void {
-    const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return;
-
-    for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
-        if (data.interactionHistory[i].character.id === character.id) {
-            const entry = data.interactionHistory[i];
-            if (entry.remainingChatStamina === undefined) return;
-            if (entry.remainingChatStamina >= maxStamina) return;
-            generateChatStamina(character, entry);
-            return;
-        }
-    }
-}
-
-/**
  * Create a silent InteractionMessage (no text) to record location/state changes
  * for non-speaking characters.
  */
 function createSilentInteraction(
     character: Character,
     locationIndex: number | undefined,
-    previousStamina: number | undefined,
+    previousChatStamina: number | undefined,
+    previousActionStamina: number | undefined,
     parentId: string | null | undefined,
 ): InteractionMessage {
     const now = Date.now();
@@ -66,7 +49,8 @@ function createSilentInteraction(
         messageType: 'interaction',
         id: uuidv4(),
         character: { ...character },
-        remainingChatStamina: previousStamina,
+        remainingChatStamina: previousChatStamina,
+        remainingActionStamina: previousActionStamina,
         locationIndex,
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
@@ -125,7 +109,7 @@ export async function runTurnSequence(
         const protagonistLoc = getCurrentLocationIndex(workingData, workingData.protagonist);
         const hasLocations = workingData.locations && workingData.locations.length > 0;
 
-        // Non-co-located AI participants Dice location in initiative-weighted order
+        // Non-co-located AI participants move in initiative-weighted order
         if (hasLocations) {
             const lastParentId = workingData.interactionHistory.length > 0
                 ? workingData.interactionHistory[workingData.interactionHistory.length - 1].id
@@ -155,11 +139,11 @@ export async function runTurnSequence(
                 if (pool.length === 0 || totalWeight <= 0) break;
 
                 // Weighted random pick
-                let Dice = Math.random() * totalWeight;
+                let roll = Math.random() * totalWeight;
                 let picked: Character | null = null;
                 for (const entry of pool) {
-                    Dice -= entry.weight;
-                    if (Dice <= 0) { picked = entry.char; break; }
+                    roll -= entry.weight;
+                    if (roll <= 0) { picked = entry.char; break; }
                 }
                 if (!picked) picked = pool[pool.length - 1].char;
 
@@ -172,17 +156,31 @@ export async function runTurnSequence(
                 }
 
                 // Capture stamina BEFORE regeneration so silent interaction records pre-regen state
-                const prevStamina = getLastInteractionForCharacter(workingData.interactionHistory, picked.id)?.remainingChatStamina;
+                const lastMsg = getLastInteractionForCharacter(workingData.interactionHistory, picked.id);
+                const prevChatStamina = lastMsg?.remainingChatStamina;
+                const prevActionStamina = lastMsg?.remainingActionStamina;
 
-                // Regenerate stamina before recording movement
-                regenerateChatStaminaForCharacter(workingData, picked);
+                // Regenerate action stamina before recording movement (resting from talking)
+                regenerateActionStaminaForCharacter(workingData, picked);
 
                 // Filter by reachability first (with conditional regex), then sample from reachable locations only
                 const pLoc = getCurrentLocationIndex(workingData, picked);
                 const reachable = getReachableLocations(workingData.locations, pLoc, triggeringMessageText);
                 const newLoc = sampleReachableLocationByWeight(reachable, picked);
                 if (newLoc !== undefined && newLoc !== pLoc) {
-                    const silent = createSilentInteraction(picked, newLoc, prevStamina, lastParentId);
+                    // Consume 1 action stamina for the move
+                    const postRegenMsg = getLastInteractionForCharacter(workingData.interactionHistory, picked.id);
+                    if (postRegenMsg && postRegenMsg.remainingActionStamina !== undefined) {
+                        consumeActionStamina(postRegenMsg, 1);
+                    }
+
+                    const silent = createSilentInteraction(
+                        picked,
+                        newLoc,
+                        prevChatStamina,
+                        postRegenMsg?.remainingActionStamina ?? prevActionStamina,
+                        lastParentId,
+                    );
                     workingData.interactionHistory.push(silent);
                 }
 
@@ -234,11 +232,11 @@ export async function runTurnSequence(
             if (initPool.length === 0 || totalWeight <= 0) {
                 selectedSpeaker = eligible[0];
             } else {
-                let Dice = Math.random() * totalWeight;
+                let roll = Math.random() * totalWeight;
                 selectedSpeaker = initPool[initPool.length - 1].char;
                 for (const entry of initPool) {
-                    Dice -= entry.weight;
-                    if (Dice <= 0) {
+                    roll -= entry.weight;
+                    if (roll <= 0) {
                         selectedSpeaker = entry.char;
                         break;
                     }
@@ -248,6 +246,7 @@ export async function runTurnSequence(
 
         if (!selectedSpeaker) break;
 
+        // Regenerate chat stamina before speaking (resting from moving)
         regenerateChatStaminaForCharacter(workingData, selectedSpeaker);
 
         // Chat probability gate — does this character want to speak?
@@ -272,7 +271,7 @@ export async function runTurnSequence(
         // Post-speech processing: consume stamina and resolve location
         const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
         if (newLastEntry && newLastEntry.character.id === selectedSpeaker.id && hasTextContent(newLastEntry)) {
-            // Consume stamina based on paragraph count
+            // Consume chat stamina based on paragraph count
             const paragraphs = countParagraphs(newLastEntry.textContent);
             if (paragraphs > 0) {
                 consumeChatStamina(newLastEntry, paragraphs);
