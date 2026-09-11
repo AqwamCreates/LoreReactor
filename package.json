@@ -14,8 +14,8 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@huggingface/transformers": "^4.2.0",
+    "@types/tz-lookup": "^6.1.2",
     "@xyflow/react": "^12.11.6",
-    "geo-tz": "^8.1.8",
     "idb": "^8.0.3",
     "luxon": "^3.7.2",
     "onnxruntime-web": "^1.29.0",
