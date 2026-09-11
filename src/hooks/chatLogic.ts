@@ -12,6 +12,16 @@ import { getCurrentLocation } from './locationLogic';
 import { resolveModelContextFromSamplerParameters } from '../utilities/modelContextResolver';
 import { defaultInputStrategy } from '../defaults';
 
+const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
+    pick: `${contextStartString}${thinkStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`,
+    date: `${contextStartString}${thinkStartString}To get the current date and time, I write ${toolStartSring}date${toolEndString}. The current date and time will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
+    dice: `${contextStartString}${thinkStartString}To Dice Dice, I write ${toolStartSring}Dice <Dice notation>${toolEndString}. Examples: ${toolStartSring}Dice 2d6+3${toolEndString}, ${toolStartSring}Dice d20${toolEndString}, ${toolStartSring}Dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
+    coinflip: `${contextStartString}${thinkStartString}To flip a coin, I write ${toolStartSring}coinflip${toolEndString}. The result (heads or tails) will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
+    random: `${contextStartString}${thinkStartString}To generate a random number, I write ${toolStartSring}random <min>, <max>${toolEndString}. A random integer between min and max (inclusive) will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
+    calculator: `${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`,
+    web: `${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`,
+};
+
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
@@ -983,13 +993,6 @@ export async function buildPromptAndStopPatterns(
         toolInstructions.push(`${contextStartString}${thinkStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${thinkEndString}${contextEndString}`);
 
         toolInstructions.push(`${contextStartString}${thinkStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${thinkEndString}${contextEndString}`);
-
-        const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
-            Dice: `${contextStartString}${thinkStartString}To Dice Dice, I write ${toolStartSring}Dice <Dice notation>${toolEndString}. Examples: ${toolStartSring}Dice 2d6+3${toolEndString}, ${toolStartSring}Dice d20${toolEndString}, ${toolStartSring}Dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${thinkEndString}${contextEndString}`,
-            pick: `${contextStartString}${thinkStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${thinkEndString}${contextEndString}`,
-            calculator: `${contextStartString}${thinkStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${thinkEndString}${contextEndString}`,
-            web: `${contextStartString}${thinkStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${thinkEndString}${contextEndString}`,
-        };
 
         for (const toolName of enabledToolNames) {
             const instruction = TOOL_INSTRUCTION_MAP[toolName];
