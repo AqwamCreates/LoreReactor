@@ -101,6 +101,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
         parts.push(`  "profile": {
     "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
     "autonomousMode": "boolean (default false)",
+    "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
     "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",

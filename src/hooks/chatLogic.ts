@@ -1089,7 +1089,7 @@ export async function buildPromptAndStopPatterns(
     const fatigueLines: string[] = [];
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${generalStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}.${generalEndString}`;
+        const remainingChatStaminaInstructions = `${generalStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs.${generalEndString}`;
         if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) fatigueLines.push(fatigue);

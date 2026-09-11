@@ -207,14 +207,14 @@ export function generateChatStaminaForMessage(character: Character, interactionM
         weights.push(cumulativeWeight);
     }
 
-    const Dice = Math.random() * cumulativeWeight;
+    const randomValue = Math.random() * cumulativeWeight;
 
     let lo = 0;
     let hi = weights.length - 1;
 
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (weights[mid] < Dice) {
+        if (weights[mid] < randomValue) {
             lo = mid + 1;
         } else {
             hi = mid;
@@ -248,14 +248,14 @@ export function generateActionStaminaForMessage(character: Character, interactio
         weights.push(cumulativeWeight);
     }
 
-    const Dice = Math.random() * cumulativeWeight;
+    const randomValue = Math.random() * cumulativeWeight;
 
     let lo = 0;
     let hi = weights.length - 1;
 
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (weights[mid] < Dice) {
+        if (weights[mid] < randomValue) {
             lo = mid + 1;
         } else {
             hi = mid;

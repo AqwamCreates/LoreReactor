@@ -150,6 +150,7 @@ export function ProfileEditorModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [autonomousMode, setAutonomousMode] = useState(false);
+    const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(10000);
     const [forceNameReveal, setForceNameReveal] = useState(false);
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(false);
     const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(false);
@@ -214,6 +215,7 @@ export function ProfileEditorModal({
             setName(existingProfile.name || '');
             setDescription(existingProfile.description || '');
             setAutonomousMode(existingProfile.autonomousMode ?? false);
+            setAutonomousInteractionIntervalMs(existingProfile.autonomousInteractionIntervalMs ?? 10000);
             setForceNameReveal(existingProfile.forceNameReveal ?? false);
             setEnableCharacterExpression(existingProfile.enableCharacterExpression ?? false);
             setForceNoCharacterImageInjection(existingProfile.forceNoCharacterImageInjection ?? false);
@@ -254,6 +256,7 @@ export function ProfileEditorModal({
         } else {
             setName(''); setDescription('');
             setAutonomousMode(false);
+            setAutonomousInteractionIntervalMs(10000);
             setForceNameReveal(false); setEnableCharacterExpression(false);
             setForceNoCharacterImageInjection(false); setForceNoContextImageInjection(false); setForceNoLocationImageInjection(false);
             setNumberOfMessagesToDisableThinkPrompt(-1); setNumberOfMessagesToDisableMetaThinkInstructions(-1); setNumberOfMessagesToDisableDialoguePrompt(-1);
@@ -284,6 +287,7 @@ export function ProfileEditorModal({
         return {
             id, name: profileName, description: description.trim() || undefined,
             autonomousMode,
+            autonomousInteractionIntervalMs,
             forceNameReveal, enableCharacterExpression,
             forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection,
             numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt,
@@ -445,7 +449,25 @@ export function ProfileEditorModal({
                     {/* Agentic Roleplay Section */}
                     <div className="editor-section">
                         <span className="editor-section-title">Agentic Roleplay</span>
-                        <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters may act independently in the background based on their individual stats (initiative, stamina, skip probability). All participants are eligible." />
+                        <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />
+                        {autonomousMode && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={SLIDER_HEADER_STYLE}>
+                                    <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label>
+                                    <span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span>
+                                </div>
+                                <SliderInput
+                                    label=""
+                                    value={autonomousInteractionIntervalMs}
+                                    minimumValue={1000}
+                                    maximumValue={60000}
+                                    stepValue={1000}
+                                    decimals={0}
+                                    onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))}
+                                    description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage."
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {/* Display Section */}

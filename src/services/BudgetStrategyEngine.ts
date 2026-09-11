@@ -119,8 +119,6 @@ export class BudgetStrategyEngine {
     private budgetData: BudgetData;
     private runningModels: Record<string, RunningModelState>;
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
-    private failedOnlineIds = new Set<string>();
-    private failedLocalIds = new Set<string>();
     private engine = getLanguageModelEngine();
 
     constructor(
@@ -142,8 +140,6 @@ export class BudgetStrategyEngine {
 
     setStrategy(strategy: BudgetStrategy): void {
         this.strategy = strategy;
-        this.failedOnlineIds.clear();
-        this.failedLocalIds.clear();
     }
 
     setBudgetData(budgetData: BudgetData): void {
@@ -167,25 +163,22 @@ export class BudgetStrategyEngine {
 
     // ─── Streaming Generation ────────────────────────────────────────
 
-    /**
-     * Stream a generation using a pre-built request body.
-     * The caller is responsible for building the request body (via prepareRequestBody).
-     * This engine handles model selection, budget tracking, failover, and retry logic only.
-     */
     async generateStream(
         requestBody: Record<string, unknown>,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
     ): Promise<string> {
-        this.failedOnlineIds.clear();
-        this.failedLocalIds.clear();
+        // Per-generation failed sets — reset every request so exhaustion
+        // never carries over between generations
+        const failedOnlineIds = new Set<string>();
+        const failedLocalIds = new Set<string>();
 
         const useOnline = await this.shouldUseOnline(requestBody);
 
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
-        const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
+        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
+        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
 
         const promptText = (requestBody.prompt as string) || '';
         const complexityScore = computeComplexityScore(promptText);
@@ -396,7 +389,7 @@ export class BudgetStrategyEngine {
 
         // ─── Both pools exhausted — try free models as last resort ───
         if (!abortController.signal.aborted) {
-            const allFailedIds = new Set([...this.failedOnlineIds, ...this.failedLocalIds]);
+            const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
 
             while (true) {
                 const freeModel = this.selectFreeModel(allFailedIds);
@@ -485,7 +478,7 @@ export class BudgetStrategyEngine {
         }
 
         const exhaustedError = new Error('All models in both primary and fallback pools have been exhausted.');
-        console.error('[BudgetEngine] Exhausted. Primary failed:', [...this.failedOnlineIds], 'Fallback failed:', [...this.failedLocalIds]);
+        console.error('[BudgetEngine] Exhausted. Primary failed:', [...failedOnlineIds], 'Fallback failed:', [...failedLocalIds]);
         throw exhaustedError;
     }
 
@@ -495,14 +488,15 @@ export class BudgetStrategyEngine {
         requestBody: Record<string, unknown>,
         abortSignal?: AbortSignal,
     ): Promise<{ text: string; modelId: string }> {
-        this.failedOnlineIds.clear();
-        this.failedLocalIds.clear();
+        // Per-generation failed sets
+        const failedOnlineIds = new Set<string>();
+        const failedLocalIds = new Set<string>();
 
         const useOnline = await this.shouldUseOnline(requestBody);
         const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
         const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryFailedSet = useOnline ? this.failedOnlineIds : this.failedLocalIds;
-        const fallbackFailedSet = useOnline ? this.failedLocalIds : this.failedOnlineIds;
+        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
+        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
 
         // ─── Try primary pool ───
         while (true) {
@@ -621,7 +615,7 @@ export class BudgetStrategyEngine {
         }
 
         // ─── Free models ───
-        const allFailedIds = new Set([...this.failedOnlineIds, ...this.failedLocalIds]);
+        const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
         while (true) {
             const freeModel = this.selectFreeModel(allFailedIds);
             if (!freeModel) break;
@@ -922,8 +916,8 @@ export class BudgetStrategyEngine {
         const complexityScore = computeComplexityScore(promptText);
         if (complexityScore >= this.strategy.switchOnComplexityScore) return true;
 
-        const Dice = Math.random() * 100;
-        return Dice < this.strategy.switchProbability;
+        const randomValue = Math.random() * 100;
+        return randomValue < this.strategy.switchProbability;
     }
 }
 

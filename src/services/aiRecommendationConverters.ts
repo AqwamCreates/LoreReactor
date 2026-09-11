@@ -195,6 +195,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         name: (p.name as string) || 'Unnamed',
         description: (p.description as string) || undefined,
         autonomousMode: (p.autonomousMode as boolean) ?? false,
+        autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,

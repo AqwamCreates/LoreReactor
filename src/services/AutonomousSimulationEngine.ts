@@ -1,21 +1,11 @@
 // src/services/AutonomousSimulationEngine.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStaminaForMessage, consumeChatStaminaForMessage } from '../hooks/characterLogic';
+import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveChatImpatienceSensitivity, generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, consumeActionStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 
 type AutonomousExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<InteractionData | null>;
-
-interface AutonomousConfig {
-    tickIntervalMs: number;
-    maxActionsPerTick: number;
-}
-
-const DEFAULT_CONFIG: AutonomousConfig = {
-    tickIntervalMs: 10000,
-    maxActionsPerTick: 3,
-};
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
@@ -28,27 +18,11 @@ function getLastInteractionForCharacter(history: HistoryMessage[], characterId: 
     return undefined;
 }
 
-function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: string): number {
-    let turns = 0;
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (!hasTextContent(msg)) continue;
-        if (msg.character.id === characterId) return turns;
-        turns++;
-    }
-    return turns;
-}
-
-function getTimeSinceLastActionMs(history: HistoryMessage[], characterId: string): number {
-    const last = getLastInteractionForCharacter(history, characterId);
-    if (!last) return Infinity;
-    return Date.now() - last.lastUpdatedTimestamp;
-}
-
 function createSilentInteraction(
     character: Character,
     locationIndex: number | undefined,
-    previousStamina: number | undefined,
+    previousChatStamina: number | undefined,
+    previousActionStamina: number | undefined,
     parentId: string | null | undefined,
 ): HistoryMessage {
     const now = Date.now();
@@ -56,7 +30,8 @@ function createSilentInteraction(
         messageType: 'interaction',
         id: uuidv4(),
         character: { ...character },
-        remainingChatStamina: previousStamina,
+        remainingChatStamina: previousChatStamina,
+        remainingActionStamina: previousActionStamina,
         locationIndex,
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
@@ -64,31 +39,65 @@ function createSilentInteraction(
     };
 }
 
-function regenerateStaminaInPlace(data: InteractionData, character: Character): void {
-    const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return;
+/**
+ * Compute selection weight for a character using combined stamina ratio.
+ * Characters who have been active recently have lower stamina ratios → lower weight.
+ * Characters who have been idle retain high stamina → higher weight.
+ * Self-balancing: outgoing characters burn stamina fast, quiet characters rise naturally.
+ */
+function computeSelectionWeight(character: Character, data: InteractionData): number {
+    const profile = data.Profile;
+    const initiative = getEffectiveInitiativeWeight(character, profile);
+    const skipProb = getEffectiveSkipProbability(character, profile);
 
-    for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
-        if (data.interactionHistory[i].character.id === character.id) {
-            const entry = data.interactionHistory[i];
-            if (entry.remainingChatStamina === undefined) return;
-            if (entry.remainingChatStamina >= maxStamina) return;
-            generateChatStaminaForMessage(character, entry);
-            return;
+    const maxChat = getEffectiveMaximumChatStamina(character, profile);
+    const maxAction = getEffectiveMaximumActionStamina(character, profile);
+
+    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
+    const remainingAction = lastMsg?.remainingActionStamina ?? maxAction;
+
+    // Combined stamina ratio: treats both pools as unified capacity
+    const totalMax = maxChat + maxAction;
+    const totalRemaining = remainingChat + remainingAction;
+    const staminaRatio = totalMax > 0 ? totalRemaining / totalMax : 1;
+
+    // Weight = initiative × stamina ratio × (1 - skip probability)
+    return initiative * staminaRatio * (1 - skipProb);
+}
+
+/**
+ * Select one character from the pool using weighted sampling without replacement.
+ * Returns null if no valid candidates remain.
+ */
+function weightedSample(candidates: Character[], data: InteractionData): Character | null {
+    const weights: { char: Character; weight: number }[] = [];
+    let totalWeight = 0;
+
+    for (const c of candidates) {
+        const w = computeSelectionWeight(c, data);
+        if (w > 0) {
+            weights.push({ char: c, weight: w });
+            totalWeight += w;
         }
     }
+
+    if (weights.length === 0 || totalWeight <= 0) return null;
+
+    let roll = Math.random() * totalWeight;
+    for (const entry of weights) {
+        roll -= entry.weight;
+        if (roll <= 0) return entry.char;
+    }
+
+    return weights[weights.length - 1].char;
 }
 
 export class AutonomousSimulationEngine {
     private timerId: ReturnType<typeof setInterval> | null = null;
     private abortController: AbortController | null = null;
-    private config: AutonomousConfig;
     private executor: AutonomousExecutor | null = null;
     private isRunning = false;
-
-    constructor(config?: Partial<AutonomousConfig>) {
-        this.config = { ...DEFAULT_CONFIG, ...config };
-    }
 
     start(
         executor: AutonomousExecutor,
@@ -101,21 +110,31 @@ export class AutonomousSimulationEngine {
         this.isRunning = true;
         this.abortController = new AbortController();
 
-        this.timerId = setInterval(async () => {
-            if (!this.isRunning) return;
-            if (!checkCanAct()) return;
+        const tickLoop = async () => {
+            while (this.isRunning) {
+                // Read interval from profile each tick so changes take effect live
+                const data = getData();
+                const intervalMs = data?.Profile?.autonomousInteractionIntervalMs ?? 10000;
 
-            const data = getData();
-            if (!data || !data.Profile?.autonomousMode) return;
+                await new Promise(resolve => setTimeout(resolve, intervalMs));
 
-            try {
-                await this.tick(data, setData, checkCanAct);
-            } catch (e) {
-                if ((e as Error).name !== 'AbortError') {
-                    console.warn('Autonomous simulation tick failed:', e);
+                if (!this.isRunning) break;
+                if (!checkCanAct()) continue;
+
+                const currentData = getData();
+                if (!currentData || !currentData.Profile?.autonomousMode) continue;
+
+                try {
+                    await this.tick(currentData, setData, checkCanAct);
+                } catch (e) {
+                    if ((e as Error).name !== 'AbortError') {
+                        console.warn('Autonomous simulation tick failed:', e);
+                    }
                 }
             }
-        }, this.config.tickIntervalMs);
+        };
+
+        tickLoop();
     }
 
     stop(): void {
@@ -151,6 +170,16 @@ export class AutonomousSimulationEngine {
         const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
         if (allAI.length === 0) return;
 
+        // Regenerate stamina for all AI participants before selection
+        for (const character of allAI) {
+            generateChatStaminaForInteractionData(workingData, character);
+            generateActionStaminaForInteractionData(workingData, character);
+        }
+
+        // Weighted sampling: select one character to act this tick
+        const selected = weightedSample(allAI, workingData);
+        if (!selected) return;
+
         const protagonistLoc = getCurrentLocationIndex(workingData, workingData.protagonist);
         const hasLocations = workingData.locations && workingData.locations.length > 0;
 
@@ -162,100 +191,89 @@ export class AutonomousSimulationEngine {
             ? workingData.interactionHistory[workingData.interactionHistory.length - 1].id
             : null;
 
-        let actionsThisTick = 0;
+        // Decide action type: speak or move silently
+        const charLoc = hasLocations ? getCurrentLocationIndex(workingData, selected) : undefined;
+        const isCoLocated = !hasLocations || (charLoc !== undefined && protagonistLoc !== undefined && charLoc === protagonistLoc);
 
-        // Shuffle participants so no single character always goes first
-        const shuffled = [...allAI].sort(() => Math.random() - 0.5);
+        // Chat-specific decision: only when co-located
+        let wantsToSpeak = false;
+        if (isCoLocated) {
+            const effectiveProb = getEffectiveChatProbability(selected, profile);
+            const impatience = getEffectiveChatImpatienceSensitivity(selected, profile);
 
-        for (const character of shuffled) {
-            if (!this.isRunning || !checkCanAct()) break;
-            if (actionsThisTick >= this.config.maxActionsPerTick) break;
-            if (this.abortController.signal.aborted) break;
-
-            // Regenerate stamina before evaluation
-            regenerateStaminaInPlace(workingData, character);
-
-            // ─── Universal action gate: initiativeWeight + skipProbability ───
-            const initiative = getEffectiveInitiativeWeight(character, profile);
-            const effectiveSkip = getEffectiveSkipProbability(character, profile);
-            const timeSinceLastMs = getTimeSinceLastActionMs(workingData.interactionHistory, character.id);
-
-            // Longer inactivity = higher chance to act, scaled by initiative
-            // Base: initiative / 10 gives 0.0–1.0 range, silence adds up to 4× multiplier
-            const silenceHours = timeSinceLastMs / 3600000;
-            const silenceMultiplier = 1 + Math.min(silenceHours * 2, 4);
-            const actionChance = Math.min((initiative / 10) * silenceMultiplier, 1);
-
-            // Universal skip gate
-            if (effectiveSkip > 0 && Math.random() < effectiveSkip) continue;
-
-            // Does this character do anything this tick?
-            if (Math.random() >= actionChance) continue;
-
-            // Character wants to act. Now decide WHAT based on chat-specific stats.
-            const charLoc = hasLocations ? getCurrentLocationIndex(workingData, character) : undefined;
-            const isCoLocated = !hasLocations || (charLoc !== undefined && protagonistLoc !== undefined && charLoc === protagonistLoc);
-
-            // Chat-specific decision: only applies when co-located
-            let wantsToSpeak = false;
-            if (isCoLocated) {
-                const effectiveProb = getEffectiveChatProbability(character, profile);
-                const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
-                const turnsSinceSpoken = getTurnsSinceLastSpoken(workingData.interactionHistory, character.id);
-                const chatSilenceMultiplier = 1 + Math.min(turnsSinceSpoken * impatience, 4);
-                const speakChance = Math.min(effectiveProb * chatSilenceMultiplier, 1);
-                wantsToSpeak = Math.random() < speakChance;
+            // Count spoken turns since this character last spoke
+            let turnsSinceSpoken = 0;
+            for (let i = workingData.interactionHistory.length - 1; i >= 0; i--) {
+                const msg = workingData.interactionHistory[i];
+                if (!hasTextContent(msg)) continue;
+                if (msg.character.id === selected.id) break;
+                turnsSinceSpoken++;
             }
 
-            if (wantsToSpeak) {
-                // ─── SPEAK (chat-specific stats already passed) ──────
-                const resultData = await this.executor(workingData, character, this.abortController.signal);
-                if (!resultData) continue;
+            const chatSilenceMultiplier = 1 + Math.min(turnsSinceSpoken * impatience, 4);
+            const speakChance = Math.min(effectiveProb * chatSilenceMultiplier, 1);
+            wantsToSpeak = Math.random() < speakChance;
+        }
 
-                // Post-speech: consume stamina, resolve location
-                const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
-                if (newLastEntry && newLastEntry.character.id === character.id && hasTextContent(newLastEntry)) {
-                    const paragraphs = (newLastEntry.textContent.match(/\n\n/g) || []).length + 1;
-                    if (paragraphs > 0) consumeChatStaminaForMessage(newLastEntry, paragraphs);
+        if (wantsToSpeak) {
+            // ─── SPEAK ───────────────────────────────────────────────
+            const resultData = await this.executor(workingData, selected, this.abortController.signal);
+            if (!resultData) return;
 
-                    if (hasLocations) {
-                        const currentLoc = getCurrentLocationIndex(resultData, character);
-                        const regexLoc = findLocationByRegex(resultData.locations, newLastEntry.textContent, character);
-                        const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
-                        resultData.interactionHistory[resultData.interactionHistory.length - 1] = {
-                            ...newLastEntry,
-                            locationIndex: finalLoc,
-                        };
-                    }
+            // Post-speech: consume chat stamina, resolve location
+            const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
+            if (newLastEntry && newLastEntry.character.id === selected.id && hasTextContent(newLastEntry)) {
+                const paragraphs = (newLastEntry.textContent.match(/\n\n/g) || []).length + 1;
+                if (paragraphs > 0) consumeChatStaminaForMessage(newLastEntry, paragraphs);
+
+                if (hasLocations) {
+                    const currentLoc = getCurrentLocationIndex(resultData, selected);
+                    const regexLoc = findLocationByRegex(resultData.locations, newLastEntry.textContent, selected);
+                    const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                    resultData.interactionHistory[resultData.interactionHistory.length - 1] = {
+                        ...newLastEntry,
+                        locationIndex: finalLoc,
+                    };
+                }
+            }
+
+            workingData = resultData;
+
+            try {
+                await saveRawInteractionData(workingData);
+                setData(workingData);
+            } catch (e) {
+                console.error('Failed to save autonomous speech:', e);
+            }
+        } else if (hasLocations && charLoc !== undefined) {
+            // ─── MOVE SILENTLY ───────────────────────────────────────
+            const lastMsg = getLastInteractionForCharacter(workingData.interactionHistory, selected.id);
+            const prevChatStamina = lastMsg?.remainingChatStamina;
+            const prevActionStamina = lastMsg?.remainingActionStamina;
+
+            const reachable = getReachableLocations(workingData.locations, charLoc, triggeringMessageText);
+            const newLoc = sampleReachableLocationByWeight(reachable, selected);
+
+            if (newLoc !== undefined && newLoc !== charLoc) {
+                // Consume 1 action stamina for the move
+                if (lastMsg && lastMsg.remainingActionStamina !== undefined) {
+                    consumeActionStaminaForMessage(lastMsg, 1);
                 }
 
-                workingData = resultData;
-                actionsThisTick++;
+                const silent = createSilentInteraction(
+                    selected,
+                    newLoc,
+                    prevChatStamina,
+                    lastMsg?.remainingActionStamina ?? prevActionStamina,
+                    lastParentId,
+                );
+                workingData.interactionHistory.push(silent);
 
                 try {
                     await saveRawInteractionData(workingData);
                     setData(workingData);
                 } catch (e) {
-                    console.error('Failed to save autonomous speech:', e);
-                }
-            } else if (hasLocations && charLoc !== undefined) {
-                // ─── MOVE SILENTLY (universal stats only) ────────────
-                const prevStamina = getLastInteractionForCharacter(workingData.interactionHistory, character.id)?.remainingChatStamina;
-
-                const reachable = getReachableLocations(workingData.locations, charLoc, triggeringMessageText);
-                const newLoc = sampleReachableLocationByWeight(reachable, character);
-
-                if (newLoc !== undefined && newLoc !== charLoc) {
-                    const silent = createSilentInteraction(character, newLoc, prevStamina, lastParentId);
-                    workingData.interactionHistory.push(silent);
-                    actionsThisTick++;
-
-                    try {
-                        await saveRawInteractionData(workingData);
-                        setData(workingData);
-                    } catch (e) {
-                        console.error('Failed to save autonomous movement:', e);
-                    }
+                    console.error('Failed to save autonomous movement:', e);
                 }
             }
         }
