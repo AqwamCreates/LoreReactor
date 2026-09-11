@@ -288,18 +288,19 @@ font-weight: bold;
 letter-spacing: 0.5px;
 }
 .message-bubble {
-position: relative;
-padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.5rem, 1.5vw, 1rem);
-border-radius: 50px;
-font-size: clamp(0.75rem, 1.8vw, 0.875rem);
-line-height: 1.6;
-border: 1px solid var(--border);
-display: flex;
-flex-direction: column;
-gap: 0.5rem;
-width: 100%;
-box-sizing: border-box;
-transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    position: relative;
+    padding: clamp(0.4rem, 1vw, 0.75rem) clamp(0.5rem, 1.5vw, 1rem);
+    border-radius: 18px;
+    font-size: clamp(0.75rem, 1.8vw, 0.875rem);
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    overflow: visible;
 }
 @media (hover: hover) and (pointer: fine) {
 .message-bubble:hover .message-toolbar { opacity: 1; }
@@ -309,9 +310,15 @@ transform: scale(1.03) translateY(-2px);
 box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
 border-color: var(--accent);
 }
-.bubble-ai { background: var(--social-bg); border-top-left-radius: 10px; }
-.bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 10px; }
-.bubble-editing { width: 90vw; border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); }
+.bubble-ai { background: var(--social-bg); border-top-left-radius: 4px; }
+.bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 4px; }
+.bubble-editing {
+    width: 90vw;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-bg);
+    border-radius: 12px;
+    overflow: visible;
+}
 .bubble-stem { opacity: 0.85; border-style: dashed; border-color: var(--border); background: rgba(0,0,0,0.02); }
 .message-text {
 outline: none;
@@ -343,55 +350,63 @@ cursor: not-allowed; padding: 4px 8px;
 background: var(--social-bg); border-radius: 4px; border: 1px solid var(--border);
 }
 .edit-mode {
-display: flex;
-flex-direction: column;
-gap: 8px;
-width: 100%;
-min-width: 0;
-margin: 0;
-padding: 0;
-box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 .edit-textarea {
-display: block;
-width: 100%;
-min-width: 0;
-max-width: 100%;
-font-family: inherit;
-font-size: clamp(0.75rem, 1.8vw, 0.875rem);
-line-height: 1.6;
-padding: 0;
-margin: 0;
-border: none;
-background: transparent;
-color: var(--text-h);
-outline: none;
-resize: none;
-box-sizing: border-box;
-min-height: 1.6em;
-overflow-y: hidden;
-overflow-x: hidden;
-white-space: pre-wrap;
-word-break: break-word;
-word-wrap: break-word;
-align-self: stretch;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font-family: inherit;
+    font-size: clamp(0.75rem, 1.8vw, 0.875rem);
+    line-height: 1.6;
+    padding: 4px;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-h);
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    min-height: 1.6em;
+    overflow-y: auto;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+    word-wrap: break-word;
+    align-self: stretch;
+    border-radius: 8px;
 }
 .edit-textarea:focus {
 background: rgba(255, 255, 255, 0.03);
 border-radius: 8px;
 }
 .edit-actions {
-display: flex;
-justify-content: flex-end;
-gap: 6px;
-margin-top: 4px;
-min-width: 0;
-width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+    min-width: 0;
+    width: 100%;
+    flex-wrap: wrap;
 }
 .edit-button {
-font-size: 0.75rem; padding: 4px 12px; border-radius: 4px;
-border: 1px solid var(--border); cursor: pointer; font-family: inherit;
-min-height: 32px;
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: inherit;
+    min-height: 32px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 .edit-button-save { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
 .edit-button-regenerate {
@@ -3852,11 +3867,13 @@ CHAT MINIMAP — HOVER-TO-REVEAL (DESKTOP ONLY, HIDDEN ON MOBILE)
 CHAT SCROLL BUTTONS — JUMP TO TOP / BOTTOM
 ============================================================================= */
 .chat-scroll-button {
-    position: absolute;
-    right: 16px;
-    z-index: 40;
+    z-index: 9999;
     width: 36px;
     height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    max-width: 36px;
+    max-height: 36px;
     border-radius: 50%;
     border: 1px solid var(--border);
     background: var(--bg);
@@ -3868,12 +3885,14 @@ CHAT SCROLL BUTTONS — JUMP TO TOP / BOTTOM
     align-items: center;
     justify-content: center;
     padding: 0;
+    margin: 0;
     opacity: 0.7;
-    transition: all 0.2s ease;
+    transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     font-family: inherit;
     line-height: 1;
     pointer-events: auto;
+    box-sizing: border-box;
 }
 
 .chat-scroll-button:hover {
@@ -3885,48 +3904,95 @@ CHAT SCROLL BUTTONS — JUMP TO TOP / BOTTOM
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.chat-scroll-button-top {
-    top: 16px;
-}
-
-.chat-scroll-button-bottom {
-    bottom: 16px;
-    background: var(--accent-bg);
-    border-color: var(--accent-border);
-    color: var(--accent);
-}
-
-.chat-scroll-button-bottom:hover {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-}
-
 @media (hover: none), (pointer: coarse) {
     .chat-scroll-button {
         width: 44px;
         height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        max-width: 44px;
+        max-height: 44px;
         font-size: 1.2rem;
     }
-
-    .chat-scroll-button-top {
-        top: 12px;
-    }
-
-    .chat-scroll-button-bottom {
-        bottom: 12px;
-        right: 12px;
-    }
 }
 
-/* Shift left when minimap is visible (desktop only) */
-@media (hover: hover) and (pointer: fine) {
-    .chat-scroll-button {
-        right: 48px;
-    }
-}
-
-/* Hide in cinematic mode */
 .mode-cinematic .chat-scroll-button {
     display: none;
+}
+
+/* =============================================================================
+MESSAGE REFORMAT PANEL — TEXT FORMATTING CONVERSION
+============================================================================= */
+.message-reformat-panel {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--accent-border);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.message-reformat-empty {
+    font-size: 0.8em;
+    opacity: 0.6;
+    padding: 2px 0;
+}
+
+.message-reformat-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 3px;
+}
+
+@media (min-width: 600px) {
+    .message-reformat-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 3px 12px;
+    }
+}
+
+.message-reformat-row {
+    display: grid;
+    grid-template-columns: 1fr 16px minmax(0, 1fr);
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+}
+
+.message-reformat-label {
+    font-size: 0.78em;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.message-reformat-count {
+    opacity: 0.5;
+    margin-left: 4px;
+}
+
+.message-reformat-arrow {
+    opacity: 0.5;
+    text-align: center;
+    font-size: 0.78em;
+}
+
+.message-reformat-select {
+    width: 100%;
+    min-width: 0;
+    height: 24px;
+    padding: 0 4px;
+    font-size: 0.78em;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--social-bg);
+    color: var(--text-h);
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.message-reformat-select:focus {
+    border-color: var(--accent);
 }

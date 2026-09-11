@@ -1,29 +1,52 @@
 // src/components/ChatScrollButtons.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useLayoutEffect } from 'react';
 
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
+const BUTTON_GAP = 16;
+const VERTICAL_GAP = 5;
+
 export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     containerRef,
 }: ChatScrollButtonsProps) {
-    const [showTop, setShowTop] = useState(false);
-    const [showBottom, setShowBottom] = useState(false);
+    const [showTopButton, setShowTopButton] = useState(false);
+    const [showBottomButton, setShowBottomButton] = useState(false);
+    const [containerRect, setContainerRect] = useState<{ top: number; bottom: number; right: number } | null>(null);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        const onScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            setShowTop(scrollTop > 200);
-            setShowBottom(scrollHeight - scrollTop - clientHeight > 200);
+        const updateRect = () => {
+            const rect = container.getBoundingClientRect();
+            setContainerRect({
+                top: rect.top,
+                bottom: rect.bottom,
+                right: rect.right,
+            });
         };
 
-        container.addEventListener('scroll', onScroll, { passive: true });
+        const onScroll = () => {
+            const { scrollTop, scrollHeight, clientHeight } = container;
+            setShowTopButton(scrollTop > 200);
+            setShowBottomButton(scrollHeight - scrollTop - clientHeight > 200);
+        };
+
+        updateRect();
         onScroll();
-        return () => container.removeEventListener('scroll', onScroll);
+
+        const resizeObserver = new ResizeObserver(updateRect);
+        resizeObserver.observe(container);
+        container.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', updateRect);
+
+        return () => {
+            resizeObserver.disconnect();
+            container.removeEventListener('scroll', onScroll);
+            window.removeEventListener('resize', updateRect);
+        };
     }, [containerRef]);
 
     const scrollToTop = useCallback(() => {
@@ -36,24 +59,40 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }, [containerRef]);
 
-    if (!showTop && !showBottom) return null;
+    if (!containerRect || (!showTopButton && !showBottomButton)) return null;
+
+    const topPosition = containerRect.top + BUTTON_GAP + VERTICAL_GAP;
+    const bottomPosition = window.innerHeight - containerRect.bottom + BUTTON_GAP + VERTICAL_GAP;
+    const rightPosition = window.innerWidth - containerRect.right + BUTTON_GAP;
 
     return (
         <>
-            {showTop && (
+            {showTopButton && (
                 <button
-                    className="chat-scroll-button chat-scroll-button-top"
+                    type="button"
+                    className="chat-scroll-button"
                     onClick={scrollToTop}
                     title="Scroll to top"
+                    style={{
+                        position: 'fixed',
+                        top: `${topPosition}px`,
+                        right: `${rightPosition}px`,
+                    }}
                 >
                     ↑
                 </button>
             )}
-            {showBottom && (
+            {showBottomButton && (
                 <button
-                    className="chat-scroll-button chat-scroll-button-bottom"
+                    type="button"
+                    className="chat-scroll-button"
                     onClick={scrollToBottom}
                     title="Scroll to latest"
+                    style={{
+                        position: 'fixed',
+                        bottom: `${bottomPosition}px`,
+                        right: `${rightPosition}px`,
+                    }}
                 >
                     ↓
                 </button>

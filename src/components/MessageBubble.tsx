@@ -136,7 +136,7 @@ function detectFormatSegments(text: string): DetectedSegment[] {
 
     allMatches.sort((a, b) => {
         if (a.start !== b.start) return a.start - b.start;
-        return (b.end - b.start) - (a.end - b.start);
+        return (b.end - b.start) - (a.end - a.start);
     });
 
     const accepted: RawMatch[] = [];
@@ -518,7 +518,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         minHeight: '60px',
                                         borderRadius: '6px',
                                         background: 'rgba(255,255,255,0.04)',
-                                        border: '1px solid rgba(120, 200, 255, 0.35)',
+                                        border: '1px solid var(--accent-border)',
                                         cursor: 'text',
                                         whiteSpace: 'pre-wrap',
                                         wordBreak: 'break-word',
@@ -533,57 +533,25 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 ~{editTokenCount} token(s)
                             </div>
 
-                            {/* Conversion panel — compact */}
-                            <div
-                                className="message-reformat-panel"
-                                style={{
-                                    marginTop: '6px',
-                                    padding: '6px 8px',
-                                    border: '1px solid rgba(120, 200, 255, 0.15)',
-                                    borderRadius: '6px',
-                                    background: 'rgba(0,0,0,0.12)',
-                                }}
-                            >
+                            {/* Conversion panel */}
+                            <div className="message-reformat-panel">
                                 {conversions.length === 0 ? (
-                                    <div style={{ fontSize: '0.8em', opacity: 0.6, padding: '2px 0' }}>
+                                    <div className="message-reformat-empty">
                                         No formatting detected. Click the text above to edit.
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <div className="message-reformat-grid">
                                         {conversions.map(conversion => (
-                                            <div
-                                                key={conversion.detected}
-                                                style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'minmax(160px, 1fr) 16px 160px',
-                                                    gap: '4px',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <span style={{ fontSize: '0.78em', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            <div key={conversion.detected} className="message-reformat-row">
+                                                <span className="message-reformat-label">
                                                     {conversion.label}
-                                                    <span style={{ opacity: 0.5, marginLeft: '4px' }}>×{conversion.count}</span>
+                                                    <span className="message-reformat-count">×{conversion.count}</span>
                                                 </span>
-
-                                                <span style={{ opacity: 0.5, textAlign: 'center', fontSize: '0.78em' }}>→</span>
-
+                                                <span className="message-reformat-arrow">→</span>
                                                 <select
+                                                    className="message-reformat-select"
                                                     value={conversion.target}
                                                     onChange={e => updateConversionTarget(conversion.detected, e.target.value as TargetFormat)}
-                                                    style={{
-                                                        width: '160px',
-                                                        minWidth: '160px',
-                                                        maxWidth: '160px',
-                                                        height: '24px',
-                                                        padding: '0 4px',
-                                                        fontSize: '0.78em',
-                                                        borderRadius: '4px',
-                                                        border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
-                                                        background: 'var(--social-bg, rgba(255,255,255,0.06))',
-                                                        color: 'var(--text-h, #fff)',
-                                                        outline: 'none',
-                                                        cursor: 'pointer',
-                                                    }}
                                                 >
                                                     {TARGET_OPTIONS.map(option => (
                                                         <option key={option.value} value={option.value}>

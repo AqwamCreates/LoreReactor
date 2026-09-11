@@ -777,9 +777,6 @@ function App() {
                             />
                         )}
 
-                        {interactionData && InteractionMessages.length > 3 && viewMode === 'ladder' && (
-                            <ChatScrollButtons containerRef={chatHistoryRef} />
-                        )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             {isEditingTitle
                                 ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
@@ -802,6 +799,10 @@ function App() {
                     </div></div></header>
 
                     <div className="chat-history" ref={chatHistoryRef}>
+                        {interactionData && InteractionMessages.length > 3 && viewMode === 'ladder' && (
+                            <ChatScrollButtons containerRef={chatHistoryRef} />
+                        )}
+
                         {viewMode === 'cinematic' && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
