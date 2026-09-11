@@ -1,12 +1,11 @@
-// src/services/TextGenerationOrchestrator.ts
+// src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
 import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { consumeChatStaminaForMessage, generateChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
-import { findPreviousMessage } from '../hooks/chatLogic';
+import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
@@ -137,7 +136,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
 
 // ─── Orchestrator ───────────────────────────────────────────────────
 
-export class TextGenerationOrchestrator {
+export class CharacterActor {
     private languageModelEngine = getLanguageModelEngine();
 
     async executeTurn(params: TurnExecutionParams): Promise<{ result: TurnResult } | { error: TurnError }> {

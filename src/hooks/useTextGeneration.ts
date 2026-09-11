@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock } from '../types';
 import { useSessionStore } from '../store/useSessionStore';
-import { TextGenerationOrchestrator, type TurnStreamCallbacks } from '../services/TextGenerationOrchestrator';
+import { CharacterActor, type TurnStreamCallbacks } from '../services/CharacterActor';
 
 interface UseTextGenerationOptions {
     setBudgetData: (bd: import('../types').BudgetData) => void;
@@ -17,7 +17,7 @@ interface UseTextGenerationOptions {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const orchestrator = new TextGenerationOrchestrator();
+const orchestrator = new CharacterActor();
 
 export function useTextGeneration(options: UseTextGenerationOptions) {
     const {
