@@ -2,7 +2,7 @@
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders } from '../hooks/chatLogic';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString } from '../stringList';
 
 const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
@@ -14,9 +14,6 @@ const COMPRESS_CHUNK_PROMPT = "You are a narrative compressor for roleplay chat 
 
 const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.";
 
-/**
- * Generates a summary for a single chat message using the budget-aware engine.
- */
 export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
@@ -35,19 +32,12 @@ export async function generateMessageSummary(
     return result || null;
 }
 
-/**
- * Check if a chat message already has a per-model summary for the given modelId.
- */
 function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
     if (msg.messageType !== 'chat') return false;
     const chatMsg = msg as ChatMessage;
     return !!(chatMsg.modelTextContentSummaries?.[modelId]);
 }
 
-/**
- * Generates summaries for all messages outside the sliding window
- * that don't already have a summary for this specific model.
- */
 export async function generateMissingSummaries(
     interactionData: InteractionData,
     windowSize: number,
@@ -56,9 +46,31 @@ export async function generateMissingSummaries(
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+
+    // Get universally-filtered flags — skip summarizing messages hidden from all characters
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [], // prompt blocks not needed for universal filter in this context
+    );
+
     const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize = history.slice(0, cutoff).filter(m => m.messageType === 'chat' && !hasModelSummary(m, modelId));
+    const toSummarize: ChatMessage[] = [];
+
+    for (let i = 0; i < cutoff; i++) {
+        const msg = history[i];
+        if (msg.messageType !== 'chat') continue;
+        // Find this message's index in the chatMessages array for filter lookup
+        const chatIdx = chatMessages.indexOf(msg as ChatMessage);
+        if (chatIdx >= 0 && filterFlags[chatIdx]) continue; // Universally excluded
+        if (hasModelSummary(msg, modelId)) continue;
+        toSummarize.push(msg as ChatMessage);
+    }
+
     if (toSummarize.length === 0) return results;
+
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, maxTokens);
         if (summary) {
@@ -68,9 +80,6 @@ export async function generateMissingSummaries(
     return results;
 }
 
-/**
- * Compresses a chunk of messages into a single narrative paragraph.
- */
 async function compressChunk(
     messages: HistoryMessage[],
     maxTokens = 512,
@@ -91,9 +100,6 @@ async function compressChunk(
     return text || null;
 }
 
-/**
- * Creates a character-specific memory entry.
- */
 export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
@@ -147,10 +153,6 @@ export async function generateCharacterMemory(
     } as Context;
 }
 
-/**
- * Periodic Compression: finds chunks of messages that haven't been
- * compressed yet and produces auto-generated Context entries.
- */
 export async function generatePeriodicCompression(
     interactionData: InteractionData,
     compressionInterval: number,
@@ -168,21 +170,44 @@ export async function generatePeriodicCompression(
             }
         }
     }
+
+    // Get universally-filtered messages for global summarization
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [],
+    );
+    const visibleChatMessages = chatMessages.filter((_, i) => !filterFlags[i]);
+
+    // Map visible messages back to their original history indices for range tracking
+    const visibleToOriginalIdx = new Map<ChatMessage, number>();
+    for (let i = 0; i < chatMessages.length; i++) {
+        if (!filterFlags[i]) {
+            visibleToOriginalIdx.set(chatMessages[i], i);
+        }
+    }
+
     const newContexts: Context[] = [];
     const now = Date.now();
-    const compressibleEnd = Math.max(0, history.length - compressionInterval);
+    const compressibleEnd = Math.max(0, visibleChatMessages.length - compressionInterval);
+
     for (let startIdx = 0; startIdx < compressibleEnd; startIdx += compressionChunkSize) {
         const endIdx = Math.min(startIdx + compressionChunkSize, compressibleEnd);
-        const rangeKey = `${startIdx}-${endIdx}`;
+        const origStart = visibleToOriginalIdx.get(visibleChatMessages[startIdx]) ?? startIdx;
+        const origEnd = visibleToOriginalIdx.get(visibleChatMessages[endIdx - 1]) ?? endIdx;
+        const rangeKey = `${origStart}-${origEnd}`;
         if (compressedRanges.has(rangeKey)) continue;
-        const chunk = history.slice(startIdx, endIdx);
+
+        const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
         const compressed = await compressChunk(chunk, maxTokens);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
-            name: `[Auto-Summary] Messages ${startIdx + 1}–${endIdx}`,
-            description: `msgs:${startIdx}-${endIdx}`,
+            name: `[Auto-Summary] Messages ${origStart + 1}–${origEnd + 1}`,
+            description: `msgs:${origStart}-${origEnd}`,
             text: compressed,
             isAutoGenerated: true,
             useBase64Encoding: false,
@@ -195,9 +220,6 @@ export async function generatePeriodicCompression(
     return newContexts;
 }
 
-/**
- * Merges multiple summary paragraphs into one coherent paragraph.
- */
 async function mergeSummaries(
     summaries: string[],
     maxTokens = 512,
@@ -218,9 +240,6 @@ async function mergeSummaries(
     return text || null;
 }
 
-/**
- * Recursive Summary: builds hierarchical summaries across multiple layers.
- */
 export async function generateRecursiveSummary(
     interactionData: InteractionData,
     chunkSize: number,
@@ -231,7 +250,17 @@ export async function generateRecursiveSummary(
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    const fullRangeKey = `recursive-global:0-${history.length}`;
+    // Get universally-filtered messages for global summarization
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [],
+    );
+    const visibleMessages: HistoryMessage[] = chatMessages.filter((_, i) => !filterFlags[i]);
+
+    const fullRangeKey = `recursive-global:0-${visibleMessages.length}`;
     for (const context of existingContexts) {
         if (context.isAutoGenerated && context.description === fullRangeKey) return [];
     }
@@ -239,9 +268,9 @@ export async function generateRecursiveSummary(
     const newContexts: Context[] = [];
 
     const layer0Summaries: string[] = [];
-    for (let startIdx = 0; startIdx < history.length; startIdx += chunkSize) {
-        const endIdx = Math.min(startIdx + chunkSize, history.length);
-        const chunk = history.slice(startIdx, endIdx);
+    for (let startIdx = 0; startIdx < visibleMessages.length; startIdx += chunkSize) {
+        const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
+        const chunk = visibleMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
         const compressed = await compressChunk(chunk, maxTokens);
         if (!compressed) continue;
@@ -324,9 +353,6 @@ export async function generateRecursiveSummary(
     return newContexts;
 }
 
-/**
- * Checks whether any summarization step should trigger based on token count.
- */
 export function checkTriggerThreshold(
     interactionData: InteractionData,
     currentnumberOfTokens: number,

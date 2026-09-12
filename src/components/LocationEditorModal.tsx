@@ -1,7 +1,7 @@
 // src/components/LocationEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Location, Character } from '../types';
+import type { Location, Character, AudioTrack, regularExpressionContext, regularExpressionTarget } from '../types';
 import { uploadLocationImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -17,6 +17,7 @@ interface LocationEditorModalProps {
     existingLocation?: Location | null;
     allCharacters?: Character[];
     allLocations?: Location[];
+    allAudioTracks?: AudioTrack[];
 }
 
 export function LocationEditorModal({
@@ -26,6 +27,7 @@ export function LocationEditorModal({
     existingLocation,
     allCharacters = [],
     allLocations = [],
+    allAudioTracks = [],
 }: LocationEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -46,6 +48,16 @@ export function LocationEditorModal({
     const [bgImageRegexTriggers, setBgImageRegexTriggers] = useState<Record<number, string>>({});
     const [bgImageWeights, setBgImageWeights] = useState<Record<number, number>>({});
 
+    // Audio on enter weights (keyed by audio track ID)
+    const [playAudioTrackOnEnterWeights, setPlayAudioTrackOnEnterWeights] = useState<Record<string, number>>({});
+
+    // Message filter fields
+    const [messageFilterNonCoLocatedParticipants, setMessageFilterNonCoLocatedParticipants] = useState<boolean>(false);
+    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
+    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
+    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
+    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
+
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
@@ -53,11 +65,17 @@ export function LocationEditorModal({
     const [bgImageTestTexts, setBgImageTestTexts] = useState<Record<number, string>>({});
     const [bgImageTestResults, setBgImageTestResults] = useState<Record<number, boolean | null>>({});
 
+    // Message filter test state
+    const [messageFilterActivationTestText, setMessageFilterActivationTestText] = useState('');
+    const [messageFilterActivationTestResult, setMessageFilterActivationTestResult] = useState<boolean | null>(null);
+    const [messageFilterDeactivationTestText, setMessageFilterDeactivationTestText] = useState('');
+    const [messageFilterDeactivationTestResult, setMessageFilterDeactivationTestResult] = useState<boolean | null>(null);
+
     // Coordinates for weather and distance calculations
     const [latitude, setLatitude] = useState<string>('');
     const [longitude, setLongitude] = useState<string>('');
 
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string>; latitude?: string; longitude?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string>; latitude?: string; longitude?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textNumberOfTokens, setTextNumberOfTokens] = useState(0);
@@ -114,6 +132,12 @@ export function LocationEditorModal({
                 setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
                 setBgImageRegexTriggers(existingLocation.backgroundImageRegularExpressionActivationTriggers ?? {});
                 setBgImageWeights(existingLocation.backgroundImageWeights ?? {});
+                setPlayAudioTrackOnEnterWeights(existingLocation.playAudioTrackOnEnterWeights ?? {});
+                setMessageFilterNonCoLocatedParticipants(existingLocation.messageFilterNonCoLocatedParticipants ?? false);
+                setMessageFilterActivationTrigger(existingLocation.messageFilterRegularExpressionActivationTrigger || '');
+                setMessageFilterDeactivationTrigger(existingLocation.messageFilterRegularExpressionDeactivationTrigger || '');
+                setMessageFilterContext(existingLocation.messageFilterRegularExpressionContext || 'global');
+                setMessageFilterTarget(existingLocation.messageFilterRegularExpressionTarget || 'everyone');
                 setLatitude(existingLocation.latitude != null ? String(existingLocation.latitude) : '');
                 setLongitude(existingLocation.longitude != null ? String(existingLocation.longitude) : '');
             } else {
@@ -131,6 +155,12 @@ export function LocationEditorModal({
                 setUseBase64Encoding(false);
                 setBgImageRegexTriggers({});
                 setBgImageWeights({});
+                setPlayAudioTrackOnEnterWeights({});
+                setMessageFilterNonCoLocatedParticipants(false);
+                setMessageFilterActivationTrigger('');
+                setMessageFilterDeactivationTrigger('');
+                setMessageFilterContext('global');
+                setMessageFilterTarget('everyone');
                 setLatitude('');
                 setLongitude('');
             }
@@ -139,11 +169,15 @@ export function LocationEditorModal({
             setActivationTestResult(null);
             setBgImageTestTexts({});
             setBgImageTestResults({});
+            setMessageFilterActivationTestText('');
+            setMessageFilterActivationTestResult(null);
+            setMessageFilterDeactivationTestText('');
+            setMessageFilterDeactivationTestResult(null);
         }
     }, [isOpen, existingLocation]);
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; text?: string; regex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string>; latitude?: string; longitude?: string } = {};
+        const newErrors: typeof errors = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasText = text.trim().length > 0;
@@ -175,6 +209,14 @@ export function LocationEditorModal({
             }
         }
         if (Object.keys(bgImageRegexErrors).length > 0) newErrors.bgImageRegex = bgImageRegexErrors;
+
+        // Validate message filter regex triggers
+        if (messageFilterActivationTrigger.trim()) {
+            try { new RegExp(messageFilterActivationTrigger); } catch { newErrors.messageFilterRegex = 'Invalid message filter activation regular expression.'; }
+        }
+        if (messageFilterDeactivationTrigger.trim()) {
+            try { new RegExp(messageFilterDeactivationTrigger); } catch { newErrors.messageFilterDeactivationRegex = 'Invalid message filter deactivation regular expression.'; }
+        }
 
         // Validate coordinates
         if (latitude.trim()) {
@@ -213,6 +255,26 @@ export function LocationEditorModal({
             setBgImageTestResults(prev => ({ ...prev, [index]: regex.test(testText) }));
         } catch {
             setBgImageTestResults(prev => ({ ...prev, [index]: null }));
+        }
+    };
+
+    const handleTestMessageFilterActivationRegex = () => {
+        if (!messageFilterActivationTrigger.trim() || !messageFilterActivationTestText.trim()) { setMessageFilterActivationTestResult(null); return; }
+        try {
+            setMessageFilterActivationTestResult(new RegExp(messageFilterActivationTrigger).test(messageFilterActivationTestText));
+        } catch {
+            setMessageFilterActivationTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterRegex: 'Invalid message filter activation regular expression.' }));
+        }
+    };
+
+    const handleTestMessageFilterDeactivationRegex = () => {
+        if (!messageFilterDeactivationTrigger.trim() || !messageFilterDeactivationTestText.trim()) { setMessageFilterDeactivationTestResult(null); return; }
+        try {
+            setMessageFilterDeactivationTestResult(new RegExp(messageFilterDeactivationTrigger).test(messageFilterDeactivationTestText));
+        } catch {
+            setMessageFilterDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterDeactivationRegex: 'Invalid message filter deactivation regular expression.' }));
         }
     };
 
@@ -307,6 +369,7 @@ export function LocationEditorModal({
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
             backgroundImageRegularExpressionActivationTriggers: Object.keys(bgImageRegexTriggers).length > 0 ? bgImageRegexTriggers : {},
             backgroundImageWeights: Object.keys(bgImageWeights).length > 0 ? bgImageWeights : {},
+            playAudioTrackOnEnterWeights: Object.keys(playAudioTrackOnEnterWeights).length > 0 ? playAudioTrackOnEnterWeights : undefined,
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
             locationBindingRegularExpressionTriggers: Object.keys(locationBindingRegexTriggers).length > 0 ? locationBindingRegexTriggers : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
@@ -315,6 +378,11 @@ export function LocationEditorModal({
             latitude: parsedLat != null && !Number.isNaN(parsedLat) ? parsedLat : 0,
             longitude: parsedLng != null && !Number.isNaN(parsedLng) ? parsedLng : 0,
             locationDistances: existingLocation?.locationDistances ?? {},
+            messageFilterNonCoLocatedParticipants: messageFilterNonCoLocatedParticipants || undefined,
+            messageFilterRegularExpressionActivationTrigger: messageFilterActivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionDeactivationTrigger: messageFilterDeactivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionContext: messageFilterContext,
+            messageFilterRegularExpressionTarget: messageFilterTarget,
             useBase64Encoding,
             firstCreatedTimestamp: isNewClone ? now : (existingLocation?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -344,6 +412,7 @@ export function LocationEditorModal({
 
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
     const getLocationById = (id: string) => allLocations.find(l => l.id === id);
+    const getAudioTrackById = (id: string) => allAudioTracks.find(t => t.id === id);
 
     const availableLocationsForBinding = allLocations.filter(l => l.id !== existingLocation?.id);
 
@@ -503,6 +572,55 @@ export function LocationEditorModal({
                         </div>
                     )}
 
+                    {/* Audio On Enter */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Audio On Enter</span>
+                        <div className="context-binding-hint">When a character enters this location, an audio track is randomly selected by weight. Only tracks listed here will play. Empty = no automatic audio.</div>
+
+                        <div className="context-character-binding-list">
+                            {Object.entries(playAudioTrackOnEnterWeights).map(([trackId, weight]) => {
+                                const track = getAudioTrackById(trackId);
+                                if (!track) return null;
+                                return (
+                                    <div key={trackId} className="context-character-binding-chip" style={{ gap: '6px' }}>
+                                        <span className="context-character-binding-name">🔊 {track.filename || track.name}</span>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            value={weight}
+                                            onChange={(e) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [trackId]: Math.max(0, Number(e.target.value) || 0) }))}
+                                            className="editor-input"
+                                            style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setPlayAudioTrackOnEnterWeights(prev => { const next = { ...prev }; delete next[trackId]; return next; })}
+                                            className="context-character-binding-remove"
+                                            title="Remove audio track"
+                                        >×</button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <select
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val && !(val in playAudioTrackOnEnterWeights)) {
+                                    setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [val]: 1 }));
+                                }
+                                e.target.value = '';
+                            }}
+                            className="editor-select"
+                            defaultValue=""
+                        >
+                            <option value="" disabled>+ Add audio track on enter</option>
+                            {allAudioTracks.filter(t => !(t.id in playAudioTrackOnEnterWeights)).map(t => (
+                                <option key={t.id} value={t.id}>{t.filename || t.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div className="editor-section">
                         <span className="editor-section-title">Movement Trigger</span>
 
@@ -655,6 +773,94 @@ export function LocationEditorModal({
                                 <option value="" disabled>+ Add character weight override</option>
                                 {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                             </select>
+                        </div>
+                    </div>
+
+                    {/* Message Filter Regular Expression */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Message Filter</span>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Control which chat history messages are visible to the AI when this location is active. Messages matching the filter activation pattern will be excluded.
+                        </div>
+
+                        <div className="context-field-group">
+                            <label className="editor-checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={messageFilterNonCoLocatedParticipants}
+                                    onChange={(e) => setMessageFilterNonCoLocatedParticipants(e.target.checked)}
+                                    className="editor-checkbox-input"
+                                />
+                                <span>Filter Non-Co-Located Participants</span>
+                            </label>
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                Hide messages from characters not currently at this location.
+                            </div>
+                        </div>
+
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Activation Trigger</label>
+                                <input type="text" value={messageFilterActivationTrigger} onChange={(e) => { setMessageFilterActivationTrigger(e.target.value); if (errors.messageFilterRegex) setErrors({ ...errors, messageFilterRegex: undefined }); setMessageFilterActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterRegex ? 'error' : ''}`} placeholder="^\/ooc\s+|^\[.*\]$" />
+                                {errors.messageFilterRegex && <div className="editor-error-message">{errors.messageFilterRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages matching this regex will be hidden from chat history at this location.</div>
+                            </div>
+                        </div>
+
+                        {messageFilterActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Activation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterActivationTestText} onChange={(e) => { setMessageFilterActivationTestText(e.target.value); setMessageFilterActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterActivationTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterActivationTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterActivationTestResult ? '✅ Would be filtered (hidden from AI)' : '❌ Would NOT be filtered (visible to AI)'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Deactivation Trigger</label>
+                                <input type="text" value={messageFilterDeactivationTrigger} onChange={(e) => { setMessageFilterDeactivationTrigger(e.target.value); if (errors.messageFilterDeactivationRegex) setErrors({ ...errors, messageFilterDeactivationRegex: undefined }); setMessageFilterDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterDeactivationRegex ? 'error' : ''}`} placeholder="/end_ooc/i" />
+                                {errors.messageFilterDeactivationRegex && <div className="editor-error-message">{errors.messageFilterDeactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Stops filtering subsequent messages when matched.</div>
+                            </div>
+                        </div>
+
+                        {messageFilterDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterDeactivationTestText} onChange={(e) => { setMessageFilterDeactivationTestText(e.target.value); setMessageFilterDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterDeactivationTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterDeactivationTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterDeactivationTestResult ? '✅ Deactivation matches! (filtering stops)' : '❌ Deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="editor-row" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Context</label>
+                                <select value={messageFilterContext} onChange={(e) => setMessageFilterContext(e.target.value as regularExpressionContext)} className="editor-select" disabled={!messageFilterActivationTrigger.trim() && !messageFilterNonCoLocatedParticipants}>
+                                    <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
+                                </select>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Which messages to scan for the filter pattern.</div>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Target</label>
+                                <select value={messageFilterTarget} onChange={(e) => setMessageFilterTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!messageFilterActivationTrigger.trim() && !messageFilterNonCoLocatedParticipants}>
+                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
+                                </select>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Whose messages to apply the filter to.</div>
+                            </div>
                         </div>
                     </div>
 

@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, OutOfCharacterMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -58,8 +58,6 @@ const endOfContextLine = `${contextStartString}End Of The Context.${contextEndSt
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
 const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
-
-const oocInstruction = `${generalStartString}A character is asking an out-of-character question. Respond as a neutral narrator. Do not speak as any character. Answer directly and concisely.${generalEndString}`;
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
@@ -280,6 +278,112 @@ const getImageBase64 = async (url: string): Promise<string | null> => {
     }
 };
 
+/**
+ * Checks message text against each location's regularExpressionActivationTrigger.
+ * Returns the index of the first matching location, or undefined if no match.
+ */
+function detectLocationFromText(text: string, locations: Location[]): number | undefined {
+    for (let i = 0; i < locations.length; i++) {
+        const location = locations[i];
+        if (!location.regularExpressionActivationTrigger) continue;
+        try {
+            const regex = new RegExp(location.regularExpressionActivationTrigger, 'i');
+            if (regex.test(text)) return i;
+        } catch { /* invalid regex, skip */ }
+    }
+    return undefined;
+}
+
+/**
+ * Determines which chat messages are excluded from history based on message
+ * filter regex fields from contexts, locations, and prompt blocks.
+ *
+ * Semantics:
+ * - Before activation trigger matches: messages are EXCLUDED
+ * - Activation trigger matches: START including from this message onward
+ * - Deactivation trigger matches: STOP filtering, everything after is included
+ *
+ * Returns a boolean array where true = excluded from chat history.
+ */
+function getMessageFilterFlags(
+    chatMessages: ChatMessage[],
+    contexts: Context[],
+    locations: Location[],
+    promptBlocks: PromptBlock[],
+    characterId: string,
+): boolean[] {
+    const excluded = new Array(chatMessages.length).fill(false);
+
+    const applyFilter = (
+        activationTrigger: string | undefined,
+        deactivationTrigger: string | undefined,
+    ): void => {
+        if (!activationTrigger) return;
+
+        let activationRegex: RegExp;
+        try {
+            activationRegex = new RegExp(activationTrigger);
+        } catch {
+            return;
+        }
+
+        let deactivationRegex: RegExp | null = null;
+        if (deactivationTrigger) {
+            try {
+                deactivationRegex = new RegExp(deactivationTrigger);
+            } catch {
+                deactivationRegex = null;
+            }
+        }
+
+        let including = false;
+
+        for (let i = 0; i < chatMessages.length; i++) {
+            const msg = chatMessages[i];
+
+            if (including) {
+                if (deactivationRegex && deactivationRegex.test(msg.textContent)) {
+                    return;
+                }
+            } else {
+                if (activationRegex.test(msg.textContent)) {
+                    including = true;
+                } else {
+                    excluded[i] = true;
+                }
+            }
+        }
+    };
+
+    for (const context of contexts) {
+        if (!isCharacterBound(context, characterId)) continue;
+        applyFilter(
+            context.messageFilterRegularExpressionActivationTrigger,
+            context.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    for (const location of locations) {
+        if (location.characterBindings && location.characterBindings.length > 0) {
+            if (!location.characterBindings.includes(characterId)) continue;
+        }
+        applyFilter(
+            location.messageFilterRegularExpressionActivationTrigger,
+            location.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    for (const block of promptBlocks) {
+        if (!isPromptBlockCharacterBound(block, characterId)) continue;
+        applyFilter(
+            block.messageFilterRegularExpressionActivationTrigger,
+            block.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    return excluded;
+}
+
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
@@ -443,13 +547,15 @@ export function createChatHistoryPrompt(
     character: Character, 
     revealIndexByCharacterId: Map<string, number>,
     modelId: string,
+    allPromptBlocks: PromptBlock[] = [],
 ): { chatHistoryPrompt: string; hasBeenSummarized: boolean } {
     const interactionHistory = interactionData.interactionHistory;
     const participants = interactionData.participants;
     const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
+    const contexts = interactionData.contexts || [];
+    const locations = interactionData.locations || [];
     
-    // Only include chat messages — OOC and interaction messages excluded from history
     const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
@@ -461,10 +567,15 @@ export function createChatHistoryPrompt(
     const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
+    const filterFlags = getMessageFilterFlags(chatMessagesOnly, contexts, locations, allPromptBlocks, character.id);
+    const filteredMessages = chatMessagesOnly.filter((_, i) => !filterFlags[i]);
+
+    if (filteredMessages.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
+
     const activeSteps = [...(profile?.summarizationSteps || [])]
         .sort((a, b) => a.order - b.order);
 
-    let processedMessages = chatMessagesOnly.map((msg) => ({
+    let processedMessages = filteredMessages.map((msg) => ({
         msg,
         idx: interactionHistory.indexOf(msg),
         text: selectModelSummary(msg, modelId),
@@ -523,14 +634,14 @@ export function createChatHistoryPrompt(
         }
     }
 
-    const locations = interactionData.locations;
-    const currentLocation = currentLocationIndex !== undefined && locations && locations.length > 0
-        ? locations[currentLocationIndex]
+    const locs = interactionData.locations;
+    const currentLocation = currentLocationIndex !== undefined && locs && locs.length > 0
+        ? locs[currentLocationIndex]
         : undefined;
 
     const RECENT_INTERACTION_WINDOW = 20;
     const recentInteractors = new Set<string>();
-    const recentSlice = chatMessagesOnly.slice(-RECENT_INTERACTION_WINDOW);
+    const recentSlice = filteredMessages.slice(-RECENT_INTERACTION_WINDOW);
     for (let ri = 0; ri < recentSlice.length; ri++) {
         const msg = recentSlice[ri];
         if (msg.character.id === character.id) {
@@ -546,7 +657,7 @@ export function createChatHistoryPrompt(
         }
     }
 
-    const hasLocationData = !!locations && locations.length > 0 && currentLocationIndex !== undefined;
+    const hasLocationData = !!locs && locs.length > 0 && currentLocationIndex !== undefined;
 
     const outputMessages = processedMessages.filter((p) => {
         if (p.msg.character.id === protagonist.id) return true;
@@ -645,7 +756,6 @@ export async function buildPromptAndStopPatterns(
         return profileValue;
     })();
 
-    // Only include chat messages in context activation scanning — OOC messages excluded
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
 
@@ -857,7 +967,7 @@ export async function buildPromptAndStopPatterns(
     if (interactionHistory.length > 0) {
         chatHistoryLines.push(startOfChatHistoryLine);
 
-        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
+        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId, allPromptBlocks);
 
         chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
 
@@ -1077,11 +1187,6 @@ export async function buildPromptAndStopPatterns(
     }
     
     if (hasBeenSummarized) textInjectionLines.push(summarizationAwarenessInstructions)
-
-    // OOC narrator instruction — inject when latest user message is out-of-character
-    const lastProtagonistMessage = findPreviousMessage(interactionData, protagonist.id)
-    const isProtagonistOutOfCharacter = (lastProtagonistMessage?.messageType === "out")
-    if (isProtagonistOutOfCharacter) textInjectionLines.unshift(oocInstruction)
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
@@ -1433,8 +1538,8 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; isOoc?: boolean }
-): ChatMessage | OutOfCharacterMessage {
+    options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }
+): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
@@ -1450,35 +1555,10 @@ export function createChatMessage(
     const files = options?.files ?? [];
     const isPartial = options?.isPartial || undefined;
 
-    // Detect OOC from /ooc prefix in user-typed text
-    const oocMatch = textContent.match(/^\/ooc\s+([\s\S]*)/);
-    if (oocMatch) {
-        return {
-            id,
-            messageType: 'out',
-            character: { ...character },
-            textContent: oocMatch[1],
-            files,
-            isPartial: false,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-            parentInteractionMessageId: lastMessageId,
-        } as OutOfCharacterMessage;
-    }
-
-    // Force OOC for AI responses when triggered by an OOC user message
-    if (options?.isOoc) {
-        return {
-            id,
-            messageType: 'out',
-            character: { ...character },
-            textContent,
-            files,
-            isPartial: false,
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-            parentInteractionMessageId: lastMessageId,
-        } as OutOfCharacterMessage;
+    // Determine locationIndex from location activation triggers if not explicitly provided
+    let locationIndex = options?.locationIndex;
+    if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
+        locationIndex = detectLocationFromText(textContent, interactionData.locations);
     }
 
     return {
@@ -1490,13 +1570,13 @@ export function createChatMessage(
         remainingChatStamina,
         remainingActionStamina,
         isNameRevealed,
-        locationIndex: options?.locationIndex,
+        locationIndex,
         isPartial,
         modelTextContentSummaries: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionMessageId: lastMessageId,
-    };
+    } as ChatMessage;
 }
 
 export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: HistoryMessage): InteractionData {
@@ -1555,4 +1635,78 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
         parentInteractionDataId: interactionData.id,
         parentInteractionMessageId: branchPointMessageId,
     };
+}
+
+/**
+ * Returns message filter flags applying only UNIVERSAL filters (entities with
+ * no character bindings). Used by global summarization to avoid leaking
+ * hidden information into auto-generated Context entries.
+ */
+function applyFilter(
+    chatMessages: ChatMessage[],
+    excluded: boolean[],
+    activationTrigger: string | undefined,
+    deactivationTrigger: string | undefined,
+): void {
+    if (!activationTrigger) return;
+    let activationRegex: RegExp;
+    try { activationRegex = new RegExp(activationTrigger); } catch { return; }
+    let deactivationRegex: RegExp | null = null;
+    if (deactivationTrigger) {
+        try { deactivationRegex = new RegExp(deactivationTrigger); } catch { deactivationRegex = null; }
+    }
+    let including = false;
+    for (let i = 0; i < chatMessages.length; i++) {
+        const msg = chatMessages[i];
+        if (including) {
+            if (deactivationRegex && deactivationRegex.test(msg.textContent)) return;
+        } else {
+            if (activationRegex.test(msg.textContent)) {
+                including = true;
+            } else {
+                excluded[i] = true;
+            }
+        }
+    }
+}
+
+export function getUniversalMessageFilterFlags(
+    chatMessages: ChatMessage[],
+    contexts: Context[],
+    locations: Location[],
+    promptBlocks: PromptBlock[],
+): boolean[] {
+    const excluded = new Array(chatMessages.length).fill(false);
+
+    for (const context of contexts) {
+        if (context.characterBindings && context.characterBindings.length > 0) continue;
+        applyFilter(
+            chatMessages,
+            excluded,
+            context.messageFilterRegularExpressionActivationTrigger,
+            context.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    for (const location of locations) {
+        if (location.characterBindings && location.characterBindings.length > 0) continue;
+        applyFilter(
+            chatMessages,
+            excluded,
+            location.messageFilterRegularExpressionActivationTrigger,
+            location.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    for (const block of promptBlocks) {
+        if (block.characterBindings && block.characterBindings.length > 0) continue;
+        applyFilter(
+            chatMessages,
+            excluded,
+            block.messageFilterRegularExpressionActivationTrigger,
+            block.messageFilterRegularExpressionDeactivationTrigger,
+        );
+    }
+
+    return excluded;
 }

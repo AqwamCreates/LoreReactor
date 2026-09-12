@@ -65,6 +65,10 @@ export interface Context extends ObjectData {
   regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -88,6 +92,10 @@ export interface RawContext extends RawData {
   regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -102,6 +110,7 @@ export interface Location extends ObjectData {
   regularExpressionActivationTrigger?: string;
   backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
   backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
+  playAudioTrackOnEnterWeights?: Record<string, number>; // Samples from a list of songs upon entering a location.
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
@@ -110,6 +119,11 @@ export interface Location extends ObjectData {
   latitude: number;
   longitude: number;
   locationDistances: Record<string, number>; // In km.
+  messageFilterNonCoLocatedParticipants?: boolean;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   useBase64Encoding: boolean;
 }
 
@@ -119,6 +133,7 @@ export interface RawLocation extends RawData {
   regularExpressionActivationTrigger?: string;
   backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
   backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
+  playAudioTrackOnEnterWeights?: Record<string, number>; // Samples from a list of songs upon entering a location.
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
@@ -127,6 +142,11 @@ export interface RawLocation extends RawData {
   latitude: number;
   longitude: number;
   locationDistances?: Record<string, number>; // In km.
+  messageFilterNonCoLocatedParticipants?: boolean;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   useBase64Encoding: boolean;
 }
 
@@ -263,15 +283,7 @@ export interface ChatMessage extends BaseMessage {
   kvCachePath?: string;
 }
 
-export interface OutOfCharacterMessage extends BaseMessage {
-  messageType: 'out'
-  textContent: string;
-  files?: string[];
-  isPartial?: boolean
-  kvCachePath?: string;
-}
-
-export type HistoryMessage = InteractionMessage | ChatMessage | OutOfCharacterMessage;
+export type HistoryMessage = InteractionMessage | ChatMessage;
 
 // ─── Raw Message Types (Discriminated Union) ─────────────────────────
 
@@ -301,15 +313,7 @@ export interface RawChatMessage extends RawBaseMessage {
   kvCachePath?: string;
 }
 
-export interface RawOutOfCharacterMessage extends RawBaseMessage {
-  messageType: 'out'
-  textContent: string;
-  files?: string[];
-  isPartial?: boolean
-  kvCachePath?: string;
-}
-
-export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawOutOfCharacterMessage;
+export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
 
 // ─── Interaction Data ────────────────────────────────────────────────
 
@@ -478,6 +482,10 @@ export interface PromptBlock extends ObjectData {
   regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]
@@ -492,6 +500,10 @@ export interface RawPromptBlock extends RawData {
   regularExpressionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTrigger?: string;
+  messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionContext?: regularExpressionContext;
+  messageFilterRegularExpressionTarget?: regularExpressionTarget;
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]

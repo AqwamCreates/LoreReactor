@@ -41,17 +41,28 @@ export function PromptBlockEditorModal({
     const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
     const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
 
+    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
+    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
+    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
+    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
+
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
     const [deactivationTestText, setDeactivationTestText] = useState('');
     const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
 
+    const [messageFilterActivationTestText, setMessageFilterActivationTestText] = useState('');
+    const [messageFilterActivationTestResult, setMessageFilterActivationTestResult] = useState<boolean | null>(null);
+
+    const [messageFilterDeactivationTestText, setMessageFilterDeactivationTestText] = useState('');
+    const [messageFilterDeactivationTestResult, setMessageFilterDeactivationTestResult] = useState<boolean | null>(null);
+
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
     const [contextBindings, setContextBindings] = useState<string[]>([]);
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
 
-    const [errors, setErrors] = useState<{ name?: string; textContent?: string; regex?: string; deactivationRegex?: string; images?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; textContent?: string; regex?: string; deactivationRegex?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; images?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textTokenCount, setTextTokenCount] = useState(0);
@@ -102,6 +113,10 @@ export function PromptBlockEditorModal({
             setRegexDeactivationTrigger(existingBlock.regularExpressionDeactivationTrigger || '');
             setRegexContext(existingBlock.regularExpressionContext || 'global');
             setRegexTarget(existingBlock.regularExpressionTarget || 'everyone');
+            setMessageFilterActivationTrigger(existingBlock.messageFilterRegularExpressionActivationTrigger || '');
+            setMessageFilterDeactivationTrigger(existingBlock.messageFilterRegularExpressionDeactivationTrigger || '');
+            setMessageFilterContext(existingBlock.messageFilterRegularExpressionContext || 'global');
+            setMessageFilterTarget(existingBlock.messageFilterRegularExpressionTarget || 'everyone');
             setCharacterBindings(existingBlock.characterBindings ?? []);
             setContextBindings(existingBlock.contextBindings ?? []);
             setLocationBindings(existingBlock.locationBindings ?? []);
@@ -115,6 +130,10 @@ export function PromptBlockEditorModal({
             setRegexDeactivationTrigger('');
             setRegexContext('global');
             setRegexTarget('everyone');
+            setMessageFilterActivationTrigger('');
+            setMessageFilterDeactivationTrigger('');
+            setMessageFilterContext('global');
+            setMessageFilterTarget('everyone');
             setCharacterBindings([]);
             setContextBindings([]);
             setLocationBindings([]);
@@ -125,6 +144,10 @@ export function PromptBlockEditorModal({
         setActivationTestResult(null);
         setDeactivationTestText('');
         setDeactivationTestResult(null);
+        setMessageFilterActivationTestText('');
+        setMessageFilterActivationTestResult(null);
+        setMessageFilterDeactivationTestText('');
+        setMessageFilterDeactivationTestResult(null);
     }, [isOpen, existingBlock]);
 
     const validate = (): boolean => {
@@ -143,6 +166,12 @@ export function PromptBlockEditorModal({
         }
         if (regexDeactivationTrigger.trim()) {
             try { new RegExp(regexDeactivationTrigger); } catch { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
+        }
+        if (messageFilterActivationTrigger.trim()) {
+            try { new RegExp(messageFilterActivationTrigger); } catch { newErrors.messageFilterRegex = 'Invalid message filter activation regular expression.'; }
+        }
+        if (messageFilterDeactivationTrigger.trim()) {
+            try { new RegExp(messageFilterDeactivationTrigger); } catch { newErrors.messageFilterDeactivationRegex = 'Invalid message filter deactivation regular expression.'; }
         }
 
         setErrors(newErrors);
@@ -167,6 +196,26 @@ export function PromptBlockEditorModal({
         } catch {
             setDeactivationTestResult(null);
             setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
+        }
+    };
+
+    const handleTestMessageFilterActivationRegex = () => {
+        if (!messageFilterActivationTrigger.trim() || !messageFilterActivationTestText.trim()) { setMessageFilterActivationTestResult(null); return; }
+        try {
+            setMessageFilterActivationTestResult(new RegExp(messageFilterActivationTrigger).test(messageFilterActivationTestText));
+        } catch {
+            setMessageFilterActivationTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterRegex: 'Invalid message filter activation regular expression.' }));
+        }
+    };
+
+    const handleTestMessageFilterDeactivationRegex = () => {
+        if (!messageFilterDeactivationTrigger.trim() || !messageFilterDeactivationTestText.trim()) { setMessageFilterDeactivationTestResult(null); return; }
+        try {
+            setMessageFilterDeactivationTestResult(new RegExp(messageFilterDeactivationTrigger).test(messageFilterDeactivationTestText));
+        } catch {
+            setMessageFilterDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterDeactivationRegex: 'Invalid message filter deactivation regular expression.' }));
         }
     };
 
@@ -219,6 +268,10 @@ export function PromptBlockEditorModal({
             regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
+            messageFilterRegularExpressionActivationTrigger: messageFilterActivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionDeactivationTrigger: messageFilterDeactivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionContext: messageFilterContext,
+            messageFilterRegularExpressionTarget: messageFilterTarget,
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
             contextBindings: contextBindings.length > 0 ? contextBindings : [],
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
@@ -370,6 +423,79 @@ export function PromptBlockEditorModal({
                                 <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
                                     <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
                                 </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Message Filter Regular Expression */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Message Filter Regular Expression</span>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Chat history messages matching the activation pattern will be excluded from the prompt sent to the AI. Use this to hide out-of-character messages, tool outputs, or other patterns from the AI's memory.
+                        </div>
+
+                        <div className="editor-row-full">
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Activation Trigger</label>
+                                <input type="text" value={messageFilterActivationTrigger} onChange={(e) => { setMessageFilterActivationTrigger(e.target.value); if (errors.messageFilterRegex) setErrors({ ...errors, messageFilterRegex: undefined }); setMessageFilterActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterRegex ? 'error' : ''}`} placeholder="^\/ooc\s+|^\[.*\]$" />
+                                {errors.messageFilterRegex && <div className="editor-error-message">{errors.messageFilterRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages matching this regex will be hidden from chat history.</div>
+                            </div>
+                        </div>
+
+                        {messageFilterActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Activation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterActivationTestText} onChange={(e) => { setMessageFilterActivationTestText(e.target.value); setMessageFilterActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterActivationTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterActivationTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterActivationTestResult ? '✅ Would be filtered (hidden from AI)' : '❌ Would NOT be filtered (visible to AI)'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Deactivation Trigger</label>
+                                <input type="text" value={messageFilterDeactivationTrigger} onChange={(e) => { setMessageFilterDeactivationTrigger(e.target.value); if (errors.messageFilterDeactivationRegex) setErrors({ ...errors, messageFilterDeactivationRegex: undefined }); setMessageFilterDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterDeactivationRegex ? 'error' : ''}`} placeholder="/end_ooc/i" />
+                                {errors.messageFilterDeactivationRegex && <div className="editor-error-message">{errors.messageFilterDeactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Stops filtering subsequent messages when matched.</div>
+                            </div>
+                        </div>
+
+                        {messageFilterDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterDeactivationTestText} onChange={(e) => { setMessageFilterDeactivationTestText(e.target.value); setMessageFilterDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterDeactivationTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterDeactivationTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterDeactivationTestResult ? '✅ Deactivation matches! (filtering stops)' : '❌ Deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="editor-row" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Context</label>
+                                <select value={messageFilterContext} onChange={(e) => setMessageFilterContext(e.target.value as regularExpressionContext)} className="editor-select" disabled={!messageFilterActivationTrigger.trim()}>
+                                    <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
+                                </select>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Which messages to scan for the filter pattern.</div>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Target</label>
+                                <select value={messageFilterTarget} onChange={(e) => setMessageFilterTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!messageFilterActivationTrigger.trim()}>
+                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
+                                </select>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Whose messages to apply the filter to.</div>
                             </div>
                         </div>
                     </div>

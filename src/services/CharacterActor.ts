@@ -1,8 +1,7 @@
 // src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
-import { prepareRequestBody, convertIdsToDisplayNames } from '../hooks/chatLogic';
-import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
+import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
@@ -72,7 +71,7 @@ async function processToolInvocations(
     rawText: string,
     character: Character,
     profile: InteractionData['Profile'],
-    nextMessage: import('../types').ChatMessage,
+    nextMessage: ChatMessage,
     interactionData: InteractionData,
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
     const effectiveTools = getEffectiveTools(character, profile);
@@ -268,7 +267,6 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    // Select model first — engine context is set internally by selectModelForRequest
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
@@ -315,7 +313,6 @@ export class CharacterActor {
                     return { error: { message: 'Model not ready', type: 'no_model' } };
                 }
 
-                // Set engine context with full model — runtime port resolved internally
                 this.engine.setRunningModels(runningModels);
                 this.engine.setContext(selectedModel);
 
@@ -406,7 +403,7 @@ export class CharacterActor {
                 },
             };
         } catch (error) {
-            console.log(error)
+            console.log(error);
             return { error: classifyError(error, signal) };
         }
     }

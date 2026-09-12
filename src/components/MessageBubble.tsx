@@ -1,12 +1,12 @@
 // src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, ChatMessage, OutOfCharacterMessage } from '../types';
+import type { Character, ChatMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
 interface MessageBubbleProps {
-    message: ChatMessage | OutOfCharacterMessage;
+    message: ChatMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic';
     currentCharacterId: string | undefined;
@@ -342,7 +342,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     const editTokenDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
-    const isOoc = message.messageType === 'out';
     const isProtag = message.character.id === currentCharacterId;
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
@@ -436,7 +435,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const bubbleClass = [
         'message-bubble',
         viewMode === 'cinematic' ? 'cinematic-bubble' : '',
-        isOoc ? 'bubble-ooc' : isProtag ? 'bubble-user' : 'bubble-ai',
+        isProtag ? 'bubble-user' : 'bubble-ai',
         isAmbient ? 'bubble-ambient' : '',
         isEditing ? 'bubble-editing' : '',
         inDelRange ? 'bubble-marked-for-delete' : '',

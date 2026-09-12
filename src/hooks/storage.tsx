@@ -304,7 +304,7 @@ async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T
 }
 
 function getCleanPath(path: string){
-  return PATHS.contexts.startsWith('/') ? path : `/${path}`;
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 function getCleanFileName(file: { name: string }){
@@ -672,6 +672,10 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionDeactivationTrigger: rawContext.regularExpressionDeactivationTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
+        messageFilterRegularExpressionActivationTrigger: rawContext.messageFilterRegularExpressionActivationTrigger,
+        messageFilterRegularExpressionDeactivationTrigger: rawContext.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionContext: rawContext.messageFilterRegularExpressionContext,
+        messageFilterRegularExpressionTarget: rawContext.messageFilterRegularExpressionTarget,
         tokenBudget: rawContext.tokenBudget,
         maximumRecursionDepth: rawContext.maximumRecursionDepth,
         insertionDepth: rawContext.insertionDepth,
@@ -691,7 +695,7 @@ export async function loadAllRawContexts(): Promise<Context[]> {
 
 export async function saveRawContext(context: Context): Promise<void> {
     const { id, ...rawContext } = context; 
-    const payload = {
+    const payload: RawContext = {
         ...rawContext,
         lastUpdatedTimestamp: Date.now(),
     };
@@ -723,15 +727,21 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         images: rawLocation.images,
         backgroundImageRegularExpressionActivationTriggers: rawLocation.backgroundImageRegularExpressionActivationTriggers ?? {},
         backgroundImageWeights: rawLocation.backgroundImageWeights ?? {},
-        locationBindings: rawLocation.locationBindings ?? {},
+        playAudioTrackOnEnterWeights: rawLocation.playAudioTrackOnEnterWeights ?? {},
+        locationBindings: rawLocation.locationBindings ?? [],
         locationBindingRegularExpressionTriggers: rawLocation.locationBindingRegularExpressionTriggers ?? {},
         regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
-        characterBindings: rawLocation.characterBindings,
+        characterBindings: rawLocation.characterBindings ?? [],
         globalWeight: rawLocation.globalWeight ?? 1,
         characterWeights: rawLocation.characterWeights ?? {},
         latitude: rawLocation.latitude ?? 0,
         longitude: rawLocation.longitude ?? 0,
-        locationDistances: rawLocation.locationDistances?? {},
+        locationDistances: rawLocation.locationDistances ?? {},
+        messageFilterNonCoLocatedParticipants: rawLocation.messageFilterNonCoLocatedParticipants ?? false,
+        messageFilterRegularExpressionActivationTrigger: rawLocation.messageFilterRegularExpressionActivationTrigger,
+        messageFilterRegularExpressionDeactivationTrigger: rawLocation.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionContext: rawLocation.messageFilterRegularExpressionContext,
+        messageFilterRegularExpressionTarget: rawLocation.messageFilterRegularExpressionTarget,
         useBase64Encoding: rawLocation.useBase64Encoding ?? false,
         firstCreatedTimestamp: rawLocation.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawLocation.lastUpdatedTimestamp || now,
@@ -834,6 +844,10 @@ export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null
         regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
         regularExpressionContext: raw.regularExpressionContext,
         regularExpressionTarget: raw.regularExpressionTarget,
+        messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
+        messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
+        messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
         characterBindings: raw.characterBindings ?? [],
         contextBindings: raw.contextBindings ?? [],
         locationBindings: raw.locationBindings ?? [],

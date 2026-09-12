@@ -676,6 +676,7 @@ export function AppModals({
                     existingLocation={locationModal.itemToEdit}
                     allCharacters={allCharacters}
                     allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
                 />
             )}
 

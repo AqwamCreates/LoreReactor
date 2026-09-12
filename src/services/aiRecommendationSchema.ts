@@ -44,6 +44,10 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
     "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history)",
+    "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
     "tokenBudget": "number (default 512)", "maximumRecursionDepth": "number (default 1)",
     "insertionDepth": "number (default 0)", "characterBindings": ["character name or ID strings"],
     "useBase64Encoding": "boolean (default false)"
@@ -57,6 +61,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "backgroundImageRegularExpressionActivationTriggers": {"image index (number)": "regex pattern to switch to this image based on user message"},
     "backgroundImageWeights": {"image index (number)": "sampling weight (number)"},
+    "playAudioTrackOnEnterWeights": {"audio track ID": "sampling weight (number), randomly plays an audio track when entering this location"},
     "locationBindings": ["location name or ID strings"],
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
     "characterBindings": ["character name or ID strings"],
@@ -64,6 +69,11 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "latitude": "number (-90 to 90, optional, real-world latitude for local weather and time)",
     "longitude": "number (-180 to 180, optional, real-world longitude for local weather and time)",
     "locationDistances": {"location name or ID": "distance in km (number)"},
+    "messageFilterNonCoLocatedParticipants": "boolean (default true, hide messages from characters not at this location)",
+    "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history at this location)",
+    "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
     "useBase64Encoding": "boolean (default false)"
   }]`);
     }
@@ -92,6 +102,10 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
     "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history)",
+    "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
     "characterBindings": ["character name or ID strings"],
     "contextBindings": ["context name or ID strings"],
     "locationBindings": ["location name or ID strings"]

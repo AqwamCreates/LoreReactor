@@ -1,5 +1,5 @@
 // src/services/BackgroundSummarization.ts
-import type { InteractionData, BudgetStrategy, ChatMessage } from '../types';
+import type { InteractionData, ChatMessage } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
@@ -10,11 +10,10 @@ interface SummarizationContext {
     data: InteractionData;
     setData: (d: InteractionData) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    activeStrategy?: BudgetStrategy | null;
 }
 
 export async function runSummarization(context: SummarizationContext): Promise<void> {
-    const { data, setData, addToast, activeStrategy } = context;
+    const { data, setData, addToast } = context;
 
     try {
         const engine = getLanguageModelEngine();
@@ -47,7 +46,7 @@ export async function runSummarization(context: SummarizationContext): Promise<v
 
         // Ensure BudgetStrategyEngine singleton is initialized for summarization
         const budgetData = useSessionStore.getState().budgetData;
-        const strat = activeStrategy ?? useSessionStore.getState().activeStrategy;
+        const strat = useSessionStore.getState().activeStrategy;
 
         if (strat && budgetData) {
             const bse = getBudgetStrategyEngine();

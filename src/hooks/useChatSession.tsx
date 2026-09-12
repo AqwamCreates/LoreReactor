@@ -82,7 +82,6 @@ export function useChatSession() {
 
     const setRunningModelsMap = useCallback((models: RunningModelStatus) => {
         useSessionStore.setState({ runningModels: models });
-        // Keep engine's running models in sync so it can resolve runtime ports
         engine.setRunningModels(models);
     }, []);
 
@@ -107,7 +106,7 @@ export function useChatSession() {
         useSessionStore.setState({ budgetData: data });
     }, []);
 
-    // ─── Refs (only genuine imperative handles) ─────────────────────
+    // ─── Refs ────────────────────────────────────────────────────────
     const abortControllerRef = useRef<AbortController | null>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     const chatHistoryRef = useRef<HTMLDivElement>(null);
@@ -138,7 +137,6 @@ export function useChatSession() {
         processMemoryTrigger,
         addToast: useToast().addToast,
     });
-
     const { addToast } = useToast();
 
     // ─── Mount Effects ───────────────────────────────────────────────
@@ -173,7 +171,6 @@ export function useChatSession() {
         })();
     }, [setRunningModelsMap, addToast]);
 
-    // Sync engine context whenever selected model changes
     useEffect(() => {
         if (selectedModel) {
             engine.setContext(selectedModel);
@@ -184,9 +181,6 @@ export function useChatSession() {
         if (!interactionData) return;
         let cancelled = false;
         (async () => {
-
-            // Engine context is already set by the selectedModel sync effect above
-            // Just count tokens using whatever model is currently active
             let total = 0;
             for (const m of interactionData.interactionHistory) {
                 if (m.messageType === 'chat') total += await engine.countTokens(m.textContent);
@@ -214,19 +208,14 @@ export function useChatSession() {
     useEffect(() => {
         const audioEngine = getAudioEngine();
         audioEngine.startVolumeTicker();
-        return () => {
-            audioEngine.stopAll();
-        };
+        return () => { audioEngine.stopAll(); };
     }, []);
 
     useEffect(() => {
         if (!interactionData) return;
         const audioEngine = getAudioEngine();
-
-        // Apply global volume override from profile
         const profileVolume = interactionData.Profile?.volume ?? -1;
         audioEngine.setGlobalVolume(profileVolume);
-
         audioEngine.evaluate(interactionData);
     }, [interactionData]);
 
@@ -234,39 +223,31 @@ export function useChatSession() {
     useEffect(() => {
         const autonomousEngine = autonomousEngineRef.current;
         const autonomousEnabled = interactionData?.Profile?.autonomousMode ?? false;
-
         if (autonomousEnabled && interactionData) {
             const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
                 resetStream();
                 setStreamingCharacter(c);
                 return handleServerResponse(d, c, s, throttledSetStreamingText, undefined, '');
             };
-
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
-
             autonomousEngine.start(
                 executor,
                 checkCanAct,
                 () => useSessionStore.getState().interactionData,
-                (data) => {
-                    useSessionStore.setState({ interactionData: data });
-                },
+                (data) => { useSessionStore.setState({ interactionData: data }); },
             );
         } else {
             autonomousEngine.stop();
         }
-
         return () => { autonomousEngine.stop(); };
     }, [interactionData?.Profile?.autonomousMode, handleServerResponse, throttledSetStreamingText, resetStream, setStreamingCharacter, interactionData, isLoadingRef]);
 
-    // Pause autonomous simulation when tab is hidden
     useEffect(() => {
         const autonomousEngine = autonomousEngineRef.current;
         const handleVisibilityChange = () => {
             if (document.hidden) {
                 autonomousEngine.stop();
             } else {
-                // Re-start if autonomous mode is still enabled
                 const data = useSessionStore.getState().interactionData;
                 if (data?.Profile?.autonomousMode) {
                     const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
@@ -310,7 +291,8 @@ export function useChatSession() {
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
             }
         }
-        return addMessageToInteractionData(base, createChatMessage(base, p.character, dt, { isPartial: true }));
+        const chatMessage = createChatMessage(base, p.character, dt, { isPartial: true });
+        return addMessageToInteractionData(base, chatMessage);
     }, []);
 
     // ─── Public Actions ──────────────────────────────────────────────
@@ -330,7 +312,6 @@ export function useChatSession() {
         setInteractionData(c);
         setCurrentCharacter(char);
         isAtBottomRef.current = true;
-        // Reset session timer for new chat
         useSessionStore.setState({ sessionStartTimestamp: Date.now() });
     }, [setInteractionData, setCurrentCharacter]);
 
@@ -339,7 +320,6 @@ export function useChatSession() {
         const c = useSessionStore.getState().streamingCharacter;
         const resumeId = resumingMessageIdRef.current;
         const currentData = useSessionStore.getState().interactionData;
-
         if (resumeId && t && t.trim().length > 0 && currentData) {
             const updated = editInteractionMessageInInteractionData(currentData, resumeId, t);
             const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
@@ -359,7 +339,6 @@ export function useChatSession() {
         } else {
             pendingPartialRef.current = (t?.trim() && c) ? { text: t, character: c } : null;
         }
-
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
         releaseLock();
@@ -375,8 +354,6 @@ export function useChatSession() {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         const d = useSessionStore.getState().interactionData; if (!d) { releaseLock(); return; }
-
-        // Initialize audio context on user gesture (browser autoplay policy)
         getAudioEngine().initialize();
 
         let ud = addMessageToInteractionData(d, createChatMessage(d, currentChar, actionText));
@@ -391,10 +368,8 @@ export function useChatSession() {
                 ud = { ...ud, interactionHistory: ud.interactionHistory.map((m, i) => i === ud.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
             }
         }
-
         await saveRawInteractionData(ud);
         setInteractionData(ud);
-
         await new Promise(r => setTimeout(r, 50));
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
@@ -419,10 +394,7 @@ export function useChatSession() {
         if (!currentInteractionData || !currentChar || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-
-        // Initialize audio context on user gesture (browser autoplay policy)
         getAudioEngine().initialize();
-
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         resetStream();
         setStreamingCharacter(null);
@@ -430,9 +402,10 @@ export function useChatSession() {
         try {
             const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-            const chatMessage = createChatMessage(currentInteractionData, currentChar, text, { files: encodedFiles });
-            let td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
+            const chatMessage = createChatMessage(currentInteractionData, currentChar, text, { files: encodedFiles });
+
+            let td = addMessageToInteractionData(currentInteractionData, chatMessage);
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
@@ -443,10 +416,8 @@ export function useChatSession() {
                     td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
                 }
             }
-
             setInteractionData(td);
             await saveRawInteractionData(td);
-
             const executor = async (d: InteractionData, c: Character, s: AbortSignal, ot: (t: string) => void) => {
                 resetStream();
                 setStreamingCharacter(c);
@@ -460,7 +431,6 @@ export function useChatSession() {
                     data: ud,
                     setData: setInteractionData,
                     addToast,
-                    activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
@@ -482,28 +452,21 @@ export function useChatSession() {
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-
-        // Initialize audio context on user gesture (browser autoplay policy)
         getAudioEngine().initialize();
-
         const existingText = msg.textContent;
         const char = msg.character;
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
-
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         setStreamingText(existingText); streamingTextRef.current = existingText;
         setStreamingCharacter(char);
         setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
-
         try {
             const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText, allPromptBlocks);
             if (!result) return;
-
             const foundMsg = result.interactionHistory.find(m => m.id === messageId);
             const msgText = foundMsg && foundMsg.messageType === 'chat' ? foundMsg.textContent : existingText;
             const edited = await editMessage(result, messageId, msgText);
-
             const foundEdited = edited.interactionHistory.find(m => m.id === messageId);
             if (foundEdited && foundEdited.messageType === 'chat' && !foundEdited.isPartial) {
                 const finalData = await clearPartialFlag(edited, messageId);
@@ -513,7 +476,6 @@ export function useChatSession() {
                 setInteractionData(edited);
                 await saveRawInteractionData(edited);
             }
-
             const finalText = foundEdited && foundEdited.messageType === 'chat' ? foundEdited.textContent : '';
             if (char.id !== currentInteractionData.protagonist.id) speakMessage(finalText, char);
         } catch (e) {
@@ -533,10 +495,7 @@ export function useChatSession() {
         const currentChar = useSessionStore.getState().currentCharacter;
         if (!currentInteractionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
         if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-
-        // Initialize audio context on user gesture (browser autoplay policy)
         getAudioEngine().initialize();
-
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
@@ -551,7 +510,6 @@ export function useChatSession() {
         const td: InteractionData = { ...currentInteractionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
         setInteractionData(td);
         await saveRawInteractionData(td);
-
         resetStream();
         setStreamingCharacter(null);
         setLatency(0); setTimeToFirstToken(0); isAtBottomRef.current = true;
@@ -571,7 +529,6 @@ export function useChatSession() {
                     data: ud,
                     setData: setInteractionData,
                     addToast,
-                    activeStrategy: useSessionStore.getState().activeStrategy,
                 });
                 const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
@@ -596,7 +553,6 @@ export function useChatSession() {
 
     // ─── Return ──────────────────────────────────────────────────────
     const maximumNumberOfTokens = engine.getContext()?.contextLength || 8192;
-
     return {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression,

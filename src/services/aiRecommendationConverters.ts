@@ -119,6 +119,10 @@ function fillContextDefaults(c: Record<string, unknown>): Context {
         regularExpressionDeactivationTrigger: (c.regularExpressionDeactivationTrigger as string) || undefined,
         regularExpressionContext: (c.regularExpressionContext as Context['regularExpressionContext']) ?? 'global',
         regularExpressionTarget: (c.regularExpressionTarget as Context['regularExpressionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionActivationTrigger: (c.messageFilterRegularExpressionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionDeactivationTrigger: (c.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionContext: (c.messageFilterRegularExpressionContext as Context['messageFilterRegularExpressionContext']) ?? 'global',
+        messageFilterRegularExpressionTarget: (c.messageFilterRegularExpressionTarget as Context['messageFilterRegularExpressionTarget']) ?? 'everyone',
         tokenBudget: (c.tokenBudget as number) ?? 512,
         maximumRecursionDepth: (c.maximumRecursionDepth as number) ?? 1,
         insertionDepth: (c.insertionDepth as number) ?? 0,
@@ -140,6 +144,7 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         regularExpressionActivationTrigger: (l.regularExpressionActivationTrigger as string) || undefined,
         backgroundImageRegularExpressionActivationTriggers: (l.backgroundImageRegularExpressionActivationTriggers as Record<number, string>) || {},
         backgroundImageWeights: (l.backgroundImageWeights as Record<number, number>) || {},
+        playAudioTrackOnEnterWeights: (l.playAudioTrackOnEnterWeights as Record<string, number>) || undefined,
         locationBindings: (l.locationBindings as string[]) || [],
         locationBindingRegularExpressionTriggers: (l.locationBindingRegularExpressionTriggers as Record<string, string>) || undefined,
         characterBindings: (l.characterBindings as string[]) || [],
@@ -148,6 +153,11 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         latitude: (l.latitude as number) ?? 0,
         longitude: (l.longitude as number) ?? 0,
         locationDistances: (l.locationDistances as Record<string, number>) || {},
+        messageFilterNonCoLocatedParticipants: (l.messageFilterNonCoLocatedParticipants as boolean) ?? true,
+        messageFilterRegularExpressionActivationTrigger: (l.messageFilterRegularExpressionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionDeactivationTrigger: (l.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionContext: (l.messageFilterRegularExpressionContext as Location['messageFilterRegularExpressionContext']) ?? 'global',
+        messageFilterRegularExpressionTarget: (l.messageFilterRegularExpressionTarget as Location['messageFilterRegularExpressionTarget']) ?? 'everyone',
         useBase64Encoding: (l.useBase64Encoding as boolean) ?? false,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -190,6 +200,10 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
         regularExpressionDeactivationTrigger: (b.regularExpressionDeactivationTrigger as string) || undefined,
         regularExpressionContext: (b.regularExpressionContext as PromptBlock['regularExpressionContext']) ?? 'global',
         regularExpressionTarget: (b.regularExpressionTarget as PromptBlock['regularExpressionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionActivationTrigger: (b.messageFilterRegularExpressionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionDeactivationTrigger: (b.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionContext: (b.messageFilterRegularExpressionContext as PromptBlock['messageFilterRegularExpressionContext']) ?? 'global',
+        messageFilterRegularExpressionTarget: (b.messageFilterRegularExpressionTarget as PromptBlock['messageFilterRegularExpressionTarget']) ?? 'everyone',
         characterBindings: (b.characterBindings as string[]) || [],
         contextBindings: (b.contextBindings as string[]) || [],
         locationBindings: (b.locationBindings as string[]) || [],
@@ -380,6 +394,18 @@ export function resolveWorldCrossReferences(
             const rid = resolveLocRef(ref);
             if (rid) rld[rid] = dist;
         }
+        // Resolve playAudioTrackOnEnterWeights keys (audio track IDs)
+        let resolvedPlayAudio: Record<string, number> | undefined;
+        if (l.playAudioTrackOnEnterWeights && Object.keys(l.playAudioTrackOnEnterWeights).length > 0) {
+            resolvedPlayAudio = {};
+            for (const [ref, weight] of Object.entries(l.playAudioTrackOnEnterWeights)) {
+                // Audio track refs could be names or IDs — try name match first
+                const existingTrack = allAudioTracks.find(at => at.name === ref || at.filename === ref || at.id === ref);
+                const resolvedId = existingTrack ? existingTrack.id : (UUID_REGEX.test(ref) ? ref : undefined);
+                if (resolvedId) resolvedPlayAudio[resolvedId] = weight;
+            }
+            if (Object.keys(resolvedPlayAudio).length === 0) resolvedPlayAudio = undefined;
+        }
         return {
             ...l,
             images: injectLocationImages ? l.images : [],
@@ -388,6 +414,7 @@ export function resolveWorldCrossReferences(
             characterBindings: rcb,
             characterWeights: rcw,
             locationDistances: rld,
+            playAudioTrackOnEnterWeights: resolvedPlayAudio,
         };
     });
 

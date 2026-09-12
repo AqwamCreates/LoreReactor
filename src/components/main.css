@@ -268,19 +268,6 @@
     opacity: 0.7;
 }
 
-.bubble-ooc {
-    border: 1px dashed var(--accent-border) !important;
-    background: rgba(0, 0, 0, 0.02) !important;
-}
-.bubble-ooc .message-text {
-    color: var(--accent);
-    opacity: 0.9;
-    font-style: italic;
-}
-.bubble-ooc:hover {
-    border-color: var(--accent) !important;
-}
-
 .message-text {
     outline: none;
     white-space: pre-wrap;
@@ -3646,7 +3633,6 @@
 21. CHAT SCROLL BUTTONS
 ============================================================================= */
 .chat-scroll-button {
-    z-index: 9999;
     width: 36px;
     height: 36px;
     min-width: 36px;
