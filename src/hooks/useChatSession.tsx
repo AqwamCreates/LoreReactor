@@ -5,7 +5,7 @@ import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStor
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
-import { editMessage, clearPartialFlag } from './messageLogic';
+import { clearPartialFlag } from './messageLogic';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../hooks/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
@@ -464,19 +464,15 @@ export function useChatSession() {
         try {
             const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText, allPromptBlocks);
             if (!result) return;
-            const foundMsg = result.interactionHistory.find(m => m.id === messageId);
-            const msgText = foundMsg && foundMsg.messageType === 'chat' ? foundMsg.textContent : existingText;
-            const edited = await editMessage(result, messageId, msgText);
-            const foundEdited = edited.interactionHistory.find(m => m.id === messageId);
-            if (foundEdited && foundEdited.messageType === 'chat' && !foundEdited.isPartial) {
-                const finalData = await clearPartialFlag(edited, messageId);
-                setInteractionData(finalData);
-                await saveRawInteractionData(finalData);
-            } else {
-                setInteractionData(edited);
-                await saveRawInteractionData(edited);
-            }
-            const finalText = foundEdited && foundEdited.messageType === 'chat' ? foundEdited.textContent : '';
+
+            // CharacterActor already updated the partial message in-place via
+            // updatePartialMessageInInteractionData. Just clear the partial flag and save.
+            const finalData = await clearPartialFlag(result, messageId);
+            setInteractionData(finalData);
+            await saveRawInteractionData(finalData);
+
+            const finalMsg = finalData.interactionHistory.find(m => m.id === messageId);
+            const finalText = finalMsg && finalMsg.messageType === 'chat' ? finalMsg.textContent : '';
             if (char.id !== currentInteractionData.protagonist.id) speakMessage(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {

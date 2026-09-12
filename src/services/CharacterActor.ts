@@ -4,7 +4,7 @@ import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData, updatePartialMessageInInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
+import { getEffectiveTools } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
@@ -59,13 +59,6 @@ export interface TurnExecutionParams {
     callbacks?: TurnStreamCallbacks;
 }
 
-function getDynamicParagraphLimit(char: Character, data: InteractionData): number {
-    const max = getEffectiveMaximumChatStamina(char, data.Profile) ?? 4;
-    if (data.participants.filter(p => p.id !== data.protagonist.id).length > 1) return max;
-    const prev = [...data.interactionHistory].reverse().find(m => m.character.id === char.id);
-    const ratio = Math.max(0, Math.min(1, (prev?.remainingChatStamina ?? max) / max));
-    return Math.max(1, Math.round(max * ratio));
-}
 
 async function processToolInvocations(
     rawText: string,
@@ -106,11 +99,6 @@ async function processToolInvocations(
     }
 
     return { resumeText, displayText, displayReplacements };
-}
-
-function countParagraphs(text: string): number {
-    if (!text || !text.trim()) return 0;
-    return (text.match(/\n\n/g) || []).length + 1;
 }
 
 function getProtagonistFileBase64s(data: InteractionData): string[] | undefined {
@@ -155,8 +143,6 @@ export class CharacterActor {
         const strat = strategyOverride ?? activeStrategy;
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
 
-        generateChatStaminaForInteractionData(data, character);
-        const maxPara = getDynamicParagraphLimit(character, data);
         const protagonistFileBase64s = getProtagonistFileBase64s(data);
 
         const statsDelta: TurnStats = {
@@ -339,7 +325,7 @@ export class CharacterActor {
                             statsDelta.totalCost += cr.totalCost;
                             statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
                         },
-                    }, maxPara);
+                    });
                     return result.text;
                 };
 
@@ -386,8 +372,6 @@ export class CharacterActor {
 
             // Finalize the message with the completed text
             aiMessage.textContent = displayText;
-            const paragraphs = countParagraphs(displayText);
-            if (paragraphs > 0) consumeChatStaminaForMessage(aiMessage, paragraphs);
 
             const enableExpression = data.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {

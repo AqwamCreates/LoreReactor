@@ -182,47 +182,22 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
 }
 
 export function consumeChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
-    if (interactionMessage.messageType === 'interaction' || interactionMessage.remainingChatStamina === undefined) return;
+    if (interactionMessage.remainingChatStamina === undefined) return;
     interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
 }
 
 export function consumeActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaConsumed: number) {
-    if (interactionMessage.messageType === 'chat' || interactionMessage.remainingActionStamina === undefined) return;
+    if (interactionMessage.remainingActionStamina === undefined) return;
     interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amountOfActionStaminaConsumed);
 }
 
-export function generateChatStaminaForMessage(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+export function generateChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaGenerated: number, character: Character, profile?: Profile) {
     const maximumChatStamina = getEffectiveMaximumChatStamina(character, profile);
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
     if (remainingChatStamina === undefined) return;
     if (remainingChatStamina >= maximumChatStamina) return;
-
-    const weights: number[] = [];
-    let cumulativeWeight = 0;
-
-    for (let k = 1; k <= maximumChatStamina; k++) {
-        const weight = Math.log(1 + k);
-        cumulativeWeight += weight;
-        weights.push(cumulativeWeight);
-    }
-
-    const randomValue = Math.random() * cumulativeWeight;
-
-    let lo = 0;
-    let hi = weights.length - 1;
-
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (weights[mid] < randomValue) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    const amountOfChatStaminaGenerated = lo + 1;
 
     const newRemainingChatStamina = Math.min(
         maximumChatStamina,
@@ -232,38 +207,13 @@ export function generateChatStaminaForMessage(character: Character, interactionM
     interactionMessage.remainingChatStamina = newRemainingChatStamina
 }
 
-export function generateActionStaminaForMessage(character: Character, interactionMessage: HistoryMessage, profile?: Profile) {
+export function generateActionStaminaForMessage(interactionMessage: HistoryMessage,  amountOfActionStaminaGenerated: number, character: Character, profile?: Profile) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
     const remainingActionStamina = interactionMessage.remainingActionStamina;
 
     if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
     if (remainingActionStamina === undefined) return;
     if (remainingActionStamina >= maximumActionStamina) return;
-
-    const weights: number[] = [];
-    let cumulativeWeight = 0;
-
-    for (let k = 1; k <= maximumActionStamina; k++) {
-        const weight = Math.log(1 + k);
-        cumulativeWeight += weight;
-        weights.push(cumulativeWeight);
-    }
-
-    const randomValue = Math.random() * cumulativeWeight;
-
-    let lo = 0;
-    let hi = weights.length - 1;
-
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (weights[mid] < randomValue) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    const amountOfActionStaminaGenerated = lo + 1;
 
     const newRemainingActionStamina = Math.min(
         maximumActionStamina,
@@ -278,22 +228,22 @@ export function generateActionStaminaForMessage(character: Character, interactio
  * Regenerate chat stamina for a character based on their previous interaction.
  * Mutates the interactionHistory in place by updating the character's last entry.
  */
-export function generateChatStaminaForInteractionData(data: InteractionData, character: Character) {
-    const maxStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return
+export function generateChatStaminaForInteractionData(data: InteractionData, amountOfChatStamina: number, character: Character) {
+    const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.Profile);
+    if (maximumChatStamina === Number.POSITIVE_INFINITY) return
     const previousMessage = findPreviousMessage(data, character.id)
     if (!previousMessage) return
-    generateChatStaminaForMessage(character, previousMessage);
+    generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.Profile);
 }
 
 /**
  * Regenerate action stamina for a character based on their previous interaction.
  * Mutates the interactionHistory in place by updating the character's last entry.
  */
-export function generateActionStaminaForInteractionData(data: InteractionData, character: Character) {
-    const maxStamina = getEffectiveMaximumActionStamina(character, data.Profile);
-    if (maxStamina === Number.POSITIVE_INFINITY) return
+export function generateActionStaminaForInteractionData(data: InteractionData, amountOfActionStamina: number, character: Character) {
+    const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.Profile);
+    if (maximumActionStamina === Number.POSITIVE_INFINITY) return
     const previousMessage = findPreviousMessage(data, character.id)
     if (!previousMessage) return
-    generateActionStaminaForMessage(character, previousMessage);
+    generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.Profile);
 }
