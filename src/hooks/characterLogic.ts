@@ -17,24 +17,25 @@ function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, characte
     return true;
 }
 
-function getEffectiveToolRecord(character: Character, profile?: Profile): Record<tool, boolean> {
-    const characterTools = character.tools;
-    const profileTools = profile?.tools;
+function getEffectiveRecordStringBoolean(key: string, character: Character, profile?: Profile): Record<string, boolean> {
+    const charAny = character as unknown as Record<string, unknown>;
+    const characterRecord = (charAny[key] ?? {}) as Record<string, boolean>;
+    if (!profile) return characterRecord;
+    const profAny = profile as unknown as Record<string, unknown>;
+    const profileRecord = profAny[key] as Record<string, number> | undefined;
 
-    if (!profileTools) return { ...characterTools };
+    if (!profileRecord) return { ...characterRecord };
 
-    const result = {} as Record<tool, boolean>;
-    for (const key of Object.keys(characterTools) as tool[]) {
-        const profileValue = profileTools[key];
+    const result = {} as Record<string, boolean>;
+
+    for (const k of Object.keys(characterRecord)) {
+        const profileValue = profileRecord[k];
         if (profileValue === undefined || profileValue === 0) {
-            // Defer to character setting
-            result[key] = characterTools[key];
+            result[k] = characterRecord[k];
         } else if (profileValue < 0) {
-            // Force off
-            result[key] = false;
+            result[k] = false;
         } else {
-            // Force on
-            result[key] = true;
+            result[k] = true;
         }
     }
     return result;
@@ -98,7 +99,7 @@ export function getEffectiveEnableMemoryReading(character: Character, profile?: 
 }
 
 export function getEffectiveTools(character: Character, profile?: Profile): Record<tool, boolean> {
-    return getEffectiveToolRecord(character, profile);
+    return getEffectiveRecordStringBoolean("tools", character, profile);
 }
 
 export function isToolEnabled(character: Character, toolName: tool, profile?: Profile): boolean {

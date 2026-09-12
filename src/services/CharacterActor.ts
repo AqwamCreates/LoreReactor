@@ -123,15 +123,22 @@ function getProtagonistFileBase64s(data: InteractionData): string[] | undefined 
 }
 
 function classifyError(error: unknown, signal: AbortSignal): TurnError {
-    const e = error as Error;
-    if (e.name === 'AbortError' || signal.aborted) {
+    if (signal.aborted) {
         return { message: 'Aborted', type: 'aborted' };
     }
-    const isNet = ['Failed to fetch', 'NetworkError', 'ERR_ABORTED', '502', '503', '504'].some(s => e.message.includes(s));
+    if (!error) {
+        return { message: 'Unknown error (null)', type: 'inference' };
+    }
+    const e = error as Error;
+    const message = e.message || String(error);
+    if (e.name === 'AbortError') {
+        return { message: 'Aborted', type: 'aborted' };
+    }
+    const isNet = ['Failed to fetch', 'NetworkError', 'ERR_ABORTED', '502', '503', '504'].some(s => message.includes(s));
     if (isNet) {
         return { message: 'Backend Connection Failed', type: 'network' };
     }
-    return { message: e.message || 'Unknown inference error', type: 'inference' };
+    return { message, type: 'inference' };
 }
 
 // ─── Orchestrator ───────────────────────────────────────────────────
@@ -399,6 +406,7 @@ export class CharacterActor {
                 },
             };
         } catch (error) {
+            console.log(error)
             return { error: classifyError(error, signal) };
         }
     }
