@@ -179,9 +179,9 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         try { await saveRawCharacter(char); result.counts.characters++; }
         catch (e) { result.errors.push(`Character "${char.name || char.id}": ${(e as Error).message}`); }
     }
-    for (const ctx of data.contexts) {
-        try { await saveRawContext(ctx); result.counts.contexts++; }
-        catch (e) { result.errors.push(`Context "${ctx.name || ctx.id}": ${(e as Error).message}`); }
+    for (const context of data.contexts) {
+        try { await saveRawContext(context); result.counts.contexts++; }
+        catch (e) { result.errors.push(`Context "${context.name || context.id}": ${(e as Error).message}`); }
     }
     for (const loc of data.locations) {
         try { await saveRawLocation(loc); result.counts.locations++; }

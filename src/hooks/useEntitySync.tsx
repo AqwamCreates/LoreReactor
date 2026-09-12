@@ -76,13 +76,13 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         // Sync contexts — same defensive approach: update but never drop
         if (currentChat.contexts?.length) {
             let contextsChanged = false;
-            const freshContexts = currentChat.contexts.map(ctx => {
-                const fresh = contextMap.get(ctx.id);
-                if (fresh && fresh.lastUpdatedTimestamp !== ctx.lastUpdatedTimestamp) {
+            const freshContexts = currentChat.contexts.map(context => {
+                const fresh = contextMap.get(context.id);
+                if (fresh && fresh.lastUpdatedTimestamp !== context.lastUpdatedTimestamp) {
                     contextsChanged = true;
                     return fresh;
                 }
-                return ctx;
+                return context;
             });
             if (contextsChanged) {
                 updated.contexts = freshContexts; changed = true;

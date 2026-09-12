@@ -2,7 +2,6 @@
 import type { BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { getLanguageModelEngine, type StreamCallbacks, type StreamResult } from './LanguageModelEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { buildContextFromModel } from '../utilities/modelContextResolver';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -151,6 +150,8 @@ export class BudgetStrategyEngine {
 
     setRunningModels(runningModels: Record<string, RunningModelState>): void {
         this.runningModels = runningModels;
+        // Keep engine's running models in sync so it can resolve runtime ports
+        this.engine.setRunningModels(runningModels);
     }
 
     setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void {
@@ -161,7 +162,7 @@ export class BudgetStrategyEngine {
         return this.budgetData;
     }
 
-    // ─── Model Selection (Phase 4 — solves model mismatch) ──────────
+    // ─── Model Selection (solves model mismatch) ────────────────────
 
     /**
      * Select a model for the next request without generating.
@@ -196,8 +197,7 @@ export class BudgetStrategyEngine {
         if (primary) {
             const loaded = await this.ensureModelLoaded(primary);
             if (loaded) {
-                const ctx = buildContextFromModel(primary, this.runningModels);
-                this.engine.setContext(ctx);
+                this.engine.setContext(primary);
                 return { model: primary, modelId: primary.id };
             }
         }
@@ -208,8 +208,7 @@ export class BudgetStrategyEngine {
             if (fallback) {
                 const loaded = await this.ensureModelLoaded(fallback);
                 if (loaded) {
-                    const ctx = buildContextFromModel(fallback, this.runningModels);
-                    this.engine.setContext(ctx);
+                    this.engine.setContext(fallback);
                     return { model: fallback, modelId: fallback.id };
                 }
             }
@@ -221,8 +220,7 @@ export class BudgetStrategyEngine {
         if (freeModel) {
             const loaded = await this.ensureModelLoaded(freeModel);
             if (loaded) {
-                const ctx = buildContextFromModel(freeModel, this.runningModels);
-                this.engine.setContext(ctx);
+                this.engine.setContext(freeModel);
                 return { model: freeModel, modelId: freeModel.id };
             }
         }
@@ -285,8 +283,7 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            // Set engine context once for this model attempt
-            this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
+            this.engine.setContext(selectedModel);
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
@@ -376,7 +373,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
+                this.engine.setContext(selectedModel);
                 const fallbackPricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
@@ -469,7 +466,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                this.engine.setContext(buildContextFromModel(freeModel, this.runningModels));
+                this.engine.setContext(freeModel);
                 const sessionStart = Date.now();
 
                 try {
@@ -576,7 +573,7 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
+            this.engine.setContext(selectedModel);
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
@@ -634,7 +631,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
+                this.engine.setContext(selectedModel);
                 const pricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
@@ -693,7 +690,7 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            this.engine.setContext(buildContextFromModel(freeModel, this.runningModels));
+            this.engine.setContext(freeModel);
             const sessionStart = Date.now();
 
             try {
@@ -932,6 +929,8 @@ export class BudgetStrategyEngine {
                     ...this.runningModels,
                     [model.id]: { isRunning: true, port },
                 };
+                // Keep engine in sync after loading a new model
+                this.engine.setRunningModels(this.runningModels);
                 return true;
             }
         } catch (e) {

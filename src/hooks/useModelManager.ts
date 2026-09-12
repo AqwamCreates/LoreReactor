@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
 import { cloudBackends } from '../languageModelInformation';
 import { buildModelLoadArguments } from './modelLoadArguments';
+import { useSessionStore } from '../store/useSessionStore';
 
 interface ModelState {
     isRunning: boolean;
@@ -27,7 +28,9 @@ export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [runningModels, setRunningModels] = useState<Record<string, ModelState>>({});
-    const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+    const [selectedModelId, setSelectedModelId] = useState<string | null>(() => {
+        try { return localStorage.getItem('loreReactor_selectedModelId'); } catch { return null; }
+    });
     
     const { addToast } = useToast();
     const API_BASE = localURL;
@@ -37,6 +40,27 @@ export function useModelManager() {
     useEffect(() => {
         runningModelsRef.current = runningModels;
     }, [runningModels]);
+
+    // Persist selected model ID to localStorage
+    useEffect(() => {
+        try {
+            if (selectedModelId) {
+                localStorage.setItem('loreReactor_selectedModelId', selectedModelId);
+            } else {
+                localStorage.removeItem('loreReactor_selectedModelId');
+            }
+        } catch { /* ignore */ }
+    }, [selectedModelId]);
+
+    // Sync selected model to session store whenever it changes
+    useEffect(() => {
+        if (selectedModelId) {
+            const model = models.find(m => m.id === selectedModelId);
+            useSessionStore.setState({ selectedModel: model ?? null });
+        } else {
+            useSessionStore.setState({ selectedModel: null });
+        }
+    }, [selectedModelId, models]);
 
     const fetchStatus = useCallback(async () => {
         try {
@@ -135,6 +159,9 @@ export function useModelManager() {
         try {
             await deleteRawModel(id);
             await loadModels();
+            if (selectedModelId === id) {
+                setSelectedModelId(null);
+            }
             addToast("Model deleted", "info");
             return true;
         } catch (e) {

@@ -304,7 +304,7 @@ export function AppModals({
                     onDelete={onDeleteWorld}
                     onCreateNew={() => worldModal.open()}
                     renderSubtext={(w: World) =>
-                        `${w.characterIds.length} char • ${w.contextIds.length} ctx • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                        `${w.characterIds.length} char • ${w.contextIds.length} context • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
                     }
                     emptyMessage="No worlds saved yet."
                     actionLabel="Delete"
@@ -526,9 +526,9 @@ export function AppModals({
                         setAiCharacterSaveRedirect(() => onApplyToRecommendation);
                         charModal.open(char ?? undefined);
                     }}
-                    onOpenContextEditor={(ctx, onApplyToRecommendation) => {
+                    onOpenContextEditor={(context, onApplyToRecommendation) => {
                         setAiContextSaveRedirect(() => onApplyToRecommendation);
-                        contextModal.open(ctx ?? undefined);
+                        contextModal.open(context ?? undefined);
                     }}
                     onOpenLocationEditor={(loc, onApplyToRecommendation) => {
                         setAiLocationSaveRedirect(() => onApplyToRecommendation);

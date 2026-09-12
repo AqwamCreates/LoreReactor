@@ -339,8 +339,8 @@ export function resolveWorldCrossReferences(
     };
 
     // Resolve bindings on contexts
-    for (const ctx of contexts) {
-        ctx.characterBindings = (ctx.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id);
+    for (const context of contexts) {
+        context.characterBindings = (context.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id);
     }
 
     // Resolve bindings on locations

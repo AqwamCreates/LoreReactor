@@ -1,7 +1,7 @@
 // src/services/LanguageModelEngine.ts
 import { localAddress } from "../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
-import type { backend } from "../types";
+import type { LanguageModel } from "../types";
 
 export interface TokenStats {
   fullText: string;
@@ -33,15 +33,8 @@ export interface StreamResult {
   completionTokens?: number;
 }
 
-export interface LanguageModelContext {
-  apiKey?: string;
-  backend?: backend;
-  modelPath?: string;
-  runtimePort?: number;
-}
-
-function endsWithStop_pattern(text: string, stop_patterns: string[]): boolean {
-  for (const pattern of stop_patterns) {
+function endsWithStopPattern(text: string, stopPatterns: string[]): boolean {
+  for (const pattern of stopPatterns) {
     if (pattern && text.endsWith(pattern)) return true;
   }
   return false;
@@ -61,17 +54,16 @@ interface ResolvedRequest {
   body: string;
 }
 
-const STOPUNSUPPORTEDBACKENDS = new Set(['Google']);
-
-const NOTOKENIZEBACKENDS = new Set(['OpenRouter']);
+const STOP_UNSUPPORTED_BACKENDS = new Set(['Google']);
+const NO_TOKENIZE_BACKENDS = new Set(['OpenRouter']);
 
 interface TokenCacheEntry {
   count: number;
   timestamp: number;
 }
 
-const TOKENCACHETTLMS = 5 * 60 * 1000;
-const TOKENCACHEMAXSIZE = 500;
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+const TOKEN_CACHE_MAX_SIZE = 500;
 
 // ─── Raw API response shapes ────────────────────────────────────────
 
@@ -109,16 +101,16 @@ interface GoogleTokenizeResponse {
 }
 
 interface AnthropicTokenizeResponse {
-    inputtokens?: number;
+    input_tokens?: number;
 }
 
 interface MinimaxTokenizeResponse {
-    inputtokens?: number;
+    input_tokens?: number;
 }
 
 interface KimiTokenizeResponse {
-    data?: { totaltokens?: number };
-    totaltokens?: number;
+    data?: { total_tokens?: number };
+    total_tokens?: number;
 }
 
 interface GLMTokenizeResponse {
@@ -128,7 +120,7 @@ interface GLMTokenizeResponse {
 
 interface CohereTokenizeResponse {
     tokens?: unknown[];
-    tokencount?: number;
+    token_count?: number;
 }
 
 interface AI21TokenizeResponse {
@@ -147,49 +139,74 @@ interface CloudErrorData {
 
 export class LanguageModelEngine {
 
-  // ─── Context State ────────────────────────────────────────────────
+  // ─── Model State ──────────────────────────────────────────────────
 
-  private context: LanguageModelContext = {};
+  private model: LanguageModel | null = null;
+  private runtimePort: number | undefined = undefined;
+  private runningModels: Record<string, { isRunning: boolean; port?: number }> = {};
 
-  setContext(ctx: LanguageModelContext): void {
-    this.context = ctx;
+  /**
+   * Set the active model. Resolves runtime port internally from stored running models.
+   * This is the single entry point for telling the engine which model to use.
+   */
+  setContext(model: LanguageModel): void {
+    this.model = model;
+    const running = model.id ? this.runningModels[model.id] : undefined;
+    this.runtimePort = running?.port
+      ?? (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
   }
 
-  getContext(): LanguageModelContext {
-    return this.context;
+  getContext(): LanguageModel | null {
+    return this.model;
+  }
+
+  getSelectedModelId(): string | null {
+    return this.model?.id ?? null;
+  }
+
+  /**
+   * Update running models state so setContext can resolve runtime ports.
+   * Call this whenever running models change.
+   */
+  setRunningModels(runningModels: Record<string, { isRunning: boolean; port?: number }>): void {
+    this.runningModels = runningModels;
+    // Re-resolve runtime port if a model is already set
+    if (this.model) {
+      const running = this.model.id ? this.runningModels[this.model.id] : undefined;
+      this.runtimePort = running?.port
+        ?? (this.model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
+    }
   }
 
   // ─── Token Count Cache ────────────────────────────────────────────
 
   private tokenCache: Map<string, TokenCacheEntry> = new Map();
   private failedTokenizeBackends: Set<string> = new Set();
-  private hasTokenCountChanged = false;
+  private hasTokenCountChangedFlag = false;
   private inFlightTokenize: Map<string, Promise<number>> = new Map();
 
   get hasTokenCountChanged(): boolean {
-    const changed = this.hasTokenCountChanged;
-    this.hasTokenCountChanged = false;
+    const changed = this.hasTokenCountChangedFlag;
+    this.hasTokenCountChangedFlag = false;
     return changed;
   }
 
   private buildCacheKey(text: string): string {
-    const ctx = this.context;
-    const ctxPart = `${ctx.runtimePort ?? ''}:${ctx.backend ?? ''}:${ctx.modelPath ?? ''}`;
+    const ctxPart = `${this.runtimePort ?? ''}:${this.model?.backend ?? ''}:${this.model?.model ?? ''}`;
     const textFingerprint = `${text.length}:${text.slice(0, 32)}:${text.slice(-32)}`;
     return `${ctxPart}|${textFingerprint}`;
   }
 
   private buildBackendFailureKey(): string | null {
-    const ctx = this.context;
-    if (ctx.runtimePort) return `local:${ctx.runtimePort}`;
-    if (ctx.backend) return `${ctx.backend}:${ctx.modelPath ?? ''}`;
+    if (this.runtimePort) return `local:${this.runtimePort}`;
+    if (this.model?.backend) return `${this.model.backend}:${this.model.model ?? ''}`;
     return null;
   }
 
   private getCachedTokenCount(key: string): number | null {
     const entry = this.tokenCache.get(key);
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > TOKENCACHETTLMS) {
+    if (Date.now() - entry.timestamp > TOKEN_CACHE_TTL_MS) {
       this.tokenCache.delete(key);
       return null;
     }
@@ -197,19 +214,19 @@ export class LanguageModelEngine {
   }
 
   private setCachedTokenCount(key: string, count: number): void {
-    if (this.tokenCache.size >= TOKENCACHEMAXSIZE && !this.tokenCache.has(key)) {
+    if (this.tokenCache.size >= TOKEN_CACHE_MAX_SIZE && !this.tokenCache.has(key)) {
       const oldestKey = this.tokenCache.keys().next().value;
       if (oldestKey !== undefined) this.tokenCache.delete(oldestKey);
     }
     this.tokenCache.set(key, { count, timestamp: Date.now() });
-    this.hasTokenCountChanged = true;
+    this.hasTokenCountChangedFlag = true;
   }
 
   clearTokenCache(): void {
     this.tokenCache.clear();
     this.failedTokenizeBackends.clear();
     this.inFlightTokenize.clear();
-    this.hasTokenCountChanged = true;
+    this.hasTokenCountChangedFlag = true;
   }
 
   // ─── Request Building ─────────────────────────────────────────────
@@ -248,11 +265,11 @@ export class LanguageModelEngine {
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
-      maxtokens: params.maxTokens,
+      max_tokens: params.maxTokens,
       ...params.extraParams,
     };
 
-    if (!STOPUNSUPPORTEDBACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
+    if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;
     }
 
@@ -262,20 +279,20 @@ export class LanguageModelEngine {
   }
 
   private buildLocalRequest(
-    runtimePort: number | undefined,
+    port: number | undefined,
     prompt: string,
     stream: boolean,
     params: ResolvedParams,
   ): ResolvedRequest {
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
 
-    const url = runtimePort
-      ? `${localAddress}:${runtimePort}/completion`
+    const url = port
+      ? `${localAddress}:${port}/completion`
       : '/api/completion';
 
     const body = JSON.stringify({
       prompt,
-      npredict: params.maxTokens,
+      n_predict: params.maxTokens,
       temperature: params.temperature,
       top_p: params.top_p,
       stop: params.stop,
@@ -295,13 +312,15 @@ export class LanguageModelEngine {
       ? `${prompt}${existingText}`
       : prompt;
 
-    const { apiKey, backend: backendName, modelPath, runtimePort } = this.context;
+    const apiKey = this.model?.apiKey;
+    const backendName = this.model?.backend;
+    const modelPath = this.model?.model;
 
     if (apiKey && backendName && cloudBackends.includes(backendName)) {
       return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
     }
 
-    return this.buildLocalRequest(runtimePort, finalPrompt, stream, params);
+    return this.buildLocalRequest(this.runtimePort, finalPrompt, stream, params);
   }
 
   // ─── Response Parsing ────────────────────────────────────────────
@@ -325,9 +344,9 @@ export class LanguageModelEngine {
       prompt,
       temperature: requestBody.temperature as number | undefined,
       top_p: requestBody.top_p as number | undefined,
-      maxTokens: (requestBody.npredict as number) || (requestBody.maxtokens as number),
+      maxTokens: (requestBody.n_predict as number) || (requestBody.max_tokens as number),
       stop: requestBody.stop as string[] | undefined,
-      extraParams: requestBody.extracloudparams as Record<string, unknown> | undefined,
+      extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
     };
   }
 
@@ -347,7 +366,6 @@ export class LanguageModelEngine {
 
   async countTokens(text: string): Promise<number> {
     const estimatedTokens = Math.ceil(text.length / 4);
-    const ctx = this.context;
 
     const cacheKey = this.buildCacheKey(text);
     const cached = this.getCachedTokenCount(cacheKey);
@@ -359,20 +377,22 @@ export class LanguageModelEngine {
       return estimatedTokens;
     }
 
-    if (ctx.backend && NOTOKENIZEBACKENDS.has(ctx.backend)) {
+    const backendName = this.model?.backend;
+    if (backendName && NO_TOKENIZE_BACKENDS.has(backendName)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    if (!ctx.apiKey && !ctx.runtimePort) {
+    const apiKey = this.model?.apiKey;
+    if (!apiKey && !this.runtimePort) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    const { runtimePort, backend: backendName, apiKey, modelPath } = ctx;
+    const modelPath = this.model?.model;
 
-    if (runtimePort) {
-      const localKey = `local:${runtimePort}`;
+    if (this.runtimePort) {
+      const localKey = `local:${this.runtimePort}`;
 
       if (this.inFlightTokenize.has(localKey)) {
         await this.inFlightTokenize.get(localKey);
@@ -384,7 +404,7 @@ export class LanguageModelEngine {
 
       const fetchPromise = (async (): Promise<number> => {
         try {
-          const response = await fetch(`${localAddress}:${runtimePort}/tokenize`, {
+          const response = await fetch(`${localAddress}:${this.runtimePort}/tokenize`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: text }),
@@ -496,11 +516,11 @@ export class LanguageModelEngine {
 
           switch (backendName) {
             case 'Google': return (data as GoogleTokenizeResponse).totalTokens ?? estimatedTokens;
-            case 'Anthropic': return (data as AnthropicTokenizeResponse).inputtokens ?? estimatedTokens;
-            case 'Minimax': return (data as MinimaxTokenizeResponse).inputtokens ?? estimatedTokens;
-            case 'Kimi': return (data as KimiTokenizeResponse).data?.totaltokens ?? (data as KimiTokenizeResponse).totaltokens ?? estimatedTokens;
+            case 'Anthropic': return (data as AnthropicTokenizeResponse).input_tokens ?? estimatedTokens;
+            case 'Minimax': return (data as MinimaxTokenizeResponse).input_tokens ?? estimatedTokens;
+            case 'Kimi': return (data as KimiTokenizeResponse).data?.total_tokens ?? (data as KimiTokenizeResponse).total_tokens ?? estimatedTokens;
             case 'GLM': return (data as GLMTokenizeResponse).usage?.tokens ?? (data as GLMTokenizeResponse).tokens ?? estimatedTokens;
-            case 'Cohere': return (data as CohereTokenizeResponse).tokens?.length ?? (data as CohereTokenizeResponse).tokencount ?? estimatedTokens;
+            case 'Cohere': return (data as CohereTokenizeResponse).tokens?.length ?? (data as CohereTokenizeResponse).token_count ?? estimatedTokens;
             case 'AI21': return (data as AI21TokenizeResponse).tokens?.length ?? (data as AI21TokenizeResponse).count ?? estimatedTokens;
             case 'NovelAI': return (data as NovelAITokenizeResponse).tokens?.length ?? (data as NovelAITokenizeResponse).count ?? estimatedTokens;
             default: return estimatedTokens;
@@ -529,7 +549,7 @@ export class LanguageModelEngine {
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stop_patterns: string[] = Array.isArray(stop) ? stop : [];
+    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     try {
       const { url, headers, body } = this.resolveRequest(prompt, false, {
@@ -546,7 +566,7 @@ export class LanguageModelEngine {
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
-      return { text, isCompleted: endsWithStop_pattern(text, stop_patterns) };
+      return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return { text: '', isCompleted: false };
@@ -564,7 +584,7 @@ export class LanguageModelEngine {
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stop_patterns: string[] = Array.isArray(stop) ? stop : [];
+    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
@@ -617,7 +637,7 @@ export class LanguageModelEngine {
         if (done) {
           return {
             text: fullContent.trim(),
-            isCompleted: endsWithStop_pattern(fullContent.trim(), stop_patterns),
+            isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
             msPerToken: lastMsPerToken || undefined,
             timeToFirstToken: lastTimeToFirstToken || undefined,
             completionTokens: newNumberOfTokens || undefined,
@@ -634,7 +654,7 @@ export class LanguageModelEngine {
           if (jsonStr.trim() === '[DONE]') {
             return {
               text: fullContent.trim(),
-              isCompleted: endsWithStop_pattern(fullContent.trim(), stop_patterns),
+              isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
               msPerToken: lastMsPerToken || undefined,
               timeToFirstToken: lastTimeToFirstToken || undefined,
               completionTokens: newNumberOfTokens || undefined,

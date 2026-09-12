@@ -1,5 +1,6 @@
 // src/services/linkFetcher.ts
-import { getLanguageModelEngine, type LanguageModelContext } from './LanguageModelEngine';
+import { getLanguageModelEngine } from './LanguageModelEngine';
+import type { LanguageModel } from '../types';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
 import type { linkFetchMode, searchEngine } from '../types';
@@ -9,7 +10,7 @@ const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_PROXY_URL = '/api/web/fetch';
 
-const tokenEngine = getLanguageModelEngine()
+const tokenEngine = getLanguageModelEngine();
 
 interface FetchResult {
     url: string;
@@ -52,7 +53,6 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
             }),
         });
 
-        // ✅ Handle non-JSON responses from proxy (e.g., 502 plain text)
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
             return {
@@ -73,18 +73,14 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
         };
     }
 }
+
 /**
  * Extracts the subdirectory scope from a URL.
- * e.g., "https://wiki.example.com/lore/dragons/fire.html"
- *     → "https://wiki.example.com/lore/dragons/"
- *
- * All followed links must start with this prefix when scoping is enabled.
  */
 function getSubdirectoryScope(url: string): string {
     try {
         const parsed = new URL(url);
         const pathParts = parsed.pathname.split('/');
-        // Remove the last segment (filename or trailing segment)
         pathParts.pop();
         const directoryPath = `${pathParts.join('/')}/`;
         return `${parsed.origin}${directoryPath}`;
@@ -129,8 +125,6 @@ export function buildSearchUrl(terms: string[], engine?: searchEngine): string {
 
 /**
  * Cleans an image URL by stripping everything after the file extension.
- * Handles Fandom/Wikipedia-style URLs where clicking an image redirects
- * to a wiki article page instead of serving the raw image.
  */
 function cleanImageUrl(url: string): string {
     const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?))/i);
@@ -161,7 +155,6 @@ async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string
 }
 
 function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; imageUrls: string[] } {
-    // ✅ Match both absolute AND relative hrefs
     const linkRegex = /href=["']([^"']+)["']/gi;
     const links: string[] = [];
     let match: RegExpExecArray | null;
@@ -169,22 +162,24 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
     while (match !== null) {
         let href = match[1];
 
-        // Skip anchors, javascript:, mailto:, data:
         if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('data:')) {
+            match = linkRegex.exec(html);
             continue;
         }
 
-        // Resolve relative URLs against base
         if (!href.startsWith('http')) {
             try {
                 href = new URL(href, baseUrl).href;
             } catch {
+                match = linkRegex.exec(html);
                 continue;
             }
         }
 
-        // Only keep http(s) links
-        if (!href.startsWith('http')) continue;
+        if (!href.startsWith('http')) {
+            match = linkRegex.exec(html);
+            continue;
+        }
 
         if (!links.includes(href)) {
             links.push(href);
@@ -243,7 +238,7 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
 }
 
 /**
- * Extract mode: keeps only structured content (headings, lists, definitions, key-value).
+ * Extract mode: keeps only structured content.
  */
 function extractStructuredContent(text: string): string {
     const lines = text.split('\n');
@@ -311,7 +306,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         }
     }
 
-    // Layer 3: Network fetch via proxy (CORS bypass)
+    // Layer 3: Network fetch via proxy
     try {
         const result = await proxiedFetch(url, 'text/html,text/plain,*/*');
 
@@ -335,7 +330,6 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
             content = rawBody;
         }
 
-        // Download actual image binaries as base64 (also via proxy)
         let images: WebpageImageInfo[] = [];
         if (includeImages && imageUrls.length > 0) {
             const downloadPromises = imageUrls.map(async (imgUrl) => {
@@ -365,7 +359,6 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         fetchCache.set(cacheKey, fetchResult);
 
-        // Save to persistent disk cache
         try {
             await saveRawWebpage({
                 id: uuidv4(),
@@ -403,8 +396,6 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
 /**
  * Fetches a single URL with optional recursive link following.
- * When limitLinksToSubdirectory is true, only links within the same
- * origin + directory path as the root URL are followed.
  */
 export async function fetchLinkContent(
     url: string,
@@ -427,13 +418,11 @@ export async function fetchLinkContent(
     const includeImages = options.includeImages ?? false;
     const limitLinksToSubdirectory = options.limitLinksToSubdirectory ?? false;
 
-    // Establish scope from the root URL on first call
     const subdirectoryScope = options.subdirectoryScope ?? (limitLinksToSubdirectory ? getSubdirectoryScope(url) : '');
 
     if (depth > maxDepth) return [];
     if (visited.has(url)) return [];
 
-    // Enforce subdirectory scoping on child links (depth > 0)
     if (limitLinksToSubdirectory && subdirectoryScope && depth > 0) {
         if (!isWithinSubdirectory(url, subdirectoryScope)) {
             return [];
@@ -480,12 +469,7 @@ export async function fetchLinkContent(
 
 /**
  * Batch entry point: fetches multiple URLs for a single context entry.
- * Shares a visited set across all URLs to prevent duplicate fetches.
- * Returns combined results and aggregated error list.
- *
- * When limitLinksToSubdirectory is true, each root URL establishes its own
- * subdirectory scope — child links are only followed if they stay within
- * the same origin + directory path as their root URL.
+ * Engine context should already be set by caller before calling this function.
  */
 export async function fetchMultipleContextUrls(
     urls: string[],
@@ -495,7 +479,7 @@ export async function fetchMultipleContextUrls(
         fetchMode?: linkFetchMode;
         searchTerms?: string[];
         searchEngine?: searchEngine;
-        modelContext?: LanguageModelContext;
+        model?: LanguageModel | null;
         includeImages?: boolean;
         limitLinksToSubdirectory?: boolean;
     } = {}
@@ -533,8 +517,8 @@ export async function fetchMultipleContextUrls(
         }
     }
 
-    // Summary mode: summarize each page individually (with real images), then merge if multiple
-    if (options.fetchMode === 'summary' && options.modelContext) {
+    // Summary mode: summarize each page individually, then merge if multiple
+    if (options.fetchMode === 'summary' && options.model) {
         const validResults = allResults.filter(r => !r.error && r.content.length > 0);
 
         if (validResults.length > 0) {

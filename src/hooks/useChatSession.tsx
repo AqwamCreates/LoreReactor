@@ -12,7 +12,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
@@ -20,7 +19,7 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
 import { useCharacterResponse } from './useCharacterResponse';
-import { runBackgroundSummarization } from '../services/SummarizationEngine';
+import { runSummarization } from '../services/SummarizationEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
 const engine = getLanguageModelEngine();
@@ -83,6 +82,8 @@ export function useChatSession() {
 
     const setRunningModelsMap = useCallback((models: RunningModelStatus) => {
         useSessionStore.setState({ runningModels: models });
+        // Keep engine's running models in sync so it can resolve runtime ports
+        engine.setRunningModels(models);
     }, []);
 
     const setStats = useCallback((newStats: StatsState | ((prev: StatsState) => StatsState)) => {
@@ -172,18 +173,20 @@ export function useChatSession() {
         })();
     }, [setRunningModelsMap, addToast]);
 
+    // Sync engine context whenever selected model changes
+    useEffect(() => {
+        if (selectedModel) {
+            engine.setContext(selectedModel);
+        }
+    }, [selectedModel]);
+
     useEffect(() => {
         if (!interactionData) return;
         let cancelled = false;
         (async () => {
-            const model = useSessionStore.getState().selectedModel;
-            const models = useSessionStore.getState().runningModels;
 
-            // Set engine context once — countTokens reads from stored state
-            if (model) {
-                engine.setContext(buildContextFromModel(model, models));
-            }
-
+            // Engine context is already set by the selectedModel sync effect above
+            // Just count tokens using whatever model is currently active
             let total = 0;
             for (const m of interactionData.interactionHistory) {
                 if (m.messageType === 'chat') total += await engine.countTokens(m.textContent);
@@ -191,7 +194,7 @@ export function useChatSession() {
             if (!cancelled) setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [interactionData?.interactionHistory, interactionData, setNumberOfTokens]);
+    }, [interactionData?.interactionHistory, interactionData, selectedModel, setNumberOfTokens]);
 
     // ─── Scroll Tracking ─────────────────────────────────────────────
     useEffect(() => {
@@ -453,7 +456,7 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
-                runBackgroundSummarization({
+                runSummarization({
                     data: ud,
                     setData: setInteractionData,
                     addToast,
@@ -564,7 +567,7 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentInteractionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > preCount) {
                 await saveRawInteractionData(ud); setInteractionData(ud);
-                runBackgroundSummarization({
+                runSummarization({
                     data: ud,
                     setData: setInteractionData,
                     addToast,

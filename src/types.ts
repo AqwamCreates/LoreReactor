@@ -136,7 +136,7 @@ export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Mini
 
 export type backend = localBackend | cloudBackend
 export interface LanguageModel extends ObjectData {
-  backend?: backend;
+  backend: backend;
   contextLength: number;
   model?: string;
   mmproj?: string;
@@ -149,7 +149,7 @@ export interface LanguageModel extends ObjectData {
 }
 
 export interface RawLanguageModel extends RawData {
-  backend?: backend;
+  backend: backend;
   contextLength: number;
   model?: string;
   mmproj?: string;

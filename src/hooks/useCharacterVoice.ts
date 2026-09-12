@@ -40,7 +40,7 @@ export function useCharacterVoice() {
 
         (async () => {
             try {
-                const ctx: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
+                const context: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
                 const label = character.id;
                 if (!uploadedTtsVoicesRef.current.has(label)) {
                     const url = getCharacterVoiceUrl(character.voice);
@@ -49,11 +49,11 @@ export function useCharacterVoice() {
                     if (!response.ok) return;
                     const blob = await response.blob();
                     const file = new File([blob], `${label}.wav`, { type: blob.type || 'audio/wav' });
-                    if (!await textToSpeechModelEngine.uploadVoice(label, file, ctx)) return;
+                    if (!await textToSpeechModelEngine.uploadVoice(label, file, context)) return;
                     uploadedTtsVoicesRef.current.add(label);
                 }
                 await new Promise(r => setTimeout(r, 500));
-                const blob = await textToSpeechModelEngine.synthesize(text, ctx, { voice: label });
+                const blob = await textToSpeechModelEngine.synthesize(text, context, { voice: label });
                 if (blob) {
                     const u = URL.createObjectURL(blob);
                     const a = new Audio(u);

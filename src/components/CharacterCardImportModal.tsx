@@ -30,7 +30,7 @@ interface CharacterCardImportModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveCharacter: (char: Character) => Promise<boolean>;
-    onSaveContext: (ctx: Context) => Promise<boolean>;
+    onSaveContext: (context: Context) => Promise<boolean>;
     allSamplers: Sampler[];
 }
 
@@ -196,8 +196,8 @@ export function CharacterCardImportModal({
 
             if (includeLorebook && preview.lorebookContexts.length > 0) {
                 let savedCount = 0;
-                for (const ctx of preview.lorebookContexts) {
-                    const success = await onSaveContext(ctx);
+                for (const context of preview.lorebookContexts) {
+                    const success = await onSaveContext(context);
                     if (success) savedCount++;
                 }
                 if (savedCount < preview.lorebookContexts.length) {
@@ -304,16 +304,16 @@ export function CharacterCardImportModal({
                                     </div>
                                     {includeLorebook && (
                                         <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px' }}>
-                                            {preview.lorebookContexts.map((ctx, i) => (
-                                                <div key={ctx.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                                                    <strong>{ctx.name}</strong>
-                                                    {ctx.regularExpressionActivationTrigger && (
+                                            {preview.lorebookContexts.map((context, i) => (
+                                                <div key={context.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                                    <strong>{context.name}</strong>
+                                                    {context.regularExpressionActivationTrigger && (
                                                         <span style={{ opacity: 0.5, marginLeft: '6px', fontFamily: 'monospace', fontSize: '0.6rem' }}>
-                                                            /{ctx.regularExpressionActivationTrigger}/
+                                                            /{context.regularExpressionActivationTrigger}/
                                                         </span>
                                                     )}
                                                     <div style={{ opacity: 0.6, fontSize: '0.6rem', marginTop: '2px' }}>
-                                                        {ctx.text?.substring(0, 100) || '(no content)'}{ctx.text && ctx.text.length > 100 ? '...' : ''}
+                                                        {context.text?.substring(0, 100) || '(no content)'}{context.text && context.text.length > 100 ? '...' : ''}
                                                     </div>
                                                 </div>
                                             ))}

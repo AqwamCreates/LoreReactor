@@ -11,7 +11,7 @@ interface ActiveTrackState {
 }
 
 export class AudioEngine {
-    private ctx: AudioContext | null = null;
+    private context: AudioContext | null = null;
     private masterGain: GainNode | null = null;
     private activeTracks: Map<string, ActiveTrackState> = new Map();
     private bufferCache: Map<string, AudioBuffer> = new Map();
@@ -19,16 +19,16 @@ export class AudioEngine {
     private animationFrameId: number | null = null;
 
     private ensureContext(): AudioContext {
-        if (!this.ctx) {
-            this.ctx = new AudioContext();
-            this.masterGain = this.ctx.createGain();
-            this.masterGain.connect(this.ctx.destination);
+        if (!this.context) {
+            this.context = new AudioContext();
+            this.masterGain = this.context.createGain();
+            this.masterGain.connect(this.context.destination);
             this.masterGain.gain.value = 1;
         }
-        if (this.ctx.state === 'suspended') {
-            void this.ctx.resume();
+        if (this.context.state === 'suspended') {
+            void this.context.resume();
         }
-        return this.ctx;
+        return this.context;
     }
 
     /**
@@ -69,8 +69,8 @@ export class AudioEngine {
             const response = await fetch(url);
             if (!response.ok) return null;
             const arrayBuffer = await response.arrayBuffer();
-            const ctx = this.ensureContext();
-            const buffer = await ctx.decodeAudioData(arrayBuffer);
+            const context = this.ensureContext();
+            const buffer = await context.decodeAudioData(arrayBuffer);
             this.bufferCache.set(filename, buffer);
             return buffer;
         } catch (e) {
@@ -82,8 +82,8 @@ export class AudioEngine {
     startTrack(track: AudioTrack): void {
         if (this.activeTracks.has(track.id)) return;
 
-        const ctx = this.ensureContext();
-        const gainNode = ctx.createGain();
+        const context = this.ensureContext();
+        const gainNode = context.createGain();
         gainNode.connect(this.masterGain!);
         gainNode.gain.value = 0; // Start silent for fade-in
 
@@ -100,7 +100,7 @@ export class AudioEngine {
         void this.loadBuffer(track.filename).then(buffer => {
             if (!buffer || !this.activeTracks.has(track.id)) return;
 
-            const source = ctx.createBufferSource();
+            const source = context.createBufferSource();
             source.buffer = buffer;
             source.loop = track.loop;
             source.connect(gainNode);
@@ -111,8 +111,8 @@ export class AudioEngine {
 
             // Fade in
             const fadeDuration = Math.max(0.01, track.startFadeDurationMs / 1000);
-            gainNode.gain.setValueAtTime(0, ctx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(state.targetVolume, ctx.currentTime + fadeDuration);
+            gainNode.gain.setValueAtTime(0, context.currentTime);
+            gainNode.gain.linearRampToValueAtTime(state.targetVolume, context.currentTime + fadeDuration);
 
             source.onended = () => {
                 if (!track.loop && this.activeTracks.has(track.id)) {
@@ -126,16 +126,16 @@ export class AudioEngine {
         const state = this.activeTracks.get(trackId);
         if (!state) return;
 
-        const ctx = this.ctx;
-        if (!ctx) {
+        const context = this.context;
+        if (!context) {
             this.activeTracks.delete(trackId);
             return;
         }
 
         // Fade out then disconnect
         const fadeDuration = Math.max(0.01, state.track.endFadeDurationMs / 1000);
-        state.gainNode.gain.setValueAtTime(state.gainNode.gain.value, ctx.currentTime);
-        state.gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + fadeDuration);
+        state.gainNode.gain.setValueAtTime(state.gainNode.gain.value, context.currentTime);
+        state.gainNode.gain.linearRampToValueAtTime(0, context.currentTime + fadeDuration);
 
         setTimeout(() => {
             try {
@@ -271,7 +271,7 @@ export class AudioEngine {
 
     /** Smoothly ramp active track gains toward their target volumes. */
     private tickVolumes(): void {
-        if (!this.ctx) return;
+        if (!this.context) return;
 
         for (const state of this.activeTracks.values()) {
             if (!state.isPlaying) continue;
@@ -310,9 +310,9 @@ export class AudioEngine {
     destroy(): void {
         this.stopAll();
         this.bufferCache.clear();
-        if (this.ctx) {
-            void this.ctx.close();
-            this.ctx = null;
+        if (this.context) {
+            void this.context.close();
+            this.context = null;
             this.masterGain = null;
         }
     }

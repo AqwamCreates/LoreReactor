@@ -17,14 +17,14 @@ interface AIRecommendationModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveCharacter: (char: Character) => Promise<boolean>;
-    onSaveContext: (ctx: Context) => Promise<boolean>;
+    onSaveContext: (context: Context) => Promise<boolean>;
     onSaveLocation: (loc: Location) => Promise<boolean>;
     onSaveAudioTrack: (track: AudioTrack) => Promise<boolean>;
     onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
     onSavePromptBlock: (block: PromptBlock) => Promise<boolean>;
     onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
-    onOpenContextEditor?: (ctx: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
+    onOpenContextEditor?: (context: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
     onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
@@ -228,9 +228,9 @@ export function AIRecommendationModal({
                 }
             }
             if (parsedOutput.contexts) {
-                for (const ctx of parsedOutput.contexts) {
-                    if (!injectContextImages) ctx.includeLinkImages = false;
-                    if (!await onSaveContext(ctx)) throw new Error(`Failed to save context "${ctx.name}".`);
+                for (const context of parsedOutput.contexts) {
+                    if (!injectContextImages) context.includeLinkImages = false;
+                    if (!await onSaveContext(context)) throw new Error(`Failed to save context "${context.name}".`);
                 }
             }
             if (parsedOutput.locations) {
@@ -381,11 +381,11 @@ export function AIRecommendationModal({
                             </div>}
 
                             {effectiveTab === 'Context' && hasCtxs && <div className="entity-field-list">
-                                {parsedOutput!.contexts!.map((ctx, i) => (
-                                    <div key={ctx.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                                        {renderSummary(ctx.description)}
-                                        {renderFieldList(Object.entries(ctx).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
-                                        {onOpenContextEditor && <div style={{ marginTop: '8px', textAlign: 'center' }}><button type="button" className="editor-button editor-button-save" onClick={() => onOpenContextEditor(ctx, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
+                                {parsedOutput!.contexts!.map((context, i) => (
+                                    <div key={context.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                        {renderSummary(context.description)}
+                                        {renderFieldList(Object.entries(context).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
+                                        {onOpenContextEditor && <div style={{ marginTop: '8px', textAlign: 'center' }}><button type="button" className="editor-button editor-button-save" onClick={() => onOpenContextEditor(context, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
                                     </div>
                                 ))}
                             </div>}

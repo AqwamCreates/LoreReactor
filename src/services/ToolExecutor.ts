@@ -775,17 +775,17 @@ function executeLookup(args: string, nextMessage: BaseMessage, interactionData: 
     const contexts = interactionData.contexts || [];
     const matches: { name: string; snippet: string }[] = [];
 
-    for (const ctx of contexts) {
-        const searchText = `${ctx.name || ''} ${ctx.description || ''} ${ctx.text || ''}`.toLowerCase();
+    for (const context of contexts) {
+        const searchText = `${context.name || ''} ${context.description || ''} ${context.text || ''}`.toLowerCase();
         if (searchText.includes(query)) {
             // Extract a relevant snippet around the match
             const matchIndex = searchText.indexOf(query);
             const start = Math.max(0, matchIndex - 50);
             const end = Math.min(searchText.length, matchIndex + query.length + 100);
-            let snippet = (ctx.text || ctx.description || '').substring(start, end).trim();
+            let snippet = (context.text || context.description || '').substring(start, end).trim();
             if (start > 0) snippet = '...' + snippet;
             if (end < searchText.length) snippet = snippet + '...';
-            matches.push({ name: ctx.name || 'Untitled', snippet });
+            matches.push({ name: context.name || 'Untitled', snippet });
         }
     }
 

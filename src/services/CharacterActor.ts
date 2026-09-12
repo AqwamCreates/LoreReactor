@@ -9,7 +9,6 @@ import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffect
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
-import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { ToolInvocationParser } from './ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { executeTools } from './ToolExecutor';
@@ -262,8 +261,7 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    // Select model first, then build prompt with correct model ID
-                    // Engine context is set by selectModelForRequest
+                    // Select model first — engine context is set internally by selectModelForRequest
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
@@ -310,8 +308,9 @@ export class CharacterActor {
                     return { error: { message: 'Model not ready', type: 'no_model' } };
                 }
 
-                // Set engine context once — no more passing ctx through function signatures
-                this.engine.setContext(buildContextFromModel(selectedModel, runningModels));
+                // Set engine context with full model — runtime port resolved internally
+                this.engine.setRunningModels(runningModels);
+                this.engine.setContext(selectedModel);
 
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();

@@ -311,7 +311,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
         // Constant entries have no trigger — always active
         const isConstant = entry.constant === true;
 
-        const ctx: Partial<Context> = {
+        const context: Partial<Context> = {
             name: entry.name || entry.comment || "Lorebook Entry",
             text: entry.content,
             regularExpressionActivationTrigger: isConstant ? undefined : regexTrigger,
@@ -321,7 +321,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
             lastUpdatedTimestamp: now,
         };
 
-        contexts.push(ctx);
+        contexts.push(context);
     }
 
     return contexts;

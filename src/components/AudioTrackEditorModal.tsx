@@ -461,11 +461,11 @@ export function AudioTrackEditorModal({
                             <div className="context-binding-hint">Track activates when any of these contexts are active. Empty = no context restriction.</div>
                             <div className="context-character-binding-list">
                                 {contextBindings.map(id => {
-                                    const ctx = getContextById(id);
-                                    if (!ctx) return null;
+                                    const context = getContextById(id);
+                                    if (!context) return null;
                                     return (
                                         <div key={id} className="context-character-binding-chip">
-                                            <span className="context-character-binding-name">📜 {ctx.name}</span>
+                                            <span className="context-character-binding-name">📜 {context.name}</span>
                                             <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
                                         </div>
                                     );

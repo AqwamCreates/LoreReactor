@@ -483,13 +483,13 @@ function App() {
                 }
 
                 const selectedModel = allModels.find(m => m.id === selectedModelId);
-                const runtimePort = selectedModelId ? runningModels[selectedModelId]?.port : undefined;
-                const modelContext = selectedModel ? {
-                    apiKey: selectedModel.apiKey,
-                    backend: selectedModel.backend,
-                    modelPath: typeof selectedModel.parameters?.modelPath === 'string' ? selectedModel.parameters.modelPath : undefined,
-                    runtimePort
-                } : undefined;
+                const engine = getLanguageModelEngine();
+
+                // Set engine context once before counting loop
+                if (selectedModel) {
+                    engine.setRunningModels(runningModels);
+                    engine.setContext(selectedModel);
+                }
 
                 const prevCountedIds = lastCountedMessageIdsRef.current;
                 const currentMessageIds = new Set<string>();
@@ -506,7 +506,6 @@ function App() {
                     return;
                 }
 
-                const engine = getLanguageModelEngine();
                 for (const msg of InteractionMessages) {
                     if (abort.signal.aborted) return;
                     if (prevCountedIds.has(msg.id)) continue;
@@ -514,7 +513,7 @@ function App() {
                     if (msg.character && msg.textContent) {
                         const charId = msg.character.id;
                         if (participantCounts[charId] !== undefined || charId === '__ambient_narrator__') {
-                            const tokens = await engine.countTokens(msg.textContent, modelContext);
+                            const tokens = await engine.countTokens(msg.textContent);
                             if (abort.signal.aborted) return;
                             if (participantCounts[charId] !== undefined) {
                                 participantCounts[charId] += tokens;

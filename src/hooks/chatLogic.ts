@@ -724,27 +724,27 @@ export async function buildPromptAndStopPatterns(
     const engineCtx = tokenEngine.getContext();
 
     if (webContexts.length > 0) {
-        const fetchPromises = webContexts.map(async (ctx) => {
-            const cacheTimeToLive = ctx.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
-            const maxDepth = ctx.maximumLinkDepth ?? 0;
-            const fetchMode = ctx.linkFetchMode ?? 'full';
+        const fetchPromises = webContexts.map(async (context) => {
+            const cacheTimeToLive = context.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
+            const maxDepth = context.maximumLinkDepth ?? 0;
+            const fetchMode = context.linkFetchMode ?? 'full';
 
             const { results, errors } = await fetchMultipleContextUrls(
-                ctx.urls ?? [],
+                context.urls ?? [],
                 {
                     maxDepth,
                     cacheTimeToLiveMs: cacheTimeToLive,
                     fetchMode,
-                    searchTerms: ctx.searchTerms,
-                    searchEngine: ctx.searchEngine,
+                    searchTerms: context.searchTerms,
+                    searchEngine: context.searchEngine,
                     modelContext: engineCtx,
-                    includeImages: ctx.includeLinkImages ?? false,
-                    limitLinksToSubdirectory: ctx.limitLinksToSubdirectory ?? false,
+                    includeImages: context.includeLinkImages ?? false,
+                    limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
                 }
             );
 
             for (const error of errors) {
-                fetchErrors.push(`${ctx.name}: ${error}`);
+                fetchErrors.push(`${context.name}: ${error}`);
             }
 
             const validResults = results.filter(r => !r.error && r.content.length > 0);
@@ -756,7 +756,7 @@ export async function buildPromptAndStopPatterns(
                 .join('\n\n---\n\n');
 
             if (combinedContent.length > 0) {
-                fetchedContentMap.set(ctx.id, combinedContent);
+                fetchedContentMap.set(context.id, combinedContent);
             }
         });
 

@@ -3,7 +3,6 @@ import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import type { LanguageModelContext } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../hooks/storage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
@@ -139,13 +138,12 @@ export function CharacterEditorModal({
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
     }, []);
 
-    const getModelContext = useCallback((): LanguageModelContext | undefined => {
-        if (!selectedModel) return undefined;
-        const runtimePort = selectedModel.id && runningModels?.[selectedModel.id]?.port;
-        const modelPathFromProperty = (selectedModel as { modelPath?: string }).modelPath;
-        const modelPathFromParameters = (selectedModel as { parameters?: { modelPath?: string } }).parameters?.modelPath;
-        const modelPath = modelPathFromProperty || modelPathFromParameters;
-        return { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath, runtimePort };
+    // Set engine context when selected model changes so countTokens uses correct tokenizer
+    useEffect(() => {
+        if (selectedModel) {
+            tokenEngine.setRunningModels(runningModels ?? {});
+            tokenEngine.setContext(selectedModel);
+        }
     }, [selectedModel, runningModels]);
 
     const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
@@ -153,12 +151,12 @@ export function CharacterEditorModal({
         if (tokenCountTimeoutsRef.current[field]) clearTimeout(tokenCountTimeoutsRef.current[field]);
         tokenCountTimeoutsRef.current[field] = setTimeout(async () => {
             setCountingField(field);
-            const ctx = getModelContext();
-            const count = await tokenEngine.countTokens(text, ctx);
+            // Engine context is already set by the useEffect above
+            const count = await tokenEngine.countTokens(text);
             setTokenCounts(prev => ({ ...prev, [field]: count }));
             setCountingField(prev => prev === field ? null : prev);
         }, 500);
-    }, [getModelContext]);
+    }, []);
 
     useEffect(() => { return () => { Object.values(tokenCountTimeoutsRef.current).forEach(clearTimeout); }; }, []);
 

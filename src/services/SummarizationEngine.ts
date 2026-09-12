@@ -2,7 +2,6 @@
 import type { InteractionData, BudgetStrategy, ChatMessage } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
-import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
 import { useSessionStore } from '../store/useSessionStore';
@@ -14,8 +13,8 @@ interface SummarizationContext {
     activeStrategy?: BudgetStrategy | null;
 }
 
-export async function runBackgroundSummarization(ctx: SummarizationContext): Promise<void> {
-    const { data, setData, addToast, activeStrategy } = ctx;
+export async function runSummarization(context: SummarizationContext): Promise<void> {
+    const { data, setData, addToast, activeStrategy } = context;
 
     try {
         const model = useSessionStore.getState().selectedModel;
@@ -24,9 +23,10 @@ export async function runBackgroundSummarization(ctx: SummarizationContext): Pro
         const ctxLen = model?.contextLength || 8192;
         const engine = getLanguageModelEngine();
 
-        // Set engine context once so countTokens uses the correct tokenizer
+        // Set engine context with full model — runtime port resolved internally
         if (model) {
-            engine.setContext(buildContextFromModel(model, runningModels));
+            engine.setRunningModels(runningModels);
+            engine.setContext(model);
         }
 
         let tokens = 0;
