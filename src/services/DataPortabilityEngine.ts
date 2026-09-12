@@ -18,7 +18,7 @@ import {
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
-} from '../storage/storage';
+} from '../storage/serverStorage';
 
 export interface LoreReactorExport {
     version: 1;

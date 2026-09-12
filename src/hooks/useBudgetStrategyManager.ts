@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { BudgetStrategy } from '../types';
-import { loadAllRawBudgetStrategies, saveRawBudgetStrategy, deleteRawBudgetStrategy } from '../storage/storage';
+import { loadAllRawBudgetStrategies, saveRawBudgetStrategy, deleteRawBudgetStrategy } from '../storage/serverStorage';
 
 export function useBudgetStrategyManager() {
     const [strategies, setStrategies] = useState<BudgetStrategy[]>([]);

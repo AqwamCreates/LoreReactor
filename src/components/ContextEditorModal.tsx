@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget, linkFetchMode } from '../types';
-import { uploadContextImage } from '../storage/storage';
+import { uploadContextImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';

@@ -1,6 +1,6 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage } from '../types';
-import { loadRawBudgetData, saveRawBudgetData } from '../storage/storage';
+import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData, updatePartialMessageInInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
@@ -264,6 +264,11 @@ export class CharacterActor {
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
 
+                // Initialize with existing text for resume mode
+                if (currentExistingText) {
+                    accumulator.initializeWithExisting(currentExistingText);
+                }
+
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
@@ -318,6 +323,11 @@ export class CharacterActor {
 
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
+
+                // Initialize with existing text for resume mode
+                if (currentExistingText) {
+                    accumulator.initializeWithExisting(currentExistingText);
+                }
 
                 const doStream = async (reqBody: Record<string, unknown>) => {
                     const result = await this.engine.generateStream(reqBody, { signal } as AbortController, {

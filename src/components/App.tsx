@@ -17,7 +17,7 @@ import { useWorldManager } from '../hooks/useWorldManager';
 import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData } from '../storage/storage';
+import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';

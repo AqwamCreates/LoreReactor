@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { World } from '../types';
-import { loadAllRawWorlds, saveRawWorld, deleteRawWorld } from '../storage/storage';
+import { loadAllRawWorlds, saveRawWorld, deleteRawWorld } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 export function useWorldManager() {

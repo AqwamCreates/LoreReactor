@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PromptBlock, Character, Context, Location, regularExpressionContext, regularExpressionTarget } from '../types';
-import { uploadPromptBlockImage } from '../storage/storage';
+import { uploadPromptBlockImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';

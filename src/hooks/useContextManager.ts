@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Context } from '../types';
-import { loadAllRawContexts, saveRawContext, deleteRawContext } from '../storage/storage';
+import { loadAllRawContexts, saveRawContext, deleteRawContext } from '../storage/serverStorage';
 
 export function useContextManager() {
     const [contexts, setContexts] = useState<Context[]>([]);

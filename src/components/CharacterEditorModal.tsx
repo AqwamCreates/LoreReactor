@@ -3,7 +3,7 @@ import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/storage';
+import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';

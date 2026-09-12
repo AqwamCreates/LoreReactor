@@ -1,7 +1,7 @@
 // src/hooks/useChatOperations.ts
 import { useState, useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
-import { saveRawInteractionData, loadRawInteractionData, loadInteractionMessages } from '../storage/storage';
+import { saveRawInteractionData, loadRawInteractionData, loadInteractionMessages } from '../storage/serverStorage';
 import { clearFetchCache } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 

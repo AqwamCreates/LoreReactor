@@ -1,7 +1,7 @@
 // src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
 import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, PromptBlock } from '../types';
-import { saveRawInteractionData, loadRawBudgetData } from '../storage/storage';
+import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
@@ -506,7 +506,7 @@ export function useChatSession() {
         else if (type === 'user' && !isAI) trimIdx = ti + 1;
         else { addToast('Mismatched regeneration type.', 'error'); releaseLock(); return; }
         const toDelete = history.slice(trimIdx);
-        if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/storage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
+        if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
         const td: InteractionData = { ...currentInteractionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
         setInteractionData(td);
         await saveRawInteractionData(td);

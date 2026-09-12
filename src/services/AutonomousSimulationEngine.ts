@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getEffectiveSkipProbability, getEffectiveMaximumChatStamina, getEffectiveChatImpatienceSensitivity, generateChatStaminaForMessage, consumeChatStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { saveRawInteractionData } from '../storage/storage';
+import { saveRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 type AutonomousExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<InteractionData | null>;

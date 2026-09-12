@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveChatProbability, getNameSensitivityMultiplier, getEffectiveSkipProbability, getEffectiveChatImpatienceSensitivity, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { saveRawInteractionData } from '../storage/storage';
+import { saveRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<InteractionData | null>

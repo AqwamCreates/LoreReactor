@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { StopPattern } from '../types';
-import { loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern } from '../storage/storage';
+import { loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern } from '../storage/serverStorage';
 
 export function useStopPatternManager() {
     const [stopPatterns, setStopPatterns] = useState<StopPattern[]>([]);
