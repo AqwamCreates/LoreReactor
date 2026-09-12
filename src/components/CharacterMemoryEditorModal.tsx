@@ -1,7 +1,7 @@
 // src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, Memory } from '../types';
-import { loadAllRawInteractionDataShells } from '../store/storage';
+import { loadAllRawInteractionDataShells } from '../storage/storage';
 import './main.css';
 
 interface CharacterMemoryEditorModalProps {

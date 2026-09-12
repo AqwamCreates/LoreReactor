@@ -1,7 +1,7 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData } from '../types';
-import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../store/storage';
+import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storage/storage';
 import { assignInitialLocationsIfNeeded } from './locationLogic';
 
 const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';

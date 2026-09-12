@@ -3,7 +3,7 @@ import React from 'react';
 import type { Character, ChatMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 
 interface MessageBubbleProps {
     message: ChatMessage;

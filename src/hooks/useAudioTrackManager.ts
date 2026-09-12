@@ -1,7 +1,7 @@
 // src/hooks/useAudioTrackManager.ts
 import { useState, useEffect, useCallback } from 'react';
 import type { AudioTrack } from '../types';
-import { loadAllRawAudioTracks, saveRawAudioTrack, deleteRawAudioTrack } from '../store/storage';
+import { loadAllRawAudioTracks, saveRawAudioTrack, deleteRawAudioTrack } from '../storage/storage';
 import { useToast } from '../context/ToastContext';
 
 export function useAudioTrackManager() {

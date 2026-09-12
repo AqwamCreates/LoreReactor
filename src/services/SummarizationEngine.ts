@@ -1,10 +1,10 @@
 // src/services/BackgroundSummarization.ts
 import type { InteractionData, ChatMessage } from '../types';
-import { saveRawInteractionData } from '../store/storage';
+import { saveRawInteractionData } from '../storage/storage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 
 interface SummarizationContext {
     data: InteractionData;

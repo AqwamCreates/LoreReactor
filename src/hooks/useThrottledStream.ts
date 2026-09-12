@@ -1,6 +1,6 @@
 // src/hooks/useThrottledStream.ts
 import { useRef, useCallback } from 'react';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from './useSessionStore';
 
 const THROTTLE_MS = 60;
 const INITIAL_STREAM_THRESHOLD = 50;

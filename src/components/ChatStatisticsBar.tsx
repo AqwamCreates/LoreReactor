@@ -1,7 +1,7 @@
 // src/components/ChatStatisticsBar.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 
 interface ChatStatisticsBarProps {
     maximumNumberOfTokens: number;

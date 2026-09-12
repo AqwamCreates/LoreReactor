@@ -1,7 +1,7 @@
 // src/hooks/useActionMenu.ts
 import { useState, useEffect, useCallback } from 'react';
 import type { Character, InteractionData, InterjectableAction } from '../types';
-import { loadInterjectableActions, saveInterjectableActions } from '../store/storage';
+import { loadInterjectableActions, saveInterjectableActions } from '../storage/storage';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';

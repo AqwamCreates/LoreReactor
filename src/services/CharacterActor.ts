@@ -1,6 +1,6 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage } from '../types';
-import { loadRawBudgetData, saveRawBudgetData } from '../store/storage';
+import { loadRawBudgetData, saveRawBudgetData } from '../storage/storage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData, updatePartialMessageInInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';

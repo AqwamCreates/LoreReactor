@@ -2,11 +2,11 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget, linkFetchMode } from '../types';
-import { uploadContextImage } from '../store/storage';
+import { uploadContextImage } from '../storage/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 import './main.css';
 
 const tokenEngine = getLanguageModelEngine();

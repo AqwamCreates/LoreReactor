@@ -1,7 +1,7 @@
 // src/hooks/useCharacterResponse.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock } from '../types';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from './useSessionStore';
 import { CharacterActor, type TurnStreamCallbacks } from '../services/CharacterActor';
 
 interface UseCharacterResponseOptions {

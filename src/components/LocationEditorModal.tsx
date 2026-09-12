@@ -2,10 +2,10 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Location, Character, AudioTrack, regularExpressionContext, regularExpressionTarget } from '../types';
-import { uploadLocationImage } from '../store/storage';
+import { uploadLocationImage } from '../storage/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 import './main.css';
 
 const tokenEngine = getLanguageModelEngine();

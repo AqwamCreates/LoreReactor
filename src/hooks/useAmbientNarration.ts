@@ -4,7 +4,7 @@ import type { Character, InteractionData, ChatMessage } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from './useSessionStore';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 

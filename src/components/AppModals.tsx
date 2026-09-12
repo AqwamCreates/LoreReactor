@@ -22,7 +22,7 @@ import { DataExportModal } from './DataExportModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 import { useMemo, useState, useEffect } from 'react';
 
 interface ModalVisibility {

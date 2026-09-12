@@ -1,7 +1,7 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
-import { loadRawInteractionData } from '../store/storage';
+import { loadRawInteractionData } from '../storage/storage';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';

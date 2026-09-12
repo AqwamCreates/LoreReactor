@@ -1,7 +1,7 @@
 // src/hooks/usePromptBlockManager.ts
 import { useState, useEffect } from 'react';
 import type { PromptBlock } from '../types';
-import { loadAllRawPromptBlocks, saveRawPromptBlock, deleteRawPromptBlock } from '../store/storage';
+import { loadAllRawPromptBlocks, saveRawPromptBlock, deleteRawPromptBlock } from '../storage/storage';
 
 export function usePromptBlockManager() {
     const [promptBlocks, setPromptBlocks] = useState<PromptBlock[]>([]);

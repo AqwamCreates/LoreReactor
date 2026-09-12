@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Sampler } from '../types';
-import { loadAllRawSamplers, saveRawSampler, deleteRawSampler } from '../store/storage';
+import { loadAllRawSamplers, saveRawSampler, deleteRawSampler } from '../storage/storage';
 
 export function useSamplerManager() {
     const [Samplers, setSamplers] = useState<Sampler[]>([]);

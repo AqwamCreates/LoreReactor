@@ -1,7 +1,7 @@
 // src/hooks/useProfileManager.ts
 import { useState, useEffect } from 'react';
 import type { Profile } from '../types';
-import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../store/storage';
+import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storage/storage';
 import { useToast } from '../context/ToastContext';
 
 export function useProfileManager() {

@@ -1,7 +1,7 @@
 // src/hooks/useActiveExtensions.ts
 import { useCallback, useEffect, useRef } from 'react';
 import type { Extension } from '../types';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from './useSessionStore';
 
 const STORAGE_KEY = 'loreReactor_activeExtensionIds';
 

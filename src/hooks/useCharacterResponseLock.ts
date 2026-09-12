@@ -1,6 +1,6 @@
 // src/hooks/useCharacterResponseLock.ts
 import { useCallback, useRef } from 'react';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from './useSessionStore';
 
 export function useCharacterResponseLock() {
     const isLoading = useSessionStore(s => s.isLoading);
