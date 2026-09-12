@@ -5,7 +5,6 @@ import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sa
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import {
-    getLastInteractionForCharacter,
     countParagraphs,
     computeGlobalScore,
     computeChatScore,
@@ -16,6 +15,7 @@ import {
     computeChatConsumptionCost,
     computeMovementCost,
 } from '../hooks/dynamicCharacterLogic';
+import { findPreviousMessage } from '../hooks/chatLogic';
 
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<InteractionData | null>
 
@@ -233,8 +233,9 @@ export async function runTurnSequence(
                 }
             }
 
-            const prevChatStamina = getLastInteractionForCharacter(workingData.interactionHistory, mover.id)?.remainingChatStamina;
-            const prevActionStamina = getLastInteractionForCharacter(workingData.interactionHistory, mover.id)?.remainingActionStamina;
+            const previousMessage = findPreviousMessage(workingData, mover.id)
+            const prevChatStamina = previousMessage?.remainingChatStamina;
+            const prevActionStamina = previousMessage?.remainingActionStamina;
 
             const reachable = getReachableLocations(workingData.locations, moverLoc!, triggeringMessageText);
             const newLoc = sampleReachableLocationByWeight(reachable, mover);
@@ -242,7 +243,7 @@ export async function runTurnSequence(
             if (newLoc !== undefined && newLoc !== moverLoc) {
                 const totalActionCost = computeMovementCost(moverLoc!, newLoc);
 
-                const postRegenMsg = getLastInteractionForCharacter(workingData.interactionHistory, mover.id);
+                const postRegenMsg = previousMessage;
                 if (postRegenMsg && postRegenMsg.remainingActionStamina !== undefined) {
                     consumeActionStaminaForMessage(postRegenMsg, totalActionCost);
                 }

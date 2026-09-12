@@ -1,26 +1,11 @@
-// src/hooks/interactionScoring.ts
+// src/hooks/dynamicCharacterLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveNameSensitivity, getNameMentionCount, getEffectiveSkipProbability, getEffectiveChatImpatienceSensitivity, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina } from './characterLogic';
+import { findPreviousMessage } from './chatLogic';
 import { getCurrentLocationIndex, getCurrentLocation, getReachableLocations } from './locationLogic';
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
-}
-
-/**
- * Find the most recent history entry for a character.
- * 
- * EDGE CASES:
- * - Empty history: returns undefined. All callers must handle this (typically
- *   by falling back to max stamina or default values).
- * - Character never acted: returns undefined. This is distinct from "acted
- *   long ago" — callers use this to detect fresh/uninitialized characters.
- */
-export function getLastInteractionForCharacter(history: HistoryMessage[], characterId: string): HistoryMessage | undefined {
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].character.id === characterId) return history[i];
-    }
-    return undefined;
 }
 
 /**
@@ -80,8 +65,8 @@ export function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: 
  * - Very old entries: returns large number. Log compression in scoring
  *   prevents this from dominating all other factors.
  */
-export function getTimeSinceLastActionMs(history: HistoryMessage[], characterId: string): number {
-    const last = getLastInteractionForCharacter(history, characterId);
+export function getTimeSinceLastActionMs(data: InteractionData, characterId: string): number {
+    const last = findPreviousMessage(data, characterId);
     if (!last) return Infinity;
     return Date.now() - last.lastUpdatedTimestamp;
 }
@@ -239,7 +224,7 @@ export function sampleStochasticRegenAmount(maxStamina: number): number {
  */
 export function computeGlobalScore(character: Character, data: InteractionData): number {
     const profile = data.Profile;
-    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const lastMsg = findPreviousMessage(data, character.id);
 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
@@ -255,7 +240,7 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character.id);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
     return staminaRatio * effectiveInitiative * timeMultiplier;
@@ -305,7 +290,7 @@ export function computeGlobalScore(character: Character, data: InteractionData):
  */
 export function computeChatScore(character: Character, data: InteractionData): number {
     const profile = data.Profile;
-    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const lastMsg = findPreviousMessage(data, character.id);
 
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
@@ -318,7 +303,7 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character.id);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
     const turnsSince = getTurnsSinceLastSpoken(data.interactionHistory, character.id);
@@ -373,7 +358,7 @@ export function computeChatScore(character: Character, data: InteractionData): n
  */
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
     const profile = data.Profile;
-    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const lastMsg = findPreviousMessage(data, character.id);
 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const remainingAction = lastMsg?.remainingActionStamina ?? maxAction;
@@ -386,7 +371,7 @@ export function computeActionScore(character: Character, data: InteractionData, 
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character.id);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
     const moverLoc = getCurrentLocationIndex(data, character);
@@ -465,7 +450,7 @@ export function computeModulatedRegenAmounts(
     const profile = data.Profile;
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
-    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const lastMsg = findPreviousMessage(data, character.id);
 
     let chatRegen = sampleStochasticRegenAmount(maxChat);
     let actionRegen = sampleStochasticRegenAmount(maxAction);
@@ -557,7 +542,7 @@ export function computeEffectiveSkip(
 
     // Depletion coupling
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
-    const lastMsg = getLastInteractionForCharacter(data.interactionHistory, character.id);
+    const lastMsg = findPreviousMessage(data, character.id);
     const currentChat = lastMsg?.remainingChatStamina ?? maxChat;
     const staminaRatio = maxChat > 0 ? currentChat / maxChat : 1;
     const depletionRaw = (1 - staminaRatio) * (1 - staminaRatio);
