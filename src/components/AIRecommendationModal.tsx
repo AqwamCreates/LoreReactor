@@ -36,7 +36,7 @@ interface AIRecommendationModalProps {
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
     selectedModel: LanguageModel | null;
-    runningModels: Record<string, { isRunning?: boolean; port?: number }>;
+    runningModels: Record<string, { isRunning: boolean; port?: number }>;
 }
 
 export function AIRecommendationModal({

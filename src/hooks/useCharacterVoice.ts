@@ -1,12 +1,55 @@
 // src/hooks/useCharacterVoice.ts
 import { useCallback, useRef } from 'react';
-import type { Character } from '../types';
+import type { Character, textType } from '../types';
 import { getCharacterVoiceUrl } from './storage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
 import { useSessionStore } from '../store/useSessionStore';
 
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
+
+/**
+ * Extracts text segments by format type from RP-formatted text.
+ * Each extractor returns an array of cleaned (unformatted) strings.
+ */
+const TEXT_EXTRACTORS: Record<textType, (text: string) => string[]> = {
+    normal: (text) => {
+        // Remove quoted, bolded, italicized, parenthesized, bracketed, braced content
+        const stripped = text
+            .replace(/"[^"]*"|'[^']*'/g, '')
+            .replace(/\*\*[^*]+\*\*/g, '')
+            .replace(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g, '')
+            .replace(/\([^)]+\)/g, '')
+            .replace(/\[[^\]]+\]/g, '')
+            .replace(/\{[^}]+\}/g, '')
+            .trim();
+        return stripped ? [stripped] : [];
+    },
+    quoted: (text) => {
+        const m = text.match(/"[^"]*"|'[^']*'/g);
+        return m ? m.map(x => x.replace(/^["']|["']$/g, '')) : [];
+    },
+    bolded: (text) => {
+        const m = text.match(/\*\*[^*]+\*\*/g);
+        return m ? m.map(x => x.replace(/\*\*/g, '')) : [];
+    },
+    italicized: (text) => {
+        const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
+        return m ? m.map(x => x.replace(/\*/g, '')) : [];
+    },
+    parenthesized: (text) => {
+        const m = text.match(/\(([^)]+)\)/g);
+        return m ? m.map(x => x.replace(/^\(|\)$/g, '')) : [];
+    },
+    bracketed: (text) => {
+        const m = text.match(/\[([^\]]+)\]/g);
+        return m ? m.map(x => x.replace(/^\[|\]$/g, '')) : [];
+    },
+    braced: (text) => {
+        const m = text.match(/\{([^}]+)\}/g);
+        return m ? m.map(x => x.replace(/^\{|\}$/g, '')) : [];
+    },
+};
 
 export function useCharacterVoice() {
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
@@ -16,23 +59,14 @@ export function useCharacterVoice() {
         if (!character.voice) return;
         const profile = useSessionStore.getState().interactionData?.Profile;
         if (profile) {
-            const narrateTexts = profile.narrateTexts
+            const narrateTexts = profile.narrateTexts;
             const parts: string[] = [];
-            if (narrateTexts.normal) {
-                const n = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/\*[^*]+\*/g, '').trim();
-                if (n) parts.push(n);
-            }
-            if (narrateTexts.quoted) {
-                const m = text.match(/"[^"]*"|'[^']*'/g);
-                if (m) parts.push(m.map(x => x.replace(/^["']|["']$/g, '')).join(' '));
-            }
-            if (narrateTexts.bolded) {
-                const m = text.match(/\*\*[^*]+\*\*/g);
-                if (m) parts.push(m.map(x => x.replace(/\*\*/g, '')).join(' '));
-            }
-            if (narrateTexts.italicized) {
-                const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
-                if (m) parts.push(m.map(x => x.replace(/\*/g, '')).join(' '));
+            for (const [type, enabled] of Object.entries(narrateTexts)) {
+                if (!enabled) continue;
+                const extractor = TEXT_EXTRACTORS[type as textType];
+                if (extractor) {
+                    parts.push(...extractor(text));
+                }
             }
             const filtered = parts.join(' ').trim();
             if (!filtered) return;
