@@ -3,11 +3,12 @@ import { useCallback } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
 import { createChatMessage, addMessageToInteractionData } from './chatLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from '../store/useSessionStore';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
-const languageModelEngine = getLanguageModelEngine();
+const engine = getLanguageModelEngine();
 
 const AMBIENT_SYSTEM_PROMPT = "You are an ambient narration engine for a roleplay chat. Your ONLY job is to write a single short sentence (1-2 sentences max) describing the environment, atmosphere, or sensory details of the current moment. You must NOT write dialogue, character actions, thoughts, or advance the plot. You describe only the physical space, sounds, light, temperature, weather, and mood of the setting. Write in third person, present tense. Output ONLY the narration text with no preamble, no quotes, no markdown.";
 
@@ -37,35 +38,35 @@ export function useAmbientNarration(
 
         let selected: string | null = null;
 
-        // Try LLM generation
+        const requestBody = {
+            prompt: `${AMBIENT_SYSTEM_PROMPT}\n\n${userPrompt}`,
+            n_predict: 128,
+            temperature: 0.9,
+            stop: ['\n\n', '\nUser:', '\nCharacter'],
+        };
+
+        // Try LLM generation — use budget strategy engine if active, otherwise direct
         try {
-            const model = useSessionStore.getState().selectedModel;
-            const runningModels = useSessionStore.getState().runningModels;
+            const activeStrategy = useSessionStore.getState().activeStrategy;
 
-            if (model) {
-                const port = model.id ? runningModels[model.id]?.port : undefined;
-                const runtimePort = port || (model.parameters as Record<string, unknown>)?._runtimePort;
+            if (activeStrategy) {
+                const bse = getBudgetStrategyEngine();
+                const result = await bse.generateCompletion(requestBody, signal);
+                if (result.text && result.text.trim().length > 0) {
+                    const cleaned = result.text.trim().replace(/^["']|["']$/g, '');
+                    const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
+                    selected = sentences ? sentences.slice(0, 2).join(' ').trim() : cleaned;
+                }
+            } else {
+                const model = useSessionStore.getState().selectedModel;
+                const runningModels = useSessionStore.getState().runningModels;
 
-                if (model.apiKey || runtimePort) {
-                    const lmCtx: Record<string, unknown> = {
-                        apiKey: model.apiKey,
-                        backend: model.backend,
-                        modelPath: model.model,
-                        runtimePort,
-                    };
+                if (model) {
+                    engine.setRunningModels(runningModels);
+                    engine.setContext(model);
 
-                    const result = await languageModelEngine.generateCompletion(
-                        {
-                            prompt: `${AMBIENT_SYSTEM_PROMPT}\n\n${userPrompt}`,
-                            n_predict: 128,
-                            temperature: 0.9,
-                            stop: ['\n\n', '\nUser:', '\nCharacter'],
-                        },
-                        lmCtx,
-                    );
-
+                    const result = await engine.generateCompletion(requestBody);
                     if (result.text && result.text.trim().length > 0) {
-                        // Clean up: take first 1-2 sentences only
                         const cleaned = result.text.trim().replace(/^["']|["']$/g, '');
                         const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
                         selected = sentences ? sentences.slice(0, 2).join(' ').trim() : cleaned;
