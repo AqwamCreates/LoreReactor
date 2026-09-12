@@ -226,20 +226,20 @@ export function AIRecommendationModal({
         try {
             if (parsedOutput.characters) {
                 for (const char of parsedOutput.characters) {
-                    if (!injectCharacterImages) char.doNotInjectCharacterImage = true;
-                    if (!await onSaveCharacter(char)) throw new Error(`Failed to save character "${char.name}".`);
+                    const toSave = !injectCharacterImages ? { ...char, doNotInjectCharacterImage: true } : char;
+                    if (!await onSaveCharacter(toSave)) throw new Error(`Failed to save character "${toSave.name}".`);
                 }
             }
             if (parsedOutput.contexts) {
                 for (const context of parsedOutput.contexts) {
-                    if (!injectContextImages) context.includeLinkImages = false;
-                    if (!await onSaveContext(context)) throw new Error(`Failed to save context "${context.name}".`);
+                    const toSave = !injectContextImages ? { ...context, includeLinkImages: false } : context;
+                    if (!await onSaveContext(toSave)) throw new Error(`Failed to save context "${toSave.name}".`);
                 }
             }
             if (parsedOutput.locations) {
                 for (const loc of parsedOutput.locations) {
-                    if (!injectLocationImages) loc.images = [];
-                    if (!await onSaveLocation(loc)) throw new Error(`Failed to save location "${loc.name}".`);
+                    const toSave = !injectLocationImages ? { ...loc, images: [] } : loc;
+                    if (!await onSaveLocation(toSave)) throw new Error(`Failed to save location "${toSave.name}".`);
                 }
             }
             if (parsedOutput.audioTracks) {
@@ -249,39 +249,45 @@ export function AIRecommendationModal({
             }
             if (parsedOutput.promptBlocks) {
                 for (const block of parsedOutput.promptBlocks) {
-                    if (!injectPromptBlockImages) block.images = [];
-                    if (!await onSavePromptBlock(block)) throw new Error(`Failed to save prompt block "${block.name}".`);
+                    const toSave = !injectPromptBlockImages ? { ...block, images: [] } : block;
+                    if (!await onSavePromptBlock(toSave)) throw new Error(`Failed to save prompt block "${toSave.name}".`);
                 }
             }
             if (parsedOutput.profile) {
-                if (!injectCharacterImages) parsedOutput.profile.forceNoCharacterImageInjection = true;
-                if (!injectContextImages) parsedOutput.profile.forceNoContextImageInjection = true;
-                if (!await onSaveProfile(parsedOutput.profile)) throw new Error(`Failed to save profile "${parsedOutput.profile.name}".`);
+                let profileToSave = parsedOutput.profile;
+                if (!injectCharacterImages) profileToSave = { ...profileToSave, forceNoCharacterImageInjection: true };
+                if (!injectContextImages) profileToSave = { ...profileToSave, forceNoContextImageInjection: true };
+                if (!await onSaveProfile(profileToSave)) throw new Error(`Failed to save profile "${profileToSave.name}".`);
             }
             if (parsedOutput.world) {
                 const resolved = resolveWorldCrossReferences(parsedOutput.world, injectLocationImages, allAudioTracks);
-                if (!injectCharacterImages) for (const c of resolved.characters) c.doNotInjectCharacterImage = true;
-                if (!injectPromptBlockImages) for (const pb of resolved.promptBlocks) pb.images = [];
-                if (resolved.profile) {
-                    if (!injectCharacterImages) resolved.profile.forceNoCharacterImageInjection = true;
-                    if (!injectContextImages) resolved.profile.forceNoContextImageInjection = true;
+                const charsToSave = !injectCharacterImages
+                    ? resolved.characters.map(c => ({ ...c, doNotInjectCharacterImage: true }))
+                    : resolved.characters;
+                const blocksToSave = !injectPromptBlockImages
+                    ? resolved.promptBlocks.map(pb => ({ ...pb, images: [] }))
+                    : resolved.promptBlocks;
+                let profileToSave = resolved.profile;
+                if (profileToSave) {
+                    if (!injectCharacterImages) profileToSave = { ...profileToSave, forceNoCharacterImageInjection: true };
+                    if (!injectContextImages) profileToSave = { ...profileToSave, forceNoContextImageInjection: true };
                 }
-                for (const ch of resolved.characters) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
+                for (const ch of charsToSave) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
                 for (const lo of resolved.locations) if (!await onSaveLocation(lo)) throw new Error(`Failed to save "${lo.name}".`);
                 for (const at of resolved.audioTracks) {
                     if (!await onSaveAudioTrack(at)) throw new Error(`Failed to save audio track "${at.name}".`);
                 }
-                for (const pb of resolved.promptBlocks) {
+                for (const pb of blocksToSave) {
                     if (!await onSavePromptBlock(pb)) throw new Error(`Failed to save prompt block "${pb.name}".`);
                 }
-                if (resolved.profile && !await onSaveProfile(resolved.profile)) throw new Error(`Failed to save "${resolved.profile.name}".`);
+                if (profileToSave && !await onSaveProfile(profileToSave)) throw new Error(`Failed to save "${profileToSave.name}".`);
                 const world: World = {
                     id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined,
-                    characterIds: resolved.characters.map(c => c.id), contextIds: resolved.contexts.map(c => c.id),
+                    characterIds: charsToSave.map(c => c.id), contextIds: resolved.contexts.map(c => c.id),
                     locationIds: resolved.locations.map(l => l.id), audioTrackIds: resolved.audioTracks.map(a => a.id),
-                    promptBlockIds: resolved.promptBlocks.map(p => p.id),
-                    profileId: resolved.profile?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
+                    promptBlockIds: blocksToSave.map(p => p.id),
+                    profileId: profileToSave?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveWorld(world)) throw new Error('Failed to save world.');
             }

@@ -56,7 +56,7 @@ interface AppModalsProps {
     allExtensions: Extension[];
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
-    runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean; port?: number }>;
+    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;

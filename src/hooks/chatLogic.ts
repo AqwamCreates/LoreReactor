@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, OutOfCharacterMessage } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -59,6 +59,8 @@ const startOfLocationLine = `${contextStartString}Start Of Current Location.${co
 const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
 
+const oocInstruction = `${generalStartString}A character is asking an out-of-character question. Respond as a neutral narrator. Do not speak as any character. Answer directly and concisely.${generalEndString}`;
+
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
@@ -89,11 +91,6 @@ function formatTimerDuration(ms: number): string {
     return parts.join(' ');
 }
 
-/**
- * Select the best per-model summary for the current model.
- * Returns the summary generated for this exact modelId if available,
- * otherwise falls back to the original textContent.
- */
 function selectModelSummary(msg: ChatMessage, modelId: string): string {
     if (msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
         return msg.modelTextContentSummaries[modelId];
@@ -263,7 +260,6 @@ function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: str
     return block.characterBindings.includes(currentCharacterId);
 }
 
-/** Check if a string is a built-in PromptBlockType vs a custom block UUID */
 function isBuiltInBlockType(value: string): value is PromptBlockType {
     return (defaultInputStrategy as string[]).includes(value) || value === 'Tool Instructions';
 }
@@ -396,7 +392,6 @@ async function resolveContextEntries(
         if (context.tokenBudget && context.tokenBudget > 0) {
             numberOfTokens = context.tokenBudget;
         } else {
-            // Engine context is already set by caller — countTokens reads from stored state
             numberOfTokens = await tokenEngine.countTokens(formattedLine);
         }
 
@@ -454,6 +449,7 @@ export function createChatHistoryPrompt(
     const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
     
+    // Only include chat messages — OOC and interaction messages excluded from history
     const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
@@ -519,7 +515,6 @@ export function createChatHistoryPrompt(
         }
     }
 
-    // ─── Location-scoped filtering ──────────────────────────────────
     let currentLocationIndex: number | undefined;
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         if (interactionHistory[i].locationIndex !== undefined) {
@@ -650,6 +645,7 @@ export async function buildPromptAndStopPatterns(
         return profileValue;
     })();
 
+    // Only include chat messages in context activation scanning — OOC messages excluded
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
 
@@ -719,8 +715,6 @@ export async function buildPromptAndStopPatterns(
         (c.searchTerms && c.searchTerms.length > 0)
     );
 
-    // Engine context is already set by caller before calling this function.
-    // fetchMultipleContextUrls uses the engine internally for summarization.
     const activeModel = tokenEngine.getContext();
 
     if (webContexts.length > 0) {
@@ -778,7 +772,6 @@ export async function buildPromptAndStopPatterns(
     const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
-    // Collect active context IDs for prompt block binding resolution
     const activeContextIds = new Set<string>();
     for (const { context } of resolvedContexts) {
         activeContextIds.add(context.id);
@@ -804,7 +797,6 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
-    // STOP PATTERNS LOGIC
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
@@ -826,7 +818,6 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
-    // SYSTEM PROMPT BLOCK
     const systemPromptLines: string[] = [];
     if (cacheLevel >= 2) {
         for (const p of participants) {
@@ -839,7 +830,6 @@ export async function buildPromptAndStopPatterns(
         systemPromptLines.push(`${contextStartString}${characterParticipantTag} Prompt: ${systemPrompt}${contextEndString}`);
     }
 
-    // THINK PROMPT BLOCK
     const thinkPromptLines: string[] = [];
     if (cacheLevel >= 3) {
         for (const p of interactionData.participants) {
@@ -852,7 +842,6 @@ export async function buildPromptAndStopPatterns(
         thinkPromptLines.push(`${generalStartString}${thinkPrompt}${generalEndString}`);
     }
 
-    // META THINK BLOCK
     const metaThinkLines: string[] = [];
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, profile);
@@ -883,7 +872,6 @@ export async function buildPromptAndStopPatterns(
 
     metaThinkLines.push(constructedMetaThinkLines);
 
-    // LOCATION BLOCK
     const locationLines: string[] = [];
     const activeLocationImages: string[] = [];
 
@@ -908,10 +896,8 @@ export async function buildPromptAndStopPatterns(
         locationLines.push(endOfLocationLine);
     }
 
-    // INVENTORY / NOTES / TIMERS / STOPWATCHES BLOCK
     const inventoryLines: string[] = [];
 
-    // Find the latest message with inventory data for this character
     let latestInventory: Record<string, string | number> | undefined;
     for (let i = interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionHistory[i];
@@ -924,7 +910,6 @@ export async function buildPromptAndStopPatterns(
     if (latestInventory && Object.keys(latestInventory).length > 0) {
         const now = Date.now();
 
-        // Separate internal keys from user-visible inventory
         const userInventoryEntries: string[] = [];
         let notes: Record<string, string> = {};
         let timers: { name: string; targetTimestamp: number }[] = [];
@@ -942,19 +927,16 @@ export async function buildPromptAndStopPatterns(
             }
         }
 
-        // User-visible inventory items
         if (userInventoryEntries.length > 0) {
             inventoryLines.push(`${contextStartString}[Current Inventory]\n${userInventoryEntries.join('\n')}${contextEndString}`);
         }
 
-        // Notes
         const noteEntries = Object.entries(notes);
         if (noteEntries.length > 0) {
             const formattedNotes = noteEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
             inventoryLines.push(`${contextStartString}[Active Notes]\n${formattedNotes}${contextEndString}`);
         }
 
-        // Timers — compute live status
         if (timers.length > 0) {
             const timerStatuses = timers.map(t => {
                 const remaining = t.targetTimestamp - now;
@@ -963,7 +945,6 @@ export async function buildPromptAndStopPatterns(
             inventoryLines.push(`${contextStartString}[Active Timers]\n${timerStatuses.join('\n')}${contextEndString}`);
         }
 
-        // Stopwatches — compute live elapsed
         if (stopwatches.length > 0) {
             const swStatuses = stopwatches.map(s => {
                 const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
@@ -989,15 +970,12 @@ export async function buildPromptAndStopPatterns(
 
     if (latitude && longitude) localTimestamp = getLocalTimeFromCoordinates(latitude, longitude)
 
-    // DATE AND TIME BLOCK
     const dateAndTimeLines: string[] = [];
 
     if (useCurrentDateAndTime && localTimestamp) {
         const dateAndTime = getDateAndTimeString(localTimestamp)
         dateAndTimeLines.push(`${generalStartString}Today's date and time is ${dateAndTime}.${generalEndString}`);
     }
-
-    // WEATHER BLOCK
 
     const weatherLines: string[] = [];
 
@@ -1042,7 +1020,6 @@ export async function buildPromptAndStopPatterns(
         dialoguePromptLines.push(endingDialoguePromptLine);
     }
 
-    // MEMORY BLOCK
     const memoryLines: string[] = [];
     const characterMemories = character.memories;
     if (enableMemoryReading && characterMemories) {
@@ -1069,7 +1046,6 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
-    // TOOL INSTRUCTIONS BLOCK — dynamically built from effective tools
     const toolInstructions: string[] = [];
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
@@ -1084,7 +1060,6 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
-    // FATIGUE BLOCK
     const fatigueLines: string[] = [];
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
@@ -1102,6 +1077,11 @@ export async function buildPromptAndStopPatterns(
     }
     
     if (hasBeenSummarized) textInjectionLines.push(summarizationAwarenessInstructions)
+
+    // OOC narrator instruction — inject when latest user message is out-of-character
+    const lastProtagonistMessage = findPreviousMessage(interactionData, protagonist.id)
+    const isProtagonistOutOfCharacter = (lastProtagonistMessage?.messageType === "out")
+    if (isProtagonistOutOfCharacter) textInjectionLines.unshift(oocInstruction)
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
@@ -1146,13 +1126,11 @@ export async function buildPromptAndStopPatterns(
         blockMap['Dialogue Prompt'] = undefined;
     }
 
-    // Build a lookup map for prompt blocks by ID for O(1) access during assembly
     const promptBlockById = new Map<string, PromptBlock>();
     for (const pb of allPromptBlocks) {
         promptBlockById.set(pb.id, pb);
     }
 
-    // Collect active prompt block images (independent of strategy position)
     const activePromptBlockImages: string[] = [];
     for (const block of allPromptBlocks) {
         if (!isPromptBlockCharacterBound(block, characterId)) continue;
@@ -1171,7 +1149,6 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
-    // Assemble prompt following inputStrategy order exactly.
     const promptLines: string[] = [];
     const usedBuiltInTypes = new Set<string>();
 
@@ -1229,7 +1206,6 @@ export async function prepareRequestBody(
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    // Engine context is already set by caller — no runtimePort needed
     let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
@@ -1453,7 +1429,12 @@ export function createNewInteractionData(character: Character): InteractionData 
     };
 }
 
-export function createChatMessage(interactionData: InteractionData, character: Character, textContent: string, options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }): ChatMessage {
+export function createChatMessage(
+    interactionData: InteractionData,
+    character: Character,
+    textContent: string,
+    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; isOoc?: boolean }
+): ChatMessage | OutOfCharacterMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
     const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
@@ -1464,17 +1445,53 @@ export function createChatMessage(interactionData: InteractionData, character: C
     const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
     const now = Date.now();
 
+    const id = uuidv4();
+
+    const files = options?.files ?? [];
+    const isPartial = options?.isPartial || undefined;
+
+    // Detect OOC from /ooc prefix in user-typed text
+    const oocMatch = textContent.match(/^\/ooc\s+([\s\S]*)/);
+    if (oocMatch) {
+        return {
+            id,
+            messageType: 'out',
+            character: { ...character },
+            textContent: oocMatch[1],
+            files,
+            isPartial: false,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+            parentInteractionMessageId: lastMessageId,
+        } as OutOfCharacterMessage;
+    }
+
+    // Force OOC for AI responses when triggered by an OOC user message
+    if (options?.isOoc) {
+        return {
+            id,
+            messageType: 'out',
+            character: { ...character },
+            textContent,
+            files,
+            isPartial: false,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+            parentInteractionMessageId: lastMessageId,
+        } as OutOfCharacterMessage;
+    }
+
     return {
+        id,
         messageType: 'chat',
-        id: uuidv4(),
         character: { ...character },
         textContent,
-        files: options?.files ?? [],
+        files,
         remainingChatStamina,
         remainingActionStamina,
         isNameRevealed,
         locationIndex: options?.locationIndex,
-        isPartial: options?.isPartial || undefined,
+        isPartial,
         modelTextContentSummaries: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,

@@ -59,7 +59,7 @@ export async function executeTools(invocations: ToolInvocation[], nextMessage: B
 
 // ─── Random Pick ────────────────────────────────────────────────────
 
-function executeRandomPick(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty pick list. Use format like "pick: option1, option2, option3"]';
         return { toolType: 'pick', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -97,7 +97,7 @@ function executeRandomPick(expression: string, nextMessage: BaseMessage, interac
 
 // ─── Date ────────────────────────────────────────────────────────────
 
-function executeDate(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
 
@@ -133,7 +133,7 @@ function executeDate(args: string, nextMessage: BaseMessage, interactionData: In
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
 
-function executeCoinFlip(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
 
     return {
@@ -151,7 +151,7 @@ interface RollGroup {
     sides: number;
 }
 
-function executeDiceRoll(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeDiceRoll(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty dice expression. Use format like "2d6", "1d20+5", "d8"]';
         return { toolType: 'dice', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -222,7 +222,7 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
 
 // ─── Random Number ───────────────────────────────────────────────────
 
-function executeRandom(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -268,7 +268,7 @@ function executeRandom(args: string, nextMessage: BaseMessage, interactionData: 
 
 // ─── RNG Table ─────────────────────────────────────────────────────
 
-function executeRng(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -649,7 +649,7 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Calculator ─────────────────────────────────────────────────────
 
-function executeCalculator(expression: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData): ToolResult {
     if (!expression.trim()) {
         const errorContent = '[Error: Empty expression]';
         return { toolType: 'calculator', args: expression, content: errorContent, displayReplacement: errorContent };
@@ -701,7 +701,7 @@ function executeCalculator(expression: string, nextMessage: BaseMessage, interac
 
 // ─── Web (Search + Fetch) ────────────────────────────────────────────
 
-async function executeWeb(query: string, nextMessage: BaseMessage, interactionData: InteractionData): Promise<ToolResult> {
+async function executeWeb(query: string, _nextMessage: BaseMessage, _interactionData: InteractionData): Promise<ToolResult> {
     if (!query.trim()) {
         const errorContent = '[Error: Empty web query]';
         return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
@@ -764,7 +764,7 @@ async function executeWeb(query: string, nextMessage: BaseMessage, interactionDa
 
 // ─── Lookup ────────────────────────────────────────────────────────
 
-function executeLookup(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const query = args.trim().toLowerCase();
 
     if (!query) {
@@ -809,7 +809,7 @@ function executeLookup(args: string, nextMessage: BaseMessage, interactionData: 
 
 // ─── Map / Distance ────────────────────────────────────────────────
 
-function executeMap(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeMap(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {

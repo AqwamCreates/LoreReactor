@@ -279,7 +279,7 @@ export function useChatSession() {
                         executor,
                         checkCanAct,
                         () => useSessionStore.getState().interactionData,
-                        (data) => { useSessionStore.setState({ interactionData: data }); },
+                        (data: InteractionData) => { useSessionStore.setState({ interactionData: data }); },
                     );
                 }
             }

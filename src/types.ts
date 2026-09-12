@@ -263,7 +263,15 @@ export interface ChatMessage extends BaseMessage {
   kvCachePath?: string;
 }
 
-export type HistoryMessage = InteractionMessage | ChatMessage;
+export interface OutOfCharacterMessage extends BaseMessage {
+  messageType: 'out'
+  textContent: string;
+  files?: string[];
+  isPartial?: boolean
+  kvCachePath?: string;
+}
+
+export type HistoryMessage = InteractionMessage | ChatMessage | OutOfCharacterMessage;
 
 // ─── Raw Message Types (Discriminated Union) ─────────────────────────
 
@@ -293,7 +301,15 @@ export interface RawChatMessage extends RawBaseMessage {
   kvCachePath?: string;
 }
 
-export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
+export interface RawOutOfCharacterMessage extends RawBaseMessage {
+  messageType: 'out'
+  textContent: string;
+  files?: string[];
+  isPartial?: boolean
+  kvCachePath?: string;
+}
+
+export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawOutOfCharacterMessage;
 
 // ─── Interaction Data ────────────────────────────────────────────────
 
