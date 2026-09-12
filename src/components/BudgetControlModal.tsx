@@ -468,9 +468,9 @@ export function BudgetControlModal({
                                                             <th className="sort-right" onClick={() => handleSort('duration')}>Duration{sortIndicator('duration')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('reliability')}>Rel%{sortIndicator('reliability')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('spent')}>Spent{sortIndicator('spent')}</th>
-                                                            <th className="sort-right" onClick={() => handleSort('errors')}>Errs{sortIndicator('errors')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('censorship')}>Cens{sortIndicator('censorship')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('broken')}>Brkn{sortIndicator('broken')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('errors')}>Errs{sortIndicator('errors')}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -486,9 +486,9 @@ export function BudgetControlModal({
                                                                     <td className="num">{row.totalSessionDuration > 0 ? formatSessionDuration(row.totalSessionDuration) : '—'}</td>
                                                                     <td className="num" style={{ color: relColor }}>{relPct !== null ? `${relPct}%` : '—'}</td>
                                                                     <td className="num">{row.spent > 0 ? `$${formatCost(row.spent)}` : '—'}</td>
-                                                                    <td className="num" style={{ color: (row.quotaHits + row.errorHits) > 0 ? '#ef4444' : undefined }}>{row.quotaHits + row.errorHits > 0 ? `${row.quotaHits}/${row.errorHits}` : '—'}</td>
                                                                     <td className="num" style={{ color: row.censorshipHits > 0 ? '#a855f7' : undefined }}>{row.censorshipHits > 0 ? row.censorshipHits : '—'}</td>
                                                                     <td className="num" style={{ color: row.brokenHits > 0 ? '#f97316' : undefined }}>{row.brokenHits > 0 ? row.brokenHits : '—'}</td>
+                                                                    <td className="num" style={{ color: row.errorHits > 0 ? '#ef4444' : undefined }}>{row.errorHits > 0 ? `${row.errorHits}` : '—'}</td>
                                                                 </tr>
                                                             );
                                                         })}

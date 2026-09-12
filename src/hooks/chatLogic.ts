@@ -9,7 +9,6 @@ import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableM
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
-import { resolveModelContextFromSamplerParameters } from '../utilities/modelContextResolver';
 import { defaultInputStrategy } from '../defaults';
 
 const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
@@ -17,7 +16,7 @@ const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
     date: `${generalStartString}To get the current date and time, I write ${toolStartSring}date${toolEndString}. The current date and time will replace my tool call so I can reference it in my response.${generalEndString}`,
     coin: `${generalStartString}To flip a coin, I write ${toolStartSring}coin${toolEndString}. The result (heads or tails) will replace my tool call so I can reference it in my response.${generalEndString}`,
     dice: `${generalStartString}To roll dice, I write ${toolStartSring}dice <dice notation>${toolEndString}. Examples: ${toolStartSring}dice 2d6+3${toolEndString}, ${toolStartSring}dice d20${toolEndString}, ${toolStartSring}dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${generalEndString}`,
-    random: `${generalStartString}To generate a random number, I write ${toolStartSring}random <minimum>, <maximum>${toolEndString}. A random integer between minimum and maximum (inclusive) will replace my tool call so I can reference it in my response.${generalEndString}`,
+    random: `${generalStartString}To generate a random number, I write ${toolStartSring}random <minimum>, <maximum>${toolEndString}. A random integer between minimum and maximum (inclusive) will replace my tool call so I can use it in my response.${generalEndString}`,
     rng: `${generalStartString}To roll on a named RNG table, I write ${toolStartSring}rng <table name>${toolEndString}. The table must exist as a context with entries formatted as "1-10: outcome" per line. The rolled result will replace my tool call.${generalEndString}`,
     timer: `${generalStartString}To manage countdown timers, I write ${toolStartSring}timer set <name> <duration>${toolEndString} to create a timer (e.g. "5m", "1h 30m"), ${toolStartSring}timer check [name]${toolEndString} to check remaining time, ${toolStartSring}timer delete <name>${toolEndString} to remove a timer, or ${toolStartSring}timer list${toolEndString} to see all active timers. Active timers are also shown automatically in the prompt.${generalEndString}`,
     stopwatch: `${generalStartString}To manage stopwatches, I write ${toolStartSring}stopwatch start <name>${toolEndString} to begin timing, ${toolStartSring}stopwatch pause <name>${toolEndString} to pause, ${toolStartSring}stopwatch resume <name>${toolEndString} to resume, ${toolStartSring}stopwatch stop <name>${toolEndString} to stop and get elapsed time, ${toolStartSring}stopwatch reset <name>${toolEndString} to reset, or ${toolStartSring}stopwatch check [name]${toolEndString} to view elapsed time. Active stopwatches are also shown automatically in the prompt.${generalEndString}`,
@@ -40,7 +39,7 @@ const literaryDeviceInstructions = "I may or may not use these literary devices:
 
 const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
 const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating new text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
+const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
 
@@ -290,7 +289,6 @@ async function resolveContextEntries(
     chatSearchSpace: string,
     currentCharacterId: string,
     getFilteredData: (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => { characterIdArray: string[]; textContentArray: string[] },
-    runtimePort?: number,
     fetchedContentMap?: Map<string, string>,
     contextSensitivity?: number
 ): Promise<{ context: Context; formattedLine: string }[]> {
@@ -398,7 +396,8 @@ async function resolveContextEntries(
         if (context.tokenBudget && context.tokenBudget > 0) {
             numberOfTokens = context.tokenBudget;
         } else {
-            numberOfTokens = await tokenEngine.countTokens(formattedLine, { runtimePort });
+            // Engine context is already set by caller — countTokens reads from stored state
+            numberOfTokens = await tokenEngine.countTokens(formattedLine);
         }
 
         formattedEntries.push({ context, formattedLine, numberOfTokens });
@@ -613,7 +612,6 @@ export async function buildPromptAndStopPatterns(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
-    runtimePort?: number
 ): Promise<BuildResult> {
     const interactionHistory = interactionData.interactionHistory;
     const contexts = interactionData.contexts || [];
@@ -721,7 +719,9 @@ export async function buildPromptAndStopPatterns(
         (c.searchTerms && c.searchTerms.length > 0)
     );
 
-    const modelContext = resolveModelContextFromSamplerParameters(sampler?.parameters, runtimePort);
+    // Engine context is already set by caller before calling this function.
+    // fetchMultipleContextUrls uses the engine internally for summarization.
+    const engineCtx = tokenEngine.getContext();
 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (ctx) => {
@@ -737,7 +737,7 @@ export async function buildPromptAndStopPatterns(
                     fetchMode,
                     searchTerms: ctx.searchTerms,
                     searchEngine: ctx.searchEngine,
-                    modelContext,
+                    modelContext: engineCtx,
                     includeImages: ctx.includeLinkImages ?? false,
                     limitLinksToSubdirectory: ctx.limitLinksToSubdirectory ?? false,
                 }
@@ -771,7 +771,6 @@ export async function buildPromptAndStopPatterns(
         globalChatSearch,
         characterId,
         getFilteredData,
-        runtimePort,
         fetchedContentMap,
         effectiveContextSensitivity
     );
@@ -1227,11 +1226,11 @@ export async function prepareRequestBody(
     allPromptBlocks: PromptBlock[],
     modelId: string,
     protagonistFileBase64s?: string[],
-    runtimePort?: number
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
     const sampler = character.sampler;
 
-    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId, runtimePort);
+    // Engine context is already set by caller — no runtimePort needed
+    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 

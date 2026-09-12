@@ -8,7 +8,8 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { localURL } from '../configurations';
-import { getLanguageModelEngine, type LanguageModelContext, type StreamCallbacks } from './LanguageModelEngine';
+import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
+import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { ToolInvocationParser } from './ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { executeTools } from './ToolExecutor';
@@ -137,7 +138,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
 // ─── Orchestrator ───────────────────────────────────────────────────
 
 export class CharacterActor {
-    private languageModelEngine = getLanguageModelEngine();
+    private engine = getLanguageModelEngine();
 
     async executeTurn(params: TurnExecutionParams): Promise<{ result: TurnResult } | { error: TurnError }> {
         const {
@@ -152,8 +153,6 @@ export class CharacterActor {
         generateChatStaminaForInteractionData(data, character);
         const maxPara = getDynamicParagraphLimit(character, data);
         const protagonistFileBase64s = getProtagonistFileBase64s(data);
-
-        const modelId = selectedModel?.id || '';
 
         const statsDelta: TurnStats = {
             numberOfRequests: 0,
@@ -207,6 +206,7 @@ export class CharacterActor {
             });
 
             if (strat) {
+                // ─── Budget Strategy Path ────────────────────────────
                 const loadLocalModel = async (modelId: string): Promise<number | null> => {
                     const existing = runningModels[modelId];
                     if (existing?.port) return existing.port;
@@ -262,7 +262,12 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                    // Select model first, then build prompt with correct model ID
+                    // Engine context is set by selectModelForRequest
+                    const selection = await bse.selectModelForRequest({ prompt: '' });
+                    const activeModelId = selection?.modelId || '';
+
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId, protagonistFileBase64s);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     rawText = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -294,6 +299,7 @@ export class CharacterActor {
                     currentExistingText = toolResult.resumeText;
                 }
             } else {
+                // ─── Direct Model Path ───────────────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }
@@ -304,18 +310,14 @@ export class CharacterActor {
                     return { error: { message: 'Model not ready', type: 'no_model' } };
                 }
 
-                const lmCtx: LanguageModelContext = {
-                    apiKey: selectedModel.apiKey,
-                    backend: selectedModel.backend,
-                    modelPath: selectedModel.model,
-                    runtimePort: ep,
-                };
+                // Set engine context once — no more passing ctx through function signatures
+                this.engine.setContext(buildContextFromModel(selectedModel, runningModels));
 
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
 
-                const doStream = async (reqBody: Record<string, unknown>, ctx: LanguageModelContext) => {
-                    const result = await this.languageModelEngine.generateStream(reqBody, { signal } as AbortController, {
+                const doStream = async (reqBody: Record<string, unknown>) => {
+                    const result = await this.engine.generateStream(reqBody, { signal } as AbortController, {
                         ...createStreamCallbacks(streamToolParser, accumulator),
                         onFinish: (rs: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }): void => {
                             const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
@@ -324,22 +326,21 @@ export class CharacterActor {
                             statsDelta.totalCost += cr.totalCost;
                             statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
                         },
-                    }, ctx, maxPara);
+                    }, maxPara);
                     return result.text;
                 };
+
+                const modelId = selectedModel.id || '';
 
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
-                    rawText = await doStream(body, lmCtx);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                    rawText = await doStream(body);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                        const rp = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
-                        const rep = rp || (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, ep);
-                        const rc: LanguageModelContext = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: selectedModel.model, runtimePort: rep };
-                        rawText = await doStream(rb, rc);
+                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                        rawText = await doStream(rb);
                         if (!rawText || !rawText.trim()) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };
                         }

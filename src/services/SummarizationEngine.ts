@@ -2,18 +2,19 @@
 import type { InteractionData, BudgetStrategy, ChatMessage } from '../types';
 import { saveRawInteractionData } from '../hooks/storage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
+import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
-interface BackgroundSummarizationContext {
+interface SummarizationContext {
     data: InteractionData;
     setData: (d: InteractionData) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     activeStrategy?: BudgetStrategy | null;
 }
 
-export async function runBackgroundSummarization(ctx: BackgroundSummarizationContext): Promise<void> {
+export async function runBackgroundSummarization(ctx: SummarizationContext): Promise<void> {
     const { data, setData, addToast, activeStrategy } = ctx;
 
     try {
@@ -22,6 +23,11 @@ export async function runBackgroundSummarization(ctx: BackgroundSummarizationCon
         const modelId = model?.id || '';
         const ctxLen = model?.contextLength || 8192;
         const engine = getLanguageModelEngine();
+
+        // Set engine context once so countTokens uses the correct tokenizer
+        if (model) {
+            engine.setContext(buildContextFromModel(model, runningModels));
+        }
 
         let tokens = 0;
         for (const m of data.interactionHistory) {

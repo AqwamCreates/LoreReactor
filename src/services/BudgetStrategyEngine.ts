@@ -161,6 +161,75 @@ export class BudgetStrategyEngine {
         return this.budgetData;
     }
 
+    // ─── Model Selection (Phase 4 — solves model mismatch) ──────────
+
+    /**
+     * Select a model for the next request without generating.
+     * Sets the engine context to the selected model so callers can
+     * build prompts with the correct model ID and tokenizer.
+     * Returns null if no models are available.
+     */
+    async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
+        const failedOnlineIds = new Set<string>();
+        const failedLocalIds = new Set<string>();
+
+        const useOnline = await this.shouldUseOnline(requestBody);
+        const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
+        const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
+        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
+        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
+
+        const promptText = (requestBody.prompt as string) || '';
+        const complexityScore = computeComplexityScore(promptText);
+        const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
+        let perTurnMaxTier: number | undefined;
+        if (tierValues.length > 0) {
+            const tierIndex = Math.min(
+                tierValues.length - 1,
+                Math.round((complexityScore / 100) * (tierValues.length - 1))
+            );
+            perTurnMaxTier = tierValues[tierIndex];
+        }
+
+        // Try primary pool
+        const primary = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier);
+        if (primary) {
+            const loaded = await this.ensureModelLoaded(primary);
+            if (loaded) {
+                const ctx = buildContextFromModel(primary, this.runningModels);
+                this.engine.setContext(ctx);
+                return { model: primary, modelId: primary.id };
+            }
+        }
+
+        // Try fallback pool
+        if (this.strategy.fallbackOnLocalFailure) {
+            const fallback = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier);
+            if (fallback) {
+                const loaded = await this.ensureModelLoaded(fallback);
+                if (loaded) {
+                    const ctx = buildContextFromModel(fallback, this.runningModels);
+                    this.engine.setContext(ctx);
+                    return { model: fallback, modelId: fallback.id };
+                }
+            }
+        }
+
+        // Try free models
+        const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
+        const freeModel = this.selectFreeModel(allFailedIds);
+        if (freeModel) {
+            const loaded = await this.ensureModelLoaded(freeModel);
+            if (loaded) {
+                const ctx = buildContextFromModel(freeModel, this.runningModels);
+                this.engine.setContext(ctx);
+                return { model: freeModel, modelId: freeModel.id };
+            }
+        }
+
+        return null;
+    }
+
     // ─── Streaming Generation ────────────────────────────────────────
 
     async generateStream(
@@ -168,8 +237,6 @@ export class BudgetStrategyEngine {
         abortController: AbortController,
         callbacks?: StreamCallbacks,
     ): Promise<string> {
-        // Per-generation failed sets — reset every request so exhaustion
-        // never carries over between generations
         const failedOnlineIds = new Set<string>();
         const failedLocalIds = new Set<string>();
 
@@ -218,7 +285,8 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            const primaryCtx = buildContextFromModel(selectedModel, this.runningModels);
+            // Set engine context once for this model attempt
+            this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
@@ -230,7 +298,6 @@ export class BudgetStrategyEngine {
                         requestBody,
                         timeoutCtrl,
                         wrappedCallbacks,
-                        primaryCtx,
                     );
                 } catch (e) {
                     cleanupTimeout();
@@ -309,7 +376,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                const fallbackCtx = buildContextFromModel(selectedModel, this.runningModels);
+                this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
                 const fallbackPricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
@@ -321,7 +388,6 @@ export class BudgetStrategyEngine {
                             requestBody,
                             timeoutCtrl,
                             wrappedCallbacks,
-                            fallbackCtx,
                         );
                     } catch (e) {
                         cleanupTimeout();
@@ -403,7 +469,7 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                const freeCtx = buildContextFromModel(freeModel, this.runningModels);
+                this.engine.setContext(buildContextFromModel(freeModel, this.runningModels));
                 const sessionStart = Date.now();
 
                 try {
@@ -414,7 +480,6 @@ export class BudgetStrategyEngine {
                             requestBody,
                             timeoutCtrl,
                             wrappedCallbacks,
-                            freeCtx,
                         );
                     } catch (e) {
                         cleanupTimeout();
@@ -488,7 +553,6 @@ export class BudgetStrategyEngine {
         requestBody: Record<string, unknown>,
         abortSignal?: AbortSignal,
     ): Promise<{ text: string; modelId: string }> {
-        // Per-generation failed sets
         const failedOnlineIds = new Set<string>();
         const failedLocalIds = new Set<string>();
 
@@ -512,12 +576,12 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            const ctx = buildContextFromModel(selectedModel, this.runningModels);
+            this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
             try {
-                const result = await this.engine.generateCompletion(requestBody, ctx);
+                const result = await this.engine.generateCompletion(requestBody);
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(selectedModel.id, sessionDuration);
 
@@ -570,12 +634,12 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
-                const ctx = buildContextFromModel(selectedModel, this.runningModels);
+                this.engine.setContext(buildContextFromModel(selectedModel, this.runningModels));
                 const pricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
                 try {
-                    const result = await this.engine.generateCompletion(requestBody, ctx);
+                    const result = await this.engine.generateCompletion(requestBody);
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
@@ -629,11 +693,11 @@ export class BudgetStrategyEngine {
                 continue;
             }
 
-            const ctx = buildContextFromModel(freeModel, this.runningModels);
+            this.engine.setContext(buildContextFromModel(freeModel, this.runningModels));
             const sessionStart = Date.now();
 
             try {
-                const result = await this.engine.generateCompletion(requestBody, ctx);
+                const result = await this.engine.generateCompletion(requestBody);
                 const sessionDuration = Date.now() - sessionStart;
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 this.recordSuccess(freeModel.id, 0);
@@ -906,13 +970,11 @@ export class BudgetStrategyEngine {
 
         const promptText = (requestBody.prompt as string) || '';
 
-        // Context size check via token count
         if (promptText.length > 0) {
             const numberOfTokens = await this.engine.countTokens(promptText);
             if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
         }
 
-        // Complexity score check
         const complexityScore = computeComplexityScore(promptText);
         if (complexityScore >= this.strategy.switchOnComplexityScore) return true;
 

@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../context/ToastContext';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { buildContextFromModel } from '../utilities/modelContextResolver';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
@@ -19,10 +20,10 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useCharacterVoice } from './useCharacterVoice';
 import { useMemoryTrigger } from './useMemoryTrigger';
 import { useCharacterResponse } from './useCharacterResponse';
-import { runBackgroundSummarization } from '../services/BackgroundSummarization';
+import { runBackgroundSummarization } from '../services/SummarizationEngine';
 import { useSessionStore } from '../store/useSessionStore';
 
-const languageModelEngine = getLanguageModelEngine();
+const engine = getLanguageModelEngine();
 
 type RunningModelStatus = Record<string, { isRunning: boolean; port?: number }>;
 type StatsState = { numberOfCacheInvalidations: number; numberOfRequests: number; totalCost: number; costWithoutCacheMisses: number };
@@ -177,14 +178,15 @@ export function useChatSession() {
         (async () => {
             const model = useSessionStore.getState().selectedModel;
             const models = useSessionStore.getState().runningModels;
-            const port = model?.id ? models[model.id]?.port : undefined;
-            const runtimeParams = model?.parameters as Record<string, unknown> | undefined;
-            const runtimePort = typeof runtimeParams?._runtimePort === 'number' ? runtimeParams._runtimePort : undefined;
-            const ep = port ?? runtimePort;
-            const lmCtx = ep ? { runtimePort: ep } : undefined;
+
+            // Set engine context once — countTokens reads from stored state
+            if (model) {
+                engine.setContext(buildContextFromModel(model, models));
+            }
+
             let total = 0;
             for (const m of interactionData.interactionHistory) {
-                if (m.messageType === 'chat') total += await languageModelEngine.countTokens(m.textContent, lmCtx);
+                if (m.messageType === 'chat') total += await engine.countTokens(m.textContent);
             }
             if (!cancelled) setNumberOfTokens(total);
         })();
@@ -207,27 +209,27 @@ export function useChatSession() {
 
     // ─── Audio Engine ────────────────────────────────────────────────
     useEffect(() => {
-        const engine = getAudioEngine();
-        engine.startVolumeTicker();
+        const audioEngine = getAudioEngine();
+        audioEngine.startVolumeTicker();
         return () => {
-            engine.stopAll();
+            audioEngine.stopAll();
         };
     }, []);
 
     useEffect(() => {
         if (!interactionData) return;
-        const engine = getAudioEngine();
+        const audioEngine = getAudioEngine();
 
         // Apply global volume override from profile
         const profileVolume = interactionData.Profile?.volume ?? -1;
-        engine.setGlobalVolume(profileVolume);
+        audioEngine.setGlobalVolume(profileVolume);
 
-        engine.evaluate(interactionData);
+        audioEngine.evaluate(interactionData);
     }, [interactionData]);
 
     // ─── Autonomous Simulation ───────────────────────────────────────
     useEffect(() => {
-        const engine = autonomousEngineRef.current;
+        const autonomousEngine = autonomousEngineRef.current;
         const autonomousEnabled = interactionData?.Profile?.autonomousMode ?? false;
 
         if (autonomousEnabled && interactionData) {
@@ -239,7 +241,7 @@ export function useChatSession() {
 
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
 
-            engine.start(
+            autonomousEngine.start(
                 executor,
                 checkCanAct,
                 () => useSessionStore.getState().interactionData,
@@ -248,18 +250,18 @@ export function useChatSession() {
                 },
             );
         } else {
-            engine.stop();
+            autonomousEngine.stop();
         }
 
-        return () => { engine.stop(); };
+        return () => { autonomousEngine.stop(); };
     }, [interactionData?.Profile?.autonomousMode, handleServerResponse, throttledSetStreamingText, resetStream, setStreamingCharacter, interactionData, isLoadingRef]);
 
     // Pause autonomous simulation when tab is hidden
     useEffect(() => {
-        const engine = autonomousEngineRef.current;
+        const autonomousEngine = autonomousEngineRef.current;
         const handleVisibilityChange = () => {
             if (document.hidden) {
-                engine.stop();
+                autonomousEngine.stop();
             } else {
                 // Re-start if autonomous mode is still enabled
                 const data = useSessionStore.getState().interactionData;
@@ -270,7 +272,7 @@ export function useChatSession() {
                         return handleServerResponse(d, c, s, throttledSetStreamingText, undefined, '');
                     };
                     const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
-                    engine.start(
+                    autonomousEngine.start(
                         executor,
                         checkCanAct,
                         () => useSessionStore.getState().interactionData,

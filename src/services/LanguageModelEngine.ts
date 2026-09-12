@@ -15,7 +15,6 @@ export interface StreamCallbacks {
     onFinish?: (result: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }) => void;
 }
 
-
 export interface StreamState {
     fullText: string;
     msPerToken: number;
@@ -41,8 +40,8 @@ export interface LanguageModelContext {
   runtimePort?: number;
 }
 
-function endsWithStopPattern(text: string, stopPatterns: string[]): boolean {
-  for (const pattern of stopPatterns) {
+function endsWithStop_pattern(text: string, stop_patterns: string[]): boolean {
+  for (const pattern of stop_patterns) {
     if (pattern && text.endsWith(pattern)) return true;
   }
   return false;
@@ -62,28 +61,17 @@ interface ResolvedRequest {
   body: string;
 }
 
-// Backends that don't support the `stop` parameter in OpenAI-compatible format
-const STOP_UNSUPPORTED_BACKENDS = new Set(['Google']);
+const STOPUNSUPPORTEDBACKENDS = new Set(['Google']);
 
-  /**
-   * Backends known to lack a tokenize endpoint. We skip network calls
-   * for these entirely and always return the char-length estimate.
-   * Add any backend here whose /tokenize returns 404 or doesn't exist.
-   */
+const NOTOKENIZEBACKENDS = new Set(['OpenRouter']);
 
-const NO_TOKENIZE_BACKENDS = new Set(['OpenRouter',]);
-
-/** Cache entry for token count results. */
 interface TokenCacheEntry {
   count: number;
   timestamp: number;
 }
 
-/** Maximum age of a cache entry before it's considered stale (5 minutes). */
-const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
-
-/** Maximum number of entries to prevent unbounded memory growth. */
-const TOKEN_CACHE_MAX_SIZE = 500;
+const TOKENCACHETTLMS = 5 * 60 * 1000;
+const TOKENCACHEMAXSIZE = 500;
 
 // ─── Raw API response shapes ────────────────────────────────────────
 
@@ -121,16 +109,16 @@ interface GoogleTokenizeResponse {
 }
 
 interface AnthropicTokenizeResponse {
-    input_tokens?: number;
+    inputtokens?: number;
 }
 
 interface MinimaxTokenizeResponse {
-    input_tokens?: number;
+    inputtokens?: number;
 }
 
 interface KimiTokenizeResponse {
-    data?: { total_tokens?: number };
-    total_tokens?: number;
+    data?: { totaltokens?: number };
+    totaltokens?: number;
 }
 
 interface GLMTokenizeResponse {
@@ -140,7 +128,7 @@ interface GLMTokenizeResponse {
 
 interface CohereTokenizeResponse {
     tokens?: unknown[];
-    token_count?: number;
+    tokencount?: number;
 }
 
 interface AI21TokenizeResponse {
@@ -159,61 +147,72 @@ interface CloudErrorData {
 
 export class LanguageModelEngine {
 
+  // ─── Context State ────────────────────────────────────────────────
+
+  private context: LanguageModelContext = {};
+
+  setContext(ctx: LanguageModelContext): void {
+    this.context = ctx;
+  }
+
+  getContext(): LanguageModelContext {
+    return this.context;
+  }
+
   // ─── Token Count Cache ────────────────────────────────────────────
 
-  private _tokenCache: Map<string, TokenCacheEntry> = new Map();
+  private tokenCache: Map<string, TokenCacheEntry> = new Map();
   private failedTokenizeBackends: Set<string> = new Set();
-  private _hasTokenCountChanged = false;
-  private _inFlightTokenize: Map<string, Promise<number>> = new Map();
+  private hasTokenCountChanged = false;
+  private inFlightTokenize: Map<string, Promise<number>> = new Map();
 
   get hasTokenCountChanged(): boolean {
-    const changed = this._hasTokenCountChanged;
-    this._hasTokenCountChanged = false;
+    const changed = this.hasTokenCountChanged;
+    this.hasTokenCountChanged = false;
     return changed;
   }
 
-  private buildCacheKey(text: string, modelContext?: LanguageModelContext): string {
-    const ctxPart = modelContext
-      ? `${modelContext.runtimePort ?? ''}:${modelContext.backend ?? ''}:${modelContext.modelPath ?? ''}`
-      : 'estimate';
+  private buildCacheKey(text: string): string {
+    const ctx = this.context;
+    const ctxPart = `${ctx.runtimePort ?? ''}:${ctx.backend ?? ''}:${ctx.modelPath ?? ''}`;
     const textFingerprint = `${text.length}:${text.slice(0, 32)}:${text.slice(-32)}`;
     return `${ctxPart}|${textFingerprint}`;
   }
 
-  private buildBackendFailureKey(modelContext?: LanguageModelContext): string | null {
-    if (!modelContext) return null;
-    if (modelContext.runtimePort) return `local:${modelContext.runtimePort}`;
-    if (modelContext.backend) return `${modelContext.backend}:${modelContext.modelPath ?? ''}`;
+  private buildBackendFailureKey(): string | null {
+    const ctx = this.context;
+    if (ctx.runtimePort) return `local:${ctx.runtimePort}`;
+    if (ctx.backend) return `${ctx.backend}:${ctx.modelPath ?? ''}`;
     return null;
   }
 
   private getCachedTokenCount(key: string): number | null {
-    const entry = this._tokenCache.get(key);
+    const entry = this.tokenCache.get(key);
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > TOKEN_CACHE_TTL_MS) {
-      this._tokenCache.delete(key);
+    if (Date.now() - entry.timestamp > TOKENCACHETTLMS) {
+      this.tokenCache.delete(key);
       return null;
     }
     return entry.count;
   }
 
   private setCachedTokenCount(key: string, count: number): void {
-    if (this._tokenCache.size >= TOKEN_CACHE_MAX_SIZE && !this._tokenCache.has(key)) {
-      const oldestKey = this._tokenCache.keys().next().value;
-      if (oldestKey !== undefined) this._tokenCache.delete(oldestKey);
+    if (this.tokenCache.size >= TOKENCACHEMAXSIZE && !this.tokenCache.has(key)) {
+      const oldestKey = this.tokenCache.keys().next().value;
+      if (oldestKey !== undefined) this.tokenCache.delete(oldestKey);
     }
-    this._tokenCache.set(key, { count, timestamp: Date.now() });
-    this._hasTokenCountChanged = true;
+    this.tokenCache.set(key, { count, timestamp: Date.now() });
+    this.hasTokenCountChanged = true;
   }
 
   clearTokenCache(): void {
-    this._tokenCache.clear();
+    this.tokenCache.clear();
     this.failedTokenizeBackends.clear();
-    this._inFlightTokenize.clear();
-    this._hasTokenCountChanged = true;
+    this.inFlightTokenize.clear();
+    this.hasTokenCountChanged = true;
   }
 
-  // ─── Request Building (split by transport type) ──────────────────
+  // ─── Request Building ─────────────────────────────────────────────
 
   private buildCloudRequest(
     apiKey: string,
@@ -249,11 +248,11 @@ export class LanguageModelEngine {
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
-      max_tokens: params.maxTokens,
+      maxtokens: params.maxTokens,
       ...params.extraParams,
     };
 
-    if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
+    if (!STOPUNSUPPORTEDBACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;
     }
 
@@ -276,7 +275,7 @@ export class LanguageModelEngine {
 
     const body = JSON.stringify({
       prompt,
-      n_predict: params.maxTokens,
+      npredict: params.maxTokens,
       temperature: params.temperature,
       top_p: params.top_p,
       stop: params.stop,
@@ -289,22 +288,20 @@ export class LanguageModelEngine {
   private resolveRequest(
     prompt: string,
     stream: boolean,
-    modelContext?: LanguageModelContext,
-    params?: ResolvedParams,
+    params: ResolvedParams,
     existingText?: string,
   ): ResolvedRequest {
     const finalPrompt = existingText && existingText.trim().length > 0
       ? `${prompt}${existingText}`
       : prompt;
 
-    const resolvedParams: ResolvedParams = params || {};
-    const { apiKey, backend: backendName, modelPath, runtimePort } = modelContext || {};
+    const { apiKey, backend: backendName, modelPath, runtimePort } = this.context;
 
     if (apiKey && backendName && cloudBackends.includes(backendName)) {
-      return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, resolvedParams);
+      return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
     }
 
-    return this.buildLocalRequest(runtimePort, finalPrompt, stream, resolvedParams);
+    return this.buildLocalRequest(runtimePort, finalPrompt, stream, params);
   }
 
   // ─── Response Parsing ────────────────────────────────────────────
@@ -328,9 +325,9 @@ export class LanguageModelEngine {
       prompt,
       temperature: requestBody.temperature as number | undefined,
       top_p: requestBody.top_p as number | undefined,
-      maxTokens: (requestBody.n_predict as number) || (requestBody.max_tokens as number),
+      maxTokens: (requestBody.npredict as number) || (requestBody.maxtokens as number),
       stop: requestBody.stop as string[] | undefined,
-      extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
+      extraParams: requestBody.extracloudparams as Record<string, unknown> | undefined,
     };
   }
 
@@ -348,36 +345,37 @@ export class LanguageModelEngine {
 
   // ─── Token Counting ──────────────────────────────────────────────
 
-  async countTokens(text: string, modelContext?: LanguageModelContext): Promise<number> {
+  async countTokens(text: string): Promise<number> {
     const estimatedTokens = Math.ceil(text.length / 4);
+    const ctx = this.context;
 
-    const cacheKey = this.buildCacheKey(text, modelContext);
+    const cacheKey = this.buildCacheKey(text);
     const cached = this.getCachedTokenCount(cacheKey);
     if (cached !== null) return cached;
 
-    const failureKey = this.buildBackendFailureKey(modelContext);
+    const failureKey = this.buildBackendFailureKey();
     if (failureKey && this.failedTokenizeBackends.has(failureKey)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    if (modelContext?.backend && NO_TOKENIZE_BACKENDS.has(modelContext.backend)) {
+    if (ctx.backend && NOTOKENIZEBACKENDS.has(ctx.backend)) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    if (!modelContext) {
+    if (!ctx.apiKey && !ctx.runtimePort) {
       this.setCachedTokenCount(cacheKey, estimatedTokens);
       return estimatedTokens;
     }
 
-    const { runtimePort, backend: backendName, apiKey, modelPath } = modelContext;
+    const { runtimePort, backend: backendName, apiKey, modelPath } = ctx;
 
     if (runtimePort) {
       const localKey = `local:${runtimePort}`;
 
-      if (this._inFlightTokenize.has(localKey)) {
-        await this._inFlightTokenize.get(localKey);
+      if (this.inFlightTokenize.has(localKey)) {
+        await this.inFlightTokenize.get(localKey);
         const recheck = this.getCachedTokenCount(cacheKey);
         if (recheck !== null) return recheck;
         this.setCachedTokenCount(cacheKey, estimatedTokens);
@@ -403,11 +401,11 @@ export class LanguageModelEngine {
           this.failedTokenizeBackends.add(localKey);
           return estimatedTokens;
         } finally {
-          this._inFlightTokenize.delete(localKey);
+          this.inFlightTokenize.delete(localKey);
         }
       })();
 
-      this._inFlightTokenize.set(localKey, fetchPromise);
+      this.inFlightTokenize.set(localKey, fetchPromise);
       const count = await fetchPromise;
       this.setCachedTokenCount(cacheKey, count);
       return count;
@@ -416,8 +414,8 @@ export class LanguageModelEngine {
     if (backendName && apiKey && cloudTokenizeEndpoints[backendName]) {
       const cloudKey = `${backendName}:${modelPath ?? ''}`;
 
-      if (this._inFlightTokenize.has(cloudKey)) {
-        await this._inFlightTokenize.get(cloudKey);
+      if (this.inFlightTokenize.has(cloudKey)) {
+        await this.inFlightTokenize.get(cloudKey);
         const recheck = this.getCachedTokenCount(cacheKey);
         if (recheck !== null) return recheck;
         this.setCachedTokenCount(cacheKey, estimatedTokens);
@@ -498,11 +496,11 @@ export class LanguageModelEngine {
 
           switch (backendName) {
             case 'Google': return (data as GoogleTokenizeResponse).totalTokens ?? estimatedTokens;
-            case 'Anthropic': return (data as AnthropicTokenizeResponse).input_tokens ?? estimatedTokens;
-            case 'Minimax': return (data as MinimaxTokenizeResponse).input_tokens ?? estimatedTokens;
-            case 'Kimi': return (data as KimiTokenizeResponse).data?.total_tokens ?? (data as KimiTokenizeResponse).total_tokens ?? estimatedTokens;
+            case 'Anthropic': return (data as AnthropicTokenizeResponse).inputtokens ?? estimatedTokens;
+            case 'Minimax': return (data as MinimaxTokenizeResponse).inputtokens ?? estimatedTokens;
+            case 'Kimi': return (data as KimiTokenizeResponse).data?.totaltokens ?? (data as KimiTokenizeResponse).totaltokens ?? estimatedTokens;
             case 'GLM': return (data as GLMTokenizeResponse).usage?.tokens ?? (data as GLMTokenizeResponse).tokens ?? estimatedTokens;
-            case 'Cohere': return (data as CohereTokenizeResponse).tokens?.length ?? (data as CohereTokenizeResponse).token_count ?? estimatedTokens;
+            case 'Cohere': return (data as CohereTokenizeResponse).tokens?.length ?? (data as CohereTokenizeResponse).tokencount ?? estimatedTokens;
             case 'AI21': return (data as AI21TokenizeResponse).tokens?.length ?? (data as AI21TokenizeResponse).count ?? estimatedTokens;
             case 'NovelAI': return (data as NovelAITokenizeResponse).tokens?.length ?? (data as NovelAITokenizeResponse).count ?? estimatedTokens;
             default: return estimatedTokens;
@@ -511,11 +509,11 @@ export class LanguageModelEngine {
           this.failedTokenizeBackends.add(cloudKey);
           return estimatedTokens;
         } finally {
-          this._inFlightTokenize.delete(cloudKey);
+          this.inFlightTokenize.delete(cloudKey);
         }
       })();
 
-      this._inFlightTokenize.set(cloudKey, fetchPromise);
+      this.inFlightTokenize.set(cloudKey, fetchPromise);
       const count = await fetchPromise;
       this.setCachedTokenCount(cacheKey, count);
       return count;
@@ -529,13 +527,12 @@ export class LanguageModelEngine {
 
   async generateCompletion(
     requestBody: Record<string, unknown>,
-    modelContext?: LanguageModelContext,
   ): Promise<StreamResult> {
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
+    const stop_patterns: string[] = Array.isArray(stop) ? stop : [];
 
     try {
-      const { url, headers, body } = this.resolveRequest(prompt, false, modelContext, {
+      const { url, headers, body } = this.resolveRequest(prompt, false, {
         maxTokens: maxTokens ?? 512,
         temperature: temperature ?? 0.3,
         top_p: top_p,
@@ -549,7 +546,7 @@ export class LanguageModelEngine {
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
-      return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };
+      return { text, isCompleted: endsWithStop_pattern(text, stop_patterns) };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return { text: '', isCompleted: false };
@@ -562,15 +559,14 @@ export class LanguageModelEngine {
     requestBody: Record<string, unknown>,
     abortController: AbortController,
     callbacks?: StreamCallbacks,
-    modelContext?: LanguageModelContext,
     maxParagraphs?: number,
     existingText?: string,
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
+    const stop_patterns: string[] = Array.isArray(stop) ? stop : [];
 
-    const { url, headers, body } = this.resolveRequest(prompt, true, modelContext, {
+    const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
       top_p,
       maxTokens,
@@ -603,7 +599,7 @@ export class LanguageModelEngine {
     const decoder = new TextDecoder("utf-8");
     let fullContent = existingText || "";
     let firstTokenTime = 0;
-    let newnumberOfTokens = 0;
+    let newNumberOfTokens = 0;
     let paragraphCount = 0;
     let hasReceivedNonWhitespace = false;
     let ttftReported = false;
@@ -621,10 +617,10 @@ export class LanguageModelEngine {
         if (done) {
           return {
             text: fullContent.trim(),
-            isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+            isCompleted: endsWithStop_pattern(fullContent.trim(), stop_patterns),
             msPerToken: lastMsPerToken || undefined,
             timeToFirstToken: lastTimeToFirstToken || undefined,
-            completionTokens: newnumberOfTokens || undefined,
+            completionTokens: newNumberOfTokens || undefined,
           };
         }
 
@@ -638,10 +634,10 @@ export class LanguageModelEngine {
           if (jsonStr.trim() === '[DONE]') {
             return {
               text: fullContent.trim(),
-              isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+              isCompleted: endsWithStop_pattern(fullContent.trim(), stop_patterns),
               msPerToken: lastMsPerToken || undefined,
               timeToFirstToken: lastTimeToFirstToken || undefined,
-              completionTokens: newnumberOfTokens || undefined,
+              completionTokens: newNumberOfTokens || undefined,
             };
           }
 
@@ -667,8 +663,8 @@ export class LanguageModelEngine {
             hasReceivedNonWhitespace = true;
 
             const now = performance.now();
-            if (newnumberOfTokens === 0) firstTokenTime = now;
-            newnumberOfTokens++;
+            if (newNumberOfTokens === 0) firstTokenTime = now;
+            newNumberOfTokens++;
             fullContent += token;
 
             if (paragraphLimit > 0) {
@@ -688,14 +684,14 @@ export class LanguageModelEngine {
                   isCompleted: true,
                   msPerToken: lastMsPerToken || undefined,
                   timeToFirstToken: lastTimeToFirstToken || undefined,
-                  completionTokens: newnumberOfTokens || undefined,
+                  completionTokens: newNumberOfTokens || undefined,
                 };
               }
             }
 
             const totalTime = now - firstTokenTime;
-            const msPerToken = newnumberOfTokens > 0 ? totalTime / newnumberOfTokens : 0;
-            const tokensPerSecond = totalTime > 0 ? (newnumberOfTokens / totalTime) * 1000 : 0;
+            const msPerToken = newNumberOfTokens > 0 ? totalTime / newNumberOfTokens : 0;
+            const tokensPerSecond = totalTime > 0 ? (newNumberOfTokens / totalTime) * 1000 : 0;
 
             const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
             if (!ttftReported) ttftReported = true;
@@ -716,7 +712,7 @@ export class LanguageModelEngine {
           isCompleted: false,
           msPerToken: lastMsPerToken || undefined,
           timeToFirstToken: lastTimeToFirstToken || undefined,
-          completionTokens: newnumberOfTokens || undefined,
+          completionTokens: newNumberOfTokens || undefined,
         };
       }
       throw error;
@@ -728,11 +724,6 @@ export class LanguageModelEngine {
 
 let instance: LanguageModelEngine | null = null;
 
-/**
- * Returns the shared LanguageModelEngine instance.
- * All token caches, failed backend tracking, and in-flight deduplication
- * are shared across all callers through this single instance.
- */
 export function getLanguageModelEngine(): LanguageModelEngine {
     if (instance) return instance;
     const engine = new LanguageModelEngine();
@@ -740,10 +731,6 @@ export function getLanguageModelEngine(): LanguageModelEngine {
     return engine;
 }
 
-/**
- * Resets the singleton instance. Intended ONLY for test teardown.
- * Never call this in production code.
- */
 export function reset(): void {
     if (instance) {
         instance.clearTokenCache();
