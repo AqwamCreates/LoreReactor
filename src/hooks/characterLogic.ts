@@ -247,3 +247,86 @@ export function generateActionStaminaForInteractionData(data: InteractionData, a
     if (!previousMessage) return
     generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.Profile);
 }
+
+/**
+ * Count how many times a character's name (full or partial) appears in the
+ * most recent chat message, excluding mentions that overlap with other
+ * participants' names.
+ * 
+ * Returns 0 if:
+ * - History is empty
+ * - Latest message is not a chat message
+ * - Latest message was sent by this character (self-mentions don't count)
+ * - nameSensitivity = 0
+ * - Name doesn't appear in the message text
+ */
+export function getNameMentionCount(character: Character, interactionData: InteractionData): number {
+    const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
+    if (sensitivity === 0) return 0;
+
+    const history = interactionData.interactionHistory;
+    if (history.length === 0) return 0;
+
+    const latestMessage = history[history.length - 1];
+    if (latestMessage.messageType !== 'chat') return 0;
+    if (latestMessage.character.id === character.id) return 0;
+
+    const textLower = latestMessage.textContent.toLowerCase();
+    const fullNameLower = character.name.toLowerCase().trim();
+
+    // Build ignore list: other participants' full names
+    const ignoreRanges: { start: number; end: number }[] = [];
+    for (const participant of interactionData.participants) {
+        if (participant.id === character.id) continue;
+        const otherNameLower = participant.name.toLowerCase().trim();
+        if (otherNameLower === fullNameLower) continue;
+        let searchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(otherNameLower, searchIndex);
+            if (foundIndex === -1) break;
+            ignoreRanges.push({ start: foundIndex, end: foundIndex + otherNameLower.length });
+            searchIndex = foundIndex + otherNameLower.length;
+        }
+    }
+
+    const isIgnored = (matchStart: number, matchLength: number): boolean => {
+        const matchEnd = matchStart + matchLength;
+        for (const range of ignoreRanges) {
+            if (matchStart < range.end && matchEnd > range.start) return true;
+        }
+        return false;
+    };
+
+    let mentionCount = 0;
+
+    // Full name scan
+    let searchIndex = 0;
+    while (true) {
+        const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
+        if (foundIndex === -1) break;
+        if (!isIgnored(foundIndex, fullNameLower.length)) {
+            mentionCount++;
+        }
+        searchIndex = foundIndex + fullNameLower.length;
+    }
+
+    // Partial name scan (min 2 chars, excluding full name itself)
+    const nameParts = new Set<string>();
+    for (const part of fullNameLower.split(/\s+/)) {
+        if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
+    }
+
+    for (const namePart of nameParts) {
+        let partSearchIndex = 0;
+        while (true) {
+            const foundIndex = textLower.indexOf(namePart, partSearchIndex);
+            if (foundIndex === -1) break;
+            if (!isIgnored(foundIndex, namePart.length)) {
+                mentionCount++;
+            }
+            partSearchIndex = foundIndex + namePart.length;
+        }
+    }
+
+    return mentionCount;
+}
