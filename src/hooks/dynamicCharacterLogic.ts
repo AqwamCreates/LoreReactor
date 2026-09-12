@@ -490,7 +490,7 @@ export function computeModulatedRegenAmounts(
             if (p.id === character.id) return false;
             const pLoc = getCurrentLocationIndex(data, p);
             return pLoc !== undefined && pLoc === charLoc;
-          }).length
+        }).length
         : 0;
 
     const baseSkip = getEffectiveSkipProbability(character, profile);
@@ -633,7 +633,7 @@ export function computeChatConsumptionCost(
             if (p.id === speaker.id) return false;
             const pLoc = getCurrentLocationIndex(data, p);
             return pLoc !== undefined && pLoc === speakerLoc;
-          }).length
+        }).length
         : 0;
     const loadMultiplier = Math.sqrt(coLocatedCount);
 
