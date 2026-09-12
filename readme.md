@@ -16,7 +16,7 @@ Each open chat window occupies one llama.cpp context slot in GPU VRAM. At <10B Q
 
 ## Features
 
-### Context-Related
+### Context-Related (To-Do Later)
 
 * The character's profile images inject speaker-conditionally on first chat, with embeddings cached per-character for instant reuse.
 
