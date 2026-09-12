@@ -3633,6 +3633,7 @@
 21. CHAT SCROLL BUTTONS
 ============================================================================= */
 .chat-scroll-button {
+    z-index: 10;
     width: 36px;
     height: 36px;
     min-width: 36px;
