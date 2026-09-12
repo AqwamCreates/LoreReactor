@@ -171,9 +171,12 @@ function computeGlobalScore(character: Character, data: InteractionData): number
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
+    
+    // FIX: Soft time scaling. 1 + log1p ensures multiplier is >= 1, never 0.
     const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeMultiplier = 1 + Math.log1p(timeSince);
 
-    return staminaRatio * effectiveInitiative * timeSince;
+    return staminaRatio * effectiveInitiative * timeMultiplier;
 }
 
 /**
@@ -193,7 +196,11 @@ function computeChatScore(character: Character, data: InteractionData): number {
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
+    
+    // FIX: Soft time scaling
     const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeMultiplier = 1 + Math.log1p(timeSince);
+    
     const turnsSince = getTurnsSinceLastSpoken(data.interactionHistory, character.id);
     const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
 
@@ -213,7 +220,7 @@ function computeChatScore(character: Character, data: InteractionData): number {
     const effectiveImpatience = impatience / (1 + patienceBoost);
     const compressedImpatience = Math.log1p(turnsSince * effectiveImpatience);
 
-    return staminaRatio * effectiveInitiative * timeSince * compressedImpatience;
+    return staminaRatio * effectiveInitiative * timeMultiplier * compressedImpatience;
 }
 
 /**
@@ -233,14 +240,17 @@ function computeActionScore(character: Character, data: InteractionData, trigger
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(data.interactionHistory, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
+    
+    // FIX: Soft time scaling
     const timeSince = getTimeSinceLastActionMs(data.interactionHistory, character.id);
+    const timeMultiplier = 1 + Math.log1p(timeSince);
 
     const moverLoc = getCurrentLocationIndex(data, character);
     const reachable = getReachableLocations(data.locations, moverLoc, triggeringMessageText);
     const totalLocs = data.locations?.length ?? 1;
     const reachabilitySignal = Math.log1p(reachable.length) / Math.log1p(totalLocs);
 
-    return staminaRatio * effectiveInitiative * timeSince * (0.5 + reachabilitySignal);
+    return staminaRatio * effectiveInitiative * timeMultiplier * (0.5 + reachabilitySignal);
 }
 
 /**
