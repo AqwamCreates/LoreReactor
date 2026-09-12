@@ -2,7 +2,7 @@
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import type { LanguageModel } from '../types';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebpageSummarizationEngine';
-import { findWebpageByUrl, saveRawWebpage } from '../hooks/storage';
+import { findWebpageByUrl, saveRawWebpage } from '../store/storage';
 import type { linkFetchMode, searchEngine } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 

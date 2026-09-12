@@ -1,7 +1,7 @@
 // src/hooks/useModelManager.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { LanguageModel } from '../types';
-import { loadAllRawModels, saveRawModel, deleteRawModel } from './storage';
+import { loadAllRawModels, saveRawModel, deleteRawModel } from '../store/storage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
 import { cloudBackends } from '../languageModelInformation';

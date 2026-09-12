@@ -1,7 +1,7 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage } from '../types';
-import { loadRawBudgetData, saveRawBudgetData } from '../hooks/storage';
-import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
+import { loadRawBudgetData, saveRawBudgetData } from '../store/storage';
+import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData, updatePartialMessageInInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { consumeChatStaminaForMessage, getEffectiveMaximumChatStamina, getEffectiveTools, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
@@ -388,7 +388,24 @@ export class CharacterActor {
                 }
             }
 
-            const updatedData = addMessageToInteractionData(data, aiMessage);
+            let updatedData: InteractionData;
+
+            if (existingCharacterText) {
+                // Resume mode: update existing partial message via helper
+                updatedData = updatePartialMessageInInteractionData(
+                    data,
+                    character.id,
+                    displayText,
+                    aiMessage.characterExpression ?? undefined,
+                );
+                // Fallback: no partial message found, add as new
+                if (updatedData === data) {
+                    updatedData = addMessageToInteractionData(data, aiMessage);
+                }
+            } else {
+                // Normal mode: add new message
+                updatedData = addMessageToInteractionData(data, aiMessage);
+            }
 
             return {
                 result: {

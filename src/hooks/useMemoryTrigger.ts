@@ -1,7 +1,7 @@
 // src/hooks/useMemoryTrigger.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, Memory } from '../types';
-import { saveRawCharacter } from './storage';
+import { saveRawCharacter } from '../store/storage';
 import { getEffectiveEnableMemoryWriting } from './characterLogic';
 import { generateCharacterMemory } from '../services/ChatMessageSummarizationEngine';
 import { memoryWriteTrigger } from '../stringList';

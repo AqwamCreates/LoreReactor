@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Location } from '../types';
-import { loadAllRawLocations, saveRawLocation, deleteRawLocation } from './storage';
+import { loadAllRawLocations, saveRawLocation, deleteRawLocation } from '../store/storage';
 
 export function useLocationManager() {
     const [locations, setLocations] = useState<Location[]>([]);

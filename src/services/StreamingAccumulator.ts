@@ -18,6 +18,16 @@ export class StreamingAccumulator {
     private lastRawLength = 0;
 
     /**
+     * Initializes the accumulator with pre-existing text for resume mode.
+     * Sets committed text and lastRawLength so new stream tokens append correctly.
+     */
+    initializeWithExisting(text: string): void {
+        this.committed = text;
+        this.live = '';
+        this.lastRawLength = text.length;
+    }
+
+    /**
      * Processes a new raw chunk from the stream and returns the full display text.
      *
      * @param rawFullText - The complete raw text from the stream so far (not just the delta)

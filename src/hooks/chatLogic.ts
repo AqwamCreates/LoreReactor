@@ -4,7 +4,7 @@ import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from './storage';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../store/storage';
 import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
@@ -1600,6 +1600,28 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
             return message;
         })
     };
+}
+
+export function updatePartialMessageInInteractionData(
+    interactionData: InteractionData,
+    characterId: string,
+    newText: string,
+    characterExpression?: string,
+): InteractionData {
+    const history = [...interactionData.interactionHistory];
+    for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m.character.id === characterId && m.messageType === 'chat' && (m as ChatMessage).isPartial) {
+            history[i] = {
+                ...m,
+                textContent: newText,
+                characterExpression: characterExpression ?? (m as ChatMessage).characterExpression,
+                lastUpdatedTimestamp: Date.now(),
+            } as ChatMessage;
+            return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
+        }
+    }
+    return interactionData;
 }
 
 export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: HistoryMessage[]; invalidatedIds: string[] } {

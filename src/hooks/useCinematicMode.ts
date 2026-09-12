@@ -1,7 +1,7 @@
 // src/hooks/useCinematicMode.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
-import { getCharacterImageUrl, getLocationImageUrl } from './storage';
+import { getCharacterImageUrl, getLocationImageUrl } from '../store/storage';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 

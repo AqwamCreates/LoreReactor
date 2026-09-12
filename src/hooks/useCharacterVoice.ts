@@ -1,7 +1,7 @@
 // src/hooks/useCharacterVoice.ts
 import { useCallback, useRef } from 'react';
 import type { Character, textType } from '../types';
-import { getCharacterVoiceUrl } from './storage';
+import { getCharacterVoiceUrl } from '../store/storage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
 import { useSessionStore } from '../store/useSessionStore';

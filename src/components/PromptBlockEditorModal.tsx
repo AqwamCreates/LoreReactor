@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PromptBlock, Character, Context, Location, regularExpressionContext, regularExpressionTarget } from '../types';
-import { uploadPromptBlockImage } from '../hooks/storage';
+import { uploadPromptBlockImage } from '../store/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../store/useSessionStore';
@@ -439,7 +439,7 @@ export function PromptBlockEditorModal({
                                 <label className="editor-label editor-label-small">Filter Activation Trigger</label>
                                 <input type="text" value={messageFilterActivationTrigger} onChange={(e) => { setMessageFilterActivationTrigger(e.target.value); if (errors.messageFilterRegex) setErrors({ ...errors, messageFilterRegex: undefined }); setMessageFilterActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterRegex ? 'error' : ''}`} placeholder="^\/ooc\s+|^\[.*\]$" />
                                 {errors.messageFilterRegex && <div className="editor-error-message">{errors.messageFilterRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages matching this regex will be hidden from chat history.</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages under this regex will be not hidden from chat history.</div>
                             </div>
                         </div>
 
@@ -463,7 +463,7 @@ export function PromptBlockEditorModal({
                                 <label className="editor-label editor-label-small">Filter Deactivation Trigger</label>
                                 <input type="text" value={messageFilterDeactivationTrigger} onChange={(e) => { setMessageFilterDeactivationTrigger(e.target.value); if (errors.messageFilterDeactivationRegex) setErrors({ ...errors, messageFilterDeactivationRegex: undefined }); setMessageFilterDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterDeactivationRegex ? 'error' : ''}`} placeholder="/end_ooc/i" />
                                 {errors.messageFilterDeactivationRegex && <div className="editor-error-message">{errors.messageFilterDeactivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Stops filtering subsequent messages when matched.</div>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Stops filtering messages when matched.</div>
                             </div>
                         </div>
 

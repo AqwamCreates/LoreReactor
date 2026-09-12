@@ -1,7 +1,7 @@
 // src/components/ChatInspectionModal.tsx
 import { useMemo, useEffect, useState, useRef } from 'react';
 import type { InteractionData, Location, Character } from '../types';
-import { getCharacterImageUrlWithFallBack } from '../hooks/storage';
+import { getCharacterImageUrlWithFallBack } from '../store/storage';
 import { getCurrentLocation } from '../hooks/locationLogic';
 import {
     ReactFlow,
