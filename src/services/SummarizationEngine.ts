@@ -17,16 +17,22 @@ export async function runSummarization(context: SummarizationContext): Promise<v
     const { data, setData, addToast, activeStrategy } = context;
 
     try {
-        const model = useSessionStore.getState().selectedModel;
-        const runningModels = useSessionStore.getState().runningModels;
-        const modelId = model?.id || '';
-        const ctxLen = model?.contextLength || 8192;
         const engine = getLanguageModelEngine();
+        const runningModels = useSessionStore.getState().runningModels;
 
-        // Set engine context with full model — runtime port resolved internally
-        if (model) {
-            engine.setRunningModels(runningModels);
-            engine.setContext(model);
+        // Read model and context length from engine — works in both direct and budget mode
+        let ctxLen = engine.getContext()?.contextLength || 0;
+        let modelId = engine.getContext()?.id || '';
+
+        // If engine has no model set yet, fall back to store
+        if (!ctxLen) {
+            const model = useSessionStore.getState().selectedModel;
+            ctxLen = model?.contextLength || 8192;
+            modelId = model?.id || '';
+            if (model) {
+                engine.setRunningModels(runningModels);
+                engine.setContext(model);
+            }
         }
 
         let tokens = 0;

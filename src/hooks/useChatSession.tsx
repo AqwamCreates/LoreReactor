@@ -595,7 +595,7 @@ export function useChatSession() {
     }, [handleServerResponse, isLoadingRef, isModelReadyForGeneration]);
 
     // ─── Return ──────────────────────────────────────────────────────
-    const maximumNumberOfTokens = selectedModel?.contextLength || 8192;
+    const maximumNumberOfTokens = engine.getContext()?.contextLength || 8192;
 
     return {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,

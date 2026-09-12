@@ -41,7 +41,7 @@ export function useAmbientNarration(
         const requestBody = {
             prompt: `${AMBIENT_SYSTEM_PROMPT}\n\n${userPrompt}`,
             n_predict: 128,
-            temperature: 0.9,
+            temperature: 1,
             stop: ['\n\n', '\nUser:', '\nCharacter'],
         };
 
