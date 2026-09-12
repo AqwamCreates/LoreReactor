@@ -6,6 +6,7 @@ import { uploadContextImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
+import { useSessionStore } from '../store/useSessionStore';
 import './main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -16,7 +17,6 @@ interface ContextEditorModalProps {
     onSave: (context: Context) => void;
     existingContext?: Context | null;
     allCharacters?: Character[];
-    runtimePort?: number;
 }
 
 const SEARCH_ENGINE_OPTIONS: searchEngine[] = ['Google', 'Bing', 'DuckDuckGo', 'Yandex', 'Baidu'];
@@ -27,7 +27,6 @@ export function ContextEditorModal({
     onSave,
     existingContext,
     allCharacters = [],
-    runtimePort,
 }: ContextEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -53,7 +52,6 @@ export function ContextEditorModal({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cardImportRef = useRef<HTMLInputElement>(null);
 
-    // ✅ Token count for the text field — uses countTokens with runtime port, falls back to estimate
     const [textnumberOfTokens, setTextnumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,13 +76,24 @@ export function ContextEditorModal({
     const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(false);
     const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(false);
 
-    // ✅ Debounced accurate token count using countTokens (hits llama.cpp /tokenize when available)
+    // Sync engine context from store so countTokens uses correct model/tokenizer
+    useEffect(() => {
+        if (!isOpen) return;
+        const selectedModel = useSessionStore.getState().selectedModel;
+        const runningModels = useSessionStore.getState().runningModels;
+        if (selectedModel) {
+            tokenEngine.setRunningModels(runningModels);
+            tokenEngine.setContext(selectedModel);
+        }
+    }, [isOpen]);
+
+    // Debounced accurate token count — engine context already set above
     useEffect(() => {
         let cancelled = false;
 
         if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
-            const count = await tokenEngine.countTokens(text, runtimePort ? { runtimePort } : undefined);
+            const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextnumberOfTokens(count);
         }, 400);
 
@@ -92,7 +101,7 @@ export function ContextEditorModal({
             cancelled = true;
             if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         };
-    }, [text, runtimePort]);
+    }, [text]);
 
     useEffect(() => {
         if (isOpen) {
@@ -186,11 +195,11 @@ export function ContextEditorModal({
         }
 
         if (regexActivationTrigger.trim()) {
-            try { new RegExp(regexActivationTrigger); } catch (e) { newErrors.regex = 'Invalid activation regular expression.'; }
+            try { new RegExp(regexActivationTrigger); } catch { newErrors.regex = 'Invalid activation regular expression.'; }
         }
 
         if (regexDeactivationTrigger.trim()) {
-            try { new RegExp(regexDeactivationTrigger); } catch (e) { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
+            try { new RegExp(regexDeactivationTrigger); } catch { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
         }
 
         for (const url of urls) {
@@ -256,7 +265,7 @@ export function ContextEditorModal({
         try {
             const regex = new RegExp(regexActivationTrigger);
             setActivationTestResult(regex.test(activationTestText));
-        } catch (e) {
+        } catch {
             setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
         }
@@ -267,7 +276,7 @@ export function ContextEditorModal({
         try {
             const regex = new RegExp(regexDeactivationTrigger);
             setDeactivationTestResult(regex.test(deactivationTestText));
-        } catch (e) {
+        } catch {
             setDeactivationTestResult(null);
             setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
         }
@@ -292,7 +301,6 @@ export function ContextEditorModal({
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    // ✅ Import lorebook entries from character card PNG
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -310,7 +318,6 @@ export function ContextEditorModal({
             return;
         }
 
-        // Pre-fill from the first lorebook entry as a starting point
         const firstEntry = extended.lorebookContexts[0];
         if (firstEntry.name && !name) setName(firstEntry.name);
         if (firstEntry.text && !text) setText(firstEntry.text);

@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool } from '../types';
+import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
 import { defaultInputStrategy } from '../defaults';
@@ -67,7 +67,26 @@ const DEFAULT_TOOLS: Record<tool, number> = {
     inventory: 0,
 };
 
-/** Merge saved tools with defaults so all keys always exist */
+const NARRATE_TEXT_LABELS: Record<textType, string> = {
+    normal: 'Normal Text',
+    quoted: 'Quoted Text',
+    bolded: 'Bolded Text',
+    italicized: 'Italicized Text',
+    parenthesized: 'Parenthesized Text',
+    bracketed: 'Bracketed Text',
+    braced: 'Braced Text',
+};
+
+const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
+    normal: false,
+    quoted: false,
+    bolded: false,
+    italicized: false,
+    parenthesized: false,
+    bracketed: false,
+    braced: false,
+};
+
 function mergeToolsWithDefaults(saved: Partial<Record<tool, number>> | undefined): Record<tool, number> {
     const merged = { ...DEFAULT_TOOLS };
     if (saved) {
@@ -90,15 +109,31 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
-/** Check if a string is a built-in PromptBlockType */
 function isBuiltInBlockType(value: string): value is PromptBlockType {
     return (defaultInputStrategy as string[]).includes(value);
+}
+
+/**
+ * Migrates old separate narrate*Text fields to the new narrateTexts record.
+ */
+function migrateNarrateTexts(profile: Profile): Record<textType, boolean> {
+    if (profile.narrateTexts) return { ...DEFAULT_NARRATE_TEXTS, ...profile.narrateTexts };
+    // Old format fallback
+    const p = profile as unknown as Record<string, unknown>;
+    return {
+        normal: (p.narrateNormalText as boolean) ?? DEFAULT_NARRATE_TEXTS.normal,
+        quoted: (p.narrateQuotedText as boolean) ?? DEFAULT_NARRATE_TEXTS.quoted,
+        bolded: (p.narrateBoldedText as boolean) ?? DEFAULT_NARRATE_TEXTS.bolded,
+        italicized: (p.narrateItalicizedText as boolean) ?? DEFAULT_NARRATE_TEXTS.italicized,
+        parenthesized: DEFAULT_NARRATE_TEXTS.parenthesized,
+        bracketed: DEFAULT_NARRATE_TEXTS.bracketed,
+        braced: DEFAULT_NARRATE_TEXTS.braced,
+    };
 }
 
 // ─── Shared Styles ──────────────────────────────────────────────────
 
 const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' };
-const CHECKBOX_SPACED_STYLE: CSSProperties = { marginTop: '8px' };
 const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
 const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
 const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
@@ -129,16 +164,18 @@ function ProfileCheckbox({
     spaced?: boolean;
 }) {
     return (
-        <label className="editor-checkbox-label" style={spaced ? CHECKBOX_SPACED_STYLE : undefined}>
-            <input
-                type="checkbox"
-                checked={checked}
-                onChange={(e) => onChange(e.target.checked)}
-                className="editor-checkbox-input"
-            />
-            <span>{label}</span>
-            {hint && <div style={CHECKBOX_HINT_STYLE}>{hint}</div>}
-        </label>
+        <div className={`profile-checkbox-row ${spaced ? 'profile-checkbox-spaced' : ''}`}>
+            <label className="editor-checkbox-label profile-checkbox-left">
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => onChange(e.target.checked)}
+                    className="editor-checkbox-input"
+                />
+                <span>{label}</span>
+            </label>
+            {hint && <div className="profile-checkbox-hint">{hint}</div>}
+        </div>
     );
 }
 
@@ -178,10 +215,7 @@ export function ProfileEditorModal({
     const [tools, setTools] = useState<Record<tool, number>>({ ...DEFAULT_TOOLS });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
     const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
-    const [narrateNormalText, setNarrateNormalText] = useState(true);
-    const [narrateQuotedText, setNarrateQuotedText] = useState(false);
-    const [narrateBoldedText, setNarrateBoldedText] = useState(false);
-    const [narrateItalicizedText, setNarrateItalicizedText] = useState(false);
+    const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({ ...DEFAULT_NARRATE_TEXTS });
     const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>([]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>([]);
     const [errors, setErrors] = useState<{ name?: string }>({});
@@ -190,14 +224,12 @@ export function ProfileEditorModal({
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
 
-    // Build lookup maps for prompt block display
     const promptBlockById = useMemo(() => {
         const map = new Map<string, PromptBlock>();
         for (const pb of allPromptBlocks) map.set(pb.id, pb);
         return map;
     }, [allPromptBlocks]);
 
-    /** Resolve a strategy entry to a display label */
     const getBlockLabel = (entry: PromptBlockType | string): string => {
         if (isBuiltInBlockType(entry)) return entry;
         const pb = promptBlockById.get(entry);
@@ -206,6 +238,10 @@ export function ProfileEditorModal({
 
     const handleToolChange = (toolName: tool, value: number) => {
         setTools(prev => ({ ...prev, [toolName]: value }));
+    };
+
+    const handleNarrateToggle = (type: textType, checked: boolean) => {
+        setNarrateTexts(prev => ({ ...prev, [type]: checked }));
     };
 
     useEffect(() => {
@@ -243,13 +279,10 @@ export function ProfileEditorModal({
             setTools(mergeToolsWithDefaults(existingProfile.tools));
             setEnableMemoryWriting(existingProfile.enableMemoryWriting ?? 0);
             setEnableMemoryReading(existingProfile.enableMemoryReading ?? 0);
-            setNarrateNormalText(existingProfile.narrateNormalText ?? true);
-            setNarrateQuotedText(existingProfile.narrateQuotedText ?? false);
-            setNarrateBoldedText(existingProfile.narrateBoldedText ?? false);
-            setNarrateItalicizedText(existingProfile.narrateItalicizedText ?? false);
+            setNarrateTexts(migrateNarrateTexts(existingProfile));
             setInputStrategy(existingProfile.inputStrategy?.length ? existingProfile.inputStrategy : []);
             setSummarizationSteps(
-                existingProfile.summarizationSteps?.length
+                existingProfile.summarizationSteps != null
                     ? [...existingProfile.summarizationSteps].sort((a, b) => a.order - b.order)
                     : getDefaultSummarizationSteps()
             );
@@ -268,7 +301,7 @@ export function ProfileEditorModal({
             setStripThinkTokens(false);
             setTools({ ...DEFAULT_TOOLS });
             setEnableMemoryWriting(0); setEnableMemoryReading(0);
-            setNarrateNormalText(true); setNarrateQuotedText(false); setNarrateBoldedText(false); setNarrateItalicizedText(false);
+            setNarrateTexts({ ...DEFAULT_NARRATE_TEXTS });
             setInputStrategy([]);
             setSummarizationSteps(getDefaultSummarizationSteps());
         }
@@ -299,7 +332,7 @@ export function ProfileEditorModal({
             cacheInvalidationReductionLevel: cacheLevel, volume, stripThinkTokens,
             tools: { ...tools },
             enableMemoryWriting, enableMemoryReading,
-            narrateNormalText, narrateQuotedText, narrateBoldedText, narrateItalicizedText,
+            narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
@@ -419,6 +452,7 @@ export function ProfileEditorModal({
     if (!isOpen) return null;
 
     const allToolKeys = Object.keys(TOOL_LABELS) as tool[];
+    const narrateTextKeys = Object.keys(NARRATE_TEXT_LABELS) as textType[];
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -550,18 +584,25 @@ export function ProfileEditorModal({
                     {/* Voice Narration */}
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                            <ProfileCheckbox checked={narrateNormalText} onChange={setNarrateNormalText} label="Narrate Normal Text" />
-                            <ProfileCheckbox checked={narrateQuotedText} onChange={setNarrateQuotedText} label="Narrate Quoted Text" />
-                            <ProfileCheckbox checked={narrateBoldedText} onChange={setNarrateBoldedText} label="Narrate Bolded Text" />
-                            <ProfileCheckbox checked={narrateItalicizedText} onChange={setNarrateItalicizedText} label="Narrate Italicized Text" />
+                        <div className="voice-narration-grid">
+                            {narrateTextKeys.map(type => (
+                                <label key={type} className="voice-narration-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={narrateTexts[type]}
+                                        onChange={(e) => handleNarrateToggle(type, e.target.checked)}
+                                        className="editor-checkbox-input"
+                                    />
+                                    <span>{NARRATE_TEXT_LABELS[type]}</span>
+                                </label>
+                            ))}
                         </div>
                     </div>
 
                     {/* Strip Think Tokens */}
                     <div className="editor-section">
                         <span className="editor-section-title">Output Processing</span>
-                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove ... blocks from displayed output. The model still uses them internally." />
+                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." />
                     </div>
 
                     {/* Tools */}

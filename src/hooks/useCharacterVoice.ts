@@ -16,20 +16,21 @@ export function useCharacterVoice() {
         if (!character.voice) return;
         const profile = useSessionStore.getState().interactionData?.Profile;
         if (profile) {
+            const narrateTexts = profile.narrateTexts
             const parts: string[] = [];
-            if (profile.narrateNormalText !== false) {
-                let n = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/\*[^*]+\*/g, '').trim();
+            if (narrateTexts.normal) {
+                const n = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/\*[^*]+\*/g, '').trim();
                 if (n) parts.push(n);
             }
-            if (profile.narrateQuotedText) {
+            if (narrateTexts.quoted) {
                 const m = text.match(/"[^"]*"|'[^']*'/g);
                 if (m) parts.push(m.map(x => x.replace(/^["']|["']$/g, '')).join(' '));
             }
-            if (profile.narrateBoldedText) {
+            if (narrateTexts.bolded) {
                 const m = text.match(/\*\*[^*]+\*\*/g);
                 if (m) parts.push(m.map(x => x.replace(/\*\*/g, '')).join(' '));
             }
-            if (profile.narrateItalicizedText) {
+            if (narrateTexts.italicized) {
                 const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
                 if (m) parts.push(m.map(x => x.replace(/\*/g, '')).join(' '));
             }

@@ -5,6 +5,7 @@ import type { PromptBlock, Character, Context, Location, regularExpressionContex
 import { uploadPromptBlockImage } from '../hooks/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { useSessionStore } from '../store/useSessionStore';
 import './main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -17,7 +18,6 @@ interface PromptBlockEditorModalProps {
     allCharacters?: Character[];
     allContexts?: Context[];
     allLocations?: Location[];
-    runtimePort?: number;
 }
 
 export function PromptBlockEditorModal({
@@ -28,7 +28,6 @@ export function PromptBlockEditorModal({
     allCharacters = [],
     allContexts = [],
     allLocations = [],
-    runtimePort,
 }: PromptBlockEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -58,19 +57,29 @@ export function PromptBlockEditorModal({
     const [textTokenCount, setTextTokenCount] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Debounced token count
+    // Sync engine context from store so countTokens uses correct model/tokenizer
+    useEffect(() => {
+        const selectedModel = useSessionStore.getState().selectedModel;
+        const runningModels = useSessionStore.getState().runningModels;
+        if (selectedModel) {
+            tokenEngine.setRunningModels(runningModels);
+            tokenEngine.setContext(selectedModel);
+        }
+    }, [isOpen]);
+
+    // Debounced token count — engine context already set above
     useEffect(() => {
         let cancelled = false;
         if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
-            const count = await tokenEngine.countTokens(textContent, runtimePort ? { runtimePort } : undefined);
+            const count = await tokenEngine.countTokens(textContent);
             if (!cancelled) setTextTokenCount(count);
         }, 400);
         return () => {
             cancelled = true;
             if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         };
-    }, [textContent, runtimePort]);
+    }, [textContent]);
 
     // Load / reset form state
     useEffect(() => {

@@ -1,5 +1,5 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, tool } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, tool, textType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
@@ -38,6 +38,16 @@ const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
     audio: 0,
     note: 0,
     inventory: 0,
+};
+
+const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
+    normal: false,
+    quoted: false,
+    bolded: false,
+    italicized: false,
+    parenthesized: false,
+    bracketed: false,
+    braced: false,
 };
 
 function ensureId(obj: Record<string, unknown>): string {
@@ -190,6 +200,7 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
 
 function fillProfileDefaults(p: Record<string, unknown>): Profile {
     const now = Date.now();
+    const rawNarrateTexts = (p.narrateTexts && typeof p.narrateTexts === 'object') ? p.narrateTexts as Record<string, unknown> : {};
     return {
         id: ensureId(p),
         name: (p.name as string) || 'Unnamed',
@@ -219,10 +230,15 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         memoryRetentionWeight: (p.memoryRetentionWeight as number) ?? 0.5,
         contextSensitivity: (p.contextSensitivity as number) ?? 0.5,
         cacheInvalidationReductionLevel: (p.cacheInvalidationReductionLevel as number) ?? 0,
-        narrateNormalText: (p.narrateNormalText as boolean) ?? true,
-        narrateQuotedText: (p.narrateQuotedText as boolean) ?? false,
-        narrateBoldedText: (p.narrateBoldedText as boolean) ?? false,
-        narrateItalicizedText: (p.narrateItalicizedText as boolean) ?? false,
+        narrateTexts: {
+            normal: (rawNarrateTexts.normal as boolean) ?? DEFAULT_NARRATE_TEXTS.normal,
+            quoted: (rawNarrateTexts.quoted as boolean) ?? DEFAULT_NARRATE_TEXTS.quoted,
+            bolded: (rawNarrateTexts.bolded as boolean) ?? DEFAULT_NARRATE_TEXTS.bolded,
+            italicized: (rawNarrateTexts.italicized as boolean) ?? DEFAULT_NARRATE_TEXTS.italicized,
+            parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? DEFAULT_NARRATE_TEXTS.parenthesized,
+            bracketed: (rawNarrateTexts.bracketed as boolean) ?? DEFAULT_NARRATE_TEXTS.bracketed,
+            braced: (rawNarrateTexts.braced as boolean) ?? DEFAULT_NARRATE_TEXTS.braced,
+        },
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, DEFAULT_PROFILE_TOOLS) as Record<tool, number>,
         enableMemoryWriting: (p.enableMemoryWriting as number) ?? 0,

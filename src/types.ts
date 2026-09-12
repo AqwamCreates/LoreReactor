@@ -481,6 +481,8 @@ export interface RawPromptBlock extends RawData {
   locationBindings: string[]
 
 }
+
+export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthesized" | "bracketed" | "braced"
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
@@ -507,10 +509,7 @@ export interface Profile extends ObjectData {
   contextSensitivity: number;
   maximumActionStamina: number;
   cacheInvalidationReductionLevel: number;
-  narrateNormalText: boolean;
-  narrateQuotedText: boolean;
-  narrateBoldedText: boolean;
-  narrateItalicizedText: boolean;
+  narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;
   enableMemoryWriting: number;
@@ -545,10 +544,7 @@ export interface RawProfile extends RawData {
   maximumActionStamina: number;
   contextSensitivity: number;
   cacheInvalidationReductionLevel: number;
-  narrateNormalText: boolean;
-  narrateQuotedText: boolean;
-  narrateBoldedText: boolean;
-  narrateItalicizedText: boolean;
+  narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;
   enableMemoryWriting: number;

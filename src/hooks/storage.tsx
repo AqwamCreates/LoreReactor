@@ -9,7 +9,7 @@ import type {
   RawBudgetData,
   AudioTrack, RawAudioTrack,
   PromptBlock, RawPromptBlock,
-  tool,
+  tool, textType,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -77,6 +77,16 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
+const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
+    normal: true,
+    quoted: false,
+    bolded: false,
+    italicized: false,
+    parenthesized: false,
+    bracketed: false,
+    braced: false,
+};
+
 const PATHS = {
   characters: "/user_data/character_data", 
   characterImages: "/user_data/character_images",
@@ -111,7 +121,6 @@ async function getServerAvailable(): Promise<boolean> {
     return _serverAvailable;
 }
 
-/** Force re-check server availability (e.g., after network change). */
 export function resetServerAvailability(): void {
     _serverAvailable = null;
 }
@@ -300,6 +309,25 @@ function getCleanPath(path: string){
 
 function getCleanFileName(file: { name: string }){
   return file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+/**
+ * Migrates old separate narrate*Text fields to the new narrateTexts record.
+ * Handles backward compatibility with profiles saved before the consolidation.
+ */
+function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> {
+    if (rawProfile.narrateTexts) return rawProfile.narrateTexts;
+
+    // Old format: separate boolean fields
+    return {
+        normal: (rawProfile as any).narrateNormalText ?? DEFAULT_NARRATE_TEXTS.normal,
+        quoted: (rawProfile as any).narrateQuotedText ?? DEFAULT_NARRATE_TEXTS.quoted,
+        bolded: (rawProfile as any).narrateBoldedText ?? DEFAULT_NARRATE_TEXTS.bolded,
+        italicized: (rawProfile as any).narrateItalicizedText ?? DEFAULT_NARRATE_TEXTS.italicized,
+        parenthesized: DEFAULT_NARRATE_TEXTS.parenthesized,
+        bracketed: DEFAULT_NARRATE_TEXTS.bracketed,
+        braced: DEFAULT_NARRATE_TEXTS.braced,
+    };
 }
 
 // --- Memory Repository ---
@@ -963,29 +991,30 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
 
     const now = Date.now();
 
-    const rawSteps = rawProfile.summarizationSteps || [];
-    const summarizationSteps: SummarizationStep[] = rawSteps.length > 0
-        ? rawSteps.map((step, i) => ({
-            id: step.id || `step-${uuidv4()}`,
-            name: step.name || step.strategyType,
-            description: step.description,
-            strategyType: step.strategyType,
-            enabled: step.enabled ?? false,
-            order: step.order ?? i,
-            slidingWindowSize: step.slidingWindowSize,
-            compressionInterval: step.compressionInterval,
-            compressionChunkSize: step.compressionChunkSize,
-            recursiveChunkSize: step.recursiveChunkSize,
-            recursiveMaxDepth: step.recursiveMaxDepth,
-            maskingRelevanceThreshold: step.maskingRelevanceThreshold,
-            maskingKeywordWeight: step.maskingKeywordWeight,
-            summaryTokenBudget: step.summaryTokenBudget,
-            summaryModelId: step.summaryModelId,
-            triggerTokenThreshold: step.triggerTokenThreshold,
-            firstCreatedTimestamp: step.firstCreatedTimestamp || now,
-            lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
-        }))
-        : getDefaultSummarizationSteps();
+    const summarizationSteps: SummarizationStep[] = rawProfile.summarizationSteps != null
+      ? rawProfile.summarizationSteps.map((step, i) => ({
+          id: step.id || `step-${uuidv4()}`,
+          name: step.name || step.strategyType,
+          description: step.description,
+          strategyType: step.strategyType,
+          enabled: step.enabled ?? false,
+          order: step.order ?? i,
+          slidingWindowSize: step.slidingWindowSize,
+          compressionInterval: step.compressionInterval,
+          compressionChunkSize: step.compressionChunkSize,
+          recursiveChunkSize: step.recursiveChunkSize,
+          recursiveMaxDepth: step.recursiveMaxDepth,
+          maskingRelevanceThreshold: step.maskingRelevanceThreshold,
+          maskingKeywordWeight: step.maskingKeywordWeight,
+          summaryTokenBudget: step.summaryTokenBudget,
+          summaryModelId: step.summaryModelId,
+          triggerTokenThreshold: step.triggerTokenThreshold,
+          firstCreatedTimestamp: step.firstCreatedTimestamp || now,
+          lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
+      }))
+      : getDefaultSummarizationSteps();
+
+    const narrateTexts = migrateNarrateTexts(rawProfile);
 
     return {
         id,
@@ -1016,15 +1045,12 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         contextSensitivity: rawProfile.contextSensitivity ?? -1,
         maximumActionStamina: rawProfile.maximumActionStamina ?? -1,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
-        narrateNormalText: rawProfile.narrateNormalText,
-        narrateQuotedText: rawProfile.narrateQuotedText,
-        narrateBoldedText: rawProfile.narrateBoldedText,
-        narrateItalicizedText: rawProfile.narrateItalicizedText,
+        narrateTexts,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
         tools: rawProfile.tools ?? {},
         enableMemoryWriting: rawProfile.enableMemoryWriting ?? 0,
         enableMemoryReading: rawProfile.enableMemoryReading ?? 0,
-        inputStrategy: rawProfile.inputStrategy ?? [...getDefaultSummarizationSteps().map(() => 'System Prompt')].slice(0, 0).concat(['System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'] as const),
+        inputStrategy: rawProfile.inputStrategy ?? ['System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'],
         summarizationSteps,
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || now,
@@ -1039,7 +1065,7 @@ export async function loadAllRawProfiles(): Promise<Profile[]> {
 
 export async function saveRawProfile(profile: Profile): Promise<void> {
     const { id, summarizationSteps, ...rawProfile } = profile;
-    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({...rest }) => rest);
+    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...rest }) => rest);
     const payload: RawProfile = {
         ...rawProfile,
         summarizationSteps: rawSteps,
@@ -1256,7 +1282,6 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
 }
 
-/** Loads full interaction data including all messages. */
 export async function loadRawInteractionData(
   id: string,
   existingCharShells?: Character[]

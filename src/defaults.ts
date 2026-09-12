@@ -20,6 +20,7 @@ export const DefaultModel: LanguageModel = {
   id: "default-model",
   name: "Default Model",
   description: "Fallback model",
+  backend: "Llama.cpp",
   contextLength: 4096,
   firstCreatedTimestamp: now,
   lastUpdatedTimestamp: now,

@@ -187,10 +187,10 @@ export function AIRecommendationModal({
     const handleGenerate = async () => {
         if (selectedEntities.length === 0) { setError('Select at least one entity type.'); return; }
         if (!selectedModel) { setError('No model selected.'); return; }
-        const port = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
-        const rp = (selectedModel.parameters && typeof selectedModel.parameters === 'object' && '_runtimePort' in selectedModel.parameters) ? (selectedModel.parameters as Record<string, number>)._runtimePort : undefined;
-        const ep = port || rp;
-        if (!ep && !selectedModel.apiKey) { setError('Model not loaded and has no API key.'); return; }
+
+        // Set engine context with full model — runtime port resolved internally
+        recommendationEngine.setRunningModels(runningModels);
+        recommendationEngine.setContext(selectedModel);
 
         let imgDesc = '';
         if (referenceImages.length > 0) { setIsUploadingImages(true); imgDesc = `\nREFERENCE IMAGES:\n${referenceImages.map((f, i) => `[Image ${i + 1}: ${f.name}]`).join('\n')}\n`; setIsUploadingImages(false); }
@@ -205,9 +205,12 @@ export function AIRecommendationModal({
             const sp = buildSystemPrompt();
             const urp = userPrompt.trim() ? `\n\nUser Request: ${userPrompt.trim()}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
-            const mc = { apiKey: selectedModel.apiKey, backend: selectedModel.backend, modelPath: (selectedModel.model || selectedModel.parameters?.modelPath) as string | undefined, runtimePort: ep };
             let acc = '';
-            const res = await recommendationEngine.generateStream({ prompt: fp, n_predict: maxTokens, temperature: 0.7, top_p: 0.9, stream: true }, ctrl, { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText, allSamplers); if (p) setParsedOutput(p); } }, mc, 0, undefined);
+            const res = await recommendationEngine.generateStream(
+                { prompt: fp, n_predict: maxTokens, temperature: 0.7, top_p: 0.9, stream: true },
+                ctrl,
+                { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText, allSamplers); if (p) setParsedOutput(p); } },
+            );
             const ft = res.text || acc; setStreamingText(ft);
             const parsed = tryParseGeneratedOutput(ft, allSamplers); setParsedOutput(parsed);
             if (!parsed) setResultError('AI response was not valid JSON.');

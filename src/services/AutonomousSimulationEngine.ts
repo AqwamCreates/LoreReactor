@@ -101,7 +101,6 @@ export class AutonomousSimulationEngine {
 
     start(
         executor: AutonomousExecutor,
-        checkCanAct: () => boolean,
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
     ): void {
@@ -119,13 +118,12 @@ export class AutonomousSimulationEngine {
                 await new Promise(resolve => setTimeout(resolve, intervalMs));
 
                 if (!this.isRunning) break;
-                if (!checkCanAct()) continue;
 
                 const currentData = getData();
                 if (!currentData || !currentData.Profile?.autonomousMode) continue;
 
                 try {
-                    await this.tick(currentData, setData, checkCanAct);
+                    await this.tick(currentData, setData);
                 } catch (e) {
                     if ((e as Error).name !== 'AbortError') {
                         console.warn('Autonomous simulation tick failed:', e);
@@ -157,7 +155,6 @@ export class AutonomousSimulationEngine {
     private async tick(
         currentData: InteractionData,
         setData: (data: InteractionData) => void,
-        checkCanAct: () => boolean,
     ): Promise<void> {
         if (!this.executor || !this.abortController) return;
 
