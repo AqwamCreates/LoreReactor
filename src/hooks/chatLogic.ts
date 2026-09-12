@@ -721,7 +721,7 @@ export async function buildPromptAndStopPatterns(
 
     // Engine context is already set by caller before calling this function.
     // fetchMultipleContextUrls uses the engine internally for summarization.
-    const engineCtx = tokenEngine.getContext();
+    const activeModel = tokenEngine.getContext();
 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (context) => {
@@ -737,7 +737,7 @@ export async function buildPromptAndStopPatterns(
                     fetchMode,
                     searchTerms: context.searchTerms,
                     searchEngine: context.searchEngine,
-                    modelContext: engineCtx,
+                    model: activeModel,
                     includeImages: context.includeLinkImages ?? false,
                     limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
                 }
