@@ -451,7 +451,7 @@ export function useChatSession() {
         if (msg.messageType !== 'chat' || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!useSessionStore.getState().activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
         getAudioEngine().initialize();
         const existingText = msg.textContent;
         const char = msg.character;

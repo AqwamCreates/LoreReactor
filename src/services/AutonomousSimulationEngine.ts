@@ -186,11 +186,11 @@ export class AutonomousSimulationEngine {
             const silenceMultiplier = 1 + Math.min(silenceHours * 2, 4);
             const actionChance = Math.min((initiative / 10) * silenceMultiplier, 1);
 
-            // Universal skip gate
-            if (effectiveSkip > 0 && Math.random() < effectiveSkip) continue;
-
-            // Does this character do anything this tick?
+            // Does this character can do anything during this tick?
             if (Math.random() >= actionChance) continue;
+
+            // Does the character decides to ignore doing anything?
+            if (effectiveSkip > 0 && Math.random() < effectiveSkip) continue;
 
             // Character wants to act. Now decide WHAT based on chat-specific stats.
             const charLoc = hasLocations ? getCurrentLocationIndex(workingData, character) : undefined;
