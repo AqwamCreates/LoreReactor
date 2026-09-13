@@ -308,6 +308,7 @@ export interface BaseMessage {
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
+  characterLockedLocations: Record<string, string[]> // locationId owned by the character -> an array of character ids that is being locked out from this location.
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -323,6 +324,7 @@ export interface ChatMessage extends BaseMessage {
   files?: string[];
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
+  modelInteractionTextContentSummaries: Record<string, string>;
   kvCachePath?: string;
 }
 
@@ -353,6 +355,7 @@ export interface RawChatMessage extends RawBaseMessage {
   files?: string[];
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
+  modelInteractionTextContentSummaries: Record<string, string>;
   kvCachePath?: string;
 }
 
