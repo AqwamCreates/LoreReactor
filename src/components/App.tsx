@@ -294,11 +294,29 @@ function App() {
     useEffect(() => { if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id); else localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT); }, [interactionData?.id]);
     useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
 
+    // Budget strategy activation — re-runs when allModels changes to handle load-order
     useEffect(() => {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
-        if (strategy) setActiveBudgetStrategy(strategy); else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
+        if (!strategy) {
+            localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
+            return;
+        }
+        // Re-hydrate model references from current allModels to ensure golden star reflects latest state
+        const modelMap = new Map(allModels.map(m => [m.id, m]));
+        const freshOnline = strategy.onlineModels
+            .map(m => modelMap.get(m.id))
+            .filter((m): m is LanguageModel => !!m);
+        const freshLocal = strategy.localModels
+            .map(m => modelMap.get(m.id))
+            .filter((m): m is LanguageModel => !!m);
+        const hydrated: BudgetStrategy = {
+            ...strategy,
+            onlineModels: freshOnline,
+            localModels: freshLocal,
+        };
+        setActiveBudgetStrategy(hydrated);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, allModels, setActiveBudgetStrategy]);
 
     useEffect(() => {
         if (!selectedModelId || allModels.length === 0) return;
@@ -328,7 +346,7 @@ function App() {
 
     useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-    // Budget strategy sync
+    // Budget strategy sync — safety net for runtime model additions/deletions
     useEffect(() => {
         if (!activeStrategy) return;
         let stratChanged = false;
@@ -466,7 +484,7 @@ function App() {
         }
 
         tokenCountTimerRef.current = setTimeout(async () => {
-            if (InteractionMessages.length === 0 || !interactionData?.participants || activeStrategy) {
+            if (InteractionMessages.length === 0 || !interactionData?.participants) {
                 setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
                 lastCountedMessageIdsRef.current.clear();
                 return;
@@ -482,13 +500,26 @@ function App() {
                     participantCounts[interactionData.protagonist.id] = 0;
                 }
 
-                const selectedModel = allModels.find(m => m.id === selectedModelId);
+                // Resolve tokenizer model: prefer selectedModelId, fall back to activeStrategy's first online model
+                let tokenizerModel: LanguageModel | undefined;
+                if (selectedModelId) {
+                    tokenizerModel = allModels.find(m => m.id === selectedModelId);
+                }
+                if (!tokenizerModel && activeStrategy && activeStrategy.onlineModels.length > 0) {
+                    tokenizerModel = activeStrategy.onlineModels[0];
+                }
+                if (!tokenizerModel && activeStrategy && activeStrategy.localModels.length > 0) {
+                    tokenizerModel = activeStrategy.localModels[0];
+                }
+
                 const engine = getLanguageModelEngine();
 
-                // Set engine context once before counting loop
-                if (selectedModel) {
+                if (tokenizerModel) {
                     engine.setRunningModels(runningModels);
-                    engine.setContext(selectedModel);
+                    engine.setContext(tokenizerModel);
+                } else {
+                    // No model available for tokenization — skip counting this cycle
+                    return;
                 }
 
                 const prevCountedIds = lastCountedMessageIdsRef.current;
