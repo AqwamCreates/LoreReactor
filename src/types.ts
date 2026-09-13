@@ -134,6 +134,7 @@ export interface Location extends ObjectData {
   images?: string[];
   regularExpressionActivationTrigger?: string;
   regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionExclusionContext?: regularExpressionContext;
   regularExpressionExclusionTarget?: regularExpressionTarget;
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
@@ -164,6 +165,7 @@ export interface RawLocation extends RawData {
   images?: string[];
   regularExpressionActivationTrigger?: string;
   regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionExclusionContext?: regularExpressionContext;
   regularExpressionExclusionTarget?: regularExpressionTarget;
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
@@ -588,6 +590,7 @@ export interface Profile extends ObjectData {
   contextSensitivity: number;
   maximumActionStamina: number;
   cacheInvalidationReductionLevel: number;
+  doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;
@@ -623,6 +626,7 @@ export interface RawProfile extends RawData {
   maximumActionStamina: number;
   contextSensitivity: number;
   cacheInvalidationReductionLevel: number;
+  doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;

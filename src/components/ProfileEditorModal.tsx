@@ -210,6 +210,7 @@ export function ProfileEditorModal({
     const [contextSensitivity, setContextSensitivity] = useState<number>(-1);
     const [maximumActionStamina, setMaximumActionStamina] = useState<number>(-1);
     const [cacheLevel, setCacheLevel] = useState<number>(0);
+    const [doNotInjectDefaultStopTokens, setDoNotInjectDefaultStopTokens] = useState(false);
     const [volume, setVolume] = useState<number>(-1);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
     const [tools, setTools] = useState<Record<tool, number>>({ ...DEFAULT_TOOLS });
@@ -274,6 +275,7 @@ export function ProfileEditorModal({
             setContextSensitivity(existingProfile.contextSensitivity ?? -1);
             setMaximumActionStamina(existingProfile.maximumActionStamina ?? -1);
             setCacheLevel(existingProfile.cacheInvalidationReductionLevel ?? 0);
+            setDoNotInjectDefaultStopTokens(existingProfile.doNotInjectDefaultStopTokens ?? false);
             setVolume(existingProfile.volume ?? -1);
             setStripThinkTokens(existingProfile.stripThinkTokens ?? false);
             setTools(mergeToolsWithDefaults(existingProfile.tools));
@@ -297,7 +299,9 @@ export function ProfileEditorModal({
             setForceEqualInitiative(false); setChatProbability(0); setMaximumChatStamina(0);
             setNameSensitivity(-1); setSkipProbability(-1); setChatImpatienceSensitivity(-1);
             setMemoryRetentionWeight(-1); setContextSensitivity(-1); setMaximumActionStamina(-1);
-            setCacheLevel(0); setVolume(-1);
+            setCacheLevel(0);
+            setDoNotInjectDefaultStopTokens(false);
+            setVolume(-1);
             setStripThinkTokens(false);
             setTools({ ...DEFAULT_TOOLS });
             setEnableMemoryWriting(0); setEnableMemoryReading(0);
@@ -329,7 +333,9 @@ export function ProfileEditorModal({
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
             memoryRetentionWeight, contextSensitivity,
             maximumActionStamina,
-            cacheInvalidationReductionLevel: cacheLevel, volume, stripThinkTokens,
+            cacheInvalidationReductionLevel: cacheLevel,
+            doNotInjectDefaultStopTokens,
+            volume, stripThinkTokens,
             tools: { ...tools },
             enableMemoryWriting, enableMemoryReading,
             narrateTexts: { ...narrateTexts },
@@ -573,12 +579,18 @@ export function ProfileEditorModal({
                         {renderOverrideSlider('Maximum Action Stamina Override', maximumActionStamina, -1, 10, 1, 0, (val) => setMaximumActionStamina(Math.round(val)), 'Silent actions (movement, non-chat interactions) before needing rest.', maximumActionStamina === -1 ? '(Character default)' : undefined)}
                     </div>
 
-                    {/* Cache Invalidation Reduction */}
+                    {/* Cache & Stop Tokens */}
                     <div className="editor-section">
-                        <div style={SLIDER_HEADER_STYLE}>
-                            <span className="editor-section-title" style={{ margin: 0 }}>Cache Invalidation Reduction</span>
+                        <span className="editor-section-title">Language Model Handling</span>
+
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={SLIDER_HEADER_STYLE}>
+                                <span className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Cache Invalidation Reduction</span>
+                            </div>
+                            <SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} />
                         </div>
-                        <SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} />
+
+                        <ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." />
                     </div>
 
                     {/* Voice Narration */}
@@ -599,7 +611,7 @@ export function ProfileEditorModal({
                         </div>
                     </div>
 
-                    {/* Strip Think Tokens */}
+                    {/* Output Processing */}
                     <div className="editor-section">
                         <span className="editor-section-title">Output Processing</span>
                         <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." />

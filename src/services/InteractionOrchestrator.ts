@@ -12,7 +12,7 @@ import {
     weightedSample,
     computeModulatedRegenAmounts,
     computeEffectiveSkip,
-    computeChatConsumptionCost,
+    computeChatStaminaConsumptionCost,
     computeMovementCost,
 } from '../hooks/dynamicCharacterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
@@ -151,7 +151,7 @@ export async function runTurnSequence(
             const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
             if (newLastEntry && newLastEntry.character.id === speaker.id && hasTextContent(newLastEntry)) {
                 const paragraphs = countParagraphs(newLastEntry.textContent);
-                const chatCost = computeChatConsumptionCost(speaker, resultData, paragraphs);
+                const chatCost = computeChatStaminaConsumptionCost(speaker, resultData, paragraphs);
                 if (chatCost > 0) consumeChatStaminaForMessage(newLastEntry, chatCost);
 
                 if (hasLocations) {

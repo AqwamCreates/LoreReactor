@@ -605,23 +605,31 @@ export function computeEffectiveSkip(
  *   Soft scaling via sqrt prevents exponential explosion.
  * - Decimal output: cost is always a float. No rounding, no flooring.
  */
-export function computeChatConsumptionCost(
+export function computeChatStaminaConsumptionCost(
     speaker: Character,
     data: InteractionData,
     paragraphs: number,
 ): number {
     if (paragraphs <= 0) return 0;
 
-    const speakerLoc = getCurrentLocationIndex(data, speaker);
-    const coLocatedCount = speakerLoc !== undefined
-        ? data.participants.filter(p => {
-            if (p.id === speaker.id) return false;
-            const pLoc = getCurrentLocationIndex(data, p);
-            return pLoc !== undefined && pLoc === speakerLoc;
-        }).length
-        : 0;
+    const hasLocations = data.locations && data.locations.length > 0;
+    
+    let coLocatedCount: number;
+    if (!hasLocations) {
+        // No location system: all participants are effectively co-located
+        coLocatedCount = data.participants.filter(p => p.id !== speaker.id).length;
+    } else {
+        const speakerLoc = getCurrentLocationIndex(data, speaker);
+        coLocatedCount = speakerLoc !== undefined
+            ? data.participants.filter(p => {
+                if (p.id === speaker.id) return false;
+                const pLoc = getCurrentLocationIndex(data, p);
+                return pLoc !== undefined && pLoc === speakerLoc;
+            }).length
+            : 0;
+    }
+    
     const loadMultiplier = Math.sqrt(coLocatedCount);
-
     return paragraphs * loadMultiplier;
 }
 

@@ -1317,26 +1317,9 @@ export async function prepareRequestBody(
 
     let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
-    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
-
-    const finalStops = [
-        turnEndString,
-        turnStartString,
-        commonThinkStartString,
-        commonThinkEndString,
-        gemmaThinkStartString,
-        gemmaThinkEndString,
-        thinkEndString,
-        thinkStartString,
-        ...(Array.isArray(paramStops) ? paramStops : []),
-        ...activeStopPatterns.map(sp => sp.pattern),
-    ];
-
     const profile = interactionData.Profile;
 
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
-
-    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const filesBase64: { data: string; id: number }[] = [];
 
@@ -1482,6 +1465,33 @@ export async function prepareRequestBody(
     }
 
     const fullPrompt = `${initialPrompt}${prompt}`;
+
+    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
+
+    let defaultStops: string[] = []
+
+    if (!profile?.doNotInjectDefaultStopTokens){
+
+        defaultStops = [
+            turnEndString,
+            turnStartString,
+            commonThinkStartString,
+            commonThinkEndString,
+            gemmaThinkStartString,
+            gemmaThinkEndString,
+            thinkEndString,
+            thinkStartString,
+        ]
+        
+    }
+
+    const finalStops = [
+        ...defaultStops,
+        ...(Array.isArray(paramStops) ? paramStops : []),
+        ...activeStopPatterns.map(sp => sp.pattern),
+    ];
+
+    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const body: Record<string, unknown> = {
         ...otherParams,

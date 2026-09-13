@@ -53,6 +53,7 @@ function isQuotaError(e: unknown): boolean {
     const obj = e as Record<string, unknown>;
     const status = obj?.status ?? obj?.statusCode;
     const message = ((e as Error)?.message || '').toLowerCase();
+
     return status === 429 || status === 403 || status === 503 ||
         message.includes('rate limit') || message.includes('usage limit') ||
         message.includes('quota') || message.includes('credit') ||
@@ -72,6 +73,7 @@ function isQuotaError(e: unknown): boolean {
 
 function isCensorshipRefusal(text: string): boolean {
     if (!text || text.trim().length === 0) return false;
+
     const lower = text.toLowerCase().trim();
     const refusalPatterns = [
         /^i can'?t (help|assist|provide|generate|create|write|produce|fulfill)/,
@@ -85,9 +87,11 @@ function isCensorshipRefusal(text: string): boolean {
         /^sorry[,.]/,
         /refuse|refused|refusing/,
     ];
+
     for (const pattern of refusalPatterns) {
         if (pattern.test(lower)) return true;
     }
+
     return false;
 }
 
@@ -98,6 +102,7 @@ function isResetDue(data: BudgetData): boolean {
 
 function applyResetIfDue(data: BudgetData): void {
     if (!isResetDue(data)) return;
+
     data.budgetSpent = 0;
     data.modelLastQuotaHitTimeStamps = {};
     data.modelLastErrorHitTimeStamps = {};
@@ -130,8 +135,10 @@ export class BudgetStrategyEngine {
         this.budgetData = budgetData;
         this.runningModels = runningModels;
         this.loadLocalModel = loadLocalModel ?? null;
+
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
         if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
+
         applyResetIfDue(this.budgetData);
     }
 
@@ -143,14 +150,15 @@ export class BudgetStrategyEngine {
 
     setBudgetData(budgetData: BudgetData): void {
         this.budgetData = budgetData;
+
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
         if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
+
         applyResetIfDue(this.budgetData);
     }
 
     setRunningModels(runningModels: Record<string, RunningModelState>): void {
         this.runningModels = runningModels;
-        // Keep engine's running models in sync so it can resolve runtime ports
         this.engine.setRunningModels(runningModels);
     }
 
@@ -169,6 +177,9 @@ export class BudgetStrategyEngine {
      * Sets the engine context to the selected model so callers can
      * build prompts with the correct model ID and tokenizer.
      * Returns null if no models are available.
+     *
+     * Context length is treated as a soft quality signal, not a hard gate,
+     * because the backend can summarize/compress oversized context.
      */
     async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
         const failedOnlineIds = new Set<string>();
@@ -181,19 +192,21 @@ export class BudgetStrategyEngine {
         const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
 
         const promptText = (requestBody.prompt as string) || '';
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
+
         const complexityScore = computeComplexityScore(promptText);
         const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
+
         let perTurnMaxTier: number | undefined;
         if (tierValues.length > 0) {
             const tierIndex = Math.min(
                 tierValues.length - 1,
-                Math.round((complexityScore / 100) * (tierValues.length - 1))
+                Math.round((complexityScore / 100) * (tierValues.length - 1)),
             );
             perTurnMaxTier = tierValues[tierIndex];
         }
 
-        // Try primary pool
-        const primary = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier);
+        const primary = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier, requiredContextTokens);
         if (primary) {
             const loaded = await this.ensureModelLoaded(primary);
             if (loaded) {
@@ -202,9 +215,8 @@ export class BudgetStrategyEngine {
             }
         }
 
-        // Try fallback pool
         if (this.strategy.fallbackOnLocalFailure) {
-            const fallback = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier);
+            const fallback = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier, requiredContextTokens);
             if (fallback) {
                 const loaded = await this.ensureModelLoaded(fallback);
                 if (loaded) {
@@ -214,9 +226,8 @@ export class BudgetStrategyEngine {
             }
         }
 
-        // Try free models
         const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
-        const freeModel = this.selectFreeModel(allFailedIds);
+        const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
         if (freeModel) {
             const loaded = await this.ensureModelLoaded(freeModel);
             if (loaded) {
@@ -246,15 +257,18 @@ export class BudgetStrategyEngine {
         const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
 
         const promptText = (requestBody.prompt as string) || '';
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
+
         const complexityScore = computeComplexityScore(promptText);
         const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
+
         let perTurnMaxTier: number | undefined;
         if (tierValues.length === 0) {
             perTurnMaxTier = undefined;
         } else {
             const tierIndex = Math.min(
                 tierValues.length - 1,
-                Math.round((complexityScore / 100) * (tierValues.length - 1))
+                Math.round((complexityScore / 100) * (tierValues.length - 1)),
             );
             perTurnMaxTier = tierValues[tierIndex];
         }
@@ -272,7 +286,13 @@ export class BudgetStrategyEngine {
 
         // ─── Try primary pool ───
         while (true) {
-            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier);
+            const selectedModel = this.selectFromPool(
+                primaryPool,
+                primaryFailedSet,
+                perTurnMaxTier,
+                requiredContextTokens,
+            );
+
             if (!selectedModel) break;
 
             const loaded = await this.ensureModelLoaded(selectedModel);
@@ -290,6 +310,7 @@ export class BudgetStrategyEngine {
             try {
                 const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                 let result: StreamResult;
+
                 try {
                     result = await this.engine.generateStream(
                         requestBody,
@@ -298,6 +319,7 @@ export class BudgetStrategyEngine {
                     );
                 } catch (e) {
                     cleanupTimeout();
+
                     if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
                         const sessionDuration = Date.now() - sessionStart;
                         this.recordSessionDuration(selectedModel.id, sessionDuration);
@@ -306,6 +328,7 @@ export class BudgetStrategyEngine {
                         console.warn(`Model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
                         continue;
                     }
+
                     throw e;
                 } finally {
                     cleanupTimeout();
@@ -317,16 +340,19 @@ export class BudgetStrategyEngine {
                 if (result.msPerToken && result.msPerToken > 0) {
                     this.recordLatency(selectedModel.id, result.msPerToken);
                 }
+
                 if (result.timeToFirstToken && result.timeToFirstToken > 0) {
                     this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                 }
 
-                const promptTokens = await this.engine.countTokens(promptText);
+                const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                 const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
                 const fullOutput = accumulatedPartialText + result.text;
+
                 if (!fullOutput.trim()) {
                     this.recordBroken(selectedModel.id);
                     primaryFailedSet.add(selectedModel.id);
@@ -362,7 +388,13 @@ export class BudgetStrategyEngine {
         // ─── Primary pool exhausted — try fallback pool ───
         if (this.strategy.fallbackOnLocalFailure && !abortController.signal.aborted) {
             while (true) {
-                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier);
+                const selectedModel = this.selectFromPool(
+                    fallbackPool,
+                    fallbackFailedSet,
+                    perTurnMaxTier,
+                    requiredContextTokens,
+                );
+
                 if (!selectedModel) break;
 
                 const loaded = await this.ensureModelLoaded(selectedModel);
@@ -380,6 +412,7 @@ export class BudgetStrategyEngine {
                 try {
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
+
                     try {
                         result = await this.engine.generateStream(
                             requestBody,
@@ -388,6 +421,7 @@ export class BudgetStrategyEngine {
                         );
                     } catch (e) {
                         cleanupTimeout();
+
                         if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
                             const sessionDuration = Date.now() - sessionStart;
                             this.recordSessionDuration(selectedModel.id, sessionDuration);
@@ -396,6 +430,7 @@ export class BudgetStrategyEngine {
                             console.warn(`Fallback model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
                             continue;
                         }
+
                         throw e;
                     } finally {
                         cleanupTimeout();
@@ -407,16 +442,19 @@ export class BudgetStrategyEngine {
                     if (result.msPerToken && result.msPerToken > 0) {
                         this.recordLatency(selectedModel.id, result.msPerToken);
                     }
+
                     if (result.timeToFirstToken && result.timeToFirstToken > 0) {
                         this.recordTTFT(selectedModel.id, result.timeToFirstToken);
                     }
 
-                    const promptTokens = await this.engine.countTokens(promptText);
+                    const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
+
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     const fullOutput = accumulatedPartialText + result.text;
+
                     if (!fullOutput.trim()) {
                         this.recordBroken(selectedModel.id);
                         fallbackFailedSet.add(selectedModel.id);
@@ -455,7 +493,7 @@ export class BudgetStrategyEngine {
             const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
 
             while (true) {
-                const freeModel = this.selectFreeModel(allFailedIds);
+                const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
                 if (!freeModel) break;
 
                 const loaded = await this.ensureModelLoaded(freeModel);
@@ -472,6 +510,7 @@ export class BudgetStrategyEngine {
                 try {
                     const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
+
                     try {
                         result = await this.engine.generateStream(
                             requestBody,
@@ -480,6 +519,7 @@ export class BudgetStrategyEngine {
                         );
                     } catch (e) {
                         cleanupTimeout();
+
                         if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
                             const sessionDuration = Date.now() - sessionStart;
                             this.recordSessionDuration(freeModel.id, sessionDuration);
@@ -488,6 +528,7 @@ export class BudgetStrategyEngine {
                             console.warn(`Free model ${freeModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
                             continue;
                         }
+
                         throw e;
                     } finally {
                         cleanupTimeout();
@@ -499,6 +540,7 @@ export class BudgetStrategyEngine {
                     if (result.msPerToken && result.msPerToken > 0) {
                         this.recordLatency(freeModel.id, result.msPerToken);
                     }
+
                     if (result.timeToFirstToken && result.timeToFirstToken > 0) {
                         this.recordTTFT(freeModel.id, result.timeToFirstToken);
                     }
@@ -506,6 +548,7 @@ export class BudgetStrategyEngine {
                     this.recordSuccess(freeModel.id, 0);
 
                     const fullOutput = accumulatedPartialText + result.text;
+
                     if (!fullOutput.trim()) {
                         this.recordBroken(freeModel.id);
                         allFailedIds.add(freeModel.id);
@@ -559,9 +602,18 @@ export class BudgetStrategyEngine {
         const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
         const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
 
+        const promptText = (requestBody.prompt as string) || '';
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
+
         // ─── Try primary pool ───
         while (true) {
-            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet);
+            const selectedModel = this.selectFromPool(
+                primaryPool,
+                primaryFailedSet,
+                undefined,
+                requiredContextTokens,
+            );
+
             if (!selectedModel) break;
 
             if (abortSignal?.aborted) throw new Error('Aborted');
@@ -580,11 +632,13 @@ export class BudgetStrategyEngine {
             try {
                 const result = await this.engine.generateCompletion(requestBody);
                 const sessionDuration = Date.now() - sessionStart;
+
                 this.recordSessionDuration(selectedModel.id, sessionDuration);
 
-                const promptTokens = await this.engine.countTokens((requestBody.prompt as string) || '');
+                const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                 const completionTokens = await this.engine.countTokens(result.text);
                 const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
                 if (!result.text.trim()) {
@@ -619,7 +673,13 @@ export class BudgetStrategyEngine {
         // ─── Fallback pool ───
         if (this.strategy.fallbackOnLocalFailure) {
             while (true) {
-                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet);
+                const selectedModel = this.selectFromPool(
+                    fallbackPool,
+                    fallbackFailedSet,
+                    undefined,
+                    requiredContextTokens,
+                );
+
                 if (!selectedModel) break;
 
                 if (abortSignal?.aborted) throw new Error('Aborted');
@@ -638,11 +698,13 @@ export class BudgetStrategyEngine {
                 try {
                     const result = await this.engine.generateCompletion(requestBody);
                     const sessionDuration = Date.now() - sessionStart;
+
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
-                    const promptTokens = await this.engine.countTokens((requestBody.prompt as string) || '');
+                    const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     if (!result.text.trim()) {
@@ -677,8 +739,9 @@ export class BudgetStrategyEngine {
 
         // ─── Free models ───
         const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
+
         while (true) {
-            const freeModel = this.selectFreeModel(allFailedIds);
+            const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
             if (!freeModel) break;
 
             if (abortSignal?.aborted) throw new Error('Aborted');
@@ -696,6 +759,7 @@ export class BudgetStrategyEngine {
             try {
                 const result = await this.engine.generateCompletion(requestBody);
                 const sessionDuration = Date.now() - sessionStart;
+
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 this.recordSuccess(freeModel.id, 0);
 
@@ -716,6 +780,7 @@ export class BudgetStrategyEngine {
                 return { text: result.text, modelId: freeModel.id };
             } catch {
                 const sessionDuration = Date.now() - sessionStart;
+
                 this.recordSessionDuration(freeModel.id, sessionDuration);
                 allFailedIds.add(freeModel.id);
                 this.recordError(freeModel.id);
@@ -762,7 +827,33 @@ export class BudgetStrategyEngine {
         return avgDurationSeconds < threshold;
     }
 
-    private computeCompositeQuality(modelId: string): number {
+    /**
+     * Soft context-fit factor.
+     *
+     * This deliberately does NOT disqualify models with smaller context windows,
+     * because the backend can summarize/compress context. Instead:
+     * - fitting models get factor 1
+     * - undersized models get a proportional penalty
+     *
+     * Example:
+     * - 8k prompt on 8k model: 1
+     * - 8k prompt on 4k model: 0.5
+     * - 8k prompt on 2k model: 0.25
+     */
+    private getContextFitFactor(model: LanguageModel, requiredContextTokens?: number): number {
+        if (!requiredContextTokens || requiredContextTokens <= 0) return 1;
+
+        const contextLength = model.contextLength ?? 0;
+        if (!contextLength || contextLength <= 0) return 1;
+
+        if (contextLength >= requiredContextTokens) return 1;
+
+        return Math.max(0.05, contextLength / requiredContextTokens);
+    }
+
+    private computeCompositeQuality(model: LanguageModel, requiredContextTokens?: number): number {
+        const modelId = model.id;
+
         const speed = this.getModelSpeed(modelId);
         const ttft = this.getModelTTFT(modelId);
         const totalDuration = this.getModelQualityScore(modelId);
@@ -772,29 +863,43 @@ export class BudgetStrategyEngine {
         const censorshipHits = this.budgetData.modelCensorshipHitCount?.[modelId] ?? 0;
         const brokenHits = this.budgetData.modelBrokenCount?.[modelId] ?? 0;
 
-        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 0;
-        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 0;
-        const avgSessionSeconds = usedCount > 0 ? (totalDuration / usedCount) / 1000 : 0;
-        const totalFailures = quotaHits + errorHits + censorshipHits + brokenHits;
-        const reliabilityFactor = usedCount > 0 ? Math.max(0, (usedCount - totalFailures) / usedCount) : 0;
+        /*
+         * Keep neutral defaults non-zero so brand-new models can still be ranked
+         * by context fit instead of all collapsing to score 0/random.
+         */
+        const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 1;
+        const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 1;
+        const avgSessionSeconds = usedCount > 0 ? Math.max(0.1, (totalDuration / usedCount) / 1000) : 1;
 
-        return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor;
+        const totalFailures = quotaHits + errorHits + censorshipHits + brokenHits;
+        const reliabilityFactor = usedCount > 0
+            ? Math.max(0.05, (usedCount - totalFailures) / usedCount)
+            : 1;
+
+        const contextFitFactor = this.getContextFitFactor(model, requiredContextTokens);
+
+        return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor * contextFitFactor;
     }
 
     private selectFromPool(
         pool: LanguageModel[],
         failedIds: Set<string>,
         maxTier?: number,
+        requiredContextTokens?: number,
     ): LanguageModel | null {
         if (pool.length === 0) return null;
 
         const tierGroups = new Map<number, LanguageModel[]>();
+
         for (const model of pool) {
             if (failedIds.has(model.id)) continue;
             if (this.isInQuotaCooldown(model.id)) continue;
+
             const tier = this.getTier(model);
             if (maxTier !== undefined && tier > maxTier) continue;
+
             if (!tierGroups.has(tier)) tierGroups.set(tier, []);
+
             const tierModels = tierGroups.get(tier);
             if (tierModels) tierModels.push(model);
         }
@@ -806,17 +911,37 @@ export class BudgetStrategyEngine {
         for (const tier of sortedTiers) {
             const candidates = tierGroups.get(tier);
             if (!candidates) continue;
+
             candidates.sort((a, b) => {
                 const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
                 const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
-                if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
 
-                const scoreA = this.computeCompositeQuality(a.id);
-                const scoreB = this.computeCompositeQuality(b.id);
-                if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+                if (aBelowThreshold !== bBelowThreshold) {
+                    return aBelowThreshold - bBelowThreshold;
+                }
+
+                /*
+                 * Context length is a soft preference, not a hard requirement.
+                 * This keeps summarization-capable smaller models eligible while
+                 * naturally preferring models that can fit more of the prompt raw.
+                 */
+                const contextFitA = this.getContextFitFactor(a, requiredContextTokens);
+                const contextFitB = this.getContextFitFactor(b, requiredContextTokens);
+
+                if (Math.abs(contextFitA - contextFitB) > 0.01) {
+                    return contextFitB - contextFitA;
+                }
+
+                const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
+                const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
+
+                if (Math.abs(scoreA - scoreB) > 0.0001) {
+                    return scoreB - scoreA;
+                }
 
                 return Math.random() - 0.5;
             });
+
             if (candidates.length > 0) {
                 return candidates[0];
             }
@@ -825,11 +950,13 @@ export class BudgetStrategyEngine {
         return null;
     }
 
-    private selectFreeModel(failedIds: Set<string>): LanguageModel | null {
+    private selectFreeModel(failedIds: Set<string>, requiredContextTokens?: number): LanguageModel | null {
         const allModels = [...this.strategy.onlineModels, ...this.strategy.localModels];
         const freeModels = allModels.filter(m => isFreeModel(m));
+
         if (freeModels.length === 0) return null;
-        return this.selectFromPool(freeModels, failedIds);
+
+        return this.selectFromPool(freeModels, failedIds, undefined, requiredContextTokens);
     }
 
     // ─── Stats Recording ─────────────────────────────────────────────
@@ -857,8 +984,10 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelCensorshipHitCount) {
             this.budgetData.modelCensorshipHitCount = {};
         }
+
         this.budgetData.modelCensorshipHitCount[modelId] =
             (this.budgetData.modelCensorshipHitCount[modelId] ?? 0) + 1;
+
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
@@ -866,8 +995,10 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelBrokenCount) {
             this.budgetData.modelBrokenCount = {};
         }
+
         this.budgetData.modelBrokenCount[modelId] =
             (this.budgetData.modelBrokenCount[modelId] ?? 0) + 1;
+
         this.budgetData.lastUpdatedTimestamp = Date.now();
     }
 
@@ -875,8 +1006,10 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelAverageLatencyMsPerToken) {
             this.budgetData.modelAverageLatencyMsPerToken = {};
         }
+
         const alpha = this.budgetData.averageLatencyMsPerTokenExponentialMovingAverageSmoothing ?? 0.3;
         const previous = this.budgetData.modelAverageLatencyMsPerToken[modelId];
+
         if (previous === undefined) {
             this.budgetData.modelAverageLatencyMsPerToken[modelId] = observedMsPerToken;
         } else {
@@ -889,8 +1022,10 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelAverageTimeToFirstToken) {
             this.budgetData.modelAverageTimeToFirstToken = {};
         }
+
         const alpha = this.budgetData.averageTimeToFirstTokenExponentialMovingAverageSmoothing ?? 0.3;
         const previous = this.budgetData.modelAverageTimeToFirstToken[modelId];
+
         if (previous === undefined) {
             this.budgetData.modelAverageTimeToFirstToken[modelId] = observedMs;
         } else {
@@ -903,6 +1038,7 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelTotalSessionDuration) {
             this.budgetData.modelTotalSessionDuration = {};
         }
+
         this.budgetData.modelTotalSessionDuration[modelId] =
             (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
     }
@@ -912,30 +1048,35 @@ export class BudgetStrategyEngine {
     private isModelReady(model: LanguageModel): boolean {
         const isCloud = !!model.apiKey && !!model.backend;
         if (isCloud) return true;
+
         const running = this.runningModels[model.id];
         return !!(running?.port || (model.parameters as Record<string, unknown>)?._runtimePort);
     }
 
     private async ensureModelLoaded(model: LanguageModel): Promise<boolean> {
         if (this.isModelReady(model)) return true;
+
         const isCloud = !!model.apiKey && !!model.backend;
         if (isCloud) return true;
+
         if (!this.loadLocalModel) return false;
 
         try {
             const port = await this.loadLocalModel(model.id);
+
             if (port) {
                 this.runningModels = {
                     ...this.runningModels,
                     [model.id]: { isRunning: true, port },
                 };
-                // Keep engine in sync after loading a new model
+
                 this.engine.setRunningModels(this.runningModels);
                 return true;
             }
         } catch (e) {
             console.warn(`Failed to auto-load model ${model.name}:`, e);
         }
+
         return false;
     }
 
@@ -947,6 +1088,7 @@ export class BudgetStrategyEngine {
         parentSignal.addEventListener('abort', onParentAbort);
 
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
         if (timeoutSeconds > 0) {
             timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
         }
@@ -990,6 +1132,7 @@ export function getBudgetStrategyEngine(): BudgetStrategyEngine {
     if (!instance) {
         throw new Error('BudgetStrategyEngine not initialized. Call initializeBudgetStrategyEngine() first.');
     }
+
     return instance;
 }
 

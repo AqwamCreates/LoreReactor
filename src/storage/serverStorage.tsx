@@ -1,4 +1,4 @@
-// src/hooks/serverStorage.ts
+// src/storage/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
@@ -111,8 +111,6 @@ const PATHS = {
 };
 const MANIFEST_FILE = 'manifest.json';
 
-// ─── Server Availability Cache ──────────────────────────────────────
-
 let _serverAvailable: boolean | null = null;
 
 async function getServerAvailable(): Promise<boolean> {
@@ -124,8 +122,6 @@ async function getServerAvailable(): Promise<boolean> {
 export function resetServerAvailability(): void {
     _serverAvailable = null;
 }
-
-// --- Generic Helpers ---
 
 async function fetchJson<T>(url: string): Promise<T | null> {
   if (!(await getServerAvailable())) {
@@ -381,8 +377,6 @@ export function resolveMemoryInteractionData(character: Character, allChats: Int
   return { ...character, memories: resolved };
 }
 
-// --- Memory Hydration Helpers ---
-
 async function hydrateMemories(rawMemoryIds: Record<string, string[]> | undefined): Promise<Record<string, Memory[]>> {
   const memories: Record<string, Memory[]> = {};
   if (!rawMemoryIds) return memories;
@@ -426,7 +420,7 @@ export async function loadRawStopPattern(id: string): Promise<StopPattern | null
     pattern: rawPattern.pattern,
     regularExpressionActivationTrigger: rawPattern.regularExpressionActivationTrigger,
     regularExpressionDeactivationTrigger: rawPattern.regularExpressionDeactivationTrigger,
-    regularExpressionExclusionTrigger: rawPattern.regularExpressionExclusionTrigger,
+    regularExpressionExclusionActivationTrigger: rawPattern.regularExpressionExclusionActivationTrigger,
     regularExpressionExclusionDeactivationTrigger: rawPattern.regularExpressionExclusionDeactivationTrigger,
     regularExpressionContext: rawPattern.regularExpressionContext,
     regularExpressionTarget: rawPattern.regularExpressionTarget,
@@ -669,7 +663,7 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         fetchCacheTimeToLiveMs: rawContext.fetchCacheTimeToLiveMs,
         regularExpressionActivationTrigger: rawContext.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: rawContext.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionTrigger: rawContext.regularExpressionExclusionTrigger,
+        regularExpressionExclusionActivationTrigger: rawContext.regularExpressionExclusionActivationTrigger,
         regularExpressionExclusionDeactivationTrigger: rawContext.regularExpressionExclusionDeactivationTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
@@ -677,7 +671,7 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         regularExpressionExclusionTarget: rawContext.regularExpressionExclusionTarget,
         messageFilterRegularExpressionActivationTrigger: rawContext.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: rawContext.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionTrigger: rawContext.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionActivationTrigger: rawContext.messageFilterRegularExpressionExclusionActivationTrigger,
         messageFilterRegularExpressionExclusionDeactivationTrigger: rawContext.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: rawContext.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: rawContext.messageFilterRegularExpressionTarget,
@@ -738,7 +732,7 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         locationBindings: rawLocation.locationBindings ?? [],
         locationBindingRegularExpressionTriggers: rawLocation.locationBindingRegularExpressionTriggers ?? {},
         regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
-        regularExpressionExclusionTrigger: rawLocation.regularExpressionExclusionTrigger,
+        regularExpressionExclusionActivationTrigger: rawLocation.regularExpressionExclusionActivationTrigger,
         regularExpressionExclusionContext: rawLocation.regularExpressionExclusionContext,
         regularExpressionExclusionTarget: rawLocation.regularExpressionExclusionTarget,
         characterBindings: rawLocation.characterBindings ?? [],
@@ -750,7 +744,7 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         messageFilterNonCoLocatedParticipants: rawLocation.messageFilterNonCoLocatedParticipants ?? false,
         messageFilterRegularExpressionActivationTrigger: rawLocation.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: rawLocation.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionTrigger: rawLocation.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionActivationTrigger: rawLocation.messageFilterRegularExpressionExclusionActivationTrigger,
         messageFilterRegularExpressionExclusionDeactivationTrigger: rawLocation.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: rawLocation.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: rawLocation.messageFilterRegularExpressionTarget,
@@ -807,7 +801,7 @@ export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> 
         endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
         regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionTrigger: raw.regularExpressionExclusionTrigger,
+        regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
         regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
         regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
         regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
@@ -860,7 +854,7 @@ export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null
         images: raw.images ?? [],
         regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionTrigger: raw.regularExpressionExclusionTrigger,
+        regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
         regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
         regularExpressionContext: raw.regularExpressionContext,
         regularExpressionTarget: raw.regularExpressionTarget,
@@ -868,7 +862,7 @@ export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null
         regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
         messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionTrigger: raw.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
         messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
@@ -1085,6 +1079,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         contextSensitivity: rawProfile.contextSensitivity ?? -1,
         maximumActionStamina: rawProfile.maximumActionStamina ?? -1,
         cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
+        doNotInjectDefaultStopTokens: rawProfile.doNotInjectDefaultStopTokens ?? false,
         narrateTexts,
         stripThinkTokens: rawProfile.stripThinkTokens ?? false,
         tools: rawProfile.tools ?? {},

@@ -122,6 +122,7 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         images: (l.images as string[]) || [],
         regularExpressionActivationTrigger: (l.regularExpressionActivationTrigger as string) || undefined,
         regularExpressionExclusionActivationTrigger: (l.regularExpressionExclusionActivationTrigger as string) || undefined,
+        regularExpressionExclusionDeactivationTrigger: (l.regularExpressionExclusionDeactivationTrigger as string) || undefined,
         regularExpressionExclusionContext: (l.regularExpressionExclusionContext as Location['regularExpressionExclusionContext']) ?? 'global',
         regularExpressionExclusionTarget: (l.regularExpressionExclusionTarget as Location['regularExpressionExclusionTarget']) ?? 'everyone',
         backgroundImageRegularExpressionActivationTriggers: (l.backgroundImageRegularExpressionActivationTriggers as Record<number, string>) || {},
@@ -242,6 +243,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         memoryRetentionWeight: (p.memoryRetentionWeight as number) ?? 0.5,
         contextSensitivity: (p.contextSensitivity as number) ?? 0.5,
         cacheInvalidationReductionLevel: (p.cacheInvalidationReductionLevel as number) ?? 0,
+        doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? DEFAULT_NARRATE_TEXTS.normal,
             quoted: (rawNarrateTexts.quoted as boolean) ?? DEFAULT_NARRATE_TEXTS.quoted,
