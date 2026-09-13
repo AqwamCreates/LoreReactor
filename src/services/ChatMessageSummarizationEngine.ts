@@ -1,1915 +1,482 @@
-// src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location } from '../types';
-import { fetchMultipleContextUrls } from '../services/linkFetcher';
-import { detectName } from './nameDetection';
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+// src/services/ChatMessageSummarizationEngine.ts
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage } from '../types';
+import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
-import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
-import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
-import { getCurrentLocation } from './locationLogic';
-import { defaultInputStrategy } from '../defaults';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/chatLogic';
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../stringList';
 
-const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
-    pick: `${generalStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${generalEndString}`,
-    date: `${generalStartString}To get the current date and time, I write ${toolStartSring}date${toolEndString}. The current date and time will replace my tool call so I can reference it in my response.${generalEndString}`,
-    coin: `${generalStartString}To flip a coin, I write ${toolStartSring}coin${toolEndString}. The result (heads or tails) will replace my tool call so I can reference it in my response.${generalEndString}`,
-    dice: `${generalStartString}To roll dice, I write ${toolStartSring}dice <dice notation>${toolEndString}. Examples: ${toolStartSring}dice 2d6+3${toolEndString}, ${toolStartSring}dice d20${toolEndString}, ${toolStartSring}dice 1d8-2${toolEndString}. The numeric result will replace my tool call so I can reference it in my response.${generalEndString}`,
-    random: `${generalStartString}To generate a random number, I write ${toolStartSring}random <minimum>, <maximum>${toolEndString}. A random integer between minimum and maximum (inclusive) will replace my tool call so I can use it in my response.${generalEndString}`,
-    rng: `${generalStartString}To roll on a named RNG table, I write ${toolStartSring}rng <table name>${toolEndString}. The table must exist as a context with entries formatted as "1-10: outcome" per line. The rolled result will replace my tool call.${generalEndString}`,
-    move: `${generalStartString}To move to an adjacent location, I write ${toolStartSring}move <location name>${toolEndString}. The location must be connected via location bindings. Movement costs action stamina based on distance. The result will replace my tool call with confirmation or failure.${generalEndString}`,
-    timer: `${generalStartString}To manage countdown timers, I write ${toolStartSring}timer set <name> <duration>${toolEndString} to create a timer (e.g. "5m", "1h 30m"), ${toolStartSring}timer check [name]${toolEndString} to check remaining time, ${toolStartSring}timer delete <name>${toolEndString} to remove a timer, or ${toolStartSring}timer list${toolEndString} to see all active timers. Active timers are also shown automatically in the prompt.${generalEndString}`,
-    stopwatch: `${generalStartString}To manage stopwatches, I write ${toolStartSring}stopwatch start <name>${toolEndString} to begin timing, ${toolStartSring}stopwatch pause <name>${toolEndString} to pause, ${toolStartSring}stopwatch resume <name>${toolEndString} to resume, ${toolStartSring}stopwatch stop <name>${toolEndString} to stop and get elapsed time, ${toolStartSring}stopwatch reset <name>${toolEndString} to reset, or ${toolStartSring}stopwatch check [name]${toolEndString} to view elapsed time. Active stopwatches are also shown automatically in the prompt.${generalEndString}`,
-    calculator: `${generalStartString}To perform a calculation, I write ${toolStartSring}calculator <expression>${toolEndString}. I can use +, -, *, /, (), %, and ^ for exponentiation. The numeric result will replace my tool call so I can use it in my response. I will also make sure to keep the numeric results accurate and precise.${generalEndString}`,
-    web: `${generalStartString}To search the web or fetch a webpage, I write ${toolStartSring}web <query or URL>${toolEndString}. If I provide a URL starting with http, it will be fetched directly. Otherwise, my query will be searched on the web. The raw content of the page will replace my tool call so I can read and reference it.${generalEndString}`,
-    lookup: `${generalStartString}To search contexts and lore by keyword, I write ${toolStartSring}lookup <keyword>${toolEndString}. Matching context entries with relevant snippets will replace my tool call so I can reference them.${generalEndString}`,
-    map: `${generalStartString}To check distances between locations, I write ${toolStartSring}map <location name>${toolEndString} for distance from current location, or ${toolStartSring}map <loc1> to <loc2>${toolEndString} for distance between two specific locations. The distance and estimated travel time will replace my tool call.${generalEndString}`,
-    audio: `${generalStartString}To play an audio track, I write ${toolStartSring}audio play <track name>${toolEndString}. To stop a playing track, I write ${toolStartSring}audio stop <track name>${toolEndString}. Only tracks marked as playable by participants can be controlled this way. Tool calls are replaced with confirmation.${generalEndString}`,
-    note: `${generalStartString}To manage persistent notes, I write ${toolStartSring}note set <key> <text>${toolEndString} to save a note, ${toolStartSring}note get <key>${toolEndString} to retrieve one, ${toolStartSring}note delete <key>${toolEndString} to remove one, or ${toolStartSring}note list${toolEndString} to see all notes. Notes persist across messages and are shown automatically in the prompt.${generalEndString}`,
-    inventory: `${generalStartString}To manage inventory, I write ${toolStartSring}inventory add <item> <quantity>${toolEndString} to add items, ${toolStartSring}inventory remove <item> <quantity>${toolEndString} to remove items, ${toolStartSring}inventory set <item> <value>${toolEndString} to set an item's value (number or text), or ${toolStartSring}inventory list${toolEndString} to view current inventory. Tool calls are replaced with confirmation or the current inventory state.${generalEndString}`,
-    invite: `${generalStartString}To bring an existing participant to my current location, I write ${toolStartSring}invite <character name>${toolEndString}. The target must already be a participant in this session but not the protagonist. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    kick: `${generalStartString}To remove a participant from the current location, I write ${toolStartSring}kick <character name>${toolEndString}. This includes the protagonist. The target is moved to another location or removed from the scene. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    teleport: `${generalStartString}To instantly move myself or another character to any location regardless of adjacency, I write ${toolStartSring}teleport <character name> to <location name>${toolEndString} or ${toolStartSring}teleport <location name>${toolEndString} to teleport myself. This bypasses normal movement cost but consumes significant action stamina. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    lock: `${generalStartString}To lock a location and prevent entry via its binding triggers, I write ${toolStartSring}lock <location name>${toolEndString}. The location becomes inaccessible until unlocked. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    unlock: `${generalStartString}To unlock a previously locked location, I write ${toolStartSring}unlock <location name>${toolEndString}. This restores access via the location's binding triggers. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    summon: `${generalStartString}To add a non-participant character into this interaction session, I write ${toolStartSring}summon <character name>${toolEndString}. The summoned character becomes a participant and can interact going forward. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-    narrate: `${generalStartString}To inject ambient narration as the narrator voice without consuming my character's chat stamina, I write ${toolStartSring}narrate <narration text>${toolEndString}. The narration appears as scene-setting text from the narrator perspective. Tool calls are replaced with the narration output.${generalEndString}`,
-    inspect: `${generalStartString}To examine another character's visible state, I write ${toolStartSring}inspect <character name>${toolEndString}. This reveals their name, current location, expression, and visible inventory items. Tool calls are replaced with the inspection results.${generalEndString}`,
-    administrator: `${generalStartString}To perform administrative actions such as managing chat sessions, switching models, or handling user data controls, I write ${toolStartSring}administrator <action> [arguments]${toolEndString}. Available actions depend on system configuration. Tool calls are replaced with confirmation or results.${generalEndString}`,
-    creator: `${generalStartString}To create new user-data entities such as characters, contexts, locations, worlds, prompt blocks, or profiles, I write ${toolStartSring}creator <entity type> <name> [properties]${toolEndString}. The created entity is added to the system. Tool calls are replaced with confirmation or the created entity details.${generalEndString}`,
-    destroyer: `${generalStartString}To delete or destroy user-data entities, I write ${toolStartSring}destroyer <entity type> <name or id>${toolEndString}. This permanently removes the entity from the system. Use with extreme caution. Tool calls are replaced with confirmation or failure.${generalEndString}`,
-};
+const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
+const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
 
-const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
-const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
-const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
-const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
-const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts.";
-const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns.";
-const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.";
+const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
-const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
-const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
-const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
-const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
+const COMPRESS_CHUNK_PROMPT = "You are a narrative compressor for roleplay chat history. Given a chunk of conversation messages, produce a single dense paragraph that preserves: character names, key actions, dialogue substance, emotional beats, and plot progression. Write in past tense, third person. Output ONLY the compressed paragraph with no preamble, no markdown, no quotes.";
 
-const startingAppearancePromptLine = `${contextStartString}Start Of The Characters' Appearances List.${contextEndString}`;
-const endingAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
+const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.";
 
-const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
-const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
+const LOCATION_VISIT_MEMORY_PROMPT = "You are a reflective character in a roleplay. Below is a record of events that occurred at a specific location during your visit. Reflect on what happened there from your personal perspective. Express your memory as natural, personal thoughts. Preserve key events, conversations, emotional moments, and outcomes. Write in first person. Output ONLY your reflection with no preamble, no markdown, no quotes.";
 
-const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
-const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
-
-const startOfContextLine = `${contextStartString}Start Of The Context.${contextEndString}`;
-const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
-
-const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
-const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
-const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
-
-const DEFAULT_MAX_RECURSION_DEPTH = 5;
-const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
-
-const tokenEngine = getLanguageModelEngine();
-
-function getDateAndTimeString(localTimestamp: number): string {
-    const dateAndTime = new Date(localTimestamp);
-    return dateAndTime.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-    });
-}
-
-function formatTimerDuration(ms: number): string {
-    const totalSeconds = Math.floor(Math.abs(ms) / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const parts: string[] = [];
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
-    return parts.join(' ');
-}
-
-function selectModelSummary(msg: ChatMessage, modelId: string): string {
-    if (msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
-        return msg.modelTextContentSummaries[modelId];
-    }
-    return msg.textContent;
-}
-
-export function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
-    if (!text) return text;
-    const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
-    let result = text;
-    result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
-    result = result.replace(/\{\{user\}\}/g, protagonistString);
-    return result;
-}
-
-export function getParticipantId(character: Character, participants: Character[]): number {
-    return participants.findIndex(p => p.id === character.id);
-}
-
-export function getParticipantTag(character: Character, participants: Character[]): string {
-    const participantId = getParticipantId(character, participants);
-    return participantId !== -1 ? `Character ${participantId + 1}` : 'Unknown';
-}
-
-export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
-    if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
-    const ratio = currentChatStamina / maximumChatStamina;
-    if (ratio > 0.7) return "";
-
-    const initialString = `${generalStartString} I am`;
-
-    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${generalEndString}`;
-    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${generalEndString}`;
-    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${generalEndString}`;
-    return `${initialString} have no energy left to speak.${generalEndString}`;
-}
-
-export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
-    const interactionHistory = interactionData.interactionHistory;
-    for (let i = interactionHistory.length - 1; i >= 0; i--) {
-        if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
-    }
-    return null;
-}
-
-export function findAllMessages(interactionData: InteractionData, characterId: string): HistoryMessage[] {
-    return interactionData.interactionHistory.filter(m => m.character.id === characterId);
-}
-
-function filterArrayBasedOnContext(
-    characterIdArray: string[],
-    textContentArray: string[],
-    currentCharacterId: string,
-    contextType: regularExpressionContext
-): { characterIdArray: string[]; textContentArray: string[] } {
-    const length = characterIdArray.length;
-    if (length === 0) return { characterIdArray: [], textContentArray: [] };
-
-    if (contextType === "global") return { characterIdArray, textContentArray };
-
-    if (contextType === "previous") {
-        for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] === currentCharacterId) {
-                return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
-            }
-        }
-        return { characterIdArray: [], textContentArray: [] };
-    }
-
-    if (contextType === "local") {
-        let targetIndex = -1;
-        const endIndex = length - 1;
-        for (let i = endIndex; i >= 0; i--) {
-            if ((characterIdArray[i] === currentCharacterId) && (i === endIndex)) continue;
-            if ((characterIdArray[i] !== currentCharacterId) && (i === endIndex)) { targetIndex = i; break; }
-            if ((characterIdArray[i] === currentCharacterId) && (characterIdArray[i + 1] !== currentCharacterId)) { targetIndex = i; break; }
-        }
-        if (targetIndex === -1) return { characterIdArray: [], textContentArray: [] };
-        const startIndex = targetIndex + 1;
-        if (startIndex >= length) return { characterIdArray: [], textContentArray: [] };
-        return { characterIdArray: characterIdArray.slice(startIndex), textContentArray: textContentArray.slice(startIndex) };
-    }
-
-    return { characterIdArray: [], textContentArray: [] };
-}
-
-function filterArrayBasedOnTarget(
-    characterIdArray: string[],
-    textContentArray: string[],
-    currentCharacterId: string,
-    targetType: regularExpressionTarget,
-    protagonistId: string,
-): { characterIdArray: string[]; textContentArray: string[] } {
-    const length = characterIdArray.length;
-    if (length === 0) return { characterIdArray: [], textContentArray: [] };
-    if (targetType === "everyone") return { characterIdArray, textContentArray };
-
-    let targetCharacterId: string | undefined = undefined;
-    if (targetType === "self") targetCharacterId = currentCharacterId;
-    else if (targetType === "listener") {
-        for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] !== currentCharacterId) { targetCharacterId = characterIdArray[i]; break; }
-        }
-    }
-    else if (targetType === "protagonist") targetCharacterId = protagonistId;
-    else if (targetType === "narrator") targetCharacterId = '__ambient_narrator__';
-
-    if (!targetCharacterId) return { characterIdArray: [], textContentArray: [] };
-
-    const extractedCharacterIdArray: string[] = [];
-    const extractedTextContentArray: string[] = [];
-    for (let i = 0; i < length; i++) {
-        if (characterIdArray[i] === targetCharacterId) {
-            extractedCharacterIdArray.push(characterIdArray[i]);
-            extractedTextContentArray.push(textContentArray[i]);
-        }
-    }
-    return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
-}
-
-function doesRegexMatch(regexString: string | undefined, searchSpace: string, sensitivityMultiplier = 1): boolean {
-    if (!regexString) return true;
-    try {
-        const regex = new RegExp(regexString);
-        const matched = regex.test(searchSpace);
-        if (!matched) return false;
-        if (sensitivityMultiplier >= 1) return true;
-        return Math.random() < sensitivityMultiplier;
-    } catch (e) {
-        console.warn(`Invalid regex: ${regexString}`, e);
-        return false;
-    }
-}
-
-function doesRegexDeactivate(regexString: string | undefined, activationRegex: string | undefined, searchSpace: string): boolean {
-    if (!activationRegex) return false;
-    if (!regexString) return false;
-    try {
-        const regex = new RegExp(regexString);
-        return regex.test(searchSpace);
-    } catch (e) {
-        console.warn(`Invalid deactivation regex: ${regexString}`, e);
-        return false;
-    }
-}
-
-function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier = 1): boolean {
-    return doesRegexMatch(context.regularExpressionActivationTrigger, searchSpace, sensitivityMultiplier);
-}
-
-function doesContextDeactivate(context: Context, searchSpace: string): boolean {
-    return doesRegexDeactivate(context.regularExpressionDeactivationTrigger, context.regularExpressionActivationTrigger, searchSpace);
-}
-
-function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): boolean {
-    return doesRegexMatch(stopPattern.regularExpressionActivationTrigger, searchSpace);
-}
-
-function doesStopPatternDeactivate(stopPattern: StopPattern, searchSpace: string): boolean {
-    return doesRegexDeactivate(stopPattern.regularExpressionDeactivationTrigger, stopPattern.regularExpressionActivationTrigger, searchSpace);
-}
-
-function isCharacterBound(context: Context, currentCharacterId: string): boolean {
-    if (!context.characterBindings || context.characterBindings.length === 0) return true;
-    return context.characterBindings.includes(currentCharacterId);
-}
-
-function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: string): boolean {
-    if (!block.characterBindings || block.characterBindings.length === 0) return true;
-    return block.characterBindings.includes(currentCharacterId);
-}
-
-function isBuiltInBlockType(value: string): value is PromptBlockType {
-    return (defaultInputStrategy as string[]).includes(value) || value === 'Tool Instructions';
-}
-
-const getImageBase64 = async (url: string): Promise<string | null> => {
-    try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (error) {
-        console.error(`Failed to convert image: ${url}`, error);
-        return null;
-    }
-};
-
-/**
- * Checks message text against each location's regularExpressionActivationTrigger.
- * Returns the index of the first matching location, or undefined if no match.
- */
-function detectLocationFromText(text: string, locations: Location[]): number | undefined {
-    for (let i = 0; i < locations.length; i++) {
-        const location = locations[i];
-        if (!location.regularExpressionActivationTrigger) continue;
-        try {
-            const regex = new RegExp(location.regularExpressionActivationTrigger, 'i');
-            if (regex.test(text)) return i;
-        } catch { /* invalid regex, skip */ }
-    }
-    return undefined;
-}
-
-/**
- * Determines which chat messages are excluded from history based on message
- * filter regex fields from contexts, locations, and prompt blocks.
- *
- * Semantics:
- * - Before activation trigger matches: messages are EXCLUDED
- * - Activation trigger matches: START including from this message onward
- * - Deactivation trigger matches: STOP filtering, everything after is included
- *
- * Returns a boolean array where true = excluded from chat history.
- */
-function getMessageFilterFlags(
-    chatMessages: ChatMessage[],
-    contexts: Context[],
-    locations: Location[],
-    promptBlocks: PromptBlock[],
-    characterId: string,
-): boolean[] {
-    const excluded = new Array(chatMessages.length).fill(false);
-
-    const applyFilter = (
-        activationTrigger: string | undefined,
-        deactivationTrigger: string | undefined,
-    ): void => {
-        if (!activationTrigger) return;
-
-        let activationRegex: RegExp;
-        try {
-            activationRegex = new RegExp(activationTrigger);
-        } catch {
-            return;
-        }
-
-        let deactivationRegex: RegExp | null = null;
-        if (deactivationTrigger) {
-            try {
-                deactivationRegex = new RegExp(deactivationTrigger);
-            } catch {
-                deactivationRegex = null;
-            }
-        }
-
-        let including = false;
-
-        for (let i = 0; i < chatMessages.length; i++) {
-            const msg = chatMessages[i];
-
-            if (including) {
-                if (deactivationRegex && deactivationRegex.test(msg.textContent)) {
-                    return;
-                }
-            } else {
-                if (activationRegex.test(msg.textContent)) {
-                    including = true;
-                } else {
-                    excluded[i] = true;
-                }
-            }
-        }
+export async function generateMessageSummary(
+    message: HistoryMessage,
+    maxTokens = 256,
+): Promise<string | null> {
+    const text = message.messageType === 'chat' ? message.textContent : '';
+    const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
+    const requestBody: Record<string, unknown> = {
+        prompt,
+        n_predict: maxTokens,
+        temperature: 1,
+        stop: ['\n\n', '\nMessage from'],
     };
 
-    for (const context of contexts) {
-        if (!isCharacterBound(context, characterId)) continue;
-        applyFilter(
-            context.messageFilterRegularExpressionActivationTrigger,
-            context.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    for (const location of locations) {
-        if (location.characterBindings && location.characterBindings.length > 0) {
-            if (!location.characterBindings.includes(characterId)) continue;
-        }
-        applyFilter(
-            location.messageFilterRegularExpressionActivationTrigger,
-            location.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    for (const block of promptBlocks) {
-        if (!isPromptBlockCharacterBound(block, characterId)) continue;
-        applyFilter(
-            block.messageFilterRegularExpressionActivationTrigger,
-            block.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    return excluded;
+    const bse = getBudgetStrategyEngine();
+    const { text: result } = await bse.generateCompletion(requestBody);
+    return result || null;
 }
 
-async function resolveContextEntries(
-    contexts: Context[],
-    chatSearchSpace: string,
-    currentCharacterId: string,
-    getFilteredData: (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => { characterIdArray: string[]; textContentArray: string[] },
-    fetchedContentMap?: Map<string, string>,
-    contextSensitivity?: number
-): Promise<{ context: Context; formattedLine: string }[]> {
-    const sensitivityForCharacter = contextSensitivity ?? 1;
-    const activated = new Set<string>();
-    const activatedMap = new Map<string, Context>();
-
-    for (const context of contexts) {
-        if (activated.has(context.id)) continue;
-        if (!isCharacterBound(context, currentCharacterId)) continue;
-
-        const ctxType = context.regularExpressionContext || 'global';
-        const tgtType = context.regularExpressionTarget || 'everyone';
-        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
-
-        if (filteredTexts.length === 0) {
-            if (!context.regularExpressionActivationTrigger) continue;
-            if (doesContextMatch(context, chatSearchSpace, sensitivityForCharacter)) {
-                if (!doesContextDeactivate(context, chatSearchSpace)) {
-                    activated.add(context.id);
-                    activatedMap.set(context.id, context);
-                }
-            }
-            continue;
-        }
-
-        const searchSpace = filteredTexts.join('\n');
-        const combinedSearch = `${searchSpace}\n${chatSearchSpace}`;
-
-        if (doesContextMatch(context, combinedSearch, sensitivityForCharacter)) {
-            if (!doesContextDeactivate(context, combinedSearch)) {
-                activated.add(context.id);
-                activatedMap.set(context.id, context);
-            }
-        }
-    }
-
-    const activationDepth = new Map<string, number>();
-    for (const id of activated) {
-        activationDepth.set(id, 0);
-    }
-
-    let recursionDepth = 0;
-    let newActivations = true;
-
-    while (newActivations && recursionDepth < DEFAULT_MAX_RECURSION_DEPTH) {
-        newActivations = false;
-        recursionDepth++;
-
-        const activatedTextParts: string[] = [];
-        for (const c of activatedMap.values()) {
-            if (c.text) activatedTextParts.push(c.text);
-            const fetched = fetchedContentMap?.get(c.id);
-            if (fetched) activatedTextParts.push(fetched);
-        }
-        const activatedText = activatedTextParts.join('\n');
-
-        if (!activatedText.trim()) break;
-
-        for (const context of contexts) {
-            if (activated.has(context.id)) continue;
-            if (!isCharacterBound(context, currentCharacterId)) continue;
-
-            const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
-            if (contextMaxDepth === 0) continue;
-            if (recursionDepth > contextMaxDepth) continue;
-
-            if (doesContextMatch(context, activatedText, sensitivityForCharacter)) {
-                if (!doesContextDeactivate(context, activatedText)) {
-                    activated.add(context.id);
-                    activatedMap.set(context.id, context);
-                    activationDepth.set(context.id, recursionDepth);
-                    newActivations = true;
-                }
-            }
-        }
-    }
-
-    const orderedActivated: Context[] = [];
-    for (const context of contexts) {
-        if (activatedMap.has(context.id)) {
-            orderedActivated.push(context);
-        }
-    }
-
-    const formattedEntries: { context: Context; formattedLine: string; numberOfTokens: number }[] = [];
-
-    for (const context of orderedActivated) {
-        const fetchedContent = fetchedContentMap?.get(context.id);
-        let combinedText: string;
-
-        if (context.text && fetchedContent) {
-            combinedText = `${context.text}\n\n--- Web Content ---\n\n${fetchedContent}`;
-        } else if (fetchedContent) {
-            combinedText = fetchedContent;
-        } else if (context.text) {
-            combinedText = context.text;
-        } else {
-            continue;
-        }
-
-        const formattedLine = `${contextStartString}${combinedText}${contextEndString}`;
-
-        let numberOfTokens: number;
-        if (context.tokenBudget && context.tokenBudget > 0) {
-            numberOfTokens = context.tokenBudget;
-        } else {
-            numberOfTokens = await tokenEngine.countTokens(formattedLine);
-        }
-
-        formattedEntries.push({ context, formattedLine, numberOfTokens });
-    }
-
-    let totalTokens = 0;
-    const budgetEntries: typeof formattedEntries = [];
-
-    for (const entry of formattedEntries) {
-        if (totalTokens + entry.numberOfTokens <= DEFAULT_CONTEXT_TOKEN_BUDGET) {
-            totalTokens += entry.numberOfTokens;
-            budgetEntries.push(entry);
-        }
-    }
-
-    budgetEntries.sort((a, b) => {
-        const depthA = a.context.insertionDepth ?? 0;
-        const depthB = b.context.insertionDepth ?? 0;
-        return depthA - depthB;
-    });
-
-    return budgetEntries.map(e => ({ context: e.context, formattedLine: e.formattedLine }));
+function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
+    if (msg.messageType !== 'chat') return false;
+    const chatMsg = msg as ChatMessage;
+    return !!(chatMsg.modelTextContentSummaries?.[modelId]);
 }
 
-interface BuildResult {
-    prompt: string;
-    activeStopPatterns: StopPattern[];
-    activeContextsForImages: Context[];
-    activeLocationImages: string[];
-    activePromptBlockImages: string[];
-    fetchErrors: string[];
-}
-
-export function getRevealIndexByCharacterId(interactionData: InteractionData): Map<string, number> {
-    const revealIndexByCharacterId = new Map<string, number>();
-    const interactionHistory = interactionData.interactionHistory;
-    for (let i = 0; i < interactionHistory.length; i++) {
-        const msg = interactionHistory[i];
-        if (msg.isNameRevealed && !revealIndexByCharacterId.has(msg.character.id)) {
-            revealIndexByCharacterId.set(msg.character.id, i);
-        }
-    }
-    return revealIndexByCharacterId;
-}
-
-/**
- * Represents a contiguous segment of messages where a specific AI character
- * was at a specific location. Used to detect when a character has departed
- * a location and needs an interaction summary generated.
- */
-export interface LocationVisitSegment {
-    characterId: string;
-    locationIndex: number;
-    startIdx: number;  // index in interactionHistory
-    endIdx: number;    // inclusive index in interactionHistory
-    lastMessageId: string; // ID of the last chat message in this segment (where summary gets stored)
-}
-
-/**
- * Detects completed location visits for AI characters that don't yet have
- * interaction summaries generated for the given model.
- *
- * A "completed visit" means the character has messages at location X followed
- * by messages at a different location (or no further messages at location X).
- * Only returns segments where modelInteractionTextContentSummaries[modelId]
- * is missing on the last message of the segment.
- *
- * Excludes the protagonist (only AI characters need summaries).
- * Excludes the character's current location (still active, not departed).
- */
-export function detectUnsummarizedLocationDepartures(
+export async function generateMissingSummaries(
     interactionData: InteractionData,
-    characterId: string,
+    windowSize: number,
     modelId: string,
-): LocationVisitSegment[] {
+    maxTokens = 256,
+): Promise<Map<string, string>> {
+    const results = new Map<string, string>();
     const history = interactionData.interactionHistory;
-    const protagonistId = interactionData.protagonist.id;
-    const locs = interactionData.locations;
-    if (!locs || locs.length === 0) return [];
-
-    // Find current location index (from the latest message with a locationIndex)
-    let currentLocationIndex: number | undefined;
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].locationIndex !== undefined) {
-            currentLocationIndex = history[i].locationIndex;
-            break;
-        }
-    }
-
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
-    if (chatMessages.length === 0) return [];
 
-    const segments: LocationVisitSegment[] = [];
+    // Get universally-filtered flags — skip summarizing messages hidden from all characters
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [], // prompt blocks not needed for universal filter in this context
+    );
 
-    // Track per-AI-character location segments
-    // We scan all chat messages and group consecutive ones by (characterId, locationIndex)
-    const aiCharacterIds = new Set<string>();
-    for (const msg of chatMessages) {
-        if (msg.character.id !== protagonistId) {
-            aiCharacterIds.add(msg.character.id);
-        }
+    const cutoff = Math.max(0, history.length - windowSize);
+    const toSummarize: ChatMessage[] = [];
+
+    for (let i = 0; i < cutoff; i++) {
+        const msg = history[i];
+        if (msg.messageType !== 'chat') continue;
+        // Find this message's index in the chatMessages array for filter lookup
+        const chatIdx = chatMessages.indexOf(msg as ChatMessage);
+        if (chatIdx >= 0 && filterFlags[chatIdx]) continue; // Universally excluded
+        if (hasModelSummary(msg, modelId)) continue;
+        toSummarize.push(msg as ChatMessage);
     }
 
-    for (const aiCharId of aiCharacterIds) {
-        // Get all chat messages from this AI character, in order
-        const charMessages: { msg: ChatMessage; historyIdx: number }[] = [];
-        for (let i = 0; i < history.length; i++) {
-            const m = history[i];
-            if (m.messageType === 'chat' && m.character.id === aiCharId) {
-                charMessages.push({ msg: m as ChatMessage, historyIdx: i });
-            }
-        }
+    if (toSummarize.length === 0) return results;
 
-        if (charMessages.length === 0) continue;
-
-        // Group into contiguous location segments
-        let segStart = 0;
-        for (let i = 1; i <= charMessages.length; i++) {
-            const prevLoc = charMessages[i - 1].msg.locationIndex;
-            const currLoc = i < charMessages.length ? charMessages[i].msg.locationIndex : undefined;
-
-            const segmentEnded = i === charMessages.length || prevLoc !== currLoc;
-
-            if (segmentEnded && prevLoc !== undefined) {
-                const segEnd = i - 1;
-                const lastMsg = charMessages[segEnd].msg;
-
-                // Skip if this is the character's current location (still active)
-                if (currentLocationIndex !== undefined && prevLoc === currentLocationIndex) continue;
-
-                // Check if summary already exists for this model on the last message
-                const existingSummary = lastMsg.modelInteractionTextContentSummaries?.[modelId];
-                if (existingSummary) continue;
-
-                segments.push({
-                    characterId: aiCharId,
-                    locationIndex: prevLoc,
-                    startIdx: charMessages[segStart].historyIdx,
-                    endIdx: charMessages[segEnd].historyIdx,
-                    lastMessageId: lastMsg.id,
-                });
-            }
-
-            if (i < charMessages.length && (prevLoc !== currLoc || prevLoc === undefined)) {
-                segStart = i;
-            }
+    for (const msg of toSummarize) {
+        const summary = await generateMessageSummary(msg, maxTokens);
+        if (summary) {
+            results.set(msg.id, summary);
         }
     }
-
-    return segments;
+    return results;
 }
 
-export function createChatHistoryPrompt(
-    interactionData: InteractionData, 
-    character: Character, 
-    revealIndexByCharacterId: Map<string, number>,
-    modelId: string,
-    allPromptBlocks: PromptBlock[] = [],
-): { chatHistoryPrompt: string; hasBeenSummarized: boolean } {
-    const interactionHistory = interactionData.interactionHistory;
-    const participants = interactionData.participants;
-    const protagonist = interactionData.protagonist;
-    const profile = interactionData.Profile;
-    const contexts = interactionData.contexts || [];
-    const locations = interactionData.locations || [];
-    
-    const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+async function compressChunk(
+    messages: HistoryMessage[],
+    maxTokens = 512,
+): Promise<string | null> {
+    const formattedMessages = messages.map(m =>
+        `${m.character.name}: ${m.messageType === 'chat' ? m.textContent : ''}`
+    ).join('\n\n');
+    const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
+    const requestBody: Record<string, unknown> = {
+        prompt,
+        n_predict: maxTokens,
+        temperature: 1,
+        stop: ['\n\n\n'],
+    };
 
-    if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
-
-    const characterParticipantTag = getParticipantTag(character, participants);
-    const protagonistParticipantTag = getParticipantTag(protagonist, participants);
-    const protagonistName = protagonist.name;
-    
-    const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
-    const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
-
-    const filterFlags = getMessageFilterFlags(chatMessagesOnly, contexts, locations, allPromptBlocks, character.id);
-    const filteredMessages = chatMessagesOnly.filter((_, i) => !filterFlags[i]);
-
-    if (filteredMessages.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
-
-    const activeSteps = [...(profile?.summarizationSteps || [])]
-        .sort((a, b) => a.order - b.order);
-
-    let processedMessages = filteredMessages.map((msg) => ({
-        msg,
-        idx: interactionHistory.indexOf(msg),
-        text: selectModelSummary(msg, modelId),
-    }));
-
-    let hasBeenSummarized = false;
-
-    for (const step of activeSteps) {
-        if (step.strategyType === 'Sliding Window Replace') {
-            const windowSize = step.slidingWindowSize ?? 10;
-            const cutoff = Math.max(0, processedMessages.length - windowSize);
-            for (let i = 0; i < processedMessages.length; i++) {
-                const msg = processedMessages[i].msg;
-                if (i < cutoff && msg.modelTextContentSummaries && msg.modelTextContentSummaries[modelId]) {
-                    processedMessages[i].text = msg.modelTextContentSummaries[modelId];
-                    hasBeenSummarized = true;
-                }
-            }
-        }
-
-        if (step.strategyType === 'Observation Masking') {
-            const threshold = step.maskingRelevanceThreshold ?? 0.3;
-            const keywordWeight = step.maskingKeywordWeight ?? 0.7;
-            const recencyWeight = 1 - keywordWeight;
-
-            const recentText = processedMessages
-                .slice(-5)
-                .map(p => p.text.toLowerCase())
-                .join(' ');
-            const keywords = new Set(
-                recentText.split(/\s+/).filter(w => w.length > 3)
-            );
-
-            processedMessages = processedMessages.filter((p, i) => {
-                const totalMessages = processedMessages.length;
-                const recencyScore = (i + 1) / totalMessages;
-
-                let keywordScore = 0;
-                const words = p.text.toLowerCase().split(/\s+/);
-                for (const word of words) {
-                    if (keywords.has(word)) keywordScore++;
-                }
-                keywordScore = words.length > 0 ? keywordScore / words.length : 0;
-
-                const combinedScore = (keywordWeight * keywordScore) + (recencyWeight * recencyScore);
-                return combinedScore >= threshold;
-            });
-        }
-    }
-
-    let currentLocationIndex: number | undefined;
-    for (let i = interactionHistory.length - 1; i >= 0; i--) {
-        if (interactionHistory[i].locationIndex !== undefined) {
-            currentLocationIndex = interactionHistory[i].locationIndex;
-            break;
-        }
-    }
-
-    const locs = interactionData.locations;
-    const currentLocation = currentLocationIndex !== undefined && locs && locs.length > 0
-        ? locs[currentLocationIndex]
-        : undefined;
-
-    const RECENT_INTERACTION_WINDOW = 20;
-    const recentInteractors = new Set<string>();
-    const recentSlice = filteredMessages.slice(-RECENT_INTERACTION_WINDOW);
-    for (let ri = 0; ri < recentSlice.length; ri++) {
-        const msg = recentSlice[ri];
-        if (msg.character.id === character.id) {
-            if (ri > 0) recentInteractors.add(recentSlice[ri - 1].character.id);
-            if (ri < recentSlice.length - 1) recentInteractors.add(recentSlice[ri + 1].character.id);
-        } else {
-            if (ri > 0 && recentSlice[ri - 1].character.id === character.id) {
-                recentInteractors.add(msg.character.id);
-            }
-            if (ri < recentSlice.length - 1 && recentSlice[ri + 1].character.id === character.id) {
-                recentInteractors.add(msg.character.id);
-            }
-        }
-    }
-
-    const hasLocationData = !!locs && locs.length > 0 && currentLocationIndex !== undefined;
-
-    // Collect interaction summaries from dropped messages BEFORE filtering
-    // These are location-scoped memories from past visits that the location
-    // filter would otherwise erase
-    const locationVisitSummaries: { characterName: string; locationName: string; summary: string }[] = [];
-    if (hasLocationData) {
-        const seenSummaries = new Set<string>();
-        for (const msg of chatMessagesOnly) {
-            if (msg.character.id === protagonist.id) continue;
-            if (msg.character.id === character.id) continue;
-            const summary = msg.modelInteractionTextContentSummaries?.[modelId];
-            if (!summary) continue;
-            // Avoid duplicates (same message could be visited multiple times in scanning)
-            if (seenSummaries.has(msg.id)) continue;
-            seenSummaries.add(msg.id);
-            // Only include if this message would be dropped by the location filter
-            const msgLoc = msg.locationIndex;
-            if (msgLoc !== undefined && msgLoc !== currentLocationIndex) {
-                const locName = locs[msgLoc]?.name || 'Unknown Location';
-                locationVisitSummaries.push({
-                    characterName: msg.character.name,
-                    locationName: locName,
-                    summary,
-                });
-            }
-        }
-    }
-
-    const outputMessages = processedMessages.filter((p) => {
-        if (p.msg.character.id === protagonist.id) return true;
-        if (p.msg.character.id === character.id) return true;
-        if (recentInteractors.has(p.msg.character.id)) return true;
-        if (hasLocationData) {
-            const charLocationIndex = p.msg.locationIndex;
-            if (charLocationIndex !== undefined && charLocationIndex === currentLocationIndex) return true;
-            if (charLocationIndex === undefined) return true;
-        }
-        if (!hasLocationData) return true;
-        return false;
-    });
-
-    const chatHistoryLines: string[] = [];
-    chatHistoryLines.push(startOfChatHistoryLine);
-
-    // Inject location visit summaries before the scene marker
-    // so the model has continuity about what happened at past locations
-    if (locationVisitSummaries.length > 0) {
-        for (const lvs of locationVisitSummaries) {
-            chatHistoryLines.push(`${contextStartString}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${contextEndString}`);
-        }
-        hasBeenSummarized = true;
-    }
-
-    if (currentLocation) {
-        chatHistoryLines.push(`${turnStartString}[Scene: ${currentLocation.name}]${turnEndString}`);
-    }
-
-    for (const p of outputMessages) {
-        const otherCharacter = p.msg.character;
-        const otherParticipantId = getParticipantId(otherCharacter, participants);
-        const otherCharacterName = otherCharacter.name;
-
-        const charRevealIndex = revealIndexByCharacterId.get(otherCharacter.id);
-        const isRevealedAtThisMessage = charRevealIndex !== undefined && p.idx >= charRevealIndex;
-
-        let chatHistoryText = `${turnStartString}Character ${otherParticipantId + 1}`;
-
-        if (otherCharacter.id === character.id || isRevealedAtThisMessage) {
-            chatHistoryText = `${chatHistoryText} (${otherCharacterName})`;
-        }
-
-        const replacedText = replacePlaceholders(
-            p.text, 
-            characterParticipantTag, 
-            character.name, 
-            protagonistParticipantTag, 
-            contextProtagonistName
-        );
-
-        chatHistoryText = `${chatHistoryText}: ${replacedText}${turnEndString}`;
-        chatHistoryLines.push(chatHistoryText);
-    }
-
-    chatHistoryLines.push(endOfChatHistoryLine);
-
-    const chatHistoryPrompt = chatHistoryLines.join('\n');
-
-    return { chatHistoryPrompt, hasBeenSummarized };
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
 
-export async function buildPromptAndStopPatterns(
+export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
-    existingCharacterText: string,
-    allPromptBlocks: PromptBlock[],
     modelId: string,
-): Promise<BuildResult> {
-    const interactionHistory = interactionData.interactionHistory;
-    const contexts = interactionData.contexts || [];
-    const sampler = character.sampler;
-
-    const samplerStopPatterns = sampler?.stopPatterns || [];
-    const characterStopPatterns = character.stopPatterns || [];
-    const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
+    maxTokens = 512,
+): Promise<Context | null> {
+    const history = interactionData.interactionHistory;
+    if (history.length === 0) return null;
 
     const participants = interactionData.participants;
-
-    const characterId = character.id;
-    const characterParticipantId = getParticipantId(character, participants);
-    const characterParticipantTag = getParticipantTag(character, participants);
-    const characterName = character.name;
-    const protagonist = interactionData.protagonist;
-    const protagonistParticipantTag = getParticipantTag(protagonist, participants);
-    const protagonistName = protagonist.name;
-    let systemPrompt = character.systemPrompt;
-    let thinkPrompt = character.thinkPrompt;
-
-    const profile = interactionData.Profile;
-    const useCurrentDateAndTime = profile?.useCurrentDateAndTime;
-    const useWeather = profile?.useWeather;
-    const weatherApiKey = profile?.weatherApiKey
-    const useTimeElapsed = profile?.useTimeElapsed;
-    const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
-    const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
-    const effectiveTools = getEffectiveTools(character, profile);
-    const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile);
-    const enableMemoryWriting = getEffectiveEnableMemoryWriting(character, profile);
-
-    const effectiveContextSensitivity = (() => {
-        const profileValue = profile?.contextSensitivity;
-        if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
-        return profileValue;
-    })();
-
-    const characterIdArray: string[] = [];
-    const textContentArray: string[] = [];
-
-    for (const msg of interactionHistory) {
-        if (msg.messageType === 'chat') {
-            characterIdArray.push(msg.character.id);
-            textContentArray.push(msg.textContent);
-        }
-    }
+    const participantTag = getParticipantTag(character, participants);
+    const protagonistTag = getParticipantTag(interactionData.protagonist, participants);
+    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
-    const numberOfMessagesByParticipant = interactionHistory.filter(
-        msg => msg.character.id === characterId && msg.messageType === 'chat'
-    ).length;
+    const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
 
-    const isCacheMoreThanLevelZero = (cacheLevel > 0);
+    const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
 
-    const appearancePromptLines: string[] = [];
-    const hasAnyAppearance = participants.some(p => p.appearancePrompt?.trim());
+    const memoryInjection = `${contextStartString}`;
 
-    if (hasAnyAppearance) {
-        appearancePromptLines.push(startingAppearancePromptLine);
+    const promptLines = [systemPrompt, thinkPrompt, startOfMemoryLine, chatHistoryPrompt, endOfMemoryLine, perspectiveInstruction, memoryInjection];
 
-        for (const participant of participants) {
-            const appearancePrompt = participant.appearancePrompt;
-            if (!appearancePrompt || !appearancePrompt.trim()) continue;
+    const prompt = promptLines.join('\n\n');
 
-            const otherParticipantId = getParticipantId(participant, participants);
-            const isCurrent = otherParticipantId === characterParticipantId;
-            const otherCharacterName = participant.name;
-            const isRevealed = revealIndexByCharacterId.has(participant.id);
-            const participantTag = getParticipantTag(participant, participants);
-            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName);
-
-            let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
-
-            if (isCacheMoreThanLevelZero || isCurrent || isRevealed) {
-                appearanceText = `${appearanceText} (${otherCharacterName})`;
-            }
-
-            appearanceText = `${appearanceText}: ${finalAppearancePrompt}${contextEndString}`;
-            appearancePromptLines.push(appearanceText);
-        }
-
-        appearancePromptLines.push(endingAppearancePromptLine);
-    }
-
-    const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
-    const activeStopPatterns: StopPattern[] = [];
-    const activeContextsForImages: Context[] = [];
-    const fetchErrors: string[] = [];
-
-    const getFilteredData = (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => {
-        if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
-        if (!combinationCache[ctxType][tgtType]) {
-            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
-            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonist.id);
-            combinationCache[ctxType][tgtType] = step2;
-        }
-        return combinationCache[ctxType][tgtType];
-    };;
-
-    const fetchedContentMap = new Map<string, string>();
-    const webContexts = contexts.filter(c =>
-        (c.urls && c.urls.length > 0) ||
-        (c.searchTerms && c.searchTerms.length > 0)
-    );
-
-    const activeModel = tokenEngine.getContext();
-
-    if (webContexts.length > 0) {
-        const fetchPromises = webContexts.map(async (context) => {
-            const cacheTimeToLive = context.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
-            const maxDepth = context.maximumLinkDepth ?? 0;
-            const fetchMode = context.linkFetchMode ?? 'full';
-
-            const { results, errors } = await fetchMultipleContextUrls(
-                context.urls ?? [],
-                {
-                    maxDepth,
-                    cacheTimeToLiveMs: cacheTimeToLive,
-                    fetchMode,
-                    searchTerms: context.searchTerms,
-                    searchEngine: context.searchEngine,
-                    model: activeModel,
-                    includeImages: context.includeLinkImages ?? false,
-                    limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
-                }
-            );
-
-            for (const error of errors) {
-                fetchErrors.push(`${context.name}: ${error}`);
-            }
-
-            const validResults = results.filter(r => !r.error && r.content.length > 0);
-
-            if (validResults.length === 0) return;
-
-            const combinedContent = validResults
-                .map(r => `[Source: ${r.url}]\n${r.content}`)
-                .join('\n\n---\n\n');
-
-            if (combinedContent.length > 0) {
-                fetchedContentMap.set(context.id, combinedContent);
-            }
-        });
-
-        await Promise.all(fetchPromises);
-    }
-
-    let contextLines: string[] = [];
-    const globalChatSearch = textContentArray.join('\n');
-
-    const resolvedContexts = await resolveContextEntries(
-        contexts,
-        globalChatSearch,
-        characterId,
-        getFilteredData,
-        fetchedContentMap,
-        effectiveContextSensitivity
-    );
-
-    const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
-    const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
-
-    const activeContextIds = new Set<string>();
-    for (const { context } of resolvedContexts) {
-        activeContextIds.add(context.id);
-    }
-
-    for (const { context, formattedLine } of resolvedContexts) {
-        let line: string;
-
-        const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
-        const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, contextProtagonistName);
-
-        if (context.useBase64Encoding) {
-            const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
-            line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
-        } else {
-            line = `${contextStartString}${replacedText}${contextEndString}`;
-        }
-
-        contextLines.push(line);
-
-        if (context.images && context.images.length > 0) {
-            activeContextsForImages.push(context);
-        }
-    }
-
-    for (const stopPattern of allStopPatterns) {
-        const ctxType = stopPattern.regularExpressionContext || 'global';
-        const tgtType = stopPattern.regularExpressionTarget || 'everyone';
-        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
-
-        if (!stopPattern.regularExpressionActivationTrigger) {
-            activeStopPatterns.push(stopPattern);
-            continue;
-        }
-
-        if (filteredTexts.length === 0) continue;
-
-        const searchSpace = filteredTexts.join('\n');
-
-        if (doesStopPatternMatch(stopPattern, searchSpace)) {
-            if (!doesStopPatternDeactivate(stopPattern, searchSpace)) {
-                activeStopPatterns.push(stopPattern);
-            }
-        }
-    }
-
-    const systemPromptLines: string[] = [];
-    if (cacheLevel >= 2) {
-        for (const p of participants) {
-            if (p.systemPrompt) {
-                systemPromptLines.push(`${contextStartString}${getParticipantTag(p, participants)} Prompt: ${replacePlaceholders(p.systemPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${contextEndString}`);
-            }
-        }
-    } else if (systemPrompt) {
-        systemPrompt = replacePlaceholders(systemPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        systemPromptLines.push(`${contextStartString}${characterParticipantTag} Prompt: ${systemPrompt}${contextEndString}`);
-    }
-
-    const thinkPromptLines: string[] = [];
-    if (cacheLevel >= 3) {
-        for (const p of interactionData.participants) {
-            if (p.thinkPrompt) {
-                thinkPromptLines.push(`${generalStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${generalEndString}`);
-            }
-        }
-    } else if (thinkPrompt) {
-        thinkPrompt = replacePlaceholders(thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        thinkPromptLines.push(`${generalStartString}${thinkPrompt}${generalEndString}`);
-    }
-
-    const metaThinkLines: string[] = [];
-    const previousMessage = findPreviousMessage(interactionData, character.id);
-    const effectiveMaxStamina = getEffectiveMaximumChatStamina(character, profile);
-    const currentChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaxStamina;
-    const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
-
-    let constructedMetaThinkLines = `${generalStartString}${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions}`;
-
-    let hasBeenSummarized = false;
-
-    const chatHistoryLines: string[] = [];
-
-    if (interactionHistory.length > 0) {
-        chatHistoryLines.push(startOfChatHistoryLine);
-
-        const chatHistoryPrompt = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId, allPromptBlocks);
-
-        chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
-
-        hasBeenSummarized = chatHistoryPrompt.hasBeenSummarized;
-
-        chatHistoryLines.push(endOfChatHistoryLine);
-    }
-
-    const characterInstructions = `I will respond exclusively as ${characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${characterParticipantTag} is likely to use.`;
-
-    constructedMetaThinkLines = `${constructedMetaThinkLines} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${generalEndString}`;
-
-    metaThinkLines.push(constructedMetaThinkLines);
-
-    const locationLines: string[] = [];
-    const activeLocationImages: string[] = [];
-
-    const location = getCurrentLocation(interactionData, character);
-    const currentLocationId = location?.id;
-
-    if (location) {
-        locationLines.push(startOfLocationLine);
-
-        const locationName = location.name || 'Unknown Location';
-        const locationText = location.text?.trim();
-
-        let locationContent = `${contextStartString}Current Location: ${locationName}`;
-
-        if (locationText) locationContent += `\n\n${locationText}`;
-        locationContent += `${contextEndString}`;
-        locationLines.push(locationContent);
-
-        // Owner bindings
-        if (location.ownerBindings && location.ownerBindings.length > 0) {
-            const ownerNames = location.ownerBindings
-                .map(id => participants.find(p => p.id === id)?.name)
-                .filter((n): n is string => !!n);
-            if (ownerNames.length > 0) {
-                locationLines.push(`${generalStartString}This location is owned by: ${ownerNames.join(', ')}.${generalEndString}`);
-            }
-        }
-
-        if (location.images && location.images.length > 0) {
-            activeLocationImages.push(...location.images);
-        }
-        locationLines.push(stuckAtLocationLine);
-        locationLines.push(endOfLocationLine);
-    }
-
-    const inventoryLines: string[] = [];
-
-    let latestInventory: Record<string, string | number> | undefined;
-    for (let i = interactionHistory.length - 1; i >= 0; i--) {
-        const msg = interactionHistory[i];
-        if (msg.character.id === characterId && msg.inventory && Object.keys(msg.inventory).length > 0) {
-            latestInventory = msg.inventory;
-            break;
-        }
-    }
-
-    if (latestInventory && Object.keys(latestInventory).length > 0) {
-        const now = Date.now();
-
-        const userInventoryEntries: string[] = [];
-        let notes: Record<string, string> = {};
-        let timers: { name: string; targetTimestamp: number }[] = [];
-        let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
-
-        for (const [key, value] of Object.entries(latestInventory)) {
-            if (key === '__notes__') {
-                try { notes = JSON.parse(value as string); } catch { /* ignore */ }
-            } else if (key === '__timers__') {
-                try { timers = JSON.parse(value as string); } catch { /* ignore */ }
-            } else if (key === '__stopwatches__') {
-                try { stopwatches = JSON.parse(value as string); } catch { /* ignore */ }
-            } else {
-                userInventoryEntries.push(`${key}: ${value}`);
-            }
-        }
-
-        if (userInventoryEntries.length > 0) {
-            inventoryLines.push(`${contextStartString}[Current Inventory]\n${userInventoryEntries.join('\n')}${contextEndString}`);
-        }
-
-        const noteEntries = Object.entries(notes);
-        if (noteEntries.length > 0) {
-            const formattedNotes = noteEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
-            inventoryLines.push(`${contextStartString}[Active Notes]\n${formattedNotes}${contextEndString}`);
-        }
-
-        if (timers.length > 0) {
-            const timerStatuses = timers.map(t => {
-                const remaining = t.targetTimestamp - now;
-                return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatTimerDuration(remaining)} remaining`;
-            });
-            inventoryLines.push(`${contextStartString}[Active Timers]\n${timerStatuses.join('\n')}${contextEndString}`);
-        }
-
-        if (stopwatches.length > 0) {
-            const swStatuses = stopwatches.map(s => {
-                const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
-                const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
-                return `${s.name}: ${formatTimerDuration(elapsed)} (${status})`;
-            });
-            inventoryLines.push(`${contextStartString}[Active Stopwatches]\n${swStatuses.join('\n')}${contextEndString}`);
-        }
-    }
-
-    let latitude: number | undefined = location?.latitude;
-    let longitude: number | undefined = location?.longitude;
-
-    if (!latitude || !longitude) {
-        const geoLocation = await getLocation();
-        if (geoLocation) {
-            latitude = geoLocation.latitude;
-            longitude = geoLocation.longitude;
-        }
-    }
-
-    let localTimestamp: number | null = null;
-
-    if (latitude && longitude) localTimestamp = getLocalTimeFromCoordinates(latitude, longitude)
-
-    const dateAndTimeLines: string[] = [];
-
-    if (useCurrentDateAndTime && localTimestamp) {
-        const dateAndTime = getDateAndTimeString(localTimestamp)
-        dateAndTimeLines.push(`${generalStartString}Today's date and time is ${dateAndTime}.${generalEndString}`);
-    }
-
-    const weatherLines: string[] = [];
-
-    if (useWeather && weatherApiKey && latitude && longitude) {
-        const weatherLine = await fetchCurrentWeather(latitude, longitude, weatherApiKey);
-        if (weatherLine) {
-            weatherLines.push(`${generalStartString}${weatherLine}${generalEndString}`);
-        }
-    }
-
-    const timeElapsedLines: string[] = [];
-
-    if (useTimeElapsed && localTimestamp && interactionHistory.length > 0) {
-        const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
-        const diffMs = Math.max(0, localTimestamp - lastMsgTimestamp);
-
-        const totalSeconds = Math.floor(diffMs / 1000);
-        const numberOfDays = Math.floor(totalSeconds / 86400);
-        const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
-        const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
-        const numberOfSeconds = totalSeconds % 60;
-
-        const parts: string[] = [];
-        if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
-        if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
-        if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
-        if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
-
-        const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
-
-        timeElapsedLines.push(`${generalStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${generalEndString}`);
-    }
-
-    const dialoguePromptLines: string[] = [];
-
-    const dialoguePrompt = character.dialoguePrompt;
-
-    if (dialoguePrompt?.trim()) {
-        dialoguePromptLines.push(startingDialoguePromptLine);
-        const replacedDialogue = replacePlaceholders(dialoguePrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
-        dialoguePromptLines.push(endingDialoguePromptLine);
-    }
-
-    const memoryLines: string[] = [];
-    const characterMemories = character.memories;
-    if (enableMemoryReading && characterMemories) {
-        const relevantMemories: string[] = [];
-        const participantIds = new Set(participants.map(p => p.id));
-        for (const [key, memories] of Object.entries(characterMemories)) {
-            if (key === 'global' || participantIds.has(key)) {
-                for (const memory of memories) {
-                    const memoryInteractionDataId = memory.interactionData?.id;
-                    if (memoryInteractionDataId === interactionData.id) continue;
-                    const memoryContent = memory.content;
-                    if (memoryContent && typeof memoryContent === 'string' && memoryContent.trim()) {
-                        relevantMemories.push(memoryContent.trim());
-                    }
-                }
-            }
-        }
-        if (relevantMemories.length > 0) {
-            memoryLines.push(`${contextStartString}Start Of Long-Term Memory.${contextEndString}`);
-            for (const memory of relevantMemories) {
-                memoryLines.push(`${contextStartString}${memory}${contextEndString}`);
-            }
-            memoryLines.push(`${contextStartString}End Of Long-Term Memory.${contextEndString}`);
-        }
-    }
-
-    const toolInstructions: string[] = [];
-    const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
-
-    if (enabledToolNames.length > 0) {
-        toolInstructions.push(`${generalStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${generalEndString}`);
-
-        toolInstructions.push(`${generalStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${generalEndString}`);
-
-        for (const toolName of enabledToolNames) {
-            const instruction = TOOL_INSTRUCTION_MAP[toolName];
-            if (instruction) toolInstructions.push(instruction);
-        }
-    }
-
-    const fatigueLines: string[] = [];
-
-    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${generalStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs.${generalEndString}`;
-        if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
-        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
-        if (fatigue) fatigueLines.push(fatigue);
-    }
-
-    const textInjectionLines: string[] = [];
-
-    if (contextLines.length > 0) {
-        textInjectionLines.push(contextAuthorityInstructions);
-        contextLines = [startOfContextLine, ...contextLines, endOfContextLine];
-    }
-    
-    if (hasBeenSummarized) textInjectionLines.push(summarizationAwarenessInstructions)
-
-    const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
-    const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
-    const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
-    const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
-
-    textInjectionLines.push(characterResponsePriming)
-    textInjectionLines.push(characterTextInjection)
-
-    const blockMap: Record<string, (string[] | undefined)> = {
-        'System Prompt': systemPromptLines,
-        'Think Prompt': thinkPromptLines,
-        'Meta Think Instructions': metaThinkLines,
-        'Appearance Prompt': appearancePromptLines,
-        'Dialogue Prompt': dialoguePromptLines,
-        'Memory': memoryLines,
-        'Chat History': chatHistoryLines,
-        'Context': contextLines,
-        'Location': locationLines,
-        'Inventory': inventoryLines,
-        'Weather': weatherLines,
-        'Date And Time': dateAndTimeLines,
-        'Time Elapsed': timeElapsedLines,
-        'Fatigue Information': fatigueLines,
-        'Tool Instructions': toolInstructions,
-        'Text Injection': textInjectionLines,
+    const requestBody: Record<string, unknown> = {
+        prompt,
+        n_predict: maxTokens,
+        temperature: 1,
+        stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
     };
 
-    const numberOfMessagesToDisableThinkPrompt = getEffectiveMessagesToDisableThinkPrompt(character, profile);
-    const numberOfMessagesToDisableMetaThinkInstructions = getEffectiveMessagesToDisableMetaThinkInstructions(character, profile);
-    const numberOfMessagesToDisableDialoguePrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    if (!text) return null;
 
-    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
-        blockMap['Think Prompt'] = undefined;
-    }
-
-    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
-        blockMap['Meta Think Instructions'] = undefined;
-    }
-
-    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableDialoguePrompt) {
-        blockMap['Dialogue Prompt'] = undefined;
-    }
-
-    const promptBlockById = new Map<string, PromptBlock>();
-    for (const pb of allPromptBlocks) {
-        promptBlockById.set(pb.id, pb);
-    }
-
-    const activePromptBlockImages: string[] = [];
-    for (const block of allPromptBlocks) {
-        if (!isPromptBlockCharacterBound(block, characterId)) continue;
-        if (block.contextBindings && block.contextBindings.length > 0) {
-            if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
-        }
-        if (block.locationBindings && block.locationBindings.length > 0) {
-            if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
-        }
-        if (block.regularExpressionActivationTrigger) {
-            if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-            if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-        }
-        if (block.images && block.images.length > 0) {
-            activePromptBlockImages.push(...block.images);
-        }
-    }
-
-    const promptLines: string[] = [];
-    const usedBuiltInTypes = new Set<string>();
-
-    for (const entry of inputStrategy) {
-        if (isBuiltInBlockType(entry)) {
-            const lines = blockMap[entry];
-            if (lines && lines.length > 0) {
-                promptLines.push(...lines);
-            }
-            usedBuiltInTypes.add(entry);
-        } else {
-            const block = promptBlockById.get(entry);
-            if (!block) continue;
-            if (!block.textContent || !block.textContent.trim()) continue;
-
-            if (!isPromptBlockCharacterBound(block, characterId)) continue;
-
-            if (block.contextBindings && block.contextBindings.length > 0) {
-                if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
-            }
-
-            if (block.locationBindings && block.locationBindings.length > 0) {
-                if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
-            }
-
-            if (block.regularExpressionActivationTrigger) {
-                if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-                if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-            }
-
-            const replacedText = replacePlaceholders(
-                block.textContent,
-                characterParticipantTag,
-                characterName,
-                protagonistParticipantTag,
-                contextProtagonistName,
-            );
-
-            promptLines.push(`${contextStartString}${replacedText}${contextEndString}`);
-        }
-    }
-
-    const prompt = promptLines.join('\n');
-
-    return { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors };
-}
-
-export async function prepareRequestBody(
-    interactionData: InteractionData,
-    character: Character,
-    existingCharacterText: string,
-    allPromptBlocks: PromptBlock[],
-    modelId: string,
-    protagonistFileBase64s?: string[],
-): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
-    const sampler = character.sampler;
-
-    let { prompt, activeStopPatterns, activeContextsForImages, activeLocationImages, activePromptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
-
-    const profile = interactionData.Profile;
-
-    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
-
-    const filesBase64: { data: string; id: number }[] = [];
-
-    let imageIdCounter = 1;
-
-    let initialPrompt = "";
-
-    if (!forceNoCharacterImageInjection) {
-
-        let isCharacterImageInjected = false;
-
-        if (!character.doNotInjectCharacterImage) {
-            const characterMessage = findPreviousMessage(interactionData, character.id);
-            const characterExpression = characterMessage?.characterExpression;
-            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
-
-            if (characterImagePath) {
-                const characterImageBase64 = await getImageBase64(characterImagePath);
-
-                if (characterImageBase64) {
-                    const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
-                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    initialPrompt = `${generalStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
-                    isCharacterImageInjected = true;
-                }
-            }
-        }
-
-        const protagonist = interactionData.protagonist;
-        if (protagonist && !protagonist.doNotInjectCharacterImage) {
-            const protagonistMessage = findPreviousMessage(interactionData, protagonist.id);
-            const protagonistExpression = protagonistMessage?.characterExpression;
-            const protagonistImagePath = await getCharacterImageUrlWithFallBack(protagonist.id, protagonistExpression);
-
-            if (protagonistImagePath) {
-                const protagonistImageBase64 = await getImageBase64(protagonistImagePath);
-
-                if (protagonistImageBase64) {
-                    const rawData = protagonistImageBase64.includes(',') ? protagonistImageBase64.split(',')[1] : protagonistImageBase64;
-                    let protagonistString = getParticipantTag(protagonist, interactionData.participants);
-                    if (protagonistMessage?.isNameRevealed) {
-                        protagonistString = `${protagonistString} (${protagonist.name})`;
-                    }
-                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
-                    initialPrompt = `${initialPrompt}${generalStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${generalEndString}`;
-                }
-            }
-        }
-
-        if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
-            for (let i = 0; i < protagonistFileBase64s.length; i++) {
-                const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
-                filesBase64.push({ data: rawData, id: imageIdCounter++ });
-            }
-        }
-    }
-
-    if (!profile?.forceNoContextImageInjection && activeContextsForImages.length > 0) {
-        const imagePromises = activeContextsForImages.flatMap(context => {
-            if (!context.images) return [];
-            return context.images.map(async (filename) => {
-                try {
-                    const imageUrl = getContextImageUrl(filename);
-                    if (!imageUrl) return null;
-                    const response = await fetch(imageUrl);
-                    if (!response.ok) return null;
-                    const blob = await response.blob();
-                    const base64 = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result as string);
-                        reader.readAsDataURL(blob);
-                    });
-                    const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                    return { data: rawData, id: imageIdCounter++ };
-                } catch (e) {
-                    console.warn(`Failed to load context image ${filename}`, e);
-                    return null;
-                }
-            });
-        });
-        const resolvedImages = (await Promise.all(imagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedImages);
-    }
-
-    if (!profile?.forceNoContextImageInjection && activeLocationImages.length > 0) {
-        const locationImagePromises = activeLocationImages.map(async (filename) => {
-            try {
-                const imageUrl = getLocationImageUrl(filename);
-                if (!imageUrl) return null;
-                const response = await fetch(imageUrl);
-                if (!response.ok) return null;
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                return { data: rawData, id: imageIdCounter++ };
-            } catch (e) {
-                console.warn(`Failed to load location image ${filename}`, e);
-                return null;
-            }
-        });
-        const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedLocationImages);
-    }
-
-    if (!profile?.forceNoContextImageInjection && activePromptBlockImages.length > 0) {
-        const promptBlockImagePromises = activePromptBlockImages.map(async (filename) => {
-            try {
-                const imageUrl = getPromptBlockImageUrl(filename);
-                if (!imageUrl) return null;
-                const response = await fetch(imageUrl);
-                if (!response.ok) return null;
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                return { data: rawData, id: imageIdCounter++ };
-            } catch (e) {
-                console.warn(`Failed to load prompt block image ${filename}`, e);
-                return null;
-            }
-        });
-        const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedPromptBlockImages);
-    }
-
-    const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
-        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.messageType === 'chat'
-    );
-
-    if (lastUserMsg?.files?.length) {
-        for (const fileBase64 of lastUserMsg.files) {
-            const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
-            filesBase64.push({ data: rawData, id: imageIdCounter++ });
-        }
-    }
-
-    const fullPrompt = `${initialPrompt}${prompt}`;
-
-    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
-
-    let defaultStops: string[] = []
-
-    if (!profile?.doNotInjectDefaultStopTokens){
-
-        defaultStops = [
-            turnEndString,
-            turnStartString,
-            commonThinkStartString,
-            commonThinkEndString,
-            gemmaThinkStartString,
-            gemmaThinkEndString,
-            thinkEndString,
-            thinkStartString,
-        ]
-        
-    }
-
-    const finalStops = [
-        ...defaultStops,
-        ...(Array.isArray(paramStops) ? paramStops : []),
-        ...activeStopPatterns.map(sp => sp.pattern),
-    ];
-
-    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
-
-    const body: Record<string, unknown> = {
-        ...otherParams,
-        prompt: fullPrompt,
-        n_predict: sampler?.maximumNumberOfTokens ?? 512,
-        stream: true,
-        stop: uniqueStops,
-    };
-
-    if (filesBase64.length > 0) body.image_data = filesBase64;
-
-    return { body, fetchErrors };
-}
-
-export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
-    const profile = interactionData.Profile;
-    const stripThinkTokens = profile?.stripThinkTokens ?? false;
-
-    let result = text;
-
-    if (stripThinkTokens) {
-        result = result.replace(/[\s\S]*?<\/think>/g, '');
-        result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
-        result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
-    }
-
-    result = result.replace(/<memory>\}/g, '');
-    result = result.replace(/<memory>[\s\S]*?\}/g, '');
-
-    interactionData.participants.forEach((p, i) => {
-        const id = `Character ${i + 1}`;
-        const isRevealed = interactionData.interactionHistory.some(m => m.character.id === p.id && m.isNameRevealed);
-        if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
-    });
-    return result;
-}
-
-export function createNewInteractionData(character: Character): InteractionData {
     const now = Date.now();
     return {
-        id: uuidv4(),
-        name: "Untitled Chat",
-        protagonist: character,
-        participants: [character],
-        contexts: [],
-        locations: [],
-        audioTracks: [],
-        interactionHistory: [],
-        numberOfMessages: 0,
+        id: `memory-${character.id}-${uuidv4()}`,
+        name: `[Memory] ${character.name}'s Perspective`,
+        description: `Character-specific memory for ID: ${character.id}`,
+        text: text.trim(),
+        isAutoGenerated: true,
+        useBase64Encoding: false,
+        insertionDepth: 0,
+        tokenBudget: maxTokens,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentInteractionDataId: null,
-        parentInteractionMessageId: null,
-    };
-}
-
-export function createChatMessage(
-    interactionData: InteractionData,
-    character: Character,
-    textContent: string,
-    options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }
-): ChatMessage {
-    const previousMessage = findPreviousMessage(interactionData, character.id);
-    const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
-    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
-    const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
-    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
-    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
-    const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
-    const now = Date.now();
-
-    const id = uuidv4();
-
-    const files = options?.files ?? [];
-    const isPartial = options?.isPartial || undefined;
-
-    // Determine locationIndex from location activation triggers if not explicitly provided
-    let locationIndex = options?.locationIndex;
-    if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
-        locationIndex = detectLocationFromText(textContent, interactionData.locations);
-    }
-
-    return {
-        id,
-        messageType: 'chat',
-        character: { ...character },
-        textContent,
-        files,
-        remainingChatStamina,
-        remainingActionStamina,
-        isNameRevealed,
-        locationIndex,
-        isPartial,
-        modelTextContentSummaries: {},
-        modelInteractionTextContentSummaries: {},
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-        parentInteractionMessageId: lastMessageId,
-    } as ChatMessage;
-}
-
-export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: HistoryMessage): InteractionData {
-    return {
-        ...interactionData,
-        interactionHistory: [...interactionData.interactionHistory, newInteractionMessage],
-        numberOfMessages: (interactionData.numberOfMessages ?? interactionData.interactionHistory.length) + 1,
-        lastUpdatedTimestamp: Date.now()
-    };
-}
-
-export function editInteractionMessageInInteractionData(interactionData: InteractionData, messageId: string, newText: string): InteractionData {
-    const { interactionHistory } = interactionData;
-    const index = interactionHistory.findIndex(m => m.id === messageId);
-    if (index === -1) return interactionData;
-    return {
-        ...interactionData,
-        interactionHistory: interactionHistory.map((message, idx) => {
-            if (idx === index && message.messageType === 'chat') return { ...message, textContent: newText, kvCachePath: undefined };
-            if (idx > index && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
-            return message;
-        })
-    };
-}
-
-export function updatePartialMessageInInteractionData(
-    interactionData: InteractionData,
-    characterId: string,
-    newText: string,
-    characterExpression?: string,
-): InteractionData {
-    const history = [...interactionData.interactionHistory];
-    for (let i = history.length - 1; i >= 0; i--) {
-        const m = history[i];
-        if (m.character.id === characterId && m.messageType === 'chat' && (m as ChatMessage).isPartial) {
-            history[i] = {
-                ...m,
-                textContent: newText,
-                characterExpression: characterExpression ?? (m as ChatMessage).characterExpression,
-                lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage;
-            return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
-        }
-    }
-    return interactionData;
-}
-
-export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: HistoryMessage[]; invalidatedIds: string[] } {
-    const interactionHistory = interactionData.interactionHistory;
-    const targetIndex = interactionHistory.findIndex(m => m.id === messageId);
-    if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
-    const newHistory = interactionHistory.filter(m => m.id !== messageId);
-    const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
-        return message;
-    });
-    return { newHistory: finalHistory, invalidatedIds: [messageId] };
-}
-
-export function branchInteractionMessage(interactionData: InteractionData, branchPointMessageId: string): InteractionData {
-    const branchIndex = interactionData.interactionHistory.findIndex(m => m.id === branchPointMessageId);
-    if (branchIndex === -1) throw new Error('Branch point message not found');
-    const currentTimestamp = Date.now();
-    const branchedHistory = interactionData.interactionHistory.slice(0, branchIndex + 1);
-    return {
-        id: uuidv4(),
-        name: `${interactionData.name} [#${branchIndex + 1}]`,
-        protagonist: interactionData.protagonist,
-        participants: interactionData.participants,
-        contexts: interactionData.contexts,
-        locations: interactionData.locations,
-        audioTracks: interactionData.audioTracks,
-        interactionHistory: branchedHistory,
-        numberOfMessages: branchedHistory.length,
-        firstCreatedTimestamp: currentTimestamp,
-        lastUpdatedTimestamp: currentTimestamp,
-        Profile: interactionData.Profile,
-        parentInteractionDataId: interactionData.id,
-        parentInteractionMessageId: branchPointMessageId,
-    };
+    } as Context;
 }
 
 /**
- * Returns message filter flags applying only UNIVERSAL filters (entities with
- * no character bindings). Used by global summarization to avoid leaking
- * hidden information into auto-generated Context entries.
+ * Generates a location-scoped interaction summary for a specific character's
+ * visit to a specific location. Unlike generateCharacterMemory which uses the
+ * full chat history, this scopes the prompt to only messages within the given
+ * history index range [startIdx, endIdx].
+ *
+ * Returns the summary text directly (not wrapped in a Context) so it can be
+ * stored in modelInteractionTextContentSummaries on the last message of the segment.
  */
-function applyFilter(
-    chatMessages: ChatMessage[],
-    excluded: boolean[],
-    activationTrigger: string | undefined,
-    deactivationTrigger: string | undefined,
-): void {
-    if (!activationTrigger) return;
-    let activationRegex: RegExp;
-    try { activationRegex = new RegExp(activationTrigger); } catch { return; }
-    let deactivationRegex: RegExp | null = null;
-    if (deactivationTrigger) {
-        try { deactivationRegex = new RegExp(deactivationTrigger); } catch { deactivationRegex = null; }
+export async function generateLocationVisitSummary(
+    interactionData: InteractionData,
+    character: Character,
+    modelId: string,
+    startIdx: number,
+    endIdx: number,
+    maxTokens = 512,
+): Promise<string | null> {
+    const history = interactionData.interactionHistory;
+    if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
+
+    const participants = interactionData.participants;
+    const protagonist = interactionData.protagonist;
+    const participantTag = getParticipantTag(character, participants);
+    const protagonistTag = getParticipantTag(protagonist, participants);
+    const protagonistName = protagonist.name;
+
+    // Build a scoped chat history from only the messages in [startIdx, endIdx]
+    const scopedMessages: string[] = [];
+    for (let i = startIdx; i <= endIdx; i++) {
+        const msg = history[i];
+        if (msg.messageType !== 'chat') continue;
+        const chatMsg = msg as ChatMessage;
+        const otherParticipantId = participants.findIndex(p => p.id === chatMsg.character.id);
+        const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
+        const charName = chatMsg.character.name;
+
+        // Use model summary if available, otherwise raw text
+        const text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
+
+        scopedMessages.push(`${turnStartString}${tag} (${charName}): ${text}${turnEndString}`);
     }
-    let including = false;
-    for (let i = 0; i < chatMessages.length; i++) {
-        const msg = chatMessages[i];
-        if (including) {
-            if (deactivationRegex?.test(msg.textContent)) return;
-        } else {
-            if (activationRegex.test(msg.textContent)) {
-                including = true;
-            } else {
-                excluded[i] = true;
+
+    if (scopedMessages.length === 0) return null;
+
+    const locs = interactionData.locations;
+    const locIdx = history[startIdx]?.locationIndex;
+    const locationName = locIdx !== undefined && locs && locs[locIdx] ? locs[locIdx].name : 'an unknown location';
+
+    const systemPrompt = character.systemPrompt
+        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, protagonistName)}${contextEndString}`
+        : '';
+    const thinkPrompt = character.thinkPrompt
+        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, protagonistName)}${contextEndString}`
+        : '';
+
+    const scopedHistoryBlock = `${contextStartString}Events at ${locationName}:\n${scopedMessages.join('\n')}${contextEndString}`;
+
+    const perspectiveInstruction = `${contextStartString}I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
+
+    const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
+    const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
+
+    const requestBody: Record<string, unknown> = {
+        prompt,
+        n_predict: maxTokens,
+        temperature: 1,
+        stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
+    };
+
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    if (!text || !text.trim()) return null;
+
+    return text.trim();
+}
+
+export async function generatePeriodicCompression(
+    interactionData: InteractionData,
+    compressionInterval: number,
+    compressionChunkSize: number,
+    maxTokens = 512,
+): Promise<Context[]> {
+    const history = interactionData.interactionHistory;
+    const existingContexts = interactionData.contexts || [];
+    const compressedRanges = new Set<string>();
+    for (const context of existingContexts) {
+        if (context.isAutoGenerated && context.description) {
+            const match = context.description.match(/msgs:(\d+)-(\d+)/);
+            if (match) {
+                compressedRanges.add(`${match[1]}-${match[2]}`);
             }
         }
     }
+
+    // Get universally-filtered messages for global summarization
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [],
+    );
+    const visibleChatMessages = chatMessages.filter((_, i) => !filterFlags[i]);
+
+    // Map visible messages back to their original history indices for range tracking
+    const visibleToOriginalIdx = new Map<ChatMessage, number>();
+    for (let i = 0; i < chatMessages.length; i++) {
+        if (!filterFlags[i]) {
+            visibleToOriginalIdx.set(chatMessages[i], i);
+        }
+    }
+
+    const newContexts: Context[] = [];
+    const now = Date.now();
+    const compressibleEnd = Math.max(0, visibleChatMessages.length - compressionInterval);
+
+    for (let startIdx = 0; startIdx < compressibleEnd; startIdx += compressionChunkSize) {
+        const endIdx = Math.min(startIdx + compressionChunkSize, compressibleEnd);
+        const origStart = visibleToOriginalIdx.get(visibleChatMessages[startIdx]) ?? startIdx;
+        const origEnd = visibleToOriginalIdx.get(visibleChatMessages[endIdx - 1]) ?? endIdx;
+        const rangeKey = `${origStart}-${origEnd}`;
+        if (compressedRanges.has(rangeKey)) continue;
+
+        const chunk = visibleChatMessages.slice(startIdx, endIdx);
+        if (chunk.length === 0) continue;
+        const compressed = await compressChunk(chunk, maxTokens);
+        if (!compressed) continue;
+        newContexts.push({
+            id: `auto-summary-${uuidv4()}`,
+            name: `[Auto-Summary] Messages ${origStart + 1}–${origEnd + 1}`,
+            description: `msgs:${origStart}-${origEnd}`,
+            text: compressed,
+            isAutoGenerated: true,
+            useBase64Encoding: false,
+            insertionDepth: 0,
+            tokenBudget: maxTokens,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        } as Context);
+    }
+    return newContexts;
 }
 
-export function getUniversalMessageFilterFlags(
-    chatMessages: ChatMessage[],
-    contexts: Context[],
-    locations: Location[],
-    promptBlocks: PromptBlock[],
-): boolean[] {
-    const excluded = new Array(chatMessages.length).fill(false);
+async function mergeSummaries(
+    summaries: string[],
+    maxTokens = 512,
+): Promise<string | null> {
+    if (summaries.length === 0) return null;
+    if (summaries.length === 1) return summaries[0];
+    const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
+    const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
+    const requestBody: Record<string, unknown> = {
+        prompt,
+        n_predict: maxTokens,
+        temperature: 1,
+        stop: ['\n\n\n'],
+    };
 
-    for (const context of contexts) {
-        if (context.characterBindings && context.characterBindings.length > 0) continue;
-        applyFilter(
-            chatMessages,
-            excluded,
-            context.messageFilterRegularExpressionActivationTrigger,
-            context.messageFilterRegularExpressionDeactivationTrigger,
-        );
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
+}
+
+export async function generateRecursiveSummary(
+    interactionData: InteractionData,
+    chunkSize: number,
+    maxDepth: number,
+    maxTokens = 1024,
+): Promise<Context[]> {
+    const history = interactionData.interactionHistory;
+    const existingContexts = interactionData.contexts || [];
+    const now = Date.now();
+
+    // Get universally-filtered messages for global summarization
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [],
+    );
+    const visibleMessages: HistoryMessage[] = chatMessages.filter((_, i) => !filterFlags[i]);
+
+    const fullRangeKey = `recursive-global:0-${visibleMessages.length}`;
+    for (const context of existingContexts) {
+        if (context.isAutoGenerated && context.description === fullRangeKey) return [];
     }
 
-    for (const location of locations) {
-        if (location.characterBindings && location.characterBindings.length > 0) continue;
-        applyFilter(
-            chatMessages,
-            excluded,
-            location.messageFilterRegularExpressionActivationTrigger,
-            location.messageFilterRegularExpressionDeactivationTrigger,
-        );
+    const newContexts: Context[] = [];
+
+    const layer0Summaries: string[] = [];
+    for (let startIdx = 0; startIdx < visibleMessages.length; startIdx += chunkSize) {
+        const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
+        const chunk = visibleMessages.slice(startIdx, endIdx);
+        if (chunk.length === 0) continue;
+        const compressed = await compressChunk(chunk, maxTokens);
+        if (!compressed) continue;
+        layer0Summaries.push(compressed);
+        newContexts.push({
+            id: `auto-recursive-l0-${uuidv4()}`,
+            name: `[Recursive L0] Messages ${startIdx + 1}–${endIdx}`,
+            description: `recursive-l0:${startIdx}-${endIdx}`,
+            text: compressed,
+            isAutoGenerated: true,
+            useBase64Encoding: false,
+            insertionDepth: 2,
+            tokenBudget: maxTokens,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        } as Context);
     }
 
-    for (const block of promptBlocks) {
-        if (block.characterBindings && block.characterBindings.length > 0) continue;
-        applyFilter(
-            chatMessages,
-            excluded,
-            block.messageFilterRegularExpressionActivationTrigger,
-            block.messageFilterRegularExpressionDeactivationTrigger,
-        );
+    if (layer0Summaries.length === 0) return newContexts;
+
+    let currentLayerSummaries = layer0Summaries;
+    let currentLayerIndex = 0;
+
+    while (currentLayerIndex < maxDepth && currentLayerSummaries.length > 1) {
+        currentLayerIndex++;
+        const nextLayerSummaries: string[] = [];
+        for (let i = 0; i < currentLayerSummaries.length; i += 2) {
+            const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
+            const merged = await mergeSummaries(batch, maxTokens);
+            if (merged) {
+                nextLayerSummaries.push(merged);
+                newContexts.push({
+                    id: `auto-recursive-l${currentLayerIndex}-${uuidv4()}`,
+                    name: `[Recursive L${currentLayerIndex}] Merged segment ${Math.floor(i / 2) + 1}`,
+                    description: `recursive-l${currentLayerIndex}:segment-${Math.floor(i / 2)}`,
+                    text: merged,
+                    isAutoGenerated: true,
+                    useBase64Encoding: false,
+                    insertionDepth: 2 + currentLayerIndex,
+                    tokenBudget: maxTokens,
+                    firstCreatedTimestamp: now,
+                    lastUpdatedTimestamp: now,
+                } as Context);
+            }
+        }
+        currentLayerSummaries = nextLayerSummaries;
     }
 
-    return excluded;
+    if (currentLayerSummaries.length > 1) {
+        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens);
+        if (globalSummary) {
+            newContexts.push({
+                id: `auto-recursive-global-${uuidv4()}`,
+                name: "[Recursive Global] Full conversation summary",
+                description: fullRangeKey,
+                text: globalSummary,
+                isAutoGenerated: true,
+                useBase64Encoding: false,
+                insertionDepth: 0,
+                tokenBudget: maxTokens,
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now,
+            } as Context);
+        }
+    } else if (currentLayerSummaries.length === 1 && currentLayerIndex > 0) {
+        newContexts.push({
+            id: `auto-recursive-global-${uuidv4()}`,
+            name: "[Recursive Global] Full conversation summary",
+            description: fullRangeKey,
+            text: currentLayerSummaries[0],
+            isAutoGenerated: true,
+            useBase64Encoding: false,
+            insertionDepth: 0,
+            tokenBudget: maxTokens,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        } as Context);
+    }
+
+    return newContexts;
+}
+
+export function checkTriggerThreshold(
+    interactionData: InteractionData,
+    currentnumberOfTokens: number,
+    languageModelContextLength: number
+): {
+    strategyType: string;
+    slidingWindowSize?: number;
+    compressionInterval?: number;
+    compressionChunkSize?: number;
+    recursiveChunkSize?: number;
+    recursiveMaxDepth?: number;
+} | null {
+    const profile = interactionData.Profile;
+    if (!profile?.summarizationSteps) return null;
+
+    const activeSteps = [...profile.summarizationSteps]
+        .sort((a, b) => a.order - b.order);
+
+    for (const step of activeSteps) {
+        const threshold = step.triggerTokenThreshold ?? 0;
+        const effectiveThreshold = threshold > 0
+            ? threshold
+            : Math.floor(languageModelContextLength * 0.7);
+
+        if (currentnumberOfTokens >= effectiveThreshold) {
+            if (step.strategyType === 'Sliding Window Replace') {
+                return {
+                    strategyType: step.strategyType,
+                    slidingWindowSize: step.slidingWindowSize,
+                };
+            }
+            if (step.strategyType === 'Periodic Compression') {
+                return {
+                    strategyType: step.strategyType,
+                    compressionInterval: step.compressionInterval,
+                    compressionChunkSize: step.compressionChunkSize,
+                };
+            }
+            if (step.strategyType === 'Recursive Summary') {
+                return {
+                    strategyType: step.strategyType,
+                    recursiveChunkSize: step.recursiveChunkSize,
+                    recursiveMaxDepth: step.recursiveMaxDepth,
+                };
+            }
+        }
+    }
+    return null;
 }
