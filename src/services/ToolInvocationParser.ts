@@ -4,7 +4,9 @@ import { toolStartSring, toolEndString } from "../stringList";
 
 const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'rng', 'lookup', 'map', 'audio', 'note', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
 
-const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'web'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'web', 'invite', 'kick', 'summon'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+
+const metaTools = ['administrator', 'creator', 'destroyer']
 
 /*
 
@@ -14,7 +16,7 @@ web: For expressing curiosity or ignorance.
 
 */
 
-const validTools = [...characterAgnosticTools, ...characterSpecificTools]
+const validTools = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
 
 export interface ToolInvocation {
     /** The full matched string including markers, e.g. "${toolStartSring}web: weather in Tokyo:tool|" */

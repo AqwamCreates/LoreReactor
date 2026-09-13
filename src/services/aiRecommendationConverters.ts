@@ -8,12 +8,14 @@ const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
     pick: true, date: false, coin: true, dice: true, random: true, rng: false,
     timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
     map: false, audio: false, note: false, inventory: false,
+    invite: false, kick: false, summon: false, administrator: false, creator: false, destroyer: false,
 };
 
 const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
     pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
     timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
     map: 0, audio: 0, note: 0, inventory: 0,
+    invite: 0, kick: 0, summon: 0, administrator: 0, creator: 0, destroyer: 0,
 };
 
 const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {

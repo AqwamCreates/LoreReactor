@@ -18,13 +18,19 @@ const TOOL_LABELS: Record<tool, string> = {
     audio: 'Audio',
     note: 'Note',
     inventory: 'Inventory',
+    invite: 'Invite Participant',
+    kick: 'Kick Participant',
+    summon: 'Summon Character',
+    administrator: 'Administrator',
+    creator: 'Creator',
+    destroyer: 'Destroyer',
 };
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {
     pick: 'Allow this character to randomly pick from a list of options.',
     date: 'Allow this character to check the current date and time during conversation.',
     coin: 'Allow this character to flip a coin during conversation.',
-    dice: 'Allow this character to roll dice (e.g. 2d6+3) during conversation.',
+    dice: 'Allow this character to roll dice, such as 2d6+3, during conversation.',
     random: 'Allow this character to generate random numbers during conversation.',
     rng: 'Allow this character to roll on named RNG tables defined in contexts.',
     timer: 'Allow this character to set, check, and manage countdown timers.',
@@ -36,6 +42,12 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     audio: 'Allow this character to play and stop audio tracks during conversation.',
     note: 'Allow this character to save, retrieve, and manage persistent notes.',
     inventory: 'Allow this character to add, remove, set, and list inventory items.',
+    invite: 'Allow this character to bring an existing participant, except the protagonist, to the current location.',
+    kick: 'Allow this character to move an existing participant, including the protagonist, out of the current location.',
+    summon: 'Allow this character to add a non-participant character into the current interaction session.',
+    administrator: 'Allow this character to perform high-level administrative actions such as managing chat sessions, models, navigation, and user-data-related controls.',
+    creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
+    destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
 };
 
 interface CharacterAdvancedSettingsEditorModalProps {
@@ -143,52 +155,143 @@ export function CharacterAdvancedSettingsEditorModal({
                         <div className="editor-stats-grid">
                             <div>
                                 <label className="editor-label editor-label-small">Initiative Weight</label>
-                                <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => onInitiativeWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    value={initiativeWeightStr}
+                                    onChange={(e) => onInitiativeWeightChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls the character's initiative when determining turn order. Range: 0 - ∞.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Chat Probability</label>
-                                <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => onChatProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
+                                <input
+                                    type="number"
+                                    step="0.05"
+                                    value={chatProbabilityStr}
+                                    onChange={(e) => onChatProbabilityChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
-                                <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => onMaximumChatStaminaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={maximumChatStaminaStr}
+                                    onChange={(e) => onMaximumChatStaminaChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.
+                                </div>
                             </div>
                         </div>
+
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Name Sensitivity</label>
-                                <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => onNameSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    value={nameSensitivityStr}
+                                    onChange={(e) => onNameSensitivityChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Chat Impatience</label>
-                                <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={chatImpatienceSensitivityStr}
+                                    onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Skip Probability</label>
-                                <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => onSkipProbabilityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
+                                <input
+                                    type="number"
+                                    step="0.05"
+                                    min="0"
+                                    max="1"
+                                    value={skipProbabilityStr}
+                                    onChange={(e) => onSkipProbabilityChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Probability of skipping an action. Range: 0 - 1.
+                                </div>
                             </div>
                         </div>
+
                         <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Memory Retention</label>
-                                <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => onMemoryRetentionWeightChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={memoryRetentionWeightStr}
+                                    onChange={(e) => onMemoryRetentionWeightChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls how much of the character's memory is retained. Range: 0 - 1.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Context Sensitivity</label>
-                                <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => onContextSensitivityChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={contextSensitivityStr}
+                                    onChange={(e) => onContextSensitivityChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls how sensitive the character is to contextual cues. Range: 0 - 1.
+                                </div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Maximum Action Stamina</label>
-                                <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => onMaximumActionStaminaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions (movement, non-chat interactions) the character can perform before needing to rest. Range: 0 - ∞.</div>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={maximumActionStaminaStr}
+                                    onChange={(e) => onMaximumActionStaminaChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -199,15 +302,39 @@ export function CharacterAdvancedSettingsEditorModal({
                         <div className="editor-stats-grid">
                             <div>
                                 <label className="editor-label editor-label-small">Think Prompt</label>
-                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => onDisableThinkChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={numberOfMessagesToDisableThinkPromptStr}
+                                    onChange={(e) => onDisableThinkChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Meta-Think Instructions</label>
-                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => onDisableMetaChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={numberOfMessagesToDisableMetaThinkInstructionsStr}
+                                    onChange={(e) => onDisableMetaChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Dialogue Prompt</label>
-                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => onDisableDialogueChange(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={numberOfMessagesToDisableDialoguePromptStr}
+                                    onChange={(e) => onDisableDialogueChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
                             </div>
                         </div>
                     </div>
@@ -218,6 +345,7 @@ export function CharacterAdvancedSettingsEditorModal({
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
                             Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                         </div>
+
                         {(Object.keys(tools) as tool[]).map(toolName => (
                             <div key={toolName} style={{ marginBottom: '8px' }}>
                                 <label className="editor-checkbox-label">
@@ -228,10 +356,10 @@ export function CharacterAdvancedSettingsEditorModal({
                                         className="editor-checkbox-input"
                                         disabled={isUploading}
                                     />
-                                    <span>{TOOL_LABELS[toolName]}</span>
+                                    <span>{TOOL_LABELS[toolName] ?? toolName}</span>
                                 </label>
                                 <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                    {TOOL_DESCRIPTIONS[toolName]}
+                                    {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}
                                 </div>
                             </div>
                         ))}
@@ -240,15 +368,29 @@ export function CharacterAdvancedSettingsEditorModal({
                     {/* Memory Toggles */}
                     <div className="editor-section">
                         <span className="editor-section-title">Memory</span>
+
                         <label className="editor-checkbox-label">
-                            <input type="checkbox" checked={enableMemoryReading} onChange={(e) => onEnableMemoryReadingChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <input
+                                type="checkbox"
+                                checked={enableMemoryReading}
+                                onChange={(e) => onEnableMemoryReadingChange(e.target.checked)}
+                                className="editor-checkbox-input"
+                                disabled={isUploading}
+                            />
                             <span>Enable Memory Reading</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                             This character will recall past interactions across chat sessions. Can be overridden by profile settings.
                         </div>
+
                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input type="checkbox" checked={enableMemoryWriting} onChange={(e) => onEnableMemoryWritingChange(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                            <input
+                                type="checkbox"
+                                checked={enableMemoryWriting}
+                                onChange={(e) => onEnableMemoryWritingChange(e.target.checked)}
+                                className="editor-checkbox-input"
+                                disabled={isUploading}
+                            />
                             <span>Enable Memory Writing</span>
                         </label>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
@@ -259,23 +401,58 @@ export function CharacterAdvancedSettingsEditorModal({
                     {/* Stop Patterns */}
                     <div className="editor-section">
                         <span className="editor-section-title">Character Stop Patterns</span>
-                        <div className="editor-stop-patterns-hint">Specific stop sequences for this character (overrides/augments sampler defaults).</div>
+                        <div className="editor-stop-patterns-hint">
+                            Specific stop sequences for this character, overrides or augments sampler defaults.
+                        </div>
+
                         <div className="sampler-stop-patterns-list">
-                            {selectedStopPatternIds.length === 0 && (<div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>)}
+                            {selectedStopPatternIds.length === 0 && (
+                                <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                            )}
+
                             {selectedStopPatternIds.map(id => {
                                 const sp = getStopPatternById(id);
                                 if (!sp) return null;
+
                                 return (
                                     <div key={id} className="sampler-stop-item">
-                                        <div className="sampler-stop-info"><span className="sampler-stop-name">{sp.name}</span><span className="sampler-stop-pattern">{sp.pattern}</span></div>
-                                        <button type="button" onClick={() => onStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>
+                                        <div className="sampler-stop-info">
+                                            <span className="sampler-stop-name">{sp.name}</span>
+                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => onStopPatternToggle(id)}
+                                            className="sampler-stop-remove-button"
+                                            title="Remove stop pattern"
+                                        >
+                                            ×
+                                        </button>
                                     </div>
                                 );
                             })}
                         </div>
-                        <select onChange={(e) => { const val = e.target.value; if (val) onStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+
+                        <select
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) onStopPatternToggle(val);
+                                e.target.value = '';
+                            }}
+                            className="editor-select"
+                            defaultValue=""
+                            disabled={isUploading}
+                        >
                             <option value="" disabled>+ Add a stop pattern</option>
-                            {allSamplers.flatMap(s => s.stopPatterns).filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id)).filter(sp => !selectedStopPatternIds.includes(sp.id)).map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
+                            {allSamplers
+                                .flatMap(s => s.stopPatterns)
+                                .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
+                                .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                .map(sp => (
+                                    <option key={sp.id} value={sp.id}>
+                                        {sp.name} — {sp.pattern}
+                                    </option>
+                                ))}
                         </select>
                     </div>
 
