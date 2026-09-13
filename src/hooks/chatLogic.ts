@@ -386,6 +386,29 @@ function getMessageFilterFlags(
     return excluded;
 }
 
+/**
+ * Retrieves cached filtered data for a given context/target combination,
+ * computing it on first access and caching for subsequent calls within
+ * the same prompt build.
+ */
+function getFilteredDataCached(
+    cache: Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>,
+    characterIdArray: string[],
+    textContentArray: string[],
+    characterId: string,
+    protagonistId: string,
+    ctxType: regularExpressionContext,
+    tgtType: regularExpressionTarget,
+): { characterIdArray: string[]; textContentArray: string[] } {
+    if (!cache[ctxType]) cache[ctxType] = {};
+    if (!cache[ctxType][tgtType]) {
+        const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
+        const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonistId);
+        cache[ctxType][tgtType] = step2;
+    }
+    return cache[ctxType][tgtType];
+}
+
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
@@ -544,11 +567,6 @@ export function getRevealIndexByCharacterId(interactionData: InteractionData): M
     return revealIndexByCharacterId;
 }
 
-/**
- * Represents a contiguous segment of messages where a specific AI character
- * was at a specific location. Used to detect when a character has departed
- * a location and needs an interaction summary generated.
- */
 export interface LocationVisitSegment {
     characterId: string;
     locationIndex: number;
@@ -557,20 +575,6 @@ export interface LocationVisitSegment {
     lastMessageId: string;
 }
 
-/**
- * Detects completed location visits for a SINGLE AI character that don't yet
- * have interaction summaries generated for the given model.
- *
- * Only scans messages from the specified characterId. Does NOT scan all AI
- * characters — the caller is responsible for calling this per-character.
- *
- * A "completed visit" means the character has messages at location X followed
- * by messages at a different location (or no further messages at location X).
- * Only returns segments where modelInteractionTextContentSummaries[modelId]
- * is missing on the last message of the segment.
- *
- * Returns empty array for the protagonist.
- */
 export function detectUnsummarizedLocationDepartures(
     interactionData: InteractionData,
     characterId: string,
@@ -581,10 +585,8 @@ export function detectUnsummarizedLocationDepartures(
     const locs = interactionData.locations;
     if (!locs || locs.length === 0) return [];
 
-    // Don't generate summaries for the protagonist
     if (characterId === protagonistId) return [];
 
-    // Find current location index (from the latest message with a locationIndex)
     let currentLocationIndex: number | undefined;
     for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].locationIndex !== undefined) {
@@ -595,7 +597,6 @@ export function detectUnsummarizedLocationDepartures(
 
     const segments: LocationVisitSegment[] = [];
 
-    // Only scan messages from THIS specific character
     const charMessages: { msg: ChatMessage; historyIdx: number }[] = [];
     for (let i = 0; i < history.length; i++) {
         const m = history[i];
@@ -606,7 +607,6 @@ export function detectUnsummarizedLocationDepartures(
 
     if (charMessages.length === 0) return [];
 
-    // Group into contiguous location segments
     let segStart = 0;
     for (let i = 1; i <= charMessages.length; i++) {
         const prevLoc = charMessages[i - 1].msg.locationIndex;
@@ -618,10 +618,8 @@ export function detectUnsummarizedLocationDepartures(
             const segEnd = i - 1;
             const lastMsg = charMessages[segEnd].msg;
 
-            // Skip if this is the character's current location (still active)
             if (currentLocationIndex !== undefined && prevLoc === currentLocationIndex) continue;
 
-            // Check if summary already exists for this model on the last message
             const existingSummary = lastMsg.modelInteractionTextContentSummaries?.[modelId];
             if (existingSummary) continue;
 
@@ -759,8 +757,6 @@ export function createChatHistoryPrompt(
 
     const hasLocationData = !!locs && locs.length > 0 && currentLocationIndex !== undefined;
 
-    // Collect interaction summaries from messages that would be dropped by
-    // the location filter. These are location-scoped memories from past visits.
     const locationVisitSummaries: { characterName: string; locationName: string; summary: string }[] = [];
     if (hasLocationData) {
         const seenSummaries = new Set<string>();
@@ -799,7 +795,6 @@ export function createChatHistoryPrompt(
     const chatHistoryLines: string[] = [];
     chatHistoryLines.push(startOfChatHistoryLine);
 
-    // Inject location visit summaries before the scene marker
     if (locationVisitSummaries.length > 0) {
         for (const lvs of locationVisitSummaries) {
             chatHistoryLines.push(`${contextStartString}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${contextEndString}`);
@@ -889,9 +884,6 @@ export async function buildPromptAndStopPatterns(
     })();
 
     // ─── Location Visit Summary Generation ──────────────────────────
-    // Detect unsummarized location departures for THIS character only,
-    // generate summaries, and write them into the messages in-place.
-    // createChatHistoryPrompt will then pick them up during injection.
     const segments = detectUnsummarizedLocationDepartures(interactionData, characterId, modelId);
     for (const segment of segments) {
         try {
@@ -967,15 +959,14 @@ export async function buildPromptAndStopPatterns(
     const activeContextsForImages: Context[] = [];
     const fetchErrors: string[] = [];
 
-    const getFilteredData = (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => {
-        if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
-        if (!combinationCache[ctxType][tgtType]) {
-            const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
-            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonist.id);
-            combinationCache[ctxType][tgtType] = step2;
-        }
-        return combinationCache[ctxType][tgtType];
-    };;
+    const resolvedContexts = await resolveContextEntries(
+        contexts,
+        textContentArray.join('\n'),
+        characterId,
+        (ctxType, tgtType) => getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType),
+        undefined,
+        effectiveContextSensitivity
+    );
 
     const fetchedContentMap = new Map<string, string>();
     const webContexts = contexts.filter(c =>
@@ -1025,14 +1016,12 @@ export async function buildPromptAndStopPatterns(
         await Promise.all(fetchPromises);
     }
 
-    let contextLines: string[] = [];
-    const globalChatSearch = textContentArray.join('\n');
-
-    const resolvedContexts = await resolveContextEntries(
+    // Re-resolve contexts now that fetchedContentMap is populated
+    const resolvedContextsWithWeb = await resolveContextEntries(
         contexts,
-        globalChatSearch,
+        textContentArray.join('\n'),
         characterId,
-        getFilteredData,
+        (ctxType, tgtType) => getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType),
         fetchedContentMap,
         effectiveContextSensitivity
     );
@@ -1041,11 +1030,13 @@ export async function buildPromptAndStopPatterns(
     const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
     const activeContextIds = new Set<string>();
-    for (const { context } of resolvedContexts) {
+    for (const { context } of resolvedContextsWithWeb) {
         activeContextIds.add(context.id);
     }
 
-    for (const { context, formattedLine } of resolvedContexts) {
+    let contextLines: string[] = [];
+
+    for (const { context, formattedLine } of resolvedContextsWithWeb) {
         let line: string;
 
         const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
@@ -1068,7 +1059,7 @@ export async function buildPromptAndStopPatterns(
     for (const stopPattern of allStopPatterns) {
         const ctxType = stopPattern.regularExpressionContext || 'global';
         const tgtType = stopPattern.regularExpressionTarget || 'everyone';
-        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
+        const { textContentArray: filteredTexts } = getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType);
 
         if (!stopPattern.regularExpressionActivationTrigger) {
             activeStopPatterns.push(stopPattern);
@@ -1414,8 +1405,8 @@ export async function buildPromptAndStopPatterns(
             if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
         }
         if (block.regularExpressionActivationTrigger) {
-            if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-            if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+            if (!doesRegexMatch(block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
+            if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
         }
         if (block.images && block.images.length > 0) {
             activePromptBlockImages.push(...block.images);
@@ -1448,8 +1439,8 @@ export async function buildPromptAndStopPatterns(
             }
 
             if (block.regularExpressionActivationTrigger) {
-                if (!doesRegexMatch(block.regularExpressionActivationTrigger, globalChatSearch)) continue;
-                if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, globalChatSearch)) continue;
+                if (!doesRegexMatch(block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
+                if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
             }
 
             const replacedText = replacePlaceholders(
