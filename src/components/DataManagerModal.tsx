@@ -55,12 +55,27 @@ interface StorageBreakdown {
     estimatedSizeKb: number;
 }
 
+type ExclusionEntityType = 'character' | 'context' | 'location' | 'audioTrack';
+
+interface ExclusionEntry {
+    entityType: ExclusionEntityType;
+    id: string;
+    name: string;
+}
+
 const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     character: { icon: '🎭', label: 'Characters' },
     context: { icon: '📜', label: 'Contexts' },
     location: { icon: '📍', label: 'Locations' },
     audioTrack: { icon: '🔊', label: 'Audio Tracks' },
     promptBlock: { icon: '🧱', label: 'Prompt Blocks' },
+};
+
+const EXCLUSION_TYPE_META: Record<ExclusionEntityType, { icon: string; label: string; shellField: string }> = {
+    character: { icon: '🎭', label: 'Characters', shellField: 'participantIds' },
+    context: { icon: '📜', label: 'Contexts', shellField: 'contextIds' },
+    location: { icon: '📍', label: 'Locations', shellField: 'locationIds' },
+    audioTrack: { icon: '🔊', label: 'Audio Tracks', shellField: 'audioTrackIds' },
 };
 
 function isEntityHollow(
@@ -143,6 +158,14 @@ export function DataManagerModal({
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [staleDaysThreshold, setStaleDaysThreshold] = useState(30);
+    const [minMessagesThreshold, setMinMessagesThreshold] = useState(3);
+    const [includeStale, setIncludeStale] = useState(true);
+    const [includeLowMessage, setIncludeLowMessage] = useState(false);
+    const [exclusions, setExclusions] = useState<ExclusionEntry[]>([]);
+    const [exclusionDropdownType, setExclusionDropdownType] = useState<ExclusionEntityType>('character');
+    const [exclusionSearchQuery, setExclusionSearchQuery] = useState('');
+    const [isExclusionDropdownOpen, setIsExclusionDropdownOpen] = useState(false);
+    const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
     const [confirmDangerAction, setConfirmDangerAction] = useState<string | null>(null);
     const [isScanning, setIsScanning] = useState(false);
     const { addToast } = useToast();
@@ -266,6 +289,7 @@ export function DataManagerModal({
         if (!isOpen) return;
         computeStorage();
         setConfirmDangerAction(null);
+        setConfirmBulkDelete(false);
         setSelectedIds(new Set());
         setSearchQuery('');
     }, [isOpen, computeStorage]);
@@ -354,15 +378,80 @@ export function DataManagerModal({
         }
     };
 
-    // ─── Bulk operations ────────────────────────────────────────────
-    const handleBulkDeleteStaleChats = () => {
-        const cutoff = Date.now() - staleDaysThreshold * 86400000;
-        let deletedCount = 0;
-        for (const shell of rawChatShells) {
-            if (!shell.id) continue;
-            if ((shell.lastUpdatedTimestamp ?? 0) < cutoff) { onDeleteChat(shell.id); deletedCount++; }
+    // ─── Bulk: Exclusion helpers ─────────────────────────────────────
+    const exclusionIdSet = useMemo(() => {
+        const byType: Record<ExclusionEntityType, Set<string>> = {
+            character: new Set(),
+            context: new Set(),
+            location: new Set(),
+            audioTrack: new Set(),
+        };
+        for (const ex of exclusions) byType[ex.entityType].add(ex.id);
+        return byType;
+    }, [exclusions]);
+
+    const isShellExcluded = useCallback((shell: RawInteractionData): boolean => {
+        if (exclusions.length === 0) return false;
+        const charIds = shell.participantIds || [];
+        const ctxIds = shell.contextIds || [];
+        const locIds = shell.locationIds || [];
+        const audioIds = shell.audioTrackIds || [];
+        for (const id of charIds) { if (exclusionIdSet.character.has(id)) return true; }
+        for (const id of ctxIds) { if (exclusionIdSet.context.has(id)) return true; }
+        for (const id of locIds) { if (exclusionIdSet.location.has(id)) return true; }
+        for (const id of audioIds) { if (exclusionIdSet.audioTrack.has(id)) return true; }
+        return false;
+    }, [exclusions, exclusionIdSet]);
+
+    const addExclusion = (entityType: ExclusionEntityType, id: string, name: string) => {
+        if (exclusions.some(e => e.entityType === entityType && e.id === id)) return;
+        setExclusions(prev => [...prev, { entityType, id, name }]);
+        setExclusionSearchQuery('');
+        setIsExclusionDropdownOpen(false);
+        setConfirmBulkDelete(false);
+    };
+
+    const removeExclusion = (entityType: ExclusionEntityType, id: string) => {
+        setExclusions(prev => prev.filter(e => !(e.entityType === entityType && e.id === id)));
+        setConfirmBulkDelete(false);
+    };
+
+    const exclusionSearchResults = useMemo(() => {
+        const q = exclusionSearchQuery.toLowerCase().trim();
+        if (!q) return [];
+        let items: { id: string; name: string }[] = [];
+        switch (exclusionDropdownType) {
+            case 'character': items = allCharacters.map(c => ({ id: c.id, name: c.name })); break;
+            case 'context': items = allContexts.map(c => ({ id: c.id, name: c.name })); break;
+            case 'location': items = allLocations.map(l => ({ id: l.id, name: l.name })); break;
+            case 'audioTrack': items = allAudioTracks.map(a => ({ id: a.id, name: a.filename || a.name })); break;
         }
-        addToast(`Deleted ${deletedCount} stale chat${deletedCount === 1 ? '' : 's'} (>${staleDaysThreshold} days old).`, 'success');
+        const alreadyExcluded = new Set(exclusions.filter(e => e.entityType === exclusionDropdownType).map(e => e.id));
+        return items.filter(i => !alreadyExcluded.has(i.id) && i.name.toLowerCase().includes(q)).slice(0, 20);
+    }, [exclusionSearchQuery, exclusionDropdownType, allCharacters, allContexts, allLocations, allAudioTracks, exclusions]);
+
+    // ─── Bulk: Candidate list ────────────────────────────────────────
+    const bulkCandidates = useMemo(() => {
+        if (!includeStale && !includeLowMessage) return [];
+        const staleCutoff = Date.now() - staleDaysThreshold * 86400000;
+        return rawChatShells.filter(shell => {
+            if (!shell.id) return false;
+            const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoff;
+            const matchesLow = includeLowMessage && (shell.interactionIdHistory?.length ?? 0) < minMessagesThreshold;
+            if (!matchesStale && !matchesLow) return false;
+            if (isShellExcluded(shell)) return false;
+            return true;
+        });
+    }, [rawChatShells, includeStale, includeLowMessage, staleDaysThreshold, minMessagesThreshold, isShellExcluded]);
+
+    // ─── Bulk operations ────────────────────────────────────────────
+    const handleBulkDeleteCandidates = () => {
+        let deletedCount = 0;
+        for (const shell of bulkCandidates) {
+            if (shell.id) { onDeleteChat(shell.id); deletedCount++; }
+        }
+        addToast(`Deleted ${deletedCount} chat${deletedCount === 1 ? '' : 's'}.`, 'success');
+        setConfirmBulkDelete(false);
     };
 
     const handleClearWebpageCache = async () => {
@@ -431,7 +520,7 @@ export function DataManagerModal({
                 {/* Tab Bar */}
                 <div style={{ display: 'flex', gap: '4px', padding: '0 20px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
                     {tabs.map(tab => (
-                        <button key={tab.id} type="button" onClick={() => { setActiveTab(tab.id); setConfirmDangerAction(null); }}
+                        <button key={tab.id} type="button" onClick={() => { setActiveTab(tab.id); setConfirmDangerAction(null); setConfirmBulkDelete(false); }}
                             className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
                             style={{ fontSize: '0.7rem', padding: '8px 12px' }}>
                             {tab.icon} {tab.label}
@@ -632,17 +721,174 @@ export function DataManagerModal({
                     {/* ─── BULK OPS TAB ─── */}
                     {activeTab === 'bulk' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.5 }}>Bulk operations for managing large datasets. These actions are irreversible.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.5 }}>Bulk delete chat sessions by inclusion criteria. Add exclusions to protect chats containing specific entities.</div>
+
+                            {/* Inclusion Criteria */}
                             <div className="editor-section" style={{ margin: 0 }}>
-                                <div className="editor-section-title">Stale Chat Cleanup</div>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Delete chat sessions that haven't been updated in more than N days.</div>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                    <label style={{ fontSize: '0.75rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Older than:</label>
-                                    <input type="number" min="1" max="365" value={staleDaysThreshold} onChange={e => setStaleDaysThreshold(Math.max(1, Math.min(365, Number(e.target.value) || 30)))} className="editor-input" style={{ width: '80px', textAlign: 'right' }} />
-                                    <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>days</span>
+                                <div className="editor-section-title">Inclusion Criteria</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Select which chats to include for deletion. At least one must be enabled.</div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* Stale */}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${includeStale ? 'var(--accent)' : 'var(--border)'}`, background: includeStale ? 'var(--accent-bg)' : 'transparent', transition: 'all 0.15s' }}>
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeStale} onChange={e => { setIncludeStale(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" />
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Stale Chats</span>
+                                        </label>
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>— older than</span>
+                                        <input type="number" min="1" max="365" value={staleDaysThreshold} onChange={e => { setStaleDaysThreshold(Math.max(1, Math.min(365, Number(e.target.value) || 30))); setConfirmBulkDelete(false); }} className="editor-input" style={{ width: '60px', textAlign: 'right', fontSize: '0.7rem', padding: '4px 6px' }} />
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>days</span>
+                                    </div>
+
+                                    {/* Low Message */}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${includeLowMessage ? 'var(--accent)' : 'var(--border)'}`, background: includeLowMessage ? 'var(--accent-bg)' : 'transparent', transition: 'all 0.15s' }}>
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeLowMessage} onChange={e => { setIncludeLowMessage(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" />
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Low Message Chats</span>
+                                        </label>
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>— fewer than</span>
+                                        <input type="number" min="1" max="1000" value={minMessagesThreshold} onChange={e => { setMinMessagesThreshold(Math.max(1, Math.min(1000, Number(e.target.value) || 3))); setConfirmBulkDelete(false); }} className="editor-input" style={{ width: '60px', textAlign: 'right', fontSize: '0.7rem', padding: '4px 6px' }} />
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>messages</span>
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '8px' }}>{rawChatShells.filter(s => (s.lastUpdatedTimestamp ?? 0) < Date.now() - staleDaysThreshold * 86400000).length} chat(s) match this criteria.</div>
-                                <button type="button" className="editor-button" onClick={handleBulkDeleteStaleChats} style={{ fontSize: '0.75rem', width: '100%', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>🗑️ Delete Stale Chats</button>
+                            </div>
+
+                            {/* Exclusion Criteria */}
+                            <div className="editor-section" style={{ margin: 0 }}>
+                                <div className="editor-section-title">Exclusion Criteria</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Chats containing any excluded entity will be protected from deletion.</div>
+
+                                {/* Add exclusion row */}
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px', position: 'relative' }}>
+                                    <select
+                                        value={exclusionDropdownType}
+                                        onChange={e => { setExclusionDropdownType(e.target.value as ExclusionEntityType); setExclusionSearchQuery(''); setIsExclusionDropdownOpen(false); }}
+                                        className="editor-input"
+                                        style={{ width: '140px', fontSize: '0.7rem', padding: '6px 8px' }}
+                                    >
+                                        {(Object.keys(EXCLUSION_TYPE_META) as ExclusionEntityType[]).map(key => (
+                                            <option key={key} value={key}>{EXCLUSION_TYPE_META[key].icon} {EXCLUSION_TYPE_META[key].label}</option>
+                                        ))}
+                                    </select>
+                                    <div style={{ flex: 1, position: 'relative' }}>
+                                        <input
+                                            type="text"
+                                            value={exclusionSearchQuery}
+                                            onChange={e => { setExclusionSearchQuery(e.target.value); setIsExclusionDropdownOpen(true); }}
+                                            onFocus={() => { if (exclusionSearchQuery.trim()) setIsExclusionDropdownOpen(true); }}
+                                            placeholder={`Search ${EXCLUSION_TYPE_META[exclusionDropdownType].label.toLowerCase()}...`}
+                                            className="editor-input"
+                                            style={{ width: '100%', fontSize: '0.7rem', padding: '6px 8px' }}
+                                        />
+                                        {isExclusionDropdownOpen && exclusionSearchResults.length > 0 && (
+                                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, maxHeight: '180px', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+                                                {exclusionSearchResults.map(item => (
+                                                    <div
+                                                        key={item.id}
+                                                        onClick={() => addExclusion(exclusionDropdownType, item.id, item.name)}
+                                                        style={{ padding: '6px 10px', fontSize: '0.7rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-bg)')}
+                                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                    >
+                                                        {EXCLUSION_TYPE_META[exclusionDropdownType].icon} {item.name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {isExclusionDropdownOpen && exclusionSearchQuery.trim() && exclusionSearchResults.length === 0 && (
+                                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', fontSize: '0.65rem', opacity: 0.5 }}>
+                                                No results found.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Active exclusion tags */}
+                                {exclusions.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                        {exclusions.map(ex => (
+                                            <span
+                                                key={`${ex.entityType}-${ex.id}`}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', padding: '3px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                                            >
+                                                {EXCLUSION_TYPE_META[ex.entityType].icon} {ex.name}
+                                                <span
+                                                    onClick={() => removeExclusion(ex.entityType, ex.id)}
+                                                    style={{ cursor: 'pointer', marginLeft: '2px', opacity: 0.6, fontSize: '0.7rem', lineHeight: 1 }}
+                                                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                                                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}
+                                                >
+                                                    ✕
+                                                </span>
+                                            </span>
+                                        ))}
+                                        <span
+                                            onClick={() => { setExclusions([]); setConfirmBulkDelete(false); }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.6rem', padding: '3px 8px', borderRadius: '12px', border: '1px solid var(--border)', cursor: 'pointer', opacity: 0.5, transition: 'opacity 0.15s' }}
+                                            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                                            onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+                                        >
+                                            Clear All
+                                        </span>
+                                    </div>
+                                )}
+                                {exclusions.length === 0 && (
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic' }}>No exclusions set — all matching chats will be eligible for deletion.</div>
+                                )}
+                            </div>
+
+                            {/* Result Summary + Action */}
+                            <div className="editor-section" style={{ margin: 0, borderColor: bulkCandidates.length > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)' }}>
+                                <div className="editor-section-title">Result</div>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: 1, minWidth: '150px' }}>
+                                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: bulkCandidates.length > 0 ? '#ef4444' : 'var(--text-h)' }}>
+                                            {bulkCandidates.length}
+                                        </div>
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>
+                                            chat{bulkCandidates.length !== 1 ? 's' : ''} will be deleted
+                                            {exclusions.length > 0 && (
+                                                <span> ({rawChatShells.filter(s => s.id && isShellExcluded(s)).length} excluded)</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {(!includeStale && !includeLowMessage) && (
+                                        <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic' }}>Enable at least one inclusion criterion.</div>
+                                    )}
+                                </div>
+
+                                {bulkCandidates.length > 0 && (
+                                    <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '10px' }}>
+                                        {bulkCandidates.slice(0, 50).map(shell => {
+                                            const msgCount = shell.interactionIdHistory?.length ?? 0;
+                                            const age = daysAgo(shell.lastUpdatedTimestamp ?? 0);
+                                            return (
+                                                <div key={shell.id} style={{ padding: '4px 8px', fontSize: '0.65rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{shell.name || 'Untitled'}</span>
+                                                    <span style={{ opacity: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{msgCount} msg • {age}d ago</span>
+                                                </div>
+                                            );
+                                        })}
+                                        {bulkCandidates.length > 50 && (
+                                            <div style={{ padding: '4px 8px', fontSize: '0.6rem', opacity: 0.4, textAlign: 'center' }}>...and {bulkCandidates.length - 50} more</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    className="editor-button"
+                                    disabled={bulkCandidates.length === 0}
+                                    onClick={() => confirmBulkDelete ? handleBulkDeleteCandidates() : setConfirmBulkDelete(true)}
+                                    style={{
+                                        fontSize: '0.75rem', width: '100%',
+                                        color: confirmBulkDelete ? '#fff' : bulkCandidates.length > 0 ? '#ef4444' : undefined,
+                                        background: confirmBulkDelete ? '#ef4444' : 'transparent',
+                                        borderColor: bulkCandidates.length > 0 ? 'rgba(239,68,68,0.3)' : undefined,
+                                    }}
+                                >
+                                    {confirmBulkDelete ? `⚠️ Confirm Delete ${bulkCandidates.length} Chat${bulkCandidates.length !== 1 ? 's' : ''}` : `🗑️ Delete ${bulkCandidates.length} Chat${bulkCandidates.length !== 1 ? 's' : ''}`}
+                                </button>
                             </div>
                         </div>
                     )}
