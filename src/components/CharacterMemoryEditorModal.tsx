@@ -44,7 +44,7 @@ export function CharacterMemoryEditorModal({
                     const chats = await loadAllRawInteractionDataShells();
                     const map = new Map<string, string>();
                     for (const c of chats) {
-                        if (c) map.set(c.id, c.name || 'Untitled Chat');
+                        if (c?.id) map.set(c.id, c.name || 'Untitled Chat');
                     }
                     setChatNameMap(map);
                 } catch { /* ignore */ }

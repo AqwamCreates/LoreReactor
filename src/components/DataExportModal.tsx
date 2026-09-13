@@ -134,7 +134,7 @@ export function DataExportModal({
                                 <span className="editor-section-title">Select Items to Export</span>
                                 <div className="entity-ref-hint">Click items to select/deselect. Only selected items will be included in the export.</div>
 
-                                <EntitySelectList label="Chat Sessions" items={rawChatShells} selectedIds={selectedChatIds}
+                                <EntitySelectList label="Chat Sessions" items={rawChatShells.filter((s): s is typeof s & { id: string } => !!s.id)} selectedIds={selectedChatIds}
                                     onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
                                 <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds}
                                     onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />

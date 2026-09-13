@@ -1015,6 +1015,17 @@ export async function buildPromptAndStopPatterns(
         if (locationText) locationContent += `\n\n${locationText}`;
         locationContent += `${contextEndString}`;
         locationLines.push(locationContent);
+
+        // Owner bindings
+        if (location.ownerBindings && location.ownerBindings.length > 0) {
+            const ownerNames = location.ownerBindings
+                .map(id => participants.find(p => p.id === id)?.name)
+                .filter((n): n is string => !!n);
+            if (ownerNames.length > 0) {
+                locationLines.push(`${generalStartString}This location is owned by: ${ownerNames.join(', ')}.${generalEndString}`);
+            }
+        }
+
         if (location.images && location.images.length > 0) {
             activeLocationImages.push(...location.images);
         }
