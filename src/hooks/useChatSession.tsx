@@ -1,6 +1,6 @@
 // src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
-import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, PromptBlock } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, PromptBlock, ChatMessage, tool } from '../types';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
@@ -21,6 +21,7 @@ import { useMemoryTrigger } from './useMemoryTrigger';
 import { useCharacterResponse } from './useCharacterResponse';
 import { runSummarization } from '../services/SummarizationEngine';
 import { useSessionStore } from './useSessionStore';
+import { loadPendingToolActions, type PendingToolAction } from '../services/ToolExecutor';
 
 const engine = getLanguageModelEngine();
 
@@ -295,6 +296,148 @@ export function useChatSession() {
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
+    /**
+     * Processes pending tool actions stored in the last AI message's inventory.
+     * Executes session-level mutations (summon, kick, invite, admin, creator, destroyer)
+     * and strips the pending actions key from inventory afterward.
+     */
+    const processPendingToolActions = useCallback(async (data: InteractionData): Promise<InteractionData> => {
+        const history = data.interactionHistory;
+        if (history.length === 0) return data;
+
+        // Find the last AI message (not protagonist)
+        let lastAiMsgIdx = -1;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].messageType === 'chat' && history[i].character.id !== data.protagonist.id) {
+                lastAiMsgIdx = i;
+                break;
+            }
+        }
+        if (lastAiMsgIdx === -1) return data;
+
+        const lastAiMsg = history[lastAiMsgIdx] as ChatMessage;
+        const actions = loadPendingToolActions(lastAiMsg.inventory);
+        if (actions.length === 0) return data;
+
+        let updatedData = { ...data, interactionHistory: [...history] };
+        let changed = false;
+
+        for (const action of actions) {
+            switch (action.type) {
+                case 'summon': {
+                    const charId = action.payload.characterId;
+                    const alreadyParticipant = updatedData.participants.some(p => p.id === charId);
+                    if (!alreadyParticipant) {
+                        const placeholder: Character = {
+                            id: charId,
+                            name: action.payload.characterName || 'Unknown',
+                            images: {},
+                            initiativeWeight: 1,
+                            chatProbability: 0.5,
+                            maximumChatStamina: 4,
+                            nameSensitivity: 1,
+                            chatImpatienceSensitivity: 0,
+                            skipProbability: 0,
+                            memoryRetentionWeight: 1,
+                            contextSensitivity: 1,
+                            maximumActionStamina: 5,
+                            tools: {} as Record<tool, boolean>,
+                            enableMemoryWriting: false,
+                            enableMemoryReading: false,
+                            memories: {},
+                            numberOfMessagesToDisableThinkPrompt: 0,
+                            numberOfMessagesToDisableMetaThinkInstructions: 0,
+                            numberOfMessagesToDisableDialoguePrompt: 0,
+                            firstCreatedTimestamp: Date.now(),
+                            lastUpdatedTimestamp: Date.now(),
+                        };
+                        updatedData = {
+                            ...updatedData,
+                            participants: [...updatedData.participants, placeholder],
+                        };
+                        changed = true;
+                        addToast(`✨ ${action.payload.characterName} joined the session.`, 'info');
+                    }
+                    break;
+                }
+                case 'kick': {
+                    const charId = action.payload.characterId;
+                    updatedData = {
+                        ...updatedData,
+                        participants: updatedData.participants.filter(p => p.id !== charId),
+                    };
+                    changed = true;
+                    addToast(`👢 ${action.payload.characterName} was kicked from the session.`, 'info');
+                    break;
+                }
+                case 'invite': {
+                    let currentLocIdx: number | undefined;
+                    for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) {
+                        if (updatedData.interactionHistory[i].locationIndex !== undefined) {
+                            currentLocIdx = updatedData.interactionHistory[i].locationIndex;
+                            break;
+                        }
+                    }
+                    if (currentLocIdx !== undefined) {
+                        const invitedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
+                        if (invitedChar) {
+                            const inviteMsg = {
+                                messageType: 'interaction' as const,
+                                id: uuidv4(),
+                                character: { ...invitedChar },
+                                locationIndex: currentLocIdx,
+                                characterLockedLocations: {},
+                                parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
+                                firstCreatedTimestamp: Date.now(),
+                                lastUpdatedTimestamp: Date.now(),
+                            };
+                            updatedData = {
+                                ...updatedData,
+                                interactionHistory: [...updatedData.interactionHistory, inviteMsg],
+                            };
+                            changed = true;
+                            addToast(`📨 ${action.payload.characterName} arrived at the current location.`, 'info');
+                        }
+                    }
+                    break;
+                }
+                case 'administrator_move_protagonist': {
+                    addToast(`🔧 Protagonist transfer to "${action.payload.chatId}" requested. Use the chat list to switch.`, 'info');
+                    break;
+                }
+                case 'administrator_switch_model': {
+                    addToast(`🔧 Model switch to "${action.payload.modelName}" requested. Use the model manager to switch.`, 'info');
+                    break;
+                }
+                case 'creator': {
+                    addToast(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested. Use the editor to complete.`, 'info');
+                    break;
+                }
+                case 'destroyer': {
+                    addToast(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested. Use the data manager to confirm.`, 'info');
+                    break;
+                }
+            }
+        }
+
+        if (!changed) return data;
+
+        // Strip pending actions from the AI message's inventory
+        const cleanedHistory = [...updatedData.interactionHistory];
+        const cleanedMsg = { ...cleanedHistory[lastAiMsgIdx] } as ChatMessage;
+        const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
+        delete cleanedInventory['__pending_tool_actions__'];
+        if (Object.keys(cleanedInventory).length === 0) {
+            delete cleanedMsg.inventory;
+        } else {
+            cleanedMsg.inventory = cleanedInventory;
+        }
+        cleanedHistory[lastAiMsgIdx] = cleanedMsg;
+        updatedData = { ...updatedData, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
+
+        return updatedData;
+    }, [addToast]);
+
     // ─── Public Actions ──────────────────────────────────────────────
     const updateRunningModels = useCallback((m: Record<string, { isRunning: boolean; port?: number }>) => setRunningModelsMap(m), [setRunningModelsMap]);
 
@@ -379,14 +522,15 @@ export function useChatSession() {
             const result = await handleServerResponse(ud, targetChar, ctrl.signal, throttledSetStreamingText, undefined, '');
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(result || ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (result) {
-                await saveRawInteractionData(result);
-                setInteractionData(result);
-                const lm = result.interactionHistory[result.interactionHistory.length - 1];
+                const processed = await processPendingToolActions(result);
+                await saveRawInteractionData(processed);
+                setInteractionData(processed);
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') console.error('AI response failed:', e); }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage]);
+    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setInteractionData, resetStream, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, applyPendingPartial, speakMessage, processPendingToolActions]);
 
     const sendMessage = useCallback(async (text: string, files?: File[], allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -426,13 +570,14 @@ export function useChatSession() {
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentChar.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                await saveRawInteractionData(ud); setInteractionData(ud);
+                const processed = await processPendingToolActions(ud);
+                await saveRawInteractionData(processed); setInteractionData(processed);
                 runSummarization({
-                    data: ud,
+                    data: processed,
                     setData: setInteractionData,
                     addToast,
                 });
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
@@ -440,7 +585,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Send failed:', e); addToast(`Send failed: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
+    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken, processPendingToolActions]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -465,13 +610,12 @@ export function useChatSession() {
             const result = await handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText, allPromptBlocks);
             if (!result) return;
 
-            // CharacterActor already updated the partial message in-place via
-            // updatePartialMessageInInteractionData. Just clear the partial flag and save.
             const finalData = await clearPartialFlag(result, messageId);
-            setInteractionData(finalData);
-            await saveRawInteractionData(finalData);
+            const processed = await processPendingToolActions(finalData);
+            setInteractionData(processed);
+            await saveRawInteractionData(processed);
 
-            const finalMsg = finalData.interactionHistory.find(m => m.id === messageId);
+            const finalMsg = processed.interactionHistory.find(m => m.id === messageId);
             const finalText = finalMsg && finalMsg.messageType === 'chat' ? finalMsg.textContent : '';
             if (char.id !== currentInteractionData.protagonist.id) speakMessage(finalText, char);
         } catch (e) {
@@ -484,7 +628,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData]);
+    }, [isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, setStreamingCharacter, setLatency, setTimeToFirstToken, addToast, releaseLock, handleServerResponse, throttledSetStreamingText, speakMessage, setInteractionData, processPendingToolActions]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user', allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = useSessionStore.getState().interactionData;
@@ -520,13 +664,14 @@ export function useChatSession() {
             const ud = await runTurnSequence(td, executor, ctrl, setStreamingCharacter, throttledSetStreamingText, setInteractionData);
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentInteractionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
             if (ud.interactionHistory.length > preCount) {
-                await saveRawInteractionData(ud); setInteractionData(ud);
+                const processed = await processPendingToolActions(ud);
+                await saveRawInteractionData(processed); setInteractionData(processed);
                 runSummarization({
-                    data: ud,
+                    data: processed,
                     setData: setInteractionData,
                     addToast,
                 });
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) speakMessage(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
@@ -534,7 +679,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken]);
+    }, [handleServerResponse, addToast, isModelReadyForGeneration, acquireLock, releaseLock, generateAmbientNarration, speakMessage, applyPendingPartial, throttledSetStreamingText, resetStream, setStreamingCharacter, setInteractionData, setLatency, setTimeToFirstToken, processPendingToolActions]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character, allPromptBlocks?: PromptBlock[]) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;

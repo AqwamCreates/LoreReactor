@@ -22,6 +22,32 @@ export interface ToolExecutionContext {
     addToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
+/**
+ * Pending actions stored in nextMessage.inventory['__pending_tool_actions__']
+ * for the caller to execute after generation completes.
+ */
+export interface PendingToolAction {
+    type: 'summon' | 'kick' | 'invite' | 'administrator_move_protagonist' | 'administrator_switch_model' | 'creator' | 'destroyer';
+    payload: Record<string, string>;
+}
+
+export function loadPendingToolActions(inventory: Inventory | undefined): PendingToolAction[] {
+    if (!inventory || typeof inventory['__pending_tool_actions__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__pending_tool_actions__'] as string); } catch { return []; }
+}
+
+export function savePendingToolActions(inventory: Inventory, actions: PendingToolAction[]): void {
+    if (actions.length === 0) { delete inventory['__pending_tool_actions__']; } else { inventory['__pending_tool_actions__'] = JSON.stringify(actions); }
+}
+
+function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction): void {
+    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
+    const actions = loadPendingToolActions(inventory);
+    actions.push(action);
+    savePendingToolActions(inventory, actions);
+    nextMessage.inventory = inventory;
+}
+
 const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext) => ToolResult | Promise<ToolResult>> = {
     "pick": executeRandomPick,
     "date": executeDate,
@@ -370,7 +396,6 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Find current location
     let currentLocationIndex: number | undefined;
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         if (interactionData.interactionHistory[i].locationIndex !== undefined) {
@@ -402,7 +427,7 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         };
     }
 
-    // Check adjacency: target must be in current location's bindings or vice versa
+    // Check adjacency
     const isAdjacent = currentLocation.locationBindings.includes(targetLocation.id) ||
                        targetLocation.locationBindings.includes(currentLocation.id);
 
@@ -411,7 +436,13 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Update nextMessage locationIndex
+    // Check if target location is locked
+    const locks = loadLocationLocks(nextMessage.inventory);
+    if (locks[targetLocation.id]) {
+        const errorContent = `[Error: "${targetLocation.name}" is locked. Use unlock first.]`;
+        return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
+    }
+
     const targetIndex = locations.findIndex(l => l.id === targetLocation.id);
     nextMessage.locationIndex = targetIndex;
 
@@ -480,6 +511,11 @@ function loadStopwatches(inventory: Inventory | undefined): StopwatchEntry[] {
 
 function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): void {
     if (stopwatches.length === 0) { delete inventory['__stopwatches__']; } else { inventory['__stopwatches__'] = JSON.stringify(stopwatches); }
+}
+
+function loadLocationLocks(inventory: Inventory | undefined): Record<string, boolean> {
+    if (!inventory || typeof inventory['__location_locks__'] !== 'string') return {};
+    try { return JSON.parse(inventory['__location_locks__'] as string); } catch { return {}; }
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────
@@ -1254,7 +1290,7 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Invite ─────────────────────────────────────────────────────────
 
-function executeInvite(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1282,25 +1318,23 @@ function executeInvite(args: string, _nextMessage: BaseMessage, interactionData:
         return { toolType: 'invite', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    let currentLocationIndex: number | undefined;
-    for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
-        if (interactionData.interactionHistory[i].locationIndex !== undefined) {
-            currentLocationIndex = interactionData.interactionHistory[i].locationIndex;
-            break;
-        }
-    }
+    // Store pending action for caller to execute
+    appendPendingAction(nextMessage, {
+        type: 'invite',
+        payload: { characterId: targetChar.id, characterName: targetChar.name },
+    });
 
     return {
         toolType: 'invite',
         args,
         content: `Invited ${targetChar.name} to the current location.`,
-        displayReplacement: `[📨 Invited ${targetChar.name}${currentLocationIndex !== undefined ? ' to current location' : ''}]`,
+        displayReplacement: `[📨 Invited ${targetChar.name} to current location]`,
     };
 }
 
 // ─── Kick ───────────────────────────────────────────────────────────
 
-function executeKick(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1322,6 +1356,12 @@ function executeKick(args: string, _nextMessage: BaseMessage, interactionData: I
         const errorContent = `[Error: "${targetChar.name}" is not a participant in this session.]`;
         return { toolType: 'kick', args, content: errorContent, displayReplacement: errorContent };
     }
+
+    // Store pending action for caller to execute
+    appendPendingAction(nextMessage, {
+        type: 'kick',
+        payload: { characterId: targetChar.id, characterName: targetChar.name },
+    });
 
     return {
         toolType: 'kick',
@@ -1355,7 +1395,6 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
         return { toolType: 'teleport', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Find current location for display purposes
     let currentLocationName = 'unknown';
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const locIdx = interactionData.interactionHistory[i].locationIndex;
@@ -1374,7 +1413,6 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
         };
     }
 
-    // Update nextMessage locationIndex — no adjacency check
     const targetIndex = locations.findIndex(l => l.id === targetLocation.id);
     nextMessage.locationIndex = targetIndex;
 
@@ -1405,15 +1443,8 @@ function executeLock(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'lock', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Store lock state in inventory
-    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
-    const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
-
-    let locks: Record<string, boolean> = {};
-    if (typeof inventory['__location_locks__'] === 'string') {
-        try { locks = JSON.parse(inventory['__location_locks__'] as string); } catch { locks = {}; }
-    }
-
+    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
+    const locks = loadLocationLocks(inventory);
     locks[targetLocation.id] = true;
     inventory['__location_locks__'] = JSON.stringify(locks);
     nextMessage.inventory = inventory;
@@ -1445,14 +1476,8 @@ function executeUnlock(args: string, nextMessage: BaseMessage, interactionData: 
         return { toolType: 'unlock', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Remove lock state from inventory
-    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
-    const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
-
-    let locks: Record<string, boolean> = {};
-    if (typeof inventory['__location_locks__'] === 'string') {
-        try { locks = JSON.parse(inventory['__location_locks__'] as string); } catch { locks = {}; }
-    }
+    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
+    const locks = loadLocationLocks(inventory);
 
     if (!locks[targetLocation.id]) {
         return {
@@ -1481,7 +1506,7 @@ function executeUnlock(args: string, nextMessage: BaseMessage, interactionData: 
 
 // ─── Summon ─────────────────────────────────────────────────────────
 
-function executeSummon(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1503,6 +1528,12 @@ function executeSummon(args: string, _nextMessage: BaseMessage, interactionData:
         const errorContent = `[Error: "${targetChar.name}" is already a participant. Use invite to bring them to the current location.]`;
         return { toolType: 'summon', args, content: errorContent, displayReplacement: errorContent };
     }
+
+    // Store pending action for caller to execute (adding participant requires session-level mutation)
+    appendPendingAction(nextMessage, {
+        type: 'summon',
+        payload: { characterId: targetChar.id, characterName: targetChar.name },
+    });
 
     return {
         toolType: 'summon',
@@ -1549,7 +1580,6 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
         return { toolType: 'inspect', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Determine current location of target
     let targetLocationName = 'unknown';
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionData.interactionHistory[i];
@@ -1560,7 +1590,6 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
         }
     }
 
-    // Get last known expression
     let lastExpression = 'neutral';
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionData.interactionHistory[i];
@@ -1570,7 +1599,6 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
         }
     }
 
-    // Count inventory items from last message by this character
     let itemCount = 0;
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionData.interactionHistory[i];
@@ -1591,7 +1619,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
 
 // ─── Administrator ──────────────────────────────────────────────────
 
-function executeAdministrator(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1614,8 +1642,11 @@ function executeAdministrator(args: string, _nextMessage: BaseMessage, interacti
                 const errorContent = '[Error: Usage: administrator move_protagonist <chat_id>]';
                 return { toolType: 'administrator', args, content: errorContent, displayReplacement: errorContent };
             }
-            const content = `Requested protagonist transfer to chat "${targetChatId}". This requires user confirmation.`;
-            return { toolType: 'administrator', args, content, displayReplacement: `[🔧 Transfer requested: ${targetChatId}]` };
+            appendPendingAction(nextMessage, {
+                type: 'administrator_move_protagonist',
+                payload: { chatId: targetChatId },
+            });
+            return { toolType: 'administrator', args, content: `Requested protagonist transfer to chat "${targetChatId}".`, displayReplacement: `[🔧 Transfer requested: ${targetChatId}]` };
         }
 
         case 'switch_model': {
@@ -1624,8 +1655,11 @@ function executeAdministrator(args: string, _nextMessage: BaseMessage, interacti
                 const errorContent = '[Error: Usage: administrator switch_model <model_name>]';
                 return { toolType: 'administrator', args, content: errorContent, displayReplacement: errorContent };
             }
-            const content = `Requested model switch to "${modelName}". This requires user confirmation.`;
-            return { toolType: 'administrator', args, content, displayReplacement: `[🔧 Model switch requested: ${modelName}]` };
+            appendPendingAction(nextMessage, {
+                type: 'administrator_switch_model',
+                payload: { modelName },
+            });
+            return { toolType: 'administrator', args, content: `Requested model switch to "${modelName}".`, displayReplacement: `[🔧 Model switch requested: ${modelName}]` };
         }
 
         case 'list_models': {
@@ -1642,7 +1676,7 @@ function executeAdministrator(args: string, _nextMessage: BaseMessage, interacti
 
 // ─── Creator ────────────────────────────────────────────────────────
 
-function executeCreator(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1659,47 +1693,29 @@ function executeCreator(args: string, _nextMessage: BaseMessage, _interactionDat
         return { toolType: 'creator', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    switch (entityType) {
-        case 'character': {
-            const content = `Creation request for character "${entityName}". Use the Character Editor to complete creation.`;
-            context?.addToast?.(`Creator: character "${entityName}" creation initiated.`, 'info');
-            return { toolType: 'creator', args, content, displayReplacement: `[🛠️ Character creation: "${entityName}"]` };
-        }
-
-        case 'context': {
-            const content = `Creation request for context "${entityName}". Use the Context Editor to complete creation.`;
-            context?.addToast?.(`Creator: context "${entityName}" creation initiated.`, 'info');
-            return { toolType: 'creator', args, content, displayReplacement: `[🛠️ Context creation: "${entityName}"]` };
-        }
-
-        case 'location': {
-            const content = `Creation request for location "${entityName}". Use the Location Editor to complete creation.`;
-            context?.addToast?.(`Creator: location "${entityName}" creation initiated.`, 'info');
-            return { toolType: 'creator', args, content, displayReplacement: `[🛠️ Location creation: "${entityName}"]` };
-        }
-
-        case 'audio_track': {
-            const content = `Creation request for audio track "${entityName}". Use the Audio Track Editor to complete creation.`;
-            context?.addToast?.(`Creator: audio track "${entityName}" creation initiated.`, 'info');
-            return { toolType: 'creator', args, content, displayReplacement: `[🛠️ Audio track creation: "${entityName}"]` };
-        }
-
-        case 'profile': {
-            const content = `Creation request for profile "${entityName}". Use the Profile Editor to complete creation.`;
-            context?.addToast?.(`Creator: profile "${entityName}" creation initiated.`, 'info');
-            return { toolType: 'creator', args, content, displayReplacement: `[🛠️ Profile creation: "${entityName}"]` };
-        }
-
-        default: {
-            const errorContent = `[Error: Unknown entity type "${entityType}". Use character, context, location, audio_track, or profile.]`;
-            return { toolType: 'creator', args, content: errorContent, displayReplacement: errorContent };
-        }
+    const validTypes = ['character', 'context', 'location', 'audio_track', 'profile'];
+    if (!validTypes.includes(entityType)) {
+        const errorContent = `[Error: Unknown entity type "${entityType}". Use character, context, location, audio_track, or profile.]`;
+        return { toolType: 'creator', args, content: errorContent, displayReplacement: errorContent };
     }
+
+    appendPendingAction(nextMessage, {
+        type: 'creator',
+        payload: { entityType, entityName },
+    });
+
+    context?.addToast?.(`Creator: ${entityType} "${entityName}" creation initiated.`, 'info');
+    return {
+        toolType: 'creator',
+        args,
+        content: `Creation request for ${entityType} "${entityName}". Use the editor to complete creation.`,
+        displayReplacement: `[🛠️ ${entityType} creation: "${entityName}"]`,
+    };
 }
 
 // ─── Destroyer ──────────────────────────────────────────────────────
 
-function executeDestroyer(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
@@ -1716,71 +1732,72 @@ function executeDestroyer(args: string, _nextMessage: BaseMessage, interactionDa
         return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
     }
 
+    const validTypes = ['character', 'context', 'location', 'audio_track', 'profile'];
+    if (!validTypes.includes(entityType)) {
+        const errorContent = `[Error: Unknown entity type "${entityType}". Use character, context, location, audio_track, or profile.]`;
+        return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+    }
+
     const identifierLower = entityIdentifier.toLowerCase();
 
+    // Validate target exists
+    let targetName = entityIdentifier;
     switch (entityType) {
         case 'character': {
             const target = (context?.allCharacters || []).find(c => c.name.toLowerCase() === identifierLower || c.id === entityIdentifier);
             if (!target) {
-                const errorContent = `[Error: Character "${entityIdentifier}" not found.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: `[Error: Character "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
             }
             if (target.id === interactionData.protagonist?.id) {
-                const errorContent = `[Error: Cannot destroy the protagonist.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: '[Error: Cannot destroy the protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
             }
-            const content = `Deletion request for character "${target.name}". This action is irreversible.`;
-            context?.addToast?.(`Destroyer: character "${target.name}" deletion initiated.`, 'info');
-            return { toolType: 'destroyer', args, content, displayReplacement: `[💀 Character deletion: "${target.name}"]` };
+            targetName = target.name;
+            break;
         }
-
         case 'context': {
             const target = (context?.allContexts || interactionData.contexts || []).find(c => c.name.toLowerCase() === identifierLower || c.id === entityIdentifier);
             if (!target) {
-                const errorContent = `[Error: Context "${entityIdentifier}" not found.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: `[Error: Context "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
             }
-            const content = `Deletion request for context "${target.name}". This action is irreversible.`;
-            context?.addToast?.(`Destroyer: context "${target.name}" deletion initiated.`, 'info');
-            return { toolType: 'destroyer', args, content, displayReplacement: `[💀 Context deletion: "${target.name}"]` };
+            targetName = target.name;
+            break;
         }
-
         case 'location': {
             const target = (context?.allLocations || interactionData.locations || []).find(l => l.name.toLowerCase() === identifierLower || l.id === entityIdentifier);
             if (!target) {
-                const errorContent = `[Error: Location "${entityIdentifier}" not found.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: `[Error: Location "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
             }
-            const content = `Deletion request for location "${target.name}". This action is irreversible.`;
-            context?.addToast?.(`Destroyer: location "${target.name}" deletion initiated.`, 'info');
-            return { toolType: 'destroyer', args, content, displayReplacement: `[💀 Location deletion: "${target.name}"]` };
+            targetName = target.name;
+            break;
         }
-
         case 'audio_track': {
             const target = (context?.allAudioTracks || interactionData.audioTracks || []).find(t => t.name.toLowerCase() === identifierLower || t.id === entityIdentifier);
             if (!target) {
-                const errorContent = `[Error: Audio track "${entityIdentifier}" not found.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: `[Error: Audio track "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
             }
-            const content = `Deletion request for audio track "${target.name}". This action is irreversible.`;
-            context?.addToast?.(`Destroyer: audio track "${target.name}" deletion initiated.`, 'info');
-            return { toolType: 'destroyer', args, content, displayReplacement: `[💀 Audio track deletion: "${target.name}"]` };
+            targetName = target.name;
+            break;
         }
-
         case 'profile': {
             const target = (context?.allProfiles || []).find(p => p.name.toLowerCase() === identifierLower || p.id === entityIdentifier);
             if (!target) {
-                const errorContent = `[Error: Profile "${entityIdentifier}" not found.]`;
-                return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+                return { toolType: 'destroyer', args, content: `[Error: Profile "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
             }
-            const content = `Deletion request for profile "${target.name}". This action is irreversible.`;
-            context?.addToast?.(`Destroyer: profile "${target.name}" deletion initiated.`, 'info');
-            return { toolType: 'destroyer', args, content, displayReplacement: `[💀 Profile deletion: "${target.name}"]` };
-        }
-
-        default: {
-            const errorContent = `[Error: Unknown entity type "${entityType}". Use character, context, location, audio_track, or profile.]`;
-            return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
+            targetName = target.name;
+            break;
         }
     }
+
+    appendPendingAction(nextMessage, {
+        type: 'destroyer',
+        payload: { entityType, entityId: entityIdentifier, entityName: targetName },
+    });
+
+    context?.addToast?.(`Destroyer: ${entityType} "${targetName}" deletion initiated.`, 'info');
+    return {
+        toolType: 'destroyer',
+        args,
+        content: `Deletion request for ${entityType} "${targetName}". This action is irreversible.`,
+        displayReplacement: `[💀 ${entityType} deletion: "${targetName}"]`,
+    };
 }
