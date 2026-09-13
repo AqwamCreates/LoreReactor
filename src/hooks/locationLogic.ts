@@ -326,3 +326,8 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
         lastUpdatedTimestamp: now,
     };
 }
+
+export function isLocationOwner(character: Character, location: Location | undefined): boolean {
+    if (!location) return false;
+    return location.ownerBindings.includes(character.id);
+}
