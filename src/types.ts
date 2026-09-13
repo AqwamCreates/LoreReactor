@@ -145,6 +145,7 @@ export interface Location extends ObjectData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
+  ownerBindings: string[]
   latitude: number;
   longitude: number;
   locationDistances: Record<string, number>;
@@ -176,6 +177,7 @@ export interface RawLocation extends RawData {
   characterBindings: string[];
   globalWeight: number;
   characterWeights: Record<string, number>;
+  ownerBindings: string[]
   latitude: number;
   longitude: number;
   locationDistances?: Record<string, number>;
@@ -232,7 +234,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "summon" | "administrator" | "creator" | "destroyer"  // Invite is basically allowing characters bringing existing participants (not protagonist) to the current location. Kick basically allows the character to kick out participants including the protagonist from existing location to another one. Call essentially gives the character the ability to add non-participants into the existing interaction session. Administrator is basically... Allowing the character to actually manage protagonist to different chat sessions, controlling models, handlong of user-data-related stuff and so on. Creator is basically allowing the character to create user-data-related-stuff. Destroyer basically allows the character to destroy user-data-related stuff.
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "lock" | "unlock" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"  // Invite is basically allowing characters bringing existing participants (not protagonist) to the current location. Kick basically allows the character to kick out participants including the protagonist from existing location to another one. Call essentially gives the character the ability to add non-participants into the existing interaction session. Administrator is basically... Allowing the character to actually manage protagonist to different chat sessions, controlling models, handlong of user-data-related stuff and so on. Creator is basically allowing the character to create user-data-related-stuff. Destroyer basically allows the character to destroy user-data-related stuff.
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;

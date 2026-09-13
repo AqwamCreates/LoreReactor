@@ -8,22 +8,13 @@ import { uploadCharacterImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
 
-const DEFAULT_TOOLS: Record<tool, boolean> = {
-    pick: true,
-    date: false,
-    coin: true,
-    dice: true,
-    random: true,
-    rng: false,
-    timer: false,
-    stopwatch: false,
-    calculator: false,
-    web: false,
-    lookup: false,
-    map: false,
-    audio: false,
-    note: false,
-    inventory: false,
+const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
+    pick: true, date: false, coin: true, dice: true, random: true, rng: false,
+    move: false, timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
+    map: false, audio: false, note: false, inventory: false,
+    invite: false, kick: false, teleport: false, lock: false, unlock: false,
+    summon: false, narrate: false, inspect: false,
+    administrator: false, creator: false, destroyer: false,
 };
 
 interface CharacterCardImportModalProps {
@@ -144,7 +135,7 @@ export function CharacterCardImportModal({
                 memoryRetentionWeight,
                 contextSensitivity,
                 maximumActionStamina,
-                tools: { ...DEFAULT_TOOLS },
+                tools: { ...DEFAULT_CHARACTER_TOOLS },
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
                 memories: {},
@@ -164,6 +155,7 @@ export function CharacterCardImportModal({
                 insertionDepth: entry.insertionDepth ?? 0,
                 tokenBudget: entry.tokenBudget,
                 useBase64Encoding: false,
+                limitLinksToSubdirectory: false,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             } as Context));
@@ -242,13 +234,13 @@ export function CharacterCardImportModal({
                                 Supports TavernAI V1, V2, and V3 formats.<br />
                                 Characters, emotion images and lorebook entries will be extracted automatically.
                             </div>
-                                <button
-                                    type="button"
-                                    className="editor-button editor-button-save entity-upload-button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    Choose File
-                                </button>
+                            <button
+                                type="button"
+                                className="editor-button editor-button-save entity-upload-button"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                Choose File
+                            </button>
                             <input
                                 ref={fileInputRef}
                                 type="file"

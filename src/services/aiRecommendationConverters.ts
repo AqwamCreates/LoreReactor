@@ -6,16 +6,20 @@ import type { GeneratedOutput } from './aiRecommendationTypes';
 
 const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
     pick: true, date: false, coin: true, dice: true, random: true, rng: false,
-    timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
+    move: false, timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
     map: false, audio: false, note: false, inventory: false,
-    invite: false, kick: false, summon: false, administrator: false, creator: false, destroyer: false,
+    invite: false, kick: false, teleport: false, lock: false, unlock: false,
+    summon: false, narrate: false, inspect: false,
+    administrator: false, creator: false, destroyer: false,
 };
 
 const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
     pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
-    timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
+    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
     map: 0, audio: 0, note: 0, inventory: 0,
-    invite: 0, kick: 0, summon: 0, administrator: 0, creator: 0, destroyer: 0,
+    invite: 0, kick: 0, teleport: 0, lock: 0, unlock: 0,
+    summon: 0, narrate: 0, inspect: 0,
+    administrator: 0, creator: 0, destroyer: 0,
 };
 
 const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
@@ -135,6 +139,7 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         characterBindings: (l.characterBindings as string[]) || [],
         globalWeight: (l.globalWeight as number) ?? 1,
         characterWeights: (l.characterWeights as Record<string, number>) || {},
+        ownerBindings: (l.ownerBindings as string[]) || [],
         latitude: (l.latitude as number) ?? 0,
         longitude: (l.longitude as number) ?? 0,
         locationDistances: (l.locationDistances as Record<string, number>) || {},
@@ -388,6 +393,7 @@ export function resolveWorldCrossReferences(
             const rid = resolveCharRef(ref);
             if (rid) rcw[rid] = w;
         }
+        const rob = (l.ownerBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id);
         const rld: Record<string, number> = {};
         for (const [ref, dist] of Object.entries(l.locationDistances)) {
             const rid = resolveLocRef(ref);
@@ -410,6 +416,7 @@ export function resolveWorldCrossReferences(
             locationBindingRegularExpressionTriggers: Object.keys(rlrt).length > 0 ? rlrt : undefined,
             characterBindings: rcb,
             characterWeights: rcw,
+            ownerBindings: rob,
             locationDistances: rld,
             playAudioTrackOnEnterWeights: resolvedPlayAudio,
         };

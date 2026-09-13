@@ -1,5 +1,5 @@
 // src/defaults.ts
-import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler } from './types';
+import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, tool } from './types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -71,3 +71,42 @@ export const DefaultActions: InterjectableAction[] = [
 export const defaultInputStrategy: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed', 'Fatigue Information', 'Tool Instructions', 'Text Injection'
 ];
+
+export const defaultCharacterTools: Record<tool, boolean> = {
+    pick: true,
+    date: false,
+    coin: true,
+    dice: true,
+    random: true,
+    rng: false,
+    move: true,
+    timer: false,
+    stopwatch: false,
+    calculator: false,
+    web: false,
+    lookup: false,
+    map: false,
+    audio: false,
+    note: false,
+    inventory: false,
+    invite: false,
+    kick: false,
+    teleport: false,
+    lock: false,
+    unlock: false,
+    summon: false,
+    narrate: false,
+    inspect: false,
+    administrator: false,
+    creator: false,
+    destroyer: false,
+};
+
+export const defaultProfileTools: Record<tool, number> = {
+    pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
+    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
+    map: 0, audio: 0, note: 0, inventory: 0,
+    invite: 0, kick: 0, teleport: 0, lock: 0, unlock: 0,
+    summon: 0, narrate: 0, inspect: 0,
+    administrator: 0, creator: 0, destroyer: 0,
+};

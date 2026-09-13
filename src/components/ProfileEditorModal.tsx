@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType } from '../types';
 import { SliderInput } from './SliderInput';
 import './main.css';
-import { defaultInputStrategy } from '../defaults';
+import { defaultInputStrategy, defaultProfileTools } from '../defaults';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -38,6 +38,7 @@ const TOOL_LABELS: Record<tool, string> = {
     dice: 'Roll Dice',
     random: 'Random Number',
     rng: 'RNG Table',
+    move: 'Move',
     timer: 'Timer',
     stopwatch: 'Stopwatch',
     calculator: 'Calculator',
@@ -47,24 +48,17 @@ const TOOL_LABELS: Record<tool, string> = {
     audio: 'Audio',
     note: 'Note',
     inventory: 'Inventory',
-};
-
-const DEFAULT_TOOLS: Record<tool, number> = {
-    pick: 0,
-    date: 0,
-    coin: 0,
-    dice: 0,
-    random: 0,
-    rng: 0,
-    timer: 0,
-    stopwatch: 0,
-    calculator: 0,
-    web: 0,
-    lookup: 0,
-    map: 0,
-    audio: 0,
-    note: 0,
-    inventory: 0,
+    invite: 'Invite Participant',
+    kick: 'Kick Participant',
+    teleport: 'Teleport',
+    lock: 'Lock Location',
+    unlock: 'Unlock Location',
+    summon: 'Summon Character',
+    narrate: 'Narrate',
+    inspect: 'Inspect',
+    administrator: 'Administrator',
+    creator: 'Creator',
+    destroyer: 'Destroyer',
 };
 
 const NARRATE_TEXT_LABELS: Record<textType, string> = {
@@ -88,9 +82,9 @@ const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
 };
 
 function mergeToolsWithDefaults(saved: Partial<Record<tool, number>> | undefined): Record<tool, number> {
-    const merged = { ...DEFAULT_TOOLS };
+    const merged = { ...defaultProfileTools };
     if (saved) {
-        for (const key of Object.keys(DEFAULT_TOOLS) as tool[]) {
+        for (const key of Object.keys(defaultProfileTools) as tool[]) {
             if (key in saved && typeof saved[key] === 'number') {
                 merged[key] = saved[key]!;
             }
@@ -213,7 +207,7 @@ export function ProfileEditorModal({
     const [doNotInjectDefaultStopTokens, setDoNotInjectDefaultStopTokens] = useState(false);
     const [volume, setVolume] = useState<number>(-1);
     const [stripThinkTokens, setStripThinkTokens] = useState(false);
-    const [tools, setTools] = useState<Record<tool, number>>({ ...DEFAULT_TOOLS });
+    const [tools, setTools] = useState<Record<tool, number>>({ ...defaultProfileTools });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(0);
     const [enableMemoryReading, setEnableMemoryReading] = useState<number>(0);
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({ ...DEFAULT_NARRATE_TEXTS });
@@ -303,7 +297,7 @@ export function ProfileEditorModal({
             setDoNotInjectDefaultStopTokens(false);
             setVolume(-1);
             setStripThinkTokens(false);
-            setTools({ ...DEFAULT_TOOLS });
+            setTools({ ...defaultProfileTools });
             setEnableMemoryWriting(0); setEnableMemoryReading(0);
             setNarrateTexts({ ...DEFAULT_NARRATE_TEXTS });
             setInputStrategy([]);

@@ -44,6 +44,7 @@ export function LocationEditorModal({
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
     const [locationBindingRegexTriggers, setLocationBindingRegexTriggers] = useState<Record<string, string>>({});
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
+    const [ownerBindings, setOwnerBindings] = useState<string[]>([]);
     const [globalWeight, setGlobalWeight] = useState<number>(1);
     const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
@@ -141,6 +142,7 @@ export function LocationEditorModal({
                 setLocationBindings(existingLocation.locationBindings ?? []);
                 setLocationBindingRegexTriggers(existingLocation.locationBindingRegularExpressionTriggers ?? {});
                 setCharacterBindings(existingLocation.characterBindings ?? []);
+                setOwnerBindings(existingLocation.ownerBindings ?? []);
                 setGlobalWeight(existingLocation.globalWeight ?? 1);
                 setCharacterWeights(existingLocation.characterWeights ?? {});
                 setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
@@ -172,6 +174,7 @@ export function LocationEditorModal({
                 setLocationBindings([]);
                 setLocationBindingRegexTriggers({});
                 setCharacterBindings([]);
+                setOwnerBindings([]);
                 setGlobalWeight(1);
                 setCharacterWeights({});
                 setUseBase64Encoding(false);
@@ -460,6 +463,7 @@ export function LocationEditorModal({
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
             locationBindingRegularExpressionTriggers: Object.keys(locationBindingRegexTriggers).length > 0 ? locationBindingRegexTriggers : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
+            ownerBindings: ownerBindings.length > 0 ? ownerBindings : [],
             globalWeight: globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
             latitude: parsedLat != null && !Number.isNaN(parsedLat) ? parsedLat : 0,
@@ -903,6 +907,29 @@ export function LocationEditorModal({
                     </div>
 
                     <div className="editor-section">
+                        <span className="editor-section-title">Owner Bindings</span>
+                        <div className="context-field-group">
+                            <div className="context-binding-hint">Characters that own this location. Ownership grants exclusivity bonuses during turn selection and may restrict access depending on game logic. Empty = no owners.</div>
+                            <div className="context-character-binding-list">
+                                {ownerBindings.map(id => {
+                                    const char = getCharacterById(id);
+                                    if (!char) return null;
+                                    return (
+                                        <div key={id} className="context-character-binding-chip">
+                                            <span className="context-character-binding-name">👑 {char.name}</span>
+                                            <button type="button" onClick={() => setOwnerBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove owner">×</button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <option value="" disabled>+ Add an owner</option>
+                                {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="editor-section">
                         <span className="editor-section-title">Movement Weights</span>
                         <div className="context-field-group">
                             <label className="editor-label editor-label-small">Global Weight</label>
@@ -930,6 +957,41 @@ export function LocationEditorModal({
                                 <option value="" disabled>+ Add character weight override</option>
                                 {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                             </select>
+                        </div>
+                    </div>
+
+                    <div className="editor-section">
+                        <span className="editor-section-title">Coordinates</span>
+                        <div className="context-binding-hint">Real-world latitude and longitude for this location. Used for local weather when enabled in the profile. Leave empty to fall back to browser geolocation.</div>
+                        <div className="editor-row" style={{ gap: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                                <label className="editor-label editor-label-small">Latitude</label>
+                                <input
+                                    type="number"
+                                    step="any"
+                                    min="-90"
+                                    max="90"
+                                    value={latitude}
+                                    onChange={(e) => { setLatitude(e.target.value); if (errors.latitude) setErrors(prev => ({ ...prev, latitude: undefined })); }}
+                                    className={`editor-input context-input-small ${errors.latitude ? 'error' : ''}`}
+                                    placeholder="-90 to 90"
+                                />
+                                {errors.latitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.latitude}</div>}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label className="editor-label editor-label-small">Longitude</label>
+                                <input
+                                    type="number"
+                                    step="any"
+                                    min="-180"
+                                    max="180"
+                                    value={longitude}
+                                    onChange={(e) => { setLongitude(e.target.value); if (errors.longitude) setErrors(prev => ({ ...prev, longitude: undefined })); }}
+                                    className={`editor-input context-input-small ${errors.longitude ? 'error' : ''}`}
+                                    placeholder="-180 to 180"
+                                />
+                                {errors.longitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.longitude}</div>}
+                            </div>
                         </div>
                     </div>
 
@@ -1085,41 +1147,6 @@ export function LocationEditorModal({
                                 </div>
                             </div>
                         )}
-                    </div>
-
-                    <div className="editor-section">
-                        <span className="editor-section-title">Coordinates</span>
-                        <div className="context-binding-hint">Real-world latitude and longitude for this location. Used for local weather when enabled in the profile. Leave empty to fall back to browser geolocation.</div>
-                        <div className="editor-row" style={{ gap: '12px' }}>
-                            <div style={{ flex: 1 }}>
-                                <label className="editor-label editor-label-small">Latitude</label>
-                                <input
-                                    type="number"
-                                    step="any"
-                                    min="-90"
-                                    max="90"
-                                    value={latitude}
-                                    onChange={(e) => { setLatitude(e.target.value); if (errors.latitude) setErrors(prev => ({ ...prev, latitude: undefined })); }}
-                                    className={`editor-input context-input-small ${errors.latitude ? 'error' : ''}`}
-                                    placeholder="-90 to 90"
-                                />
-                                {errors.latitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.latitude}</div>}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <label className="editor-label editor-label-small">Longitude</label>
-                                <input
-                                    type="number"
-                                    step="any"
-                                    min="-180"
-                                    max="180"
-                                    value={longitude}
-                                    onChange={(e) => { setLongitude(e.target.value); if (errors.longitude) setErrors(prev => ({ ...prev, longitude: undefined })); }}
-                                    className={`editor-input context-input-small ${errors.longitude ? 'error' : ''}`}
-                                    placeholder="-180 to 180"
-                                />
-                                {errors.longitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.longitude}</div>}
-                            </div>
-                        </div>
                     </div>
 
                     <div className="editor-section">

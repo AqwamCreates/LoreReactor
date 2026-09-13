@@ -738,6 +738,7 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         characterBindings: rawLocation.characterBindings ?? [],
         globalWeight: rawLocation.globalWeight ?? 1,
         characterWeights: rawLocation.characterWeights ?? {},
+        ownerBindings: rawLocation.ownerBindings ?? [],
         latitude: rawLocation.latitude ?? 0,
         longitude: rawLocation.longitude ?? 0,
         locationDistances: rawLocation.locationDistances ?? {},

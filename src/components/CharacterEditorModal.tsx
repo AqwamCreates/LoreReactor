@@ -11,6 +11,7 @@ import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSetting
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import './main.css';
+import { defaultCharacterTools } from '../defaults';
 
 // ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
@@ -27,23 +28,7 @@ const DEFAULT_DISABLE_META_THINK = 1;
 const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
-const DEFAULT_TOOLS: Record<tool, boolean> = {
-    pick: true,
-    date: false,
-    coin: true,
-    dice: true,
-    random: true,
-    rng: false,
-    timer: false,
-    stopwatch: false,
-    calculator: false,
-    web: false,
-    lookup: false,
-    map: false,
-    audio: false,
-    note: false,
-    inventory: false,
-};
+
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -104,7 +89,7 @@ export function CharacterEditorModal({
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(DEFAULT_DISABLE_META_THINK));
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
 
-    const [tools, setTools] = useState<Record<tool, boolean>>({ ...DEFAULT_TOOLS });
+    const [tools, setTools] = useState<Record<tool, boolean>>({ ...defaultCharacterTools });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
     const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(false);
 
@@ -213,7 +198,7 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
-            setTools(existingCharacter.tools ?? { ...DEFAULT_TOOLS });
+            setTools(existingCharacter.tools ?? { ...defaultCharacterTools });
             setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
             setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
             setMemories(existingCharacter.memories ?? {});
@@ -236,7 +221,7 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-            setTools({ ...DEFAULT_TOOLS });
+            setTools({ ...defaultCharacterTools });
             setEnableMemoryWriting(false); setEnableMemoryReading(false);
             setMemories({});
             setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
@@ -313,7 +298,7 @@ export function CharacterEditorModal({
         setMaximumActionStaminaStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
-        setTools({ ...DEFAULT_TOOLS });
+        setTools({ ...defaultCharacterTools });
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
