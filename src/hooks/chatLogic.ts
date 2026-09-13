@@ -10,6 +10,7 @@ import { contextStartString, contextEndString, turnStartString, turnEndString, m
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
 import { defaultInputStrategy } from '../defaults';
+import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
 
 const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
     pick: `${generalStartString}To randomly pick from options, I write ${toolStartSring}pick <option1>, <option2>, <option3>${toolEndString}. One option will be randomly selected and replace my tool call so I can use it in my response.${generalEndString}`,
@@ -294,10 +295,6 @@ const getImageBase64 = async (url: string): Promise<string | null> => {
     }
 };
 
-/**
- * Checks message text against each location's regularExpressionActivationTrigger.
- * Returns the index of the first matching location, or undefined if no match.
- */
 function detectLocationFromText(text: string, locations: Location[]): number | undefined {
     for (let i = 0; i < locations.length; i++) {
         const location = locations[i];
@@ -310,17 +307,6 @@ function detectLocationFromText(text: string, locations: Location[]): number | u
     return undefined;
 }
 
-/**
- * Determines which chat messages are excluded from history based on message
- * filter regex fields from contexts, locations, and prompt blocks.
- *
- * Semantics:
- * - Before activation trigger matches: messages are EXCLUDED
- * - Activation trigger matches: START including from this message onward
- * - Deactivation trigger matches: STOP filtering, everything after is included
- *
- * Returns a boolean array where true = excluded from chat history.
- */
 function getMessageFilterFlags(
     chatMessages: ChatMessage[],
     contexts: Context[],
@@ -566,22 +552,24 @@ export function getRevealIndexByCharacterId(interactionData: InteractionData): M
 export interface LocationVisitSegment {
     characterId: string;
     locationIndex: number;
-    startIdx: number;  // index in interactionHistory
-    endIdx: number;    // inclusive index in interactionHistory
-    lastMessageId: string; // ID of the last chat message in this segment (where summary gets stored)
+    startIdx: number;
+    endIdx: number;
+    lastMessageId: string;
 }
 
 /**
- * Detects completed location visits for AI characters that don't yet have
- * interaction summaries generated for the given model.
+ * Detects completed location visits for a SINGLE AI character that don't yet
+ * have interaction summaries generated for the given model.
+ *
+ * Only scans messages from the specified characterId. Does NOT scan all AI
+ * characters — the caller is responsible for calling this per-character.
  *
  * A "completed visit" means the character has messages at location X followed
  * by messages at a different location (or no further messages at location X).
  * Only returns segments where modelInteractionTextContentSummaries[modelId]
  * is missing on the last message of the segment.
  *
- * Excludes the protagonist (only AI characters need summaries).
- * Excludes the character's current location (still active, not departed).
+ * Returns empty array for the protagonist.
  */
 export function detectUnsummarizedLocationDepartures(
     interactionData: InteractionData,
@@ -593,6 +581,9 @@ export function detectUnsummarizedLocationDepartures(
     const locs = interactionData.locations;
     if (!locs || locs.length === 0) return [];
 
+    // Don't generate summaries for the protagonist
+    if (characterId === protagonistId) return [];
+
     // Find current location index (from the latest message with a locationIndex)
     let currentLocationIndex: number | undefined;
     for (let i = history.length - 1; i >= 0; i--) {
@@ -602,63 +593,49 @@ export function detectUnsummarizedLocationDepartures(
         }
     }
 
-    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
-    if (chatMessages.length === 0) return [];
-
     const segments: LocationVisitSegment[] = [];
 
-    // Track per-AI-character location segments
-    // We scan all chat messages and group consecutive ones by (characterId, locationIndex)
-    const aiCharacterIds = new Set<string>();
-    for (const msg of chatMessages) {
-        if (msg.character.id !== protagonistId) {
-            aiCharacterIds.add(msg.character.id);
+    // Only scan messages from THIS specific character
+    const charMessages: { msg: ChatMessage; historyIdx: number }[] = [];
+    for (let i = 0; i < history.length; i++) {
+        const m = history[i];
+        if (m.messageType === 'chat' && m.character.id === characterId) {
+            charMessages.push({ msg: m as ChatMessage, historyIdx: i });
         }
     }
 
-    for (const aiCharId of aiCharacterIds) {
-        // Get all chat messages from this AI character, in order
-        const charMessages: { msg: ChatMessage; historyIdx: number }[] = [];
-        for (let i = 0; i < history.length; i++) {
-            const m = history[i];
-            if (m.messageType === 'chat' && m.character.id === aiCharId) {
-                charMessages.push({ msg: m as ChatMessage, historyIdx: i });
-            }
+    if (charMessages.length === 0) return [];
+
+    // Group into contiguous location segments
+    let segStart = 0;
+    for (let i = 1; i <= charMessages.length; i++) {
+        const prevLoc = charMessages[i - 1].msg.locationIndex;
+        const currLoc = i < charMessages.length ? charMessages[i].msg.locationIndex : undefined;
+
+        const segmentEnded = i === charMessages.length || prevLoc !== currLoc;
+
+        if (segmentEnded && prevLoc !== undefined) {
+            const segEnd = i - 1;
+            const lastMsg = charMessages[segEnd].msg;
+
+            // Skip if this is the character's current location (still active)
+            if (currentLocationIndex !== undefined && prevLoc === currentLocationIndex) continue;
+
+            // Check if summary already exists for this model on the last message
+            const existingSummary = lastMsg.modelInteractionTextContentSummaries?.[modelId];
+            if (existingSummary) continue;
+
+            segments.push({
+                characterId,
+                locationIndex: prevLoc,
+                startIdx: charMessages[segStart].historyIdx,
+                endIdx: charMessages[segEnd].historyIdx,
+                lastMessageId: lastMsg.id,
+            });
         }
 
-        if (charMessages.length === 0) continue;
-
-        // Group into contiguous location segments
-        let segStart = 0;
-        for (let i = 1; i <= charMessages.length; i++) {
-            const prevLoc = charMessages[i - 1].msg.locationIndex;
-            const currLoc = i < charMessages.length ? charMessages[i].msg.locationIndex : undefined;
-
-            const segmentEnded = i === charMessages.length || prevLoc !== currLoc;
-
-            if (segmentEnded && prevLoc !== undefined) {
-                const segEnd = i - 1;
-                const lastMsg = charMessages[segEnd].msg;
-
-                // Skip if this is the character's current location (still active)
-                if (currentLocationIndex !== undefined && prevLoc === currentLocationIndex) continue;
-
-                // Check if summary already exists for this model on the last message
-                const existingSummary = lastMsg.modelInteractionTextContentSummaries?.[modelId];
-                if (existingSummary) continue;
-
-                segments.push({
-                    characterId: aiCharId,
-                    locationIndex: prevLoc,
-                    startIdx: charMessages[segStart].historyIdx,
-                    endIdx: charMessages[segEnd].historyIdx,
-                    lastMessageId: lastMsg.id,
-                });
-            }
-
-            if (i < charMessages.length && (prevLoc !== currLoc || prevLoc === undefined)) {
-                segStart = i;
-            }
+        if (i < charMessages.length && (prevLoc !== currLoc || prevLoc === undefined)) {
+            segStart = i;
         }
     }
 
@@ -782,9 +759,8 @@ export function createChatHistoryPrompt(
 
     const hasLocationData = !!locs && locs.length > 0 && currentLocationIndex !== undefined;
 
-    // Collect interaction summaries from dropped messages BEFORE filtering
-    // These are location-scoped memories from past visits that the location
-    // filter would otherwise erase
+    // Collect interaction summaries from messages that would be dropped by
+    // the location filter. These are location-scoped memories from past visits.
     const locationVisitSummaries: { characterName: string; locationName: string; summary: string }[] = [];
     if (hasLocationData) {
         const seenSummaries = new Set<string>();
@@ -793,10 +769,8 @@ export function createChatHistoryPrompt(
             if (msg.character.id === character.id) continue;
             const summary = msg.modelInteractionTextContentSummaries?.[modelId];
             if (!summary) continue;
-            // Avoid duplicates (same message could be visited multiple times in scanning)
             if (seenSummaries.has(msg.id)) continue;
             seenSummaries.add(msg.id);
-            // Only include if this message would be dropped by the location filter
             const msgLoc = msg.locationIndex;
             if (msgLoc !== undefined && msgLoc !== currentLocationIndex) {
                 const locName = locs[msgLoc]?.name || 'Unknown Location';
@@ -826,7 +800,6 @@ export function createChatHistoryPrompt(
     chatHistoryLines.push(startOfChatHistoryLine);
 
     // Inject location visit summaries before the scene marker
-    // so the model has continuity about what happened at past locations
     if (locationVisitSummaries.length > 0) {
         for (const lvs of locationVisitSummaries) {
             chatHistoryLines.push(`${contextStartString}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${contextEndString}`);
@@ -914,6 +887,32 @@ export async function buildPromptAndStopPatterns(
         if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
         return profileValue;
     })();
+
+    // ─── Location Visit Summary Generation ──────────────────────────
+    // Detect unsummarized location departures for THIS character only,
+    // generate summaries, and write them into the messages in-place.
+    // createChatHistoryPrompt will then pick them up during injection.
+    const segments = detectUnsummarizedLocationDepartures(interactionData, characterId, modelId);
+    for (const segment of segments) {
+        try {
+            const summary = await generateLocationVisitSummary(
+                interactionData, character, modelId,
+                segment.startIdx, segment.endIdx,
+            );
+            if (summary) {
+                const lastMsg = interactionHistory[segment.endIdx];
+                if (lastMsg && lastMsg.messageType === 'chat') {
+                    const chatMsg = lastMsg as ChatMessage;
+                    if (!chatMsg.modelInteractionTextContentSummaries) {
+                        chatMsg.modelInteractionTextContentSummaries = {};
+                    }
+                    chatMsg.modelInteractionTextContentSummaries[modelId] = summary;
+                }
+            }
+        } catch (e) {
+            console.warn(`Failed to generate location visit summary for ${characterName}:`, e);
+        }
+    }
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -1159,7 +1158,6 @@ export async function buildPromptAndStopPatterns(
         locationContent += `${contextEndString}`;
         locationLines.push(locationContent);
 
-        // Owner bindings
         if (location.ownerBindings && location.ownerBindings.length > 0) {
             const ownerNames = location.ownerBindings
                 .map(id => participants.find(p => p.id === id)?.name)
@@ -1735,7 +1733,6 @@ export function createChatMessage(
     const files = options?.files ?? [];
     const isPartial = options?.isPartial || undefined;
 
-    // Determine locationIndex from location activation triggers if not explicitly provided
     let locationIndex = options?.locationIndex;
     if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
         locationIndex = detectLocationFromText(textContent, interactionData.locations);
@@ -1840,11 +1837,6 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
     };
 }
 
-/**
- * Returns message filter flags applying only UNIVERSAL filters (entities with
- * no character bindings). Used by global summarization to avoid leaking
- * hidden information into auto-generated Context entries.
- */
 function applyFilter(
     chatMessages: ChatMessage[],
     excluded: boolean[],
