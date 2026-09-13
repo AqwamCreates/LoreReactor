@@ -202,13 +202,6 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
 
 /**
  * Assign initial locations to all participants who have never had one.
- * Runs at any point — checks per-character whether they have a location entry
- * in history, not whether history itself is empty.
- * Uses character-bound locations with characterWeights first,
- * falls back to globalWeight sampling.
- */
-/**
- * Assign initial locations to all participants who have never had one.
  * Also backfills missing locations for characters who have history entries
  * but no locationIndex on their last entry.
  * Uses character-bound locations with characterWeights first,
@@ -282,6 +275,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                         id: uuidv4(),
                         character: { ...fallback },
                         locationIndex,
+                        characterLockedLocations: {},
                         parentInteractionMessageId: null,
                         firstCreatedTimestamp: now,
                         lastUpdatedTimestamp: now,
@@ -306,6 +300,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                     id: uuidv4(),
                     character: { ...picked },
                     locationIndex,
+                    characterLockedLocations: {},
                     parentInteractionMessageId: null,
                     firstCreatedTimestamp: now,
                     lastUpdatedTimestamp: now,

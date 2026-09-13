@@ -1,5 +1,5 @@
 // src/services/AutonomousSimulationEngine.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, InteractionMessage } from '../types';
 import { getEffectiveChatProbability, getEffectiveChatImpatienceSensitivity, generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, consumeActionStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../storage/serverStorage';
@@ -39,7 +39,7 @@ function createSilentInteraction(
     previousChatStamina: number | undefined,
     previousActionStamina: number | undefined,
     parentId: string | null | undefined,
-): HistoryMessage {
+): InteractionMessage {
     const now = Date.now();
     return {
         messageType: 'interaction',
@@ -48,6 +48,7 @@ function createSilentInteraction(
         remainingChatStamina: previousChatStamina,
         remainingActionStamina: previousActionStamina,
         locationIndex,
+        characterLockedLocations: {},
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,

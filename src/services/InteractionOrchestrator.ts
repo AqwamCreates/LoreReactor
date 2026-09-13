@@ -38,6 +38,7 @@ function createSilentInteraction(
         remainingChatStamina: previousChatStamina,
         remainingActionStamina: previousActionStamina,
         locationIndex,
+        characterLockedLocations: {},
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,

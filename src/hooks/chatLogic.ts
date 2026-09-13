@@ -959,15 +959,6 @@ export async function buildPromptAndStopPatterns(
     const activeContextsForImages: Context[] = [];
     const fetchErrors: string[] = [];
 
-    const resolvedContexts = await resolveContextEntries(
-        contexts,
-        textContentArray.join('\n'),
-        characterId,
-        (ctxType, tgtType) => getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType),
-        undefined,
-        effectiveContextSensitivity
-    );
-
     const fetchedContentMap = new Map<string, string>();
     const webContexts = contexts.filter(c =>
         (c.urls && c.urls.length > 0) ||
@@ -1016,7 +1007,6 @@ export async function buildPromptAndStopPatterns(
         await Promise.all(fetchPromises);
     }
 
-    // Re-resolve contexts now that fetchedContentMap is populated
     const resolvedContextsWithWeb = await resolveContextEntries(
         contexts,
         textContentArray.join('\n'),
