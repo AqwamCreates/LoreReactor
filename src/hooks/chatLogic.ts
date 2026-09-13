@@ -180,7 +180,8 @@ function filterArrayBasedOnTarget(
     characterIdArray: string[],
     textContentArray: string[],
     currentCharacterId: string,
-    targetType: regularExpressionTarget
+    targetType: regularExpressionTarget,
+    protagonistId: string,
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
     if (length === 0) return { characterIdArray: [], textContentArray: [] };
@@ -193,6 +194,9 @@ function filterArrayBasedOnTarget(
             if (characterIdArray[i] !== currentCharacterId) { targetCharacterId = characterIdArray[i]; break; }
         }
     }
+    else if (targetType === "protagonist") targetCharacterId = protagonistId;
+    else if (targetType === "narrator") targetCharacterId = '__ambient_narrator__';
+
     if (!targetCharacterId) return { characterIdArray: [], textContentArray: [] };
 
     const extractedCharacterIdArray: string[] = [];
@@ -813,11 +817,11 @@ export async function buildPromptAndStopPatterns(
         if (!combinationCache[ctxType]) combinationCache[ctxType] = {};
         if (!combinationCache[ctxType][tgtType]) {
             const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
-            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType);
+            const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonist.id);
             combinationCache[ctxType][tgtType] = step2;
         }
         return combinationCache[ctxType][tgtType];
-    };
+    };;
 
     const fetchedContentMap = new Map<string, string>();
     const webContexts = contexts.filter(c =>

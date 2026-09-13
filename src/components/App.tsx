@@ -80,7 +80,7 @@ function App() {
     const { addToast } = useToast();
 
     // ─── Manager Hooks ───────────────────────────────────────────────
-    const { chats: allChats, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList, ensureLoaded: ensureChatsLoaded } = useChatListManager();
+    const { rawChatShells, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList, ensureLoaded: ensureChatsLoaded } = useChatListManager();
     const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
     const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
@@ -141,7 +141,7 @@ function App() {
 
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
-        allCharacters, allChats, loadFullCharacter,
+        allCharacters, rawChatShells, loadFullCharacter,
         setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
     });
 
@@ -186,7 +186,7 @@ function App() {
         handleStartEditTitle, handleSaveTitle, cancelEditTitle,
     } = useChatOperations({
         interactionData, currentCharacter, defaultCharacterId,
-        allCharacters, allChats, setInteractionData, setCurrentCharacter,
+        allCharacters, rawChatShells, setInteractionData, setCurrentCharacter,
         refreshChatList, startNewChat, deleteChatFromList, addToast,
     });
 
@@ -438,11 +438,11 @@ function App() {
         if (chatModifiedRef.current && currentCount !== previousMessageCountRef.current) {
             previousMessageCountRef.current = currentCount;
             saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
-            if (!allChats.some(c => c.id === interactionData.id)) {
+            if (!rawChatShells.some(c => c.id === interactionData.id)) {
                 refreshChatList();
             }
         }
-    }, [interactionData, allChats, refreshChatList]);
+    }, [interactionData, rawChatShells, refreshChatList]);
 
     // Textarea auto-resize
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -887,7 +887,7 @@ function App() {
                     // Modals & data
                     modals={modals}
                     runningModels={runningModels}
-                    allChats={allChats}
+                    rawChatShells={rawChatShells}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
                     allLocations={allLocations}
@@ -957,6 +957,8 @@ function App() {
                     onSaveWorld={saveWorld}
                     onLoadWorld={handleLoadWorld}
                     onDeleteWorld={deleteWorld}
+                    // Prompt block callbacks
+                    onDeletePromptBlock={promptBlockModal.handleDelete}
                     // Interaction data callbacks
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);

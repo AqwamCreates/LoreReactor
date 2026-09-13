@@ -5,49 +5,20 @@ import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
 
 const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
-    pick: true,
-    date: false,
-    coin: true,
-    dice: true,
-    random: true,
-    rng: false,
-    timer: false,
-    stopwatch: false,
-    calculator: false,
-    web: false,
-    lookup: false,
-    map: false,
-    audio: false,
-    note: false,
-    inventory: false,
+    pick: true, date: false, coin: true, dice: true, random: true, rng: false,
+    timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
+    map: false, audio: false, note: false, inventory: false,
 };
 
 const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
-    pick: 0,
-    date: 0,
-    coin: 0,
-    dice: 0,
-    random: 0,
-    rng: 0,
-    timer: 0,
-    stopwatch: 0,
-    calculator: 0,
-    web: 0,
-    lookup: 0,
-    map: 0,
-    audio: 0,
-    note: 0,
-    inventory: 0,
+    pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
+    timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
+    map: 0, audio: 0, note: 0, inventory: 0,
 };
 
 const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
-    normal: false,
-    quoted: false,
-    bolded: false,
-    italicized: false,
-    parenthesized: false,
-    bracketed: false,
-    braced: false,
+    normal: false, quoted: false, bolded: false, italicized: false,
+    parenthesized: false, bracketed: false, braced: false,
 };
 
 function ensureId(obj: Record<string, unknown>): string {
@@ -117,12 +88,20 @@ function fillContextDefaults(c: Record<string, unknown>): Context {
         fetchCacheTimeToLiveMs: (c.fetchCacheTimeToLiveMs as number) || undefined,
         regularExpressionActivationTrigger: (c.regularExpressionActivationTrigger as string) || undefined,
         regularExpressionDeactivationTrigger: (c.regularExpressionDeactivationTrigger as string) || undefined,
+        regularExpressionExclusionActivationTrigger: (c.regularExpressionExclusionActivationTrigger as string) || undefined,
+        regularExpressionExclusionDeactivationTrigger: (c.regularExpressionExclusionDeactivationTrigger as string) || undefined,
         regularExpressionContext: (c.regularExpressionContext as Context['regularExpressionContext']) ?? 'global',
         regularExpressionTarget: (c.regularExpressionTarget as Context['regularExpressionTarget']) ?? 'everyone',
+        regularExpressionExclusionContext: (c.regularExpressionExclusionContext as Context['regularExpressionExclusionContext']) ?? 'global',
+        regularExpressionExclusionTarget: (c.regularExpressionExclusionTarget as Context['regularExpressionExclusionTarget']) ?? 'everyone',
         messageFilterRegularExpressionActivationTrigger: (c.messageFilterRegularExpressionActivationTrigger as string) || undefined,
         messageFilterRegularExpressionDeactivationTrigger: (c.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionActivationTrigger: (c.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: (c.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
         messageFilterRegularExpressionContext: (c.messageFilterRegularExpressionContext as Context['messageFilterRegularExpressionContext']) ?? 'global',
         messageFilterRegularExpressionTarget: (c.messageFilterRegularExpressionTarget as Context['messageFilterRegularExpressionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionExclusionContext: (c.messageFilterRegularExpressionExclusionContext as Context['messageFilterRegularExpressionExclusionContext']) ?? 'global',
+        messageFilterRegularExpressionExclusionTarget: (c.messageFilterRegularExpressionExclusionTarget as Context['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
         tokenBudget: (c.tokenBudget as number) ?? 512,
         maximumRecursionDepth: (c.maximumRecursionDepth as number) ?? 1,
         insertionDepth: (c.insertionDepth as number) ?? 0,
@@ -142,6 +121,9 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         text: (l.text as string) || '',
         images: (l.images as string[]) || [],
         regularExpressionActivationTrigger: (l.regularExpressionActivationTrigger as string) || undefined,
+        regularExpressionExclusionActivationTrigger: (l.regularExpressionExclusionActivationTrigger as string) || undefined,
+        regularExpressionExclusionContext: (l.regularExpressionExclusionContext as Location['regularExpressionExclusionContext']) ?? 'global',
+        regularExpressionExclusionTarget: (l.regularExpressionExclusionTarget as Location['regularExpressionExclusionTarget']) ?? 'everyone',
         backgroundImageRegularExpressionActivationTriggers: (l.backgroundImageRegularExpressionActivationTriggers as Record<number, string>) || {},
         backgroundImageWeights: (l.backgroundImageWeights as Record<number, number>) || {},
         playAudioTrackOnEnterWeights: (l.playAudioTrackOnEnterWeights as Record<string, number>) || undefined,
@@ -156,8 +138,12 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         messageFilterNonCoLocatedParticipants: (l.messageFilterNonCoLocatedParticipants as boolean) ?? true,
         messageFilterRegularExpressionActivationTrigger: (l.messageFilterRegularExpressionActivationTrigger as string) || undefined,
         messageFilterRegularExpressionDeactivationTrigger: (l.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionActivationTrigger: (l.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: (l.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
         messageFilterRegularExpressionContext: (l.messageFilterRegularExpressionContext as Location['messageFilterRegularExpressionContext']) ?? 'global',
         messageFilterRegularExpressionTarget: (l.messageFilterRegularExpressionTarget as Location['messageFilterRegularExpressionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionExclusionContext: (l.messageFilterRegularExpressionExclusionContext as Location['messageFilterRegularExpressionExclusionContext']) ?? 'global',
+        messageFilterRegularExpressionExclusionTarget: (l.messageFilterRegularExpressionExclusionTarget as Location['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
         useBase64Encoding: (l.useBase64Encoding as boolean) ?? false,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -180,6 +166,10 @@ function fillAudioTrackDefaults(t: Record<string, unknown>): AudioTrack {
         playableByParticipant: (t.playableByParticipant as boolean) ?? false,
         regularExpressionActivationTrigger: (t.regularExpressionActivationTrigger as string) || undefined,
         regularExpressionDeactivationTrigger: (t.regularExpressionDeactivationTrigger as string) || undefined,
+        regularExpressionExclusionActivationTrigger: (t.regularExpressionExclusionActivationTrigger as string) || undefined,
+        regularExpressionExclusionDeactivationTrigger: (t.regularExpressionExclusionDeactivationTrigger as string) || undefined,
+        regularExpressionExclusionContext: (t.regularExpressionExclusionContext as AudioTrack['regularExpressionExclusionContext']) ?? 'global',
+        regularExpressionExclusionTarget: (t.regularExpressionExclusionTarget as AudioTrack['regularExpressionExclusionTarget']) ?? 'everyone',
         locationBindings: (t.locationBindings as string[]) || [],
         contextBindings: (t.contextBindings as string[]) || [],
         characterBindings: (t.characterBindings as string[]) || [],
@@ -198,12 +188,20 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
         images: (b.images as string[]) || [],
         regularExpressionActivationTrigger: (b.regularExpressionActivationTrigger as string) || undefined,
         regularExpressionDeactivationTrigger: (b.regularExpressionDeactivationTrigger as string) || undefined,
+        regularExpressionExclusionActivationTrigger: (b.regularExpressionExclusionActivationTrigger as string) || undefined,
+        regularExpressionExclusionDeactivationTrigger: (b.regularExpressionExclusionDeactivationTrigger as string) || undefined,
         regularExpressionContext: (b.regularExpressionContext as PromptBlock['regularExpressionContext']) ?? 'global',
         regularExpressionTarget: (b.regularExpressionTarget as PromptBlock['regularExpressionTarget']) ?? 'everyone',
+        regularExpressionExclusionContext: (b.regularExpressionExclusionContext as PromptBlock['regularExpressionExclusionContext']) ?? 'global',
+        regularExpressionExclusionTarget: (b.regularExpressionExclusionTarget as PromptBlock['regularExpressionExclusionTarget']) ?? 'everyone',
         messageFilterRegularExpressionActivationTrigger: (b.messageFilterRegularExpressionActivationTrigger as string) || undefined,
         messageFilterRegularExpressionDeactivationTrigger: (b.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionActivationTrigger: (b.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: (b.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
         messageFilterRegularExpressionContext: (b.messageFilterRegularExpressionContext as PromptBlock['messageFilterRegularExpressionContext']) ?? 'global',
         messageFilterRegularExpressionTarget: (b.messageFilterRegularExpressionTarget as PromptBlock['messageFilterRegularExpressionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionExclusionContext: (b.messageFilterRegularExpressionExclusionContext as PromptBlock['messageFilterRegularExpressionExclusionContext']) ?? 'global',
+        messageFilterRegularExpressionExclusionTarget: (b.messageFilterRegularExpressionExclusionTarget as PromptBlock['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
         characterBindings: (b.characterBindings as string[]) || [],
         contextBindings: (b.contextBindings as string[]) || [],
         locationBindings: (b.locationBindings as string[]) || [],
@@ -347,7 +345,6 @@ export function resolveWorldCrossReferences(
     const characters = world.characters;
     const contexts = world.contexts;
 
-    // Build name→ID maps for cross-reference resolution
     const charNameToId = new Map(characters.map(c => [c.name, c.id]));
     const locNameToId = new Map(world.locations.map(l => [l.name, l.id]));
     const ctxNameToId = new Map(contexts.map(c => [c.name, c.id]));
@@ -368,12 +365,10 @@ export function resolveWorldCrossReferences(
         return undefined;
     };
 
-    // Resolve bindings on contexts
     for (const context of contexts) {
         context.characterBindings = (context.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id);
     }
 
-    // Resolve bindings on locations
     const locations: Location[] = world.locations.map(l => {
         const rlb = l.locationBindings.map(resolveLocRef).filter((id): id is string => !!id);
         const rlrt: Record<string, string> = {};
@@ -394,12 +389,10 @@ export function resolveWorldCrossReferences(
             const rid = resolveLocRef(ref);
             if (rid) rld[rid] = dist;
         }
-        // Resolve playAudioTrackOnEnterWeights keys (audio track IDs)
         let resolvedPlayAudio: Record<string, number> | undefined;
         if (l.playAudioTrackOnEnterWeights && Object.keys(l.playAudioTrackOnEnterWeights).length > 0) {
             resolvedPlayAudio = {};
             for (const [ref, weight] of Object.entries(l.playAudioTrackOnEnterWeights)) {
-                // Audio track refs could be names or IDs — try name match first
                 const existingTrack = allAudioTracks.find(at => at.name === ref || at.filename === ref || at.id === ref);
                 const resolvedId = existingTrack ? existingTrack.id : (UUID_REGEX.test(ref) ? ref : undefined);
                 if (resolvedId) resolvedPlayAudio[resolvedId] = weight;
@@ -418,7 +411,6 @@ export function resolveWorldCrossReferences(
         };
     });
 
-    // Resolve audio tracks — match existing by name/filename, resolve bindings
     const audioTracks: AudioTrack[] = world.audioTracks.map(t => {
         const existing = allAudioTracks.find(at => at.name === t.name || at.filename === t.filename);
         if (existing) return existing;
@@ -430,7 +422,6 @@ export function resolveWorldCrossReferences(
         };
     });
 
-    // Resolve prompt block bindings
     const promptBlocks: PromptBlock[] = world.promptBlocks.map(b => ({
         ...b,
         characterBindings: (b.characterBindings ?? []).map(resolveCharRef).filter((id): id is string => !!id),

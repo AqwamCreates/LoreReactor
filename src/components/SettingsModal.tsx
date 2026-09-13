@@ -51,6 +51,12 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         label: 'Export Data',
         description: 'Download everything as a single JSON backup file.',
     },
+    {
+        id: 'data-manager',
+        icon: '🗄️',
+        label: 'Data Manager',
+        description: 'Storage usage, orphan cleanup, cache purging, integrity checks, and bulk operations.',
+    },
 ];
 
 interface SettingsModalProps {
@@ -63,6 +69,7 @@ interface SettingsModalProps {
     onOpenImportCharacterCard: () => void;
     onOpenExportData: () => void;
     onOpenImportData: () => void;
+    onOpenDataManager: () => void;
 }
 
 export function SettingsModal({
@@ -75,6 +82,7 @@ export function SettingsModal({
     onOpenImportCharacterCard,
     onOpenExportData,
     onOpenImportData,
+    onOpenDataManager,
 }: SettingsModalProps) {
     if (!isOpen) return null;
 
@@ -100,6 +108,9 @@ export function SettingsModal({
                 break;
             case 'export-data':
                 onOpenExportData();
+                break;
+            case 'data-manager':
+                onOpenDataManager();
                 break;
         }
     };

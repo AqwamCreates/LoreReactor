@@ -38,13 +38,21 @@ export function PromptBlockEditorModal({
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
     const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
     const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
 
     const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
     const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
+    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState('');
+    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState('');
     const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
     const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
+    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>('global');
+    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>('everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -52,24 +60,36 @@ export function PromptBlockEditorModal({
     const [deactivationTestText, setDeactivationTestText] = useState('');
     const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
 
+    const [exclusionTestText, setExclusionTestText] = useState('');
+    const [exclusionTestResult, setExclusionTestResult] = useState<boolean | null>(null);
+
+    const [exclusionDeactivationTestText, setExclusionDeactivationTestText] = useState('');
+    const [exclusionDeactivationTestResult, setExclusionDeactivationTestResult] = useState<boolean | null>(null);
+
     const [messageFilterActivationTestText, setMessageFilterActivationTestText] = useState('');
     const [messageFilterActivationTestResult, setMessageFilterActivationTestResult] = useState<boolean | null>(null);
 
     const [messageFilterDeactivationTestText, setMessageFilterDeactivationTestText] = useState('');
     const [messageFilterDeactivationTestResult, setMessageFilterDeactivationTestResult] = useState<boolean | null>(null);
 
+    const [messageFilterExclusionTestText, setMessageFilterExclusionTestText] = useState('');
+    const [messageFilterExclusionTestResult, setMessageFilterExclusionTestResult] = useState<boolean | null>(null);
+
+    const [messageFilterExclusionDeactivationTestText, setMessageFilterExclusionDeactivationTestText] = useState('');
+    const [messageFilterExclusionDeactivationTestResult, setMessageFilterExclusionDeactivationTestResult] = useState<boolean | null>(null);
+
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
     const [contextBindings, setContextBindings] = useState<string[]>([]);
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
 
-    const [errors, setErrors] = useState<{ name?: string; textContent?: string; regex?: string; deactivationRegex?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; images?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string; textContent?: string; regex?: string; deactivationRegex?: string; exclusionRegex?: string; exclusionDeactivationRegex?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; messageFilterExclusionRegex?: string; messageFilterExclusionDeactivationRegex?: string; images?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textTokenCount, setTextTokenCount] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Sync engine context from store so countTokens uses correct model/tokenizer
     useEffect(() => {
+        if (!isOpen) return;
         const selectedModel = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
         if (selectedModel) {
@@ -78,7 +98,6 @@ export function PromptBlockEditorModal({
         }
     }, [isOpen]);
 
-    // Debounced token count — engine context already set above
     useEffect(() => {
         let cancelled = false;
         if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
@@ -92,7 +111,6 @@ export function PromptBlockEditorModal({
         };
     }, [textContent]);
 
-    // Load / reset form state
     useEffect(() => {
         if (!isOpen) return;
 
@@ -111,12 +129,20 @@ export function PromptBlockEditorModal({
             setImageFiles([]);
             setRegexActivationTrigger(existingBlock.regularExpressionActivationTrigger || '');
             setRegexDeactivationTrigger(existingBlock.regularExpressionDeactivationTrigger || '');
+            setRegexExclusionActivationTrigger(existingBlock.regularExpressionExclusionActivationTrigger || '');
+            setRegexExclusionDeactivationTrigger(existingBlock.regularExpressionExclusionDeactivationTrigger || '');
             setRegexContext(existingBlock.regularExpressionContext || 'global');
             setRegexTarget(existingBlock.regularExpressionTarget || 'everyone');
+            setRegexExclusionContext(existingBlock.regularExpressionExclusionContext || 'global');
+            setRegexExclusionTarget(existingBlock.regularExpressionExclusionTarget || 'everyone');
             setMessageFilterActivationTrigger(existingBlock.messageFilterRegularExpressionActivationTrigger || '');
             setMessageFilterDeactivationTrigger(existingBlock.messageFilterRegularExpressionDeactivationTrigger || '');
+            setMessageFilterExclusionActivationTrigger(existingBlock.messageFilterRegularExpressionExclusionActivationTrigger || '');
+            setMessageFilterExclusionDeactivationTrigger(existingBlock.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
             setMessageFilterContext(existingBlock.messageFilterRegularExpressionContext || 'global');
             setMessageFilterTarget(existingBlock.messageFilterRegularExpressionTarget || 'everyone');
+            setMessageFilterExclusionContext(existingBlock.messageFilterRegularExpressionExclusionContext || 'global');
+            setMessageFilterExclusionTarget(existingBlock.messageFilterRegularExpressionExclusionTarget || 'everyone');
             setCharacterBindings(existingBlock.characterBindings ?? []);
             setContextBindings(existingBlock.contextBindings ?? []);
             setLocationBindings(existingBlock.locationBindings ?? []);
@@ -128,12 +154,20 @@ export function PromptBlockEditorModal({
             setImagePreviews([]);
             setRegexActivationTrigger('');
             setRegexDeactivationTrigger('');
+            setRegexExclusionActivationTrigger('');
+            setRegexExclusionDeactivationTrigger('');
             setRegexContext('global');
             setRegexTarget('everyone');
+            setRegexExclusionContext('global');
+            setRegexExclusionTarget('everyone');
             setMessageFilterActivationTrigger('');
             setMessageFilterDeactivationTrigger('');
+            setMessageFilterExclusionActivationTrigger('');
+            setMessageFilterExclusionDeactivationTrigger('');
             setMessageFilterContext('global');
             setMessageFilterTarget('everyone');
+            setMessageFilterExclusionContext('global');
+            setMessageFilterExclusionTarget('everyone');
             setCharacterBindings([]);
             setContextBindings([]);
             setLocationBindings([]);
@@ -144,10 +178,18 @@ export function PromptBlockEditorModal({
         setActivationTestResult(null);
         setDeactivationTestText('');
         setDeactivationTestResult(null);
+        setExclusionTestText('');
+        setExclusionTestResult(null);
+        setExclusionDeactivationTestText('');
+        setExclusionDeactivationTestResult(null);
         setMessageFilterActivationTestText('');
         setMessageFilterActivationTestResult(null);
         setMessageFilterDeactivationTestText('');
         setMessageFilterDeactivationTestResult(null);
+        setMessageFilterExclusionTestText('');
+        setMessageFilterExclusionTestResult(null);
+        setMessageFilterExclusionDeactivationTestText('');
+        setMessageFilterExclusionDeactivationTestResult(null);
     }, [isOpen, existingBlock]);
 
     const validate = (): boolean => {
@@ -167,18 +209,29 @@ export function PromptBlockEditorModal({
         if (regexDeactivationTrigger.trim()) {
             try { new RegExp(regexDeactivationTrigger); } catch { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
         }
+        if (regexExclusionActivationTrigger.trim()) {
+            try { new RegExp(regexExclusionActivationTrigger); } catch { newErrors.exclusionRegex = 'Invalid exclusion regular expression.'; }
+        }
+        if (regexExclusionDeactivationTrigger.trim()) {
+            try { new RegExp(regexExclusionDeactivationTrigger); } catch { newErrors.exclusionDeactivationRegex = 'Invalid exclusion deactivation regular expression.'; }
+        }
         if (messageFilterActivationTrigger.trim()) {
             try { new RegExp(messageFilterActivationTrigger); } catch { newErrors.messageFilterRegex = 'Invalid message filter activation regular expression.'; }
         }
         if (messageFilterDeactivationTrigger.trim()) {
             try { new RegExp(messageFilterDeactivationTrigger); } catch { newErrors.messageFilterDeactivationRegex = 'Invalid message filter deactivation regular expression.'; }
         }
+        if (messageFilterExclusionActivationTrigger.trim()) {
+            try { new RegExp(messageFilterExclusionActivationTrigger); } catch { newErrors.messageFilterExclusionRegex = 'Invalid message filter exclusion regular expression.'; }
+        }
+        if (messageFilterExclusionDeactivationTrigger.trim()) {
+            try { new RegExp(messageFilterExclusionDeactivationTrigger); } catch { newErrors.messageFilterExclusionDeactivationRegex = 'Invalid message filter exclusion deactivation regular expression.'; }
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    // --- Regex testers ---
     const handleTestActivationRegex = () => {
         if (!regexActivationTrigger.trim() || !activationTestText.trim()) { setActivationTestResult(null); return; }
         try {
@@ -196,6 +249,26 @@ export function PromptBlockEditorModal({
         } catch {
             setDeactivationTestResult(null);
             setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
+        }
+    };
+
+    const handleTestExclusionRegex = () => {
+        if (!regexExclusionActivationTrigger.trim() || !exclusionTestText.trim()) { setExclusionTestResult(null); return; }
+        try {
+            setExclusionTestResult(new RegExp(regexExclusionActivationTrigger).test(exclusionTestText));
+        } catch {
+            setExclusionTestResult(null);
+            setErrors(prev => ({ ...prev, exclusionRegex: 'Invalid exclusion regular expression.' }));
+        }
+    };
+
+    const handleTestExclusionDeactivationRegex = () => {
+        if (!regexExclusionDeactivationTrigger.trim() || !exclusionDeactivationTestText.trim()) { setExclusionDeactivationTestResult(null); return; }
+        try {
+            setExclusionDeactivationTestResult(new RegExp(regexExclusionDeactivationTrigger).test(exclusionDeactivationTestText));
+        } catch {
+            setExclusionDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, exclusionDeactivationRegex: 'Invalid exclusion deactivation regular expression.' }));
         }
     };
 
@@ -219,7 +292,26 @@ export function PromptBlockEditorModal({
         }
     };
 
-    // --- Image handling ---
+    const handleTestMessageFilterExclusionRegex = () => {
+        if (!messageFilterExclusionActivationTrigger.trim() || !messageFilterExclusionTestText.trim()) { setMessageFilterExclusionTestResult(null); return; }
+        try {
+            setMessageFilterExclusionTestResult(new RegExp(messageFilterExclusionActivationTrigger).test(messageFilterExclusionTestText));
+        } catch {
+            setMessageFilterExclusionTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterExclusionRegex: 'Invalid message filter exclusion regular expression.' }));
+        }
+    };
+
+    const handleTestMessageFilterExclusionDeactivationRegex = () => {
+        if (!messageFilterExclusionDeactivationTrigger.trim() || !messageFilterExclusionDeactivationTestText.trim()) { setMessageFilterExclusionDeactivationTestResult(null); return; }
+        try {
+            setMessageFilterExclusionDeactivationTestResult(new RegExp(messageFilterExclusionDeactivationTrigger).test(messageFilterExclusionDeactivationTestText));
+        } catch {
+            setMessageFilterExclusionDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, messageFilterExclusionDeactivationRegex: 'Invalid message filter exclusion deactivation regular expression.' }));
+        }
+    };
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.length) {
             const files = Array.from(e.target.files);
@@ -236,7 +328,6 @@ export function PromptBlockEditorModal({
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    // --- Build & save ---
     const buildBlockFromForm = async (isNewClone: boolean): Promise<PromptBlock | null> => {
         if (!validate()) return null;
 
@@ -266,12 +357,20 @@ export function PromptBlockEditorModal({
             images: finalImageFilenames.length > 0 ? finalImageFilenames : [],
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
             regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
+            regularExpressionExclusionActivationTrigger: regexExclusionActivationTrigger.trim() || undefined,
+            regularExpressionExclusionDeactivationTrigger: regexExclusionDeactivationTrigger.trim() || undefined,
             regularExpressionContext: regexContext,
             regularExpressionTarget: regexTarget,
+            regularExpressionExclusionContext: regexExclusionContext,
+            regularExpressionExclusionTarget: regexExclusionTarget,
             messageFilterRegularExpressionActivationTrigger: messageFilterActivationTrigger.trim() || undefined,
             messageFilterRegularExpressionDeactivationTrigger: messageFilterDeactivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionExclusionActivationTrigger: messageFilterExclusionActivationTrigger.trim() || undefined,
+            messageFilterRegularExpressionExclusionDeactivationTrigger: messageFilterExclusionDeactivationTrigger.trim() || undefined,
             messageFilterRegularExpressionContext: messageFilterContext,
             messageFilterRegularExpressionTarget: messageFilterTarget,
+            messageFilterRegularExpressionExclusionContext: messageFilterExclusionContext,
+            messageFilterRegularExpressionExclusionTarget: messageFilterExclusionTarget,
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
             contextBindings: contextBindings.length > 0 ? contextBindings : [],
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
@@ -318,20 +417,17 @@ export function PromptBlockEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* Name */}
                     <div className="context-field-group">
                         <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
                         <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Combat Rules, Magic System" />
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
-                    {/* Description */}
                     <div className="context-field-group">
                         <label className="editor-label">Description</label>
                         <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description (display only)" rows={2} />
                     </div>
 
-                    {/* Text Content */}
                     <div className="context-field-group">
                         <label className="editor-label">Text Content {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
                         <textarea value={textContent} onChange={(e) => { setTextContent(e.target.value); if (errors.textContent) setErrors({ ...errors, textContent: undefined }); }} className={`editor-textarea ${errors.textContent ? 'error' : ''}`} placeholder="Prompt block text content (optional if using images)" rows={6} />
@@ -339,7 +435,6 @@ export function PromptBlockEditorModal({
                         {errors.textContent && <div className="editor-error-message">{errors.textContent}</div>}
                     </div>
 
-                    {/* Images */}
                     <div className="context-field-group">
                         <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
                         <div className="editor-image-grid">
@@ -360,7 +455,6 @@ export function PromptBlockEditorModal({
                         {errors.images && <div className="editor-error-message">{errors.images}</div>}
                     </div>
 
-                    {/* Regular Expression */}
                     <div className="editor-section">
                         <span className="editor-section-title">Regular Expression</span>
 
@@ -411,6 +505,56 @@ export function PromptBlockEditorModal({
                             </div>
                         )}
 
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Exclusion Activation Trigger</label>
+                                <input type="text" value={regexExclusionActivationTrigger} onChange={(e) => { setRegexExclusionActivationTrigger(e.target.value); if (errors.exclusionRegex) setErrors({ ...errors, exclusionRegex: undefined }); setExclusionTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionRegex ? 'error' : ''}`} placeholder="/fireplace|campfire/i" />
+                                {errors.exclusionRegex && <div className="editor-error-message">{errors.exclusionRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Overrides activation when matched.</div>
+                            </div>
+                        </div>
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Exclusion Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={exclusionTestText} onChange={(e) => { setExclusionTestText(e.target.value); setExclusionTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestExclusionRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionTestText.trim()}>Test</button>
+                                </div>
+                                {exclusionTestResult !== null && (
+                                    <div className={`context-test-result ${exclusionTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {exclusionTestResult ? '✅ Exclusion matches! (block suppressed)' : '❌ Exclusion does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                                <div>
+                                    <label className="editor-label editor-label-small">Exclusion Deactivation Trigger</label>
+                                    <input type="text" value={regexExclusionDeactivationTrigger} onChange={(e) => { setRegexExclusionDeactivationTrigger(e.target.value); if (errors.exclusionDeactivationRegex) setErrors({ ...errors, exclusionDeactivationRegex: undefined }); setExclusionDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionDeactivationRegex ? 'error' : ''}`} placeholder="/leave area/i" />
+                                    {errors.exclusionDeactivationRegex && <div className="editor-error-message">{errors.exclusionDeactivationRegex}</div>}
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. When the exclusion stops being active.</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {regexExclusionDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Exclusion Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={exclusionDeactivationTestText} onChange={(e) => { setExclusionDeactivationTestText(e.target.value); setExclusionDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestExclusionDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionDeactivationTestText.trim()}>Test</button>
+                                </div>
+                                {exclusionDeactivationTestResult !== null && (
+                                    <div className={`context-test-result ${exclusionDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {exclusionDeactivationTestResult ? '✅ Exclusion deactivation matches!' : '❌ Exclusion deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Context</label>
@@ -421,17 +565,33 @@ export function PromptBlockEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Target</label>
                                 <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
-                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
+                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
                                 </select>
                             </div>
                         </div>
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="editor-row" style={{ marginTop: '8px' }}>
+                                <div>
+                                    <label className="editor-label editor-label-small">Exclusion Context</label>
+                                    <select value={regexExclusionContext} onChange={(e) => setRegexExclusionContext(e.target.value as regularExpressionContext)} className="editor-select">
+                                        <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Exclusion Target</label>
+                                    <select value={regexExclusionTarget} onChange={(e) => setRegexExclusionTarget(e.target.value as regularExpressionTarget)} className="editor-select">
+                                        <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Message Filter Regular Expression */}
                     <div className="editor-section">
                         <span className="editor-section-title">Message Filter Regular Expression</span>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Chat history messages matching the activation pattern will be excluded from the prompt sent to the AI. Use this to hide out-of-character messages, tool outputs, or other patterns from the AI's memory.
+                            Chat history messages matching the activation pattern will be excluded from the prompt sent to the AI.
                         </div>
 
                         <div className="editor-row-full">
@@ -482,6 +642,56 @@ export function PromptBlockEditorModal({
                             </div>
                         )}
 
+                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                            <div>
+                                <label className="editor-label editor-label-small">Filter Exclusion Activation Trigger</label>
+                                <input type="text" value={messageFilterExclusionActivationTrigger} onChange={(e) => { setMessageFilterExclusionActivationTrigger(e.target.value); if (errors.messageFilterExclusionRegex) setErrors({ ...errors, messageFilterExclusionRegex: undefined }); setMessageFilterExclusionTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterExclusionRegex ? 'error' : ''}`} placeholder="/important_ooc/i" />
+                                {errors.messageFilterExclusionRegex && <div className="editor-error-message">{errors.messageFilterExclusionRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Overrides filter activation when matched.</div>
+                            </div>
+                        </div>
+
+                        {messageFilterExclusionActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Exclusion Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterExclusionTestText} onChange={(e) => { setMessageFilterExclusionTestText(e.target.value); setMessageFilterExclusionTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterExclusionRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterExclusionRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterExclusionTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterExclusionTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterExclusionTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterExclusionTestResult ? '✅ Filter exclusion matches! (message kept visible)' : '❌ Filter exclusion does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {messageFilterExclusionActivationTrigger.trim() && (
+                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                                <div>
+                                    <label className="editor-label editor-label-small">Filter Exclusion Deactivation Trigger</label>
+                                    <input type="text" value={messageFilterExclusionDeactivationTrigger} onChange={(e) => { setMessageFilterExclusionDeactivationTrigger(e.target.value); if (errors.messageFilterExclusionDeactivationRegex) setErrors({ ...errors, messageFilterExclusionDeactivationRegex: undefined }); setMessageFilterExclusionDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterExclusionDeactivationRegex ? 'error' : ''}`} placeholder="/end critical scene/i" />
+                                    {errors.messageFilterExclusionDeactivationRegex && <div className="editor-error-message">{errors.messageFilterExclusionDeactivationRegex}</div>}
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. When the filter exclusion stops being active.</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {messageFilterExclusionDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Filter Exclusion Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={messageFilterExclusionDeactivationTestText} onChange={(e) => { setMessageFilterExclusionDeactivationTestText(e.target.value); setMessageFilterExclusionDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterExclusionDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
+                                    <button type="button" onClick={handleTestMessageFilterExclusionDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterExclusionDeactivationTestText.trim()}>Test</button>
+                                </div>
+                                {messageFilterExclusionDeactivationTestResult !== null && (
+                                    <div className={`context-test-result ${messageFilterExclusionDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {messageFilterExclusionDeactivationTestResult ? '✅ Filter exclusion deactivation matches!' : '❌ Filter exclusion deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="editor-row" style={{ marginTop: '8px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Filter Context</label>
@@ -493,18 +703,33 @@ export function PromptBlockEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Filter Target</label>
                                 <select value={messageFilterTarget} onChange={(e) => setMessageFilterTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!messageFilterActivationTrigger.trim()}>
-                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option>
+                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
                                 </select>
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Whose messages to apply the filter to.</div>
                             </div>
                         </div>
+
+                        {messageFilterExclusionActivationTrigger.trim() && (
+                            <div className="editor-row" style={{ marginTop: '8px' }}>
+                                <div>
+                                    <label className="editor-label editor-label-small">Filter Exclusion Context</label>
+                                    <select value={messageFilterExclusionContext} onChange={(e) => setMessageFilterExclusionContext(e.target.value as regularExpressionContext)} className="editor-select">
+                                        <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Filter Exclusion Target</label>
+                                    <select value={messageFilterExclusionTarget} onChange={(e) => setMessageFilterExclusionTarget(e.target.value as regularExpressionTarget)} className="editor-select">
+                                        <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Bindings</span>
 
-                        {/* Character Bindings */}
                         <div className="context-field-group">
                             <span className="editor-label editor-label-small">Character Bindings</span>
                             <div className="context-binding-hint">Only inject when these characters are present. Empty = all characters.</div>
@@ -526,7 +751,6 @@ export function PromptBlockEditorModal({
                             </select>
                         </div>
 
-                        {/* Context Bindings */}
                         <div className="context-field-group">
                             <span className="editor-label editor-label-small">Context Bindings</span>
                             <div className="context-binding-hint">Only inject when these contexts are active. Empty = always.</div>
@@ -548,7 +772,6 @@ export function PromptBlockEditorModal({
                             </select>
                         </div>
 
-                        {/* Location Bindings */}
                         <div className="context-field-group">
                             <span className="editor-label editor-label-small">Location Bindings</span>
                             <div className="context-binding-hint">Only inject at these locations. Empty = all locations.</div>

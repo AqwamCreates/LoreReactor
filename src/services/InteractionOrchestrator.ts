@@ -1,6 +1,6 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
-import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData } from '../hooks/characterLogic';
+import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
@@ -215,8 +215,8 @@ export async function runTurnSequence(
                 const leaveGroup = [mover, ...coLocatedOthers];
                 const leavePool: { item: Character; weight: number }[] = [];
                 for (const char of leaveGroup) {
-                    const impatience = char.chatImpatienceSensitivity ?? 1;
-                    const leaveWeight = impatience > 0 ? 1 / impatience : Infinity;
+                    const impatience = getEffectiveChatImpatienceSensitivity(char, profile);;
+                    const leaveWeight = impatience > 0 ? 1 / impatience : Number.POSITIVE_INFINITY;
                     leavePool.push({ item: char, weight: leaveWeight });
                 }
 

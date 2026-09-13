@@ -56,6 +56,7 @@ export function useModalVisibility() {
     const [cardImport, setCardImportOpen] = useState(false);
     const [importData, setImportDataOpen] = useState(false);
     const [exportData, setExportDataOpen] = useState(false);
+    const [dataManager, setDataManagerOpen] = useState(false);
     const [budgetControl, setBudgetControlOpen] = useState(false);
     const [alternateTimelines, setBranchingVisualizationOpen] = useState(false);
 
@@ -79,6 +80,7 @@ export function useModalVisibility() {
         setCardImportOpen(false);
         setImportDataOpen(false);
         setExportDataOpen(false);
+        setDataManagerOpen(false);
         setBudgetControlOpen(false);
         setBranchingVisualizationOpen(false);
     }, []);
@@ -103,6 +105,7 @@ export function useModalVisibility() {
         cardImport: createModalState(cardImport, setCardImportOpen),
         importData: createModalState(importData, setImportDataOpen),
         exportData: createModalState(exportData, setExportDataOpen),
+        dataManager: createModalState(dataManager, setDataManagerOpen),
         budgetControl: createModalState(budgetControl, setBudgetControlOpen),
         alternateTimelines: createModalState(alternateTimelines, setBranchingVisualizationOpen),
     };

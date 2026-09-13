@@ -2,7 +2,7 @@
 
 export type regularExpressionContext = 'global' | 'local' | 'previous';
 
-export type regularExpressionTarget = 'everyone' | 'listener' | 'self';
+export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator';
 interface ObjectData {
   id: string;
   name: string;
@@ -12,6 +12,7 @@ interface ObjectData {
 }
 
 interface RawData {
+  id?: string;
   name: string;
   description?: string;
   firstCreatedTimestamp: number;
@@ -22,16 +23,24 @@ export interface StopPattern extends ObjectData {
   pattern: string;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
 }
 
 export interface RawStopPattern extends RawData {
   pattern: string;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
 }
 
 export interface Sampler extends ObjectData {
@@ -63,12 +72,20 @@ export interface Context extends ObjectData {
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -90,12 +107,20 @@ export interface RawContext extends RawData {
   fetchCacheTimeToLiveMs?: number;
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -108,9 +133,12 @@ export interface Location extends ObjectData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
-  backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
-  backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
-  playAudioTrackOnEnterWeights?: Record<string, number>; // Samples from a list of songs upon entering a location.
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
+  backgroundImageRegularExpressionActivationTriggers: Record<number, string>
+  backgroundImageWeights: Record<number, number>
+  playAudioTrackOnEnterWeights?: Record<string, number>;
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
@@ -118,12 +146,16 @@ export interface Location extends ObjectData {
   characterWeights: Record<string, number>;
   latitude: number;
   longitude: number;
-  locationDistances: Record<string, number>; // In km.
+  locationDistances: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   useBase64Encoding: boolean;
 }
 
@@ -131,9 +163,12 @@ export interface RawLocation extends RawData {
   text?: string;
   images?: string[];
   regularExpressionActivationTrigger?: string;
-  backgroundImageRegularExpressionActivationTriggers: Record<number, string> // Image position index as key.
-  backgroundImageWeights: Record<number, number> // Image position index as key. Always sample a random image upon entering.
-  playAudioTrackOnEnterWeights?: Record<string, number>; // Samples from a list of songs upon entering a location.
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
+  backgroundImageRegularExpressionActivationTriggers: Record<number, string>
+  backgroundImageWeights: Record<number, number>
+  playAudioTrackOnEnterWeights?: Record<string, number>;
   locationBindings: string[];
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
@@ -141,12 +176,16 @@ export interface RawLocation extends RawData {
   characterWeights: Record<string, number>;
   latitude: number;
   longitude: number;
-  locationDistances?: Record<string, number>; // In km.
+  locationDistances?: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   useBase64Encoding: boolean;
 }
 
@@ -384,8 +423,8 @@ export interface BudgetData extends ObjectData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
-  modelCensorshipHitCount: Record<string, number> // Mainly focuses on refusing with the request more than censorship of the response.
-  modelBrokenCount: Record<string, number> // Distinct to error because the model generates an empty string as response.
+  modelCensorshipHitCount: Record<string, number>;
+  modelBrokenCount: Record<string, number>;
   modelQuotaHitCount: Record<string, number>
   modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number
@@ -406,8 +445,8 @@ export interface RawBudgetData extends RawData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
-  modelCensorshipHitCount: Record<string, number> // Mainly focuses on refusing with the request more than censorship of the response.
-  modelBrokenCount: Record<string, number> // Distinct to error because the model generates an empty string as response.
+  modelCensorshipHitCount: Record<string, number>;
+  modelBrokenCount: Record<string, number>;
   modelQuotaHitCount: Record<string, number>
   modelErrorHitCount: Record<string, number>
   lastResetTimestamp: number
@@ -475,46 +514,58 @@ export type PromptBlockType =
   | 'Text Injection';
 
 export interface PromptBlock extends ObjectData {
-
   textContent: string
   images: string[]
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]
-
 }
 
 export interface RawPromptBlock extends RawData {
-
   textContent: string
   images: string[]
   regularExpressionActivationTrigger?: string;
   regularExpressionDeactivationTrigger?: string;
+  regularExpressionExclusionActivationTrigger?: string;
+  regularExpressionExclusionDeactivationTrigger?: string;
   regularExpressionContext?: regularExpressionContext;
   regularExpressionTarget?: regularExpressionTarget;
+  regularExpressionExclusionContext?: regularExpressionContext;
+  regularExpressionExclusionTarget?: regularExpressionTarget;
   messageFilterRegularExpressionActivationTrigger?: string;
   messageFilterRegularExpressionDeactivationTrigger?: string;
+  messageFilterRegularExpressionExclusionActivationTrigger?: string;
+  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
   messageFilterRegularExpressionContext?: regularExpressionContext;
   messageFilterRegularExpressionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
+  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]
-
 }
 
 export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthesized" | "bracketed" | "braced"
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
-  volume: number; // -1 is audio-specific, >= 0 is override
+  volume: number;
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
@@ -542,14 +593,14 @@ export interface Profile extends ObjectData {
   tools: Record<tool, number>;
   enableMemoryWriting: number;
   enableMemoryReading: number;
-  inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.
+  inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
 }
 
 export interface RawProfile extends RawData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
-  volume: number; // -1 is audio-specific, >= 0 is override
+  volume: number;
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
   forceNoCharacterImageInjection: boolean;
@@ -577,7 +628,7 @@ export interface RawProfile extends RawData {
   tools: Record<tool, number>;
   enableMemoryWriting: number;
   enableMemoryReading: number;
-  inputStrategy: (PromptBlockType | string)[]; // The string refers to the constructed prompt blocks.
+  inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
 }
 
@@ -633,11 +684,14 @@ export interface AudioTrack extends ObjectData {
     endFadeDurationMs: number;
     regularExpressionActivationTrigger?: string;
     regularExpressionDeactivationTrigger?: string;
+    regularExpressionExclusionActivationTrigger?: string;
+    regularExpressionExclusionDeactivationTrigger?: string;
+    regularExpressionExclusionContext?: regularExpressionContext;
+    regularExpressionExclusionTarget?: regularExpressionTarget;
     locationBindings: string[];
     contextBindings: string[]
     characterBindings: string[];
-    priority: number; // higher = overrides lower
-
+    priority: number;
 }
 
 export interface RawAudioTrack extends RawData {
@@ -650,6 +704,10 @@ export interface RawAudioTrack extends RawData {
     endFadeDurationMs: number;
     regularExpressionActivationTrigger?: string;
     regularExpressionDeactivationTrigger?: string;
+    regularExpressionExclusionActivationTrigger?: string;
+    regularExpressionExclusionDeactivationTrigger?: string;
+    regularExpressionExclusionContext?: regularExpressionContext;
+    regularExpressionExclusionTarget?: regularExpressionTarget;
     locationBindings: string[];
     contextBindings: string[];
     characterBindings: string[];

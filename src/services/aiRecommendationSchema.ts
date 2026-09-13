@@ -6,7 +6,6 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const parts: string[] = [];
     const hasWorld = selectedEntities.includes('World');
 
-    // Determine which sub-entity types to include
     const includeCharacter = selectedEntities.includes('Character');
     const includeContext = selectedEntities.includes('Context');
     const includeLocation = selectedEntities.includes('Location');
@@ -42,12 +41,20 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "limitLinksToSubdirectory": "boolean (default false)", "fetchCacheTimeToLiveMs": "number",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
+    "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
+    "regularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the exclusion)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
-    "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "regularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
+    "regularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "regularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history)",
     "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides message filter activation when matched)",
+    "messageFilterRegularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the message filter exclusion)",
     "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
-    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
+    "messageFilterRegularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "tokenBudget": "number (default 512)", "maximumRecursionDepth": "number (default 1)",
     "insertionDepth": "number (default 0)", "characterBindings": ["character name or ID strings"],
     "useBase64Encoding": "boolean (default false)"
@@ -59,6 +66,9 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "text": "string (required)",
     "images": ["string array (image filenames for location visuals)"],
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
+    "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
+    "regularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "regularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "backgroundImageRegularExpressionActivationTriggers": {"image index (number)": "regex pattern to switch to this image based on user message"},
     "backgroundImageWeights": {"image index (number)": "sampling weight (number)"},
     "playAudioTrackOnEnterWeights": {"audio track ID": "sampling weight (number), randomly plays an audio track when entering this location"},
@@ -72,8 +82,12 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "messageFilterNonCoLocatedParticipants": "boolean (default true, hide messages from characters not at this location)",
     "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history at this location)",
     "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides message filter activation when matched)",
+    "messageFilterRegularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the message filter exclusion)",
     "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
-    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
+    "messageFilterRegularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "useBase64Encoding": "boolean (default false)"
   }]`);
     }
@@ -88,6 +102,10 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "playableByParticipant": "boolean (default false)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
+    "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
+    "regularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the exclusion)",
+    "regularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "regularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "locationBindings": ["location name or ID strings"],
     "contextBindings": ["context name or ID strings"],
     "characterBindings": ["character name or ID strings"]
@@ -100,12 +118,20 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "images": ["string array (image filenames)"],
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
+    "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
+    "regularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the exclusion)",
     "regularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
-    "regularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "regularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
+    "regularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "regularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "messageFilterRegularExpressionActivationTrigger": "string (regex without delimiters, messages matching this are excluded from chat history)",
     "messageFilterRegularExpressionDeactivationTrigger": "string (regex without delimiters, stops filtering when matched)",
+    "messageFilterRegularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides message filter activation when matched)",
+    "messageFilterRegularExpressionExclusionDeactivationTrigger": "string (regex without delimiters, deactivates the message filter exclusion)",
     "messageFilterRegularExpressionContext": "'global' | 'local' | 'previous' (default 'global')",
-    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' (default 'everyone')",
+    "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
+    "messageFilterRegularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
+    "messageFilterRegularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "characterBindings": ["character name or ID strings"],
     "contextBindings": ["context name or ID strings"],
     "locationBindings": ["location name or ID strings"]

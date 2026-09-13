@@ -1,10 +1,10 @@
 // src/hooks/useChatListManager.ts
 import { useState, useCallback, useRef } from 'react';
-import type { InteractionData } from '../types';
+import type { RawInteractionData } from '../types';
 import { loadAllRawInteractionDataShells, deleteRawInteractionData } from '../storage/serverStorage';
 
 export function useChatListManager() {
-    const [chats, setChats] = useState<InteractionData[]>([]);
+    const [rawChatShells, setRawChatShells] = useState<RawInteractionData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const loadedRef = useRef(false);
 
@@ -12,9 +12,9 @@ export function useChatListManager() {
         if (!force && loadedRef.current) return;
         setIsLoading(true);
         try {
-            const data = await loadAllRawInteractionDataShells();
-            const sorted = data.sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
-            setChats(sorted);
+            const rawShells = await loadAllRawInteractionDataShells();
+            const sorted = [...rawShells].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
+            setRawChatShells(sorted);
             loadedRef.current = true;
         } catch (error) {
             console.error("Failed to load chats", error);
@@ -26,7 +26,6 @@ export function useChatListManager() {
     const deleteChat = async (id: string) => {
         try {
             await deleteRawInteractionData(id);
-            // After deletion, force reload to reflect changes
             await loadChats(true);
             return true;
         } catch (error) {
@@ -35,8 +34,7 @@ export function useChatListManager() {
         }
     };
 
-    // refresh always forces a reload (used after save/import/etc.)
     const refresh = useCallback(() => loadChats(true), [loadChats]);
 
-    return { chats, isLoading, deleteChat, refresh, ensureLoaded: loadChats };
+    return { rawChatShells, isLoading, deleteChat, refresh, ensureLoaded: loadChats };
 }

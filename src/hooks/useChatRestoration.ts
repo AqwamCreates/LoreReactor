@@ -1,6 +1,6 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, RawInteractionData } from '../types';
 import { loadRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -14,7 +14,7 @@ interface UseChatRestorationOptions {
     locationsLoading: boolean;
     profilesLoading: boolean;
     allCharacters: Character[];
-    allChats: InteractionData[];
+    rawChatShells: RawInteractionData[];
     loadFullCharacter: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
     setCurrentCharacter: (char: Character | null) => void;
@@ -43,7 +43,7 @@ function createEmptyChat(): InteractionData {
 export function useChatRestoration(options: UseChatRestorationOptions) {
     const {
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
-        allCharacters, allChats, loadFullCharacter,
+        allCharacters, rawChatShells, loadFullCharacter,
         setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
     } = options;
 
@@ -66,8 +66,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
 
-            // loadRawInteractionData already loads all messages, so interactionHistory
-            // should be populated. Only load if somehow empty but messages exist.
             if (!fullChat.interactionHistory.length && (fullChat.numberOfMessages ?? 0) > 0) {
                 try {
                     const reloaded = await loadRawInteractionData(fullChat.id, allCharacters);
@@ -116,9 +114,15 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const restore = async () => {
             try {
                 if (!savedChatId) {
-                    if (allChats.length > 0) {
-                        await activateChat(allChats[0]);
-                    } else if (allCharacters.length > 0) {
+                    if (rawChatShells.length > 0) {
+                        // Hydrate the first raw shell on demand
+                        const firstChatId = rawChatShells[0].id;
+                        if (firstChatId) {
+                            const loaded = await loadRawInteractionData(firstChatId, allCharacters);
+                            if (loaded) { await activateChat(loaded); return; }
+                        }
+                    }
+                    if (allCharacters.length > 0) {
                         startNewChat(allCharacters[0]);
                     } else {
                         setCurrentCharacter(null);
@@ -127,7 +131,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     return;
                 }
 
-                // loadRawInteractionData loads shell + all messages
                 const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
 
                 if (interactionDataResult) {
@@ -135,8 +138,14 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 } else {
                     console.warn('Active chat not found, falling back.');
                     localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-                    if (allChats.length > 0) { await activateChat(allChats[0]); }
-                    else if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
+                    if (rawChatShells.length > 0) {
+                        const firstChatId = rawChatShells[0].id;
+                        if (firstChatId) {
+                            const loaded = await loadRawInteractionData(firstChatId, allCharacters);
+                            if (loaded) { await activateChat(loaded); return; }
+                        }
+                    }
+                    if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
                     else {
                         setCurrentCharacter(null);
                         setInteractionData(createEmptyChat());
@@ -145,8 +154,14 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             } catch (e) {
                 console.error('Failed to restore active chat:', e);
                 localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-                if (allChats.length > 0) { await activateChat(allChats[0]); }
-                else if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
+                if (rawChatShells.length > 0) {
+                    const firstChatId = rawChatShells[0].id;
+                    if (firstChatId) {
+                        const loaded = await loadRawInteractionData(firstChatId, allCharacters);
+                        if (loaded) { await activateChat(loaded); return; }
+                    }
+                }
+                if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
                 else {
                     setCurrentCharacter(null);
                     setInteractionData(createEmptyChat());
@@ -157,7 +172,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         };
 
         restore();
-    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, allChats, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
+    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
 
     return { activeChatRestored };
 }

@@ -1,5 +1,5 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -19,6 +19,7 @@ import { AIRecommendationModal } from './AIRecommendationModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
+import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
@@ -43,7 +44,7 @@ interface EntityModalState<T> {
 interface AppModalsProps {
     modals: Record<string, ModalVisibility>;
     // Data
-    allChats: InteractionData[];
+    rawChatShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -114,6 +115,8 @@ interface AppModalsProps {
     onSaveWorld: (w: World) => void;
     onLoadWorld: (world: World) => void;
     onDeleteWorld: (id: string) => void;
+    // Prompt block callbacks
+    onDeletePromptBlock: (id: string) => void;
     // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -129,7 +132,7 @@ interface AppModalsProps {
 export function AppModals({
     // Modals & data
     modals, runningModels,
-    allChats, allCharacters, allContexts, allLocations, allAudioTracks,
+    rawChatShells, allCharacters, allContexts, allLocations, allAudioTracks,
     allSamplers, allStopPatterns, allModels, allBudgetStrategies,
     allProfiles, allExtensions, allWorlds, allPromptBlocks,
     // Entity modals
@@ -160,6 +163,8 @@ export function AppModals({
     onDeleteExtension, onToggleExtension,
     // World callbacks
     onSaveWorld, onLoadWorld, onDeleteWorld,
+    // Prompt block callbacks
+    onDeletePromptBlock,
     // Interaction data callbacks
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     // General callbacks
@@ -193,20 +198,20 @@ export function AppModals({
             {modals.chatList.isOpen && (
                 <ManagerModal
                     title="Chat Sessions"
-                    items={allChats}
+                    items={rawChatShells}
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
-                    onSelect={(item: InteractionData) => {
-                        onInspectChat(item.id);
+                    onSelect={(item: RawInteractionData) => {
+                        onInspectChat(item.id!);
                         modals.chatList.close();
                     }}
-                    onDelete={onDeleteChat}
+                    onDelete={(id: string) => onDeleteChat(id)}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
                     emptyMessage="No saved chat sessions found."
                     specialActionIcon="★"
-                    onSpecialAction={(item: InteractionData) => onSwitchChat(item.id)}
-                    specialActionTooltip={(item: InteractionData) =>
+                    onSpecialAction={(item: RawInteractionData) => onSwitchChat(item.id!)}
+                    specialActionTooltip={(item: RawInteractionData) =>
                         interactionData?.id === item.id ? `✓ Active — "${item.name}"` : `Activate "${item.name}"`
                     }
                     activeSpecialActionId={interactionData?.id}
@@ -481,6 +486,7 @@ export function AppModals({
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenExportData={modals.exportData.open}
                     onOpenImportData={modals.importData.open}
+                    onOpenDataManager={modals.dataManager.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenBudgetControl={modals.budgetControl.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
@@ -563,7 +569,7 @@ export function AppModals({
                     isOpen={modals.alternateTimelines.isOpen}
                     onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''}
-                    allInteractions={allChats}
+                    allInteractions={rawChatShells}
                     onSwitchChat={onSwitchChat}
                     onDeleteChat={onDeleteChat}
                     onInspectChat={onInspectChat}
@@ -607,7 +613,29 @@ export function AppModals({
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
                     allWorlds={allWorlds}
-                    allChats={allChats}
+                    rawChatShells={rawChatShells}
+                />
+            )}
+
+            {/* Data Manager */}
+            {modals.dataManager.isOpen && (
+                <DataManagerModal
+                    isOpen={modals.dataManager.isOpen}
+                    onClose={modals.dataManager.close}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
+                    allWorlds={allWorlds}
+                    allPromptBlocks={allPromptBlocks}
+                    rawChatShells={rawChatShells}
+                    onDeleteCharacter={onDeleteCharacter}
+                    onDeleteContext={onDeleteContext}
+                    onDeleteLocation={onDeleteLocation}
+                    onDeleteAudioTrack={onDeleteAudioTrack}
+                    onDeleteWorld={onDeleteWorld}
+                    onDeletePromptBlock={onDeletePromptBlock}
+                    onDeleteChat={onDeleteChat}
                 />
             )}
 

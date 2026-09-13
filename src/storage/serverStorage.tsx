@@ -1,4 +1,4 @@
-// src/hooks/storage.ts
+// src/hooks/serverStorage.ts
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
@@ -311,14 +311,9 @@ function getCleanFileName(file: { name: string }){
   return file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
-/**
- * Migrates old separate narrate*Text fields to the new narrateTexts record.
- * Handles backward compatibility with profiles saved before the consolidation.
- */
 function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> {
     if (rawProfile.narrateTexts) return rawProfile.narrateTexts;
 
-    // Old format: separate boolean fields
     return {
         normal: (rawProfile as any).narrateNormalText ?? DEFAULT_NARRATE_TEXTS.normal,
         quoted: (rawProfile as any).narrateQuotedText ?? DEFAULT_NARRATE_TEXTS.quoted,
@@ -431,8 +426,12 @@ export async function loadRawStopPattern(id: string): Promise<StopPattern | null
     pattern: rawPattern.pattern,
     regularExpressionActivationTrigger: rawPattern.regularExpressionActivationTrigger,
     regularExpressionDeactivationTrigger: rawPattern.regularExpressionDeactivationTrigger,
+    regularExpressionExclusionTrigger: rawPattern.regularExpressionExclusionTrigger,
+    regularExpressionExclusionDeactivationTrigger: rawPattern.regularExpressionExclusionDeactivationTrigger,
     regularExpressionContext: rawPattern.regularExpressionContext,
     regularExpressionTarget: rawPattern.regularExpressionTarget,
+    regularExpressionExclusionContext: rawPattern.regularExpressionExclusionContext,
+    regularExpressionExclusionTarget: rawPattern.regularExpressionExclusionTarget,
     firstCreatedTimestamp: rawPattern.firstCreatedTimestamp || Date.now(),
     lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp || Date.now(),
   };
@@ -670,12 +669,20 @@ export async function loadRawContext(id: string): Promise<Context | null> {
         fetchCacheTimeToLiveMs: rawContext.fetchCacheTimeToLiveMs,
         regularExpressionActivationTrigger: rawContext.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: rawContext.regularExpressionDeactivationTrigger,
+        regularExpressionExclusionTrigger: rawContext.regularExpressionExclusionTrigger,
+        regularExpressionExclusionDeactivationTrigger: rawContext.regularExpressionExclusionDeactivationTrigger,
         regularExpressionContext: rawContext.regularExpressionContext,
         regularExpressionTarget: rawContext.regularExpressionTarget,
+        regularExpressionExclusionContext: rawContext.regularExpressionExclusionContext,
+        regularExpressionExclusionTarget: rawContext.regularExpressionExclusionTarget,
         messageFilterRegularExpressionActivationTrigger: rawContext.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: rawContext.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionExclusionTrigger: rawContext.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: rawContext.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: rawContext.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: rawContext.messageFilterRegularExpressionTarget,
+        messageFilterRegularExpressionExclusionContext: rawContext.messageFilterRegularExpressionExclusionContext,
+        messageFilterRegularExpressionExclusionTarget: rawContext.messageFilterRegularExpressionExclusionTarget,
         tokenBudget: rawContext.tokenBudget,
         maximumRecursionDepth: rawContext.maximumRecursionDepth,
         insertionDepth: rawContext.insertionDepth,
@@ -731,6 +738,9 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         locationBindings: rawLocation.locationBindings ?? [],
         locationBindingRegularExpressionTriggers: rawLocation.locationBindingRegularExpressionTriggers ?? {},
         regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
+        regularExpressionExclusionTrigger: rawLocation.regularExpressionExclusionTrigger,
+        regularExpressionExclusionContext: rawLocation.regularExpressionExclusionContext,
+        regularExpressionExclusionTarget: rawLocation.regularExpressionExclusionTarget,
         characterBindings: rawLocation.characterBindings ?? [],
         globalWeight: rawLocation.globalWeight ?? 1,
         characterWeights: rawLocation.characterWeights ?? {},
@@ -740,8 +750,12 @@ export async function loadRawLocation(id: string): Promise<Location | null> {
         messageFilterNonCoLocatedParticipants: rawLocation.messageFilterNonCoLocatedParticipants ?? false,
         messageFilterRegularExpressionActivationTrigger: rawLocation.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: rawLocation.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionExclusionTrigger: rawLocation.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: rawLocation.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: rawLocation.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: rawLocation.messageFilterRegularExpressionTarget,
+        messageFilterRegularExpressionExclusionContext: rawLocation.messageFilterRegularExpressionExclusionContext,
+        messageFilterRegularExpressionExclusionTarget: rawLocation.messageFilterRegularExpressionExclusionTarget,
         useBase64Encoding: rawLocation.useBase64Encoding ?? false,
         firstCreatedTimestamp: rawLocation.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawLocation.lastUpdatedTimestamp || now,
@@ -793,6 +807,10 @@ export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> 
         endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
         regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+        regularExpressionExclusionTrigger: raw.regularExpressionExclusionTrigger,
+        regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
+        regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+        regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
         locationBindings: raw.locationBindings ?? [],
         contextBindings: raw.contextBindings ?? [],
         characterBindings: raw.characterBindings ?? [],
@@ -842,12 +860,20 @@ export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null
         images: raw.images ?? [],
         regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
         regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+        regularExpressionExclusionTrigger: raw.regularExpressionExclusionTrigger,
+        regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
         regularExpressionContext: raw.regularExpressionContext,
         regularExpressionTarget: raw.regularExpressionTarget,
+        regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+        regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
         messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
         messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
+        messageFilterRegularExpressionExclusionTrigger: raw.messageFilterRegularExpressionExclusionTrigger,
+        messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
         messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
         messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
+        messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
+        messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
         characterBindings: raw.characterBindings ?? [],
         contextBindings: raw.contextBindings ?? [],
         locationBindings: raw.locationBindings ?? [],
@@ -1369,37 +1395,30 @@ export async function loadRawInteractionData(
   return loadInteractionMessages(shell);
 }
 
-export async function loadAllRawInteractionDataShells(): Promise<InteractionData[]> {
+export async function loadAllRawInteractionDataShells(): Promise<RawInteractionData[]> {
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
-  const allCharShells = await loadAllCharacterShells();
-  const charMap = new Map(allCharShells.map(c => [c.id, c]));
+  const results: (RawInteractionData | null)[] = [];
 
-  const results: (InteractionData | null)[] = [];
-  
-  for (let i = 0; i < ids.length; i += 5) {
-    const batchIds = ids.slice(i, i + 5);
-    const batchPromises = batchIds.map(async (id) => {
+  for (let i = 0; i < ids.length; i += 10) {
+    const batchIds = ids.slice(i, i + 10);
+    const batchPromises = batchIds.map(async (id): Promise<RawInteractionData | null> => {
       const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
       if (!raw) return null;
-
-      const emptyContextMap = new Map<string, Context>();
-      const emptyLocationMap = new Map<string, Location>();
-      const emptyProfileMap = new Map<string, Profile>();
-      const emptyAudioTrackMap = new Map<string, AudioTrack>();
-      return buildInteractionDataShell(id, raw, charMap, emptyContextMap, emptyLocationMap, emptyProfileMap, emptyAudioTrackMap);
+      raw.id = id
+      return raw;
     });
-    
+
     const batchResults = await Promise.all(batchPromises);
     results.push(...batchResults);
-    
-    if (i + 5 < ids.length) {
-      await new Promise(resolve => setTimeout(resolve, 10));
+
+    if (i + 10 < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, 5));
     }
   }
 
-  return results.filter((c): c is InteractionData => c !== null);
+  return results.filter((r): r is RawInteractionData => r !== null);
 }
 
 export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {

@@ -1,7 +1,7 @@
 // src/hooks/useChatOperations.ts
 import { useState, useCallback } from 'react';
-import type { Character, InteractionData } from '../types';
-import { saveRawInteractionData, loadRawInteractionData, loadInteractionMessages } from '../storage/serverStorage';
+import type { Character, InteractionData, RawInteractionData } from '../types';
+import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
 import { clearFetchCache } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 
@@ -14,7 +14,7 @@ interface UseChatOperationsOptions {
     currentCharacter: Character | null;
     defaultCharacterId: string | null;
     allCharacters: Character[];
-    allChats: InteractionData[];
+    rawChatShells: RawInteractionData[];
     setInteractionData: (data: InteractionData) => void;
     setCurrentCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
@@ -26,7 +26,7 @@ interface UseChatOperationsOptions {
 export function useChatOperations(options: UseChatOperationsOptions) {
     const {
         interactionData, currentCharacter, defaultCharacterId,
-        allCharacters, allChats,
+        allCharacters, rawChatShells,
         setInteractionData, setCurrentCharacter, refreshChatList,
         startNewChat, deleteChatFromList, addToast,
     } = options;
@@ -53,19 +53,14 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             console.warn('Failed to load chat:', e);
         }
 
-        if (!chat) {
-            const sel = allChats.find(c => c.id === id);
-            if (!sel) return;
-            chat = sel;
-            if (!sel.interactionHistory.length) {
-                try { chat = await loadInteractionMessages(sel); } catch { addToast('Failed to load chat messages.', 'error'); }
-            }
+        if (chat) {
+            setInteractionData(chat);
+            if (chat.protagonist) setCurrentCharacter(chat.protagonist);
+        } else {
+            addToast('Failed to load chat.', 'error');
         }
-
-        setInteractionData(chat);
-        if (chat.protagonist) setCurrentCharacter(chat.protagonist);
         refreshChatList();
-    }, [allChats, allCharacters, interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
+    }, [allCharacters, interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
 
     const handleNewChat = useCallback(async () => {
         await safeAutoSave(interactionData);
@@ -73,9 +68,16 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
         let c = currentCharacter;
         if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
-        if (!c && allChats.length) c = allChats[0].protagonist;
+        if (!c && rawChatShells.length) {
+            // Load the first raw shell to get its protagonist
+            const firstId = rawChatShells[0].id;
+            if (firstId) {
+                const loaded = await loadRawInteractionData(firstId, allCharacters);
+                if (loaded?.protagonist) c = loaded.protagonist;
+            }
+        }
         if (c) startNewChat(c);
-    }, [interactionData, currentCharacter, defaultCharacterId, allCharacters, allChats, startNewChat, safeAutoSave]);
+    }, [interactionData, currentCharacter, defaultCharacterId, allCharacters, rawChatShells, startNewChat, safeAutoSave]);
 
     const handleDeleteChat = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();

@@ -1,6 +1,6 @@
 // src/components/AudioTrackEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
-import type { AudioTrack, Character, Context, Location, audioCategory } from '../types';
+import type { AudioTrack, Character, Context, Location, audioCategory, regularExpressionContext, regularExpressionTarget } from '../types';
 import { uploadAudioTrack, getAudioTrackUrl } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import './main.css';
@@ -43,6 +43,10 @@ export function AudioTrackEditorModal({
 
     const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
     const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
     const [locationBindings, setLocationBindings] = useState<string[]>([]);
     const [contextBindings, setContextBindings] = useState<string[]>([]);
     const [characterBindings, setCharacterBindings] = useState<string[]>([]);
@@ -50,7 +54,13 @@ export function AudioTrackEditorModal({
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
 
-    const [errors, setErrors] = useState<{ name?: string; filename?: string; regex?: string; deactivationRegex?: string }>({});
+    const [exclusionActivationTestText, setExclusionActivationTestText] = useState('');
+    const [exclusionActivationTestResult, setExclusionActivationTestResult] = useState<boolean | null>(null);
+
+    const [exclusionDeactivationTestText, setExclusionDeactivationTestText] = useState('');
+    const [exclusionDeactivationTestResult, setExclusionDeactivationTestResult] = useState<boolean | null>(null);
+
+    const [errors, setErrors] = useState<{ name?: string; filename?: string; regex?: string; deactivationRegex?: string; exclusionActivationRegex?: string; exclusionDeactivationRegex?: string }>({});
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -73,6 +83,10 @@ export function AudioTrackEditorModal({
                 setPlayableByParticipant(existingTrack.playableByParticipant ?? false);
                 setRegexActivationTrigger(existingTrack.regularExpressionActivationTrigger || '');
                 setRegexDeactivationTrigger(existingTrack.regularExpressionDeactivationTrigger || '');
+                setRegexExclusionActivationTrigger(existingTrack.regularExpressionExclusionActivationTrigger || '');
+                setRegexExclusionDeactivationTrigger(existingTrack.regularExpressionExclusionDeactivationTrigger || '');
+                setRegexExclusionContext(existingTrack.regularExpressionExclusionContext || 'global');
+                setRegexExclusionTarget(existingTrack.regularExpressionExclusionTarget || 'everyone');
                 setLocationBindings(existingTrack.locationBindings ?? []);
                 setContextBindings(existingTrack.contextBindings ?? []);
                 setCharacterBindings(existingTrack.characterBindings ?? []);
@@ -90,6 +104,10 @@ export function AudioTrackEditorModal({
                 setPlayableByParticipant(false);
                 setRegexActivationTrigger('');
                 setRegexDeactivationTrigger('');
+                setRegexExclusionActivationTrigger('');
+                setRegexExclusionDeactivationTrigger('');
+                setRegexExclusionContext('global');
+                setRegexExclusionTarget('everyone');
                 setLocationBindings([]);
                 setContextBindings([]);
                 setCharacterBindings([]);
@@ -98,13 +116,16 @@ export function AudioTrackEditorModal({
             setErrors({});
             setActivationTestText('');
             setActivationTestResult(null);
+            setExclusionActivationTestText('');
+            setExclusionActivationTestResult(null);
+            setExclusionDeactivationTestText('');
+            setExclusionDeactivationTestResult(null);
             setAudioFile(null);
             setIsUploading(false);
             setIsPreviewPlaying(false);
         }
     }, [isOpen, existingTrack]);
 
-    // Cleanup preview audio on close
     useEffect(() => {
         if (!isOpen) {
             if (previewAudioRef.current) {
@@ -128,6 +149,14 @@ export function AudioTrackEditorModal({
             try { new RegExp(regexDeactivationTrigger); } catch { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
         }
 
+        if (regexExclusionActivationTrigger.trim()) {
+            try { new RegExp(regexExclusionActivationTrigger); } catch { newErrors.exclusionActivationRegex = 'Invalid exclusion activation regular expression.'; }
+        }
+
+        if (regexExclusionDeactivationTrigger.trim()) {
+            try { new RegExp(regexExclusionDeactivationTrigger); } catch { newErrors.exclusionDeactivationRegex = 'Invalid exclusion deactivation regular expression.'; }
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -140,6 +169,26 @@ export function AudioTrackEditorModal({
         } catch {
             setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
+        }
+    };
+
+    const handleTestExclusionActivationRegex = () => {
+        if (!regexExclusionActivationTrigger.trim() || !exclusionActivationTestText.trim()) { setExclusionActivationTestResult(null); return; }
+        try {
+            setExclusionActivationTestResult(new RegExp(regexExclusionActivationTrigger).test(exclusionActivationTestText));
+        } catch {
+            setExclusionActivationTestResult(null);
+            setErrors(prev => ({ ...prev, exclusionActivationRegex: 'Invalid exclusion activation regular expression.' }));
+        }
+    };
+
+    const handleTestExclusionDeactivationRegex = () => {
+        if (!regexExclusionDeactivationTrigger.trim() || !exclusionDeactivationTestText.trim()) { setExclusionDeactivationTestResult(null); return; }
+        try {
+            setExclusionDeactivationTestResult(new RegExp(regexExclusionDeactivationTrigger).test(exclusionDeactivationTestText));
+        } catch {
+            setExclusionDeactivationTestResult(null);
+            setErrors(prev => ({ ...prev, exclusionDeactivationRegex: 'Invalid exclusion deactivation regular expression.' }));
         }
     };
 
@@ -174,7 +223,6 @@ export function AudioTrackEditorModal({
         });
     };
 
-    // Update preview volume/loop when settings change during playback
     useEffect(() => {
         if (previewAudioRef.current && isPreviewPlaying) {
             previewAudioRef.current.volume = volume;
@@ -187,7 +235,6 @@ export function AudioTrackEditorModal({
 
         let finalFilename = filename.trim();
 
-        // Upload new file if selected
         if (audioFile) {
             setIsUploading(true);
             try {
@@ -223,6 +270,10 @@ export function AudioTrackEditorModal({
             playableByParticipant,
             regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
             regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
+            regularExpressionExclusionActivationTrigger: regexExclusionActivationTrigger.trim() || undefined,
+            regularExpressionExclusionDeactivationTrigger: regexExclusionDeactivationTrigger.trim() || undefined,
+            regularExpressionExclusionContext: regexExclusionContext,
+            regularExpressionExclusionTarget: regexExclusionTarget,
             locationBindings: locationBindings.length > 0 ? locationBindings : [],
             contextBindings: contextBindings.length > 0 ? contextBindings : [],
             characterBindings: characterBindings.length > 0 ? characterBindings : [],
@@ -264,7 +315,6 @@ export function AudioTrackEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* Basic Info */}
                     <div className="context-field-group">
                         <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
                         <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Forest Ambience" />
@@ -290,7 +340,6 @@ export function AudioTrackEditorModal({
                                 setAudioFile(file);
                                 setFilename(file.name.replace(/[^a-zA-Z0-9._-]/g, '_'));
                                 if (errors.filename) setErrors({ ...errors, filename: undefined });
-                                // Create local preview URL for newly selected file
                                 setPreviewUrl(URL.createObjectURL(file));
                             }
                             e.target.value = '';
@@ -301,7 +350,6 @@ export function AudioTrackEditorModal({
                         </div>
                     </div>
 
-                    {/* Audio Preview */}
                     {previewUrl && (
                         <div className="context-field-group">
                             <label className="editor-label editor-label-small">Preview</label>
@@ -321,7 +369,6 @@ export function AudioTrackEditorModal({
                         </div>
                     )}
 
-                    {/* Category & Priority */}
                     <div className="editor-section">
                         <span className="editor-section-title">Category & Priority</span>
                         <div className="context-field-group">
@@ -348,7 +395,6 @@ export function AudioTrackEditorModal({
                         </div>
                     </div>
 
-                    {/* Playback Settings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Playback</span>
 
@@ -392,7 +438,6 @@ export function AudioTrackEditorModal({
                         </div>
                     </div>
 
-                    {/* Activation Triggers */}
                     <div className="editor-section">
                         <span className="editor-section-title">Activation Triggers</span>
 
@@ -428,9 +473,75 @@ export function AudioTrackEditorModal({
                                 Track deactivates when a message matches this pattern. Optional.
                             </div>
                         </div>
+
+                        <div className="context-field-group" style={{ marginTop: '8px' }}>
+                            <label className="editor-label editor-label-small">Exclusion Activation Trigger</label>
+                            <input type="text" value={regexExclusionActivationTrigger} onChange={(e) => { setRegexExclusionActivationTrigger(e.target.value); if (errors.exclusionActivationRegex) setErrors({ ...errors, exclusionActivationRegex: undefined }); setExclusionActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionActivationRegex ? 'error' : ''}`} placeholder="dream forest|memory of forest" />
+                            {errors.exclusionActivationRegex && <div className="editor-error-message">{errors.exclusionActivationRegex}</div>}
+                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                Optional. Overrides activation when matched (e.g., "forest" activates but "dream forest" excludes).
+                            </div>
+                        </div>
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Exclusion Activation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={exclusionActivationTestText} onChange={(e) => { setExclusionActivationTestText(e.target.value); setExclusionActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestExclusionActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionActivationTestText.trim()}>Test</button>
+                                </div>
+                                {exclusionActivationTestResult !== null && (
+                                    <div className={`context-test-result ${exclusionActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {exclusionActivationTestResult ? '✅ Exclusion activation matches! (track blocked)' : '❌ Exclusion activation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="context-field-group" style={{ marginTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Exclusion Deactivation Trigger</label>
+                                <input type="text" value={regexExclusionDeactivationTrigger} onChange={(e) => { setRegexExclusionDeactivationTrigger(e.target.value); if (errors.exclusionDeactivationRegex) setErrors({ ...errors, exclusionDeactivationRegex: undefined }); setExclusionDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionDeactivationRegex ? 'error' : ''}`} placeholder="wake up|snap out of dream" />
+                                {errors.exclusionDeactivationRegex && <div className="editor-error-message">{errors.exclusionDeactivationRegex}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Optional. When the exclusion stops being active. Without this, exclusion stays active once triggered.
+                                </div>
+                            </div>
+                        )}
+
+                        {regexExclusionDeactivationTrigger.trim() && (
+                            <div className="context-field-group">
+                                <label className="editor-label editor-label-small">Test Exclusion Deactivation Pattern</label>
+                                <div className="context-test-row">
+                                    <input type="text" value={exclusionDeactivationTestText} onChange={(e) => { setExclusionDeactivationTestText(e.target.value); setExclusionDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
+                                    <button type="button" onClick={handleTestExclusionDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionDeactivationTestText.trim()}>Test</button>
+                                </div>
+                                {exclusionDeactivationTestResult !== null && (
+                                    <div className={`context-test-result ${exclusionDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
+                                        {exclusionDeactivationTestResult ? '✅ Exclusion deactivation matches!' : '❌ Exclusion deactivation does not match'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {regexExclusionActivationTrigger.trim() && (
+                            <div className="editor-row" style={{ marginTop: '8px' }}>
+                                <div>
+                                    <label className="editor-label editor-label-small">Exclusion Context</label>
+                                    <select value={regexExclusionContext} onChange={(e) => setRegexExclusionContext(e.target.value as regularExpressionContext)} className="editor-select">
+                                        <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Exclusion Target</label>
+                                    <select value={regexExclusionTarget} onChange={(e) => setRegexExclusionTarget(e.target.value as regularExpressionTarget)} className="editor-select">
+                                        <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Location Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Location Bindings</span>
                         <div className="context-field-group">
@@ -454,7 +565,6 @@ export function AudioTrackEditorModal({
                         </div>
                     </div>
 
-                    {/* Context Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Context Bindings</span>
                         <div className="context-field-group">
@@ -478,7 +588,6 @@ export function AudioTrackEditorModal({
                         </div>
                     </div>
 
-                    {/* Character Bindings */}
                     <div className="editor-section">
                         <span className="editor-section-title">Character Bindings</span>
                         <div className="context-field-group">

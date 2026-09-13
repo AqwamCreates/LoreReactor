@@ -1,6 +1,6 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile, InteractionData } from '../types';
+import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData } from '../types';
 import { cloudBackends } from '../languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -74,12 +74,15 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     );
 }
 
-export function renderChatSubtext(c: InteractionData): string {
+export function renderChatSubtext(c: RawInteractionData): string {
     const parts: string[] = [];
     if (c.parentInteractionDataId) parts.push(`Branch of ${c.parentInteractionDataId.substring(0, 8)}...`);
-    parts.push(`${c.numberOfMessages ?? c.interactionHistory.length} message${(c.numberOfMessages ?? c.interactionHistory.length) > 1 ? 's' : ''}`);
-    parts.push(`${c.participants?.length ?? 0} character${(c.participants?.length ?? 0) !== 1 ? 's' : ''}`);
-    if ((c.contexts?.length ?? 0) > 0) parts.push(`${c.contexts?.length} context${c.contexts?.length !== 1 ? 's' : ''}`);
+    const msgCount = c.interactionIdHistory?.length ?? 0;
+    parts.push(`${msgCount} message${msgCount !== 1 ? 's' : ''}`);
+    const charCount = c.participantIds?.length ?? 0;
+    parts.push(`${charCount} character${charCount !== 1 ? 's' : ''}`);
+    const ctxCount = c.contextIds?.length ?? 0;
+    if (ctxCount > 0) parts.push(`${ctxCount} context${ctxCount !== 1 ? 's' : ''}`);
     return parts.join(' • ');
 }
 
