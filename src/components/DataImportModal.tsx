@@ -19,43 +19,43 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Selection state for filtering what to import from the parsed file
+    const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
+    const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
+    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
-    const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
-    const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
+    const [chatSearch, setChatSearch] = useState('');
     const [characterSearch, setCharacterSearch] = useState('');
     const [contextSearch, setContextSearch] = useState('');
     const [locationSearch, setLocationSearch] = useState('');
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
+    const [worldSearch, setWorldSearch] = useState('');
+    const [modelSearch, setModelSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
-    const [modelSearch, setModelSearch] = useState('');
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
-    const [worldSearch, setWorldSearch] = useState('');
-    const [chatSearch, setChatSearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
-        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]);
-        setSelectedAudioTrackIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
-        setSelectedStopPatternIds([]); setSelectedModelIds([]);
-        setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]); setSelectedWorldIds([]); setSelectedChatIds([]);
+        setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
+        setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
+        setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setIncludeActions(true);
-        setCharacterSearch(''); setContextSearch(''); setLocationSearch(''); setAudioTrackSearch('');
-        setSamplerSearch(''); setPromptBlockSearch(''); setStopPatternSearch(''); setModelSearch('');
-        setBudgetStrategySearch(''); setProfileSearch(''); setWorldSearch(''); setChatSearch('');
+        setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
+        setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -76,18 +76,18 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             if (!validateExport(json)) { setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.'); return; }
             setParsedData(json);
             // Pre-select all items by default
+            setSelectedChatIds(json.chats.map((c: { id: string }) => c.id));
             setSelectedCharacterIds(json.characters.map((c: { id: string }) => c.id));
             setSelectedContextIds(json.contexts.map((c: { id: string }) => c.id));
             setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
             setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
+            setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
+            setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
             setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
             setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
             setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
-            setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
             setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
             setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
-            setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
-            setSelectedChatIds(json.chats.map((c: { id: string }) => c.id));
             setIncludeActions(json.interjectableActions.length > 0);
         } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
     };
@@ -99,19 +99,19 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         // Filter parsed data to only selected items
         const filtered: LoreReactorExport = {
             version: 1, exportedAt: parsedData.exportedAt,
+            chats: parsedData.chats.filter(c => selectedChatIds.includes(c.id)),
             characters: parsedData.characters.filter(c => selectedCharacterIds.includes(c.id)),
             contexts: parsedData.contexts.filter(c => selectedContextIds.includes(c.id)),
             locations: parsedData.locations.filter(l => selectedLocationIds.includes(l.id)),
             audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
+            worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
+            models: parsedData.models.filter(m => selectedModelIds.includes(m.id)),
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
-            models: parsedData.models.filter(m => selectedModelIds.includes(m.id)),
             budgetStrategies: parsedData.budgetStrategies.filter(b => selectedBudgetStrategyIds.includes(b.id)),
             profiles: parsedData.profiles.filter(p => selectedProfileIds.includes(p.id)),
-            worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
-            chats: parsedData.chats.filter(c => selectedChatIds.includes(c.id)),
         };
 
         try {
@@ -122,10 +122,11 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         finally { setIsImporting(false); }
     };
 
-    const totalSelected = selectedCharacterIds.length + selectedContextIds.length + selectedLocationIds.length +
-        selectedAudioTrackIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
-        selectedStopPatternIds.length + selectedModelIds.length + selectedBudgetStrategyIds.length +
-        selectedProfileIds.length + selectedWorldIds.length + selectedChatIds.length + (includeActions ? 1 : 0);
+    const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
+        selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
+        selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
+        (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -169,6 +170,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     File exported: {new Date(parsedData.exportedAt).toLocaleString()}. Click items to deselect. Only selected items will be imported.
                                 </div>
 
+                                {parsedData.chats.length > 0 && (
+                                    <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selectedChatIds}
+                                        onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
+                                )}
                                 {parsedData.characters.length > 0 && (
                                     <EntitySelectList label="Characters" items={parsedData.characters} selectedIds={selectedCharacterIds}
                                         onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />
@@ -185,6 +190,14 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selectedAudioTrackIds}
                                         onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 )}
+                                {(parsedData.worlds?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selectedWorldIds}
+                                        onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
+                                )}
+                                {parsedData.models.length > 0 && (
+                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selectedModelIds}
+                                        onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
+                                )}
                                 {parsedData.samplers.length > 0 && (
                                     <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
                                         onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
@@ -197,10 +210,6 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selectedStopPatternIds}
                                         onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
                                 )}
-                                {parsedData.models.length > 0 && (
-                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selectedModelIds}
-                                        onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
-                                )}
                                 {parsedData.budgetStrategies.length > 0 && (
                                     <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selectedBudgetStrategyIds}
                                         onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
@@ -208,14 +217,6 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                 {parsedData.profiles.length > 0 && (
                                     <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selectedProfileIds}
                                         onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
-                                )}
-                                {(parsedData.worlds?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selectedWorldIds}
-                                        onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
-                                )}
-                                {parsedData.chats.length > 0 && (
-                                    <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selectedChatIds}
-                                        onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
                                 )}
 
                                 {parsedData.interjectableActions.length > 0 && (
@@ -249,19 +250,19 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     {importResult.success ? '✅ Import Successful' : '⚠️ Import Completed with Errors'}
                                 </span>
                                 <div className="entity-preview-grid">
+                                    <div><strong>Chats:</strong> {importResult.counts.chats}</div>
                                     <div><strong>Characters:</strong> {importResult.counts.characters}</div>
                                     <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
                                     <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
+                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
+                                    <div><strong>Language Models:</strong> {importResult.counts.models}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
-                                    <div><strong>Language Models:</strong> {importResult.counts.models}</div>
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
-                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
-                                    <div><strong>Chats:</strong> {importResult.counts.chats}</div>
                                 </div>
                             </div>
 

@@ -1,6 +1,6 @@
 // src/components/AlternateTimelinesModal.tsx
 import { useMemo, useState } from 'react';
-import type { InteractionData } from '../types';
+import type { RawInteractionData } from '../types';
 import {
     ReactFlow,
     Background,
@@ -19,7 +19,7 @@ interface AlternateTimelinesModalProps {
     isOpen: boolean;
     onClose: () => void;
     currentInteractionId: string;
-    allInteractions: InteractionData[];
+    rawChatShells: RawInteractionData[];
     onSwitchChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -320,9 +320,9 @@ function getRelativeTime(timestamp: number): string {
     return new Date(timestamp).toLocaleDateString();
 }
 
-function getAncestorIds(interactions: InteractionData[], startId: string): Set<string> {
+function getAncestorIds(shells: RawInteractionData[], startId: string): Set<string> {
     const ancestors = new Set<string>();
-    const map = new Map(interactions.map(i => [i.id, i]));
+    const map = new Map(shells.map(s => [s.id, s]));
 
     let current = map.get(startId);
     while (current?.parentInteractionDataId) {
@@ -356,7 +356,7 @@ export function AlternateTimelinesModal({
     isOpen,
     onClose,
     currentInteractionId,
-    allInteractions,
+    rawChatShells,
     onSwitchChat,
     onDeleteChat,
     onInspectChat,
@@ -366,29 +366,30 @@ export function AlternateTimelinesModal({
     const [renameValue, setRenameValue] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-    const { childMap, ancestorIds, relevantInteractions } = useMemo(() => {
-        const interactionMap = new Map(allInteractions.map(i => [i.id, i]));
+    const { childMap, ancestorIds, relevantShells } = useMemo(() => {
+        const shellMap = new Map(rawChatShells.map(s => [s.id, s]));
 
         let rootId = currentInteractionId;
-        let current = interactionMap.get(currentInteractionId);
+        let current = shellMap.get(currentInteractionId);
 
-        while (current?.parentInteractionDataId && interactionMap.has(current.parentInteractionDataId)) {
+        while (current?.parentInteractionDataId && shellMap.has(current.parentInteractionDataId)) {
             rootId = current.parentInteractionDataId;
-            current = interactionMap.get(rootId);
+            current = shellMap.get(rootId);
         }
 
         const fullChildMap = new Map<string, string[]>();
 
-        for (const interaction of allInteractions) {
-            if (!fullChildMap.has(interaction.id)) {
-                fullChildMap.set(interaction.id, []);
+        for (const shell of rawChatShells) {
+            if (!shell.id) continue;
+            if (!fullChildMap.has(shell.id)) {
+                fullChildMap.set(shell.id, []);
             }
 
-            if (interaction.parentInteractionDataId) {
-                if (!fullChildMap.has(interaction.parentInteractionDataId)) {
-                    fullChildMap.set(interaction.parentInteractionDataId, []);
+            if (shell.parentInteractionDataId) {
+                if (!fullChildMap.has(shell.parentInteractionDataId)) {
+                    fullChildMap.set(shell.parentInteractionDataId, []);
                 }
-                fullChildMap.get(interaction.parentInteractionDataId)!.push(interaction.id);
+                fullChildMap.get(shell.parentInteractionDataId)!.push(shell.id);
             }
         }
 
@@ -414,80 +415,81 @@ export function AlternateTimelinesModal({
             filteredChildMap.set(id, children);
         }
 
-        const ancestors = getAncestorIds(allInteractions, currentInteractionId);
-        const relevant = allInteractions.filter(i => treeIds.has(i.id));
+        const ancestors = getAncestorIds(rawChatShells, currentInteractionId);
+        const relevant = rawChatShells.filter(s => s.id && treeIds.has(s.id));
 
         return {
             childMap: filteredChildMap,
             ancestorIds: ancestors,
-            relevantInteractions: relevant,
+            relevantShells: relevant,
         };
-    }, [allInteractions, currentInteractionId]);
+    }, [rawChatShells, currentInteractionId]);
 
     const { nodes, edges } = useMemo(() => {
-        if (relevantInteractions.length === 0) {
+        if (relevantShells.length === 0) {
             return { nodes: [] as BranchFlowNode[], edges: [] as Edge[] };
         }
 
-        const rawNodes: BranchFlowNode[] = relevantInteractions.map(interaction => {
-            const isCurrent = interaction.id === currentInteractionId;
-            const isAncestor = ancestorIds.has(interaction.id);
-            const children = childMap.get(interaction.id) || [];
+        const rawNodes: BranchFlowNode[] = relevantShells.map(shell => {
+            const id = shell.id!;
+            const isCurrent = id === currentInteractionId;
+            const isAncestor = ancestorIds.has(id);
+            const children = childMap.get(id) || [];
             const hasChildren = children.length > 0;
-            const descendants = getDescendantIds(childMap, interaction.id);
+            const descendants = getDescendantIds(childMap, id);
 
             // Can delete any leaf node (no children), regardless of whether it's the active chat
             const canDelete = !hasChildren;
 
             const deleteTooltip = hasChildren
                 ? `Cannot delete: has ${descendants.size} dependent branch${descendants.size !== 1 ? 'es' : ''}`
-                : confirmDeleteId === interaction.id
+                : confirmDeleteId === id
                     ? 'Tap again to confirm'
                     : 'Delete this branch';
 
             return {
-                id: interaction.id,
+                id,
                 type: 'branchNode',
                 position: { x: 0, y: 0 },
                 data: {
-                    label: interaction.name || 'Untitled',
-                    messageCount: interaction.numberOfMessages ?? interaction.interactionHistory?.length ?? 0,
-                    lastActive: getRelativeTime(interaction.lastUpdatedTimestamp),
+                    label: shell.name || 'Untitled',
+                    messageCount: shell.interactionIdHistory?.length ?? 0,
+                    lastActive: getRelativeTime(shell.lastUpdatedTimestamp),
                     childCount: children.length,
-                    participantCount: interaction.participants?.length ?? 0,
-                    contextCount: interaction.contexts?.length ?? 0,
-                    locationCount: interaction.locations?.length ?? 0,
-                    audioTrackCount: interaction.audioTracks?.length ?? 0,
-                    hasProfile: !!interaction.Profile,
+                    participantCount: shell.participantIds?.length ?? 0,
+                    contextCount: shell.contextIds?.length ?? 0,
+                    locationCount: shell.locationIds?.length ?? 0,
+                    audioTrackCount: shell.audioTrackIds?.length ?? 0,
+                    hasProfile: !!shell.ProfileId,
                     isCurrent,
                     isAncestor,
                     hasChildren,
                     onOpen: () => {
-                        onSwitchChat(interaction.id);
+                        onSwitchChat(id);
                         onClose();
                     },
                     onInspect: () => {
-                        onInspectChat(interaction.id);
+                        onInspectChat(id);
                     },
                     onDelete: () => {
                         if (!canDelete) return;
 
-                        if (confirmDeleteId === interaction.id) {
-                            onDeleteChat(interaction.id);
+                        if (confirmDeleteId === id) {
+                            onDeleteChat(id);
                             setConfirmDeleteId(null);
                         } else {
-                            setConfirmDeleteId(interaction.id);
+                            setConfirmDeleteId(id);
                             window.setTimeout(() => setConfirmDeleteId(null), 3000);
                         }
                     },
                     canDelete,
                     deleteTooltip,
                     onStartRename: () => {
-                        setRenamingId(interaction.id);
-                        setRenameValue(interaction.name || '');
+                        setRenamingId(id);
+                        setRenameValue(shell.name || '');
                     },
-                    isRenaming: renamingId === interaction.id,
-                    renameValue: renamingId === interaction.id ? renameValue : '',
+                    isRenaming: renamingId === id,
+                    renameValue: renamingId === id ? renameValue : '',
                     onRenameChange: setRenameValue,
                     onRenameSubmit: () => {
                         if (renamingId && renameValue.trim()) {
@@ -527,7 +529,7 @@ export function AlternateTimelinesModal({
 
         return getLayoutedElements(rawNodes, rawEdges);
     }, [
-        relevantInteractions,
+        relevantShells,
         currentInteractionId,
         ancestorIds,
         childMap,
@@ -591,7 +593,7 @@ export function AlternateTimelinesModal({
                         </ReactFlow>
                     </div>
 
-                    {relevantInteractions.length === 0 && (
+                    {relevantShells.length === 0 && (
                         <div style={{ textAlign: 'center', opacity: 0.5, padding: '40px 0' }}>
                             No branching data found for this interaction.
                         </div>

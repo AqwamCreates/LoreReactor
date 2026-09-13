@@ -1,26 +1,26 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Extension, InteractionData, RawInteractionData } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
-import { ModelEditorModal } from './ModelEditorModal';
-import { SamplerEditorModal } from './SamplerEditorModal';
-import { PromptBlockEditorModal } from './PromptBlockEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { LocationEditorModal } from './LocationEditorModal';
 import { AudioTrackEditorModal } from './AudioTrackEditorModal';
+import { WorldEditorModal } from './WorldEditorModal';
+import { ModelEditorModal } from './ModelEditorModal';
+import { SamplerEditorModal } from './SamplerEditorModal';
+import { PromptBlockEditorModal } from './PromptBlockEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { BudgetControlModal } from './BudgetControlModal';
-import { WorldEditorModal } from './WorldEditorModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
+import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
 import { DataManagerModal } from './DataManagerModal';
-import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -42,34 +42,34 @@ interface EntityModalState<T> {
 }
 
 interface AppModalsProps {
+    // Modals & data
     modals: Record<string, ModalVisibility>;
-    // Data
+    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     rawChatShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
-    allSamplers: Sampler[];
-    allStopPatterns: StopPattern[];
+    allWorlds: World[];
     allModels: LanguageModel[];
+    allSamplers: Sampler[];
+    allPromptBlocks: PromptBlock[];
+    allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allExtensions: Extension[];
-    allWorlds: World[];
-    allPromptBlocks: PromptBlock[];
-    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
     locationModal: EntityModalState<Location>;
     audioTrackModal: EntityModalState<AudioTrack>;
-    samplerModal: EntityModalState<Sampler>;
-    stopModal: EntityModalState<StopPattern>;
+    worldModal: EntityModalState<World>;
     modelModal: EntityModalState<LanguageModel>;
+    samplerModal: EntityModalState<Sampler>;
+    promptBlockModal: EntityModalState<PromptBlock>;
+    stopModal: EntityModalState<StopPattern>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
-    worldModal: EntityModalState<World>;
-    promptBlockModal: EntityModalState<PromptBlock>;
     // Chat callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -94,11 +94,17 @@ interface AppModalsProps {
     onDeleteAudioTrack: (id: string) => void;
     onToggleAudioTrack: (id: string) => void;
     onSaveAudioTrack: (t: AudioTrack) => void;
+    // World callbacks
+    onSaveWorld: (w: World) => void;
+    onLoadWorld: (world: World) => void;
+    onDeleteWorld: (id: string) => void;
     // Model callbacks
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
     // Sampler callbacks
     onDeleteSampler: (id: string) => void;
+    // Prompt block callbacks
+    onDeletePromptBlock: (id: string) => void;
     // Stop pattern callbacks
     onDeleteStopPattern: (id: string) => void;
     // Budget strategy callbacks
@@ -111,12 +117,6 @@ interface AppModalsProps {
     // Extension callbacks
     onDeleteExtension: (id: string) => void;
     onToggleExtension: (id: string) => void;
-    // World callbacks
-    onSaveWorld: (w: World) => void;
-    onLoadWorld: (world: World) => void;
-    onDeleteWorld: (id: string) => void;
-    // Prompt block callbacks
-    onDeletePromptBlock: (id: string) => void;
     // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -133,12 +133,12 @@ export function AppModals({
     // Modals & data
     modals, runningModels,
     rawChatShells, allCharacters, allContexts, allLocations, allAudioTracks,
-    allSamplers, allStopPatterns, allModels, allBudgetStrategies,
-    allProfiles, allExtensions, allWorlds, allPromptBlocks,
+    allWorlds, allModels, allSamplers, allPromptBlocks, allStopPatterns,
+    allBudgetStrategies, allProfiles, allExtensions,
     // Entity modals
     charModal, contextModal, locationModal, audioTrackModal,
-    samplerModal, stopModal, modelModal, budgetModal,
-    profileModal, worldModal, promptBlockModal,
+    worldModal, modelModal, samplerModal, promptBlockModal,
+    stopModal, budgetModal, profileModal,
     // Chat callbacks
     onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat,
     // Character callbacks
@@ -149,10 +149,14 @@ export function AppModals({
     onDeleteLocation, onToggleLocation, onSaveLocation,
     // Audio track callbacks
     onDeleteAudioTrack, onToggleAudioTrack, onSaveAudioTrack,
+    // World callbacks
+    onSaveWorld, onLoadWorld, onDeleteWorld,
     // Model callbacks
     onDeleteModel, onToggleModelLoad,
     // Sampler callbacks
     onDeleteSampler,
+    // Prompt block callbacks
+    onDeletePromptBlock,
     // Stop pattern callbacks
     onDeleteStopPattern,
     // Budget strategy callbacks
@@ -161,10 +165,6 @@ export function AppModals({
     onDeleteProfile, onActivateProfile, onSaveProfile,
     // Extension callbacks
     onDeleteExtension, onToggleExtension,
-    // World callbacks
-    onSaveWorld, onLoadWorld, onDeleteWorld,
-    // Prompt block callbacks
-    onDeletePromptBlock,
     // Interaction data callbacks
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     // General callbacks
@@ -175,7 +175,7 @@ export function AppModals({
     const selectedModelId = useSessionStore(s => s.selectedModel?.id ?? null);
     const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
 
-    // Save redirect callbacks for AI recommendation refinement flow.
+    // Save redirect callbacks for AI recommendation refinement flow
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((c: Character) => void) | null>(null);
     const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((c: Context) => void) | null>(null);
     const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((l: Location) => void) | null>(null);
@@ -319,7 +319,7 @@ export function AppModals({
             {/* Language Models List */}
             {useMemo(() => {
                 if (!modals.modelList.isOpen) return null;
-                
+
                 const strategyModelIds = new Set<string>();
                 if (activeStrategy) {
                     for (const m of activeStrategy.onlineModels) strategyModelIds.add(m.id);
@@ -563,13 +563,13 @@ export function AppModals({
                 />
             )}
 
-            {/* Interaction Branching Visualization */}
+            {/* Alternate Timelines */}
             {modals.alternateTimelines.isOpen && (
                 <AlternateTimelinesModal
                     isOpen={modals.alternateTimelines.isOpen}
                     onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''}
-                    allInteractions={rawChatShells}
+                    rawChatShells={rawChatShells}
                     onSwitchChat={onSwitchChat}
                     onDeleteChat={onDeleteChat}
                     onInspectChat={onInspectChat}
@@ -606,13 +606,13 @@ export function AppModals({
                     allContexts={allContexts}
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
-                    allPromptBlocks={allPromptBlocks}
-                    allSamplers={allSamplers}
-                    allStopPatterns={allStopPatterns}
+                    allWorlds={allWorlds}
                     allModels={allModels}
+                    allSamplers={allSamplers}
+                    allPromptBlocks={allPromptBlocks}
+                    allStopPatterns={allStopPatterns}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
-                    allWorlds={allWorlds}
                     rawChatShells={rawChatShells}
                 />
             )}
@@ -627,14 +627,24 @@ export function AppModals({
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds}
+                    allModels={allModels}
+                    allSamplers={allSamplers}
                     allPromptBlocks={allPromptBlocks}
+                    allStopPatterns={allStopPatterns}
+                    allBudgetStrategies={allBudgetStrategies}
+                    allProfiles={allProfiles}
                     rawChatShells={rawChatShells}
                     onDeleteCharacter={onDeleteCharacter}
                     onDeleteContext={onDeleteContext}
                     onDeleteLocation={onDeleteLocation}
                     onDeleteAudioTrack={onDeleteAudioTrack}
                     onDeleteWorld={onDeleteWorld}
+                    onDeleteModel={onDeleteModel}
+                    onDeleteSampler={onDeleteSampler}
                     onDeletePromptBlock={onDeletePromptBlock}
+                    onDeleteStopPattern={onDeleteStopPattern}
+                    onDeleteBudgetStrategy={onDeleteBudgetStrategy}
+                    onDeleteProfile={onDeleteProfile}
                     onDeleteChat={onDeleteChat}
                 />
             )}

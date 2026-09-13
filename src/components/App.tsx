@@ -7,14 +7,14 @@ import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useContextManager } from '../hooks/useContextManager';
 import { useLocationManager } from '../hooks/useLocationManager';
 import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
-import { useSamplerManager } from '../hooks/useSamplerManager';
-import { useStopPatternManager } from '../hooks/useStopPatternManager';
-import { useModelManager } from '../hooks/useModelManager';
-import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
-import { useExtensionManager } from '../hooks/useExtensionManager';
-import { useProfileManager } from '../hooks/useProfileManager';
 import { useWorldManager } from '../hooks/useWorldManager';
+import { useModelManager } from '../hooks/useModelManager';
+import { useSamplerManager } from '../hooks/useSamplerManager';
 import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
+import { useStopPatternManager } from '../hooks/useStopPatternManager';
+import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
+import { useProfileManager } from '../hooks/useProfileManager';
+import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
@@ -22,7 +22,6 @@ import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLog
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
-import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
@@ -30,7 +29,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Sampler, LanguageModel, BudgetStrategy, InteractionData, World, AudioTrack, PromptBlock, ChatMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -50,6 +49,7 @@ import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
+import { ChatStatisticsBar } from './ChatStatisticsBar';
 import './main.css';
 import { ChatMinimap } from './ChatMinimap';
 import { ChatScrollButtons } from './ChatScrollButtons';
@@ -86,13 +86,13 @@ function App() {
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
     const { audioTracks: allAudioTracks, isLoading: audioTracksLoading, saveAudioTrack, deleteAudioTrack } = useAudioTrackManager();
     const { worlds: allWorlds, isLoading: worldsLoading, saveWorld, deleteWorld } = useWorldManager();
-    const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
-    const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
     const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
-    const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
-    const { extensions: allExtensions, deleteExtension } = useExtensionManager();
-    const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
+    const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
     const { promptBlocks: allPromptBlocks, isLoading: promptBlocksLoading, savePromptBlock, deletePromptBlock } = usePromptBlockManager();
+    const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
+    const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
+    const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
+    const { extensions: allExtensions, deleteExtension } = useExtensionManager();
 
     // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
@@ -116,15 +116,15 @@ function App() {
     // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
     const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
-    const locationModal = useEntityModal(saveLocation, deleteLocation, 'Location');
+    const locationModal = useEntityModal<Location>(saveLocation, deleteLocation, 'Location');
     const audioTrackModal = useEntityModal<AudioTrack>(saveAudioTrack, deleteAudioTrack, 'Audio Track');
-    const samplerModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
-    const stopModal = useEntityModal(saveStopPattern, deleteStopPattern, 'Stop Pattern');
-    const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
-    const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
-    const profileModal = useEntityModal(saveProfile, deleteProfile, 'Profile');
     const worldModal = useEntityModal<World>(saveWorld, deleteWorld, 'World');
+    const modelModal = useEntityModal<LanguageModel>(saveModel, deleteModel, 'Model');
+    const samplerModal = useEntityModal<Sampler>(saveSampler, deleteSampler, 'Sampler');
     const promptBlockModal = useEntityModal<PromptBlock>(savePromptBlock, deletePromptBlock, 'Prompt Block');
+    const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
+    const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
+    const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
     // ─── Chat Inspection State ───────────────────────────────────────
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
@@ -395,6 +395,7 @@ function App() {
 
     // Loading screen
     const loadSteps = useMemo<LoadStep[]>(() => [
+        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
@@ -407,8 +408,7 @@ function App() {
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
-        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-    ], [charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, promptBlocksLoading, stopLoading, budgetLoading, profilesLoading, chatsLoading]);
+    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, promptBlocksLoading, stopLoading, budgetLoading, profilesLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -923,26 +923,26 @@ function App() {
                     allContexts={allContexts}
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
-                    allSamplers={allSamplers}
-                    allStopPatterns={allStopPatterns}
+                    allWorlds={allWorlds}
                     allModels={allModels}
+                    allSamplers={allSamplers}
+                    allPromptBlocks={allPromptBlocks}
+                    allStopPatterns={allStopPatterns}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
-                    allWorlds={allWorlds}
-                    allPromptBlocks={allPromptBlocks}
                     // Entity modals
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
                     audioTrackModal={audioTrackModal}
-                    samplerModal={samplerModal}
-                    stopModal={stopModal}
+                    worldModal={worldModal}
                     modelModal={modelModal}
+                    samplerModal={samplerModal}
+                    promptBlockModal={promptBlockModal}
+                    stopModal={stopModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
-                    worldModal={worldModal}
-                    promptBlockModal={promptBlockModal}
                     // Chat callbacks
                     onSwitchChat={handleSwitchChat}
                     onInspectChat={handleOpenChatInspection}
@@ -967,11 +967,17 @@ function App() {
                     onDeleteAudioTrack={audioTrackModal.handleDelete}
                     onToggleAudioTrack={handleToggleAudioTrack}
                     onSaveAudioTrack={saveAudioTrack}
+                    // World callbacks
+                    onSaveWorld={saveWorld}
+                    onLoadWorld={handleLoadWorld}
+                    onDeleteWorld={deleteWorld}
                     // Model callbacks
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
                     // Sampler callbacks
                     onDeleteSampler={samplerModal.handleDelete}
+                    // Prompt block callbacks
+                    onDeletePromptBlock={promptBlockModal.handleDelete}
                     // Stop pattern callbacks
                     onDeleteStopPattern={stopModal.handleDelete}
                     // Budget strategy callbacks
@@ -984,12 +990,6 @@ function App() {
                     // Extension callbacks
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
-                    // World callbacks
-                    onSaveWorld={saveWorld}
-                    onLoadWorld={handleLoadWorld}
-                    onDeleteWorld={deleteWorld}
-                    // Prompt block callbacks
-                    onDeletePromptBlock={promptBlockModal.handleDelete}
                     // Interaction data callbacks
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);

@@ -1,20 +1,20 @@
 // src/services/DataPortabilityEngine.ts
 import type {
-    Character, Context, Location, AudioTrack, Sampler, StopPattern, LanguageModel,
-    BudgetStrategy, Profile, InteractionData, InterjectableAction, World, PromptBlock,
+    Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
+    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction,
 } from '../types';
 import {
     loadRawCharacter, saveRawCharacter,
     loadRawContext, saveRawContext,
     loadRawLocation, saveRawLocation,
     loadRawAudioTrack, saveRawAudioTrack,
-    loadRawSampler, saveRawSampler,
-    loadRawStopPattern, saveRawStopPattern,
+    loadRawWorld, saveRawWorld,
     loadRawModel, saveRawModel,
+    loadRawSampler, saveRawSampler,
+    loadRawPromptBlock, saveRawPromptBlock,
+    loadRawStopPattern, saveRawStopPattern,
     loadRawBudgetStrategy, saveRawBudgetStrategy,
     loadRawProfile, saveRawProfile,
-    loadRawWorld, saveRawWorld,
-    loadRawPromptBlock, saveRawPromptBlock,
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
@@ -23,28 +23,27 @@ import {
 export interface LoreReactorExport {
     version: 1;
     exportedAt: number;
+    chats: InteractionData[];
     characters: Character[];
     contexts: Context[];
     locations: Location[];
     audioTracks: AudioTrack[];
-    promptBlocks: PromptBlock[];
-    samplers: Sampler[];
-    stopPatterns: StopPattern[];
+    worlds: World[];
     models: LanguageModel[];
+    samplers: Sampler[];
+    promptBlocks: PromptBlock[];
+    stopPatterns: StopPattern[];
     budgetStrategies: BudgetStrategy[];
     profiles: Profile[];
-    worlds: World[];
     interjectableActions: InterjectableAction[];
-    chats: InteractionData[];
 }
 
 export interface ImportResult {
     success: boolean;
     counts: {
-        characters: number; contexts: number; locations: number; audioTracks: number;
-        promptBlocks: number; samplers: number; stopPatterns: number; models: number;
-        budgetStrategies: number; profiles: number; worlds: number;
-        interjectableActions: number; chats: number;
+        chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
+        worlds: number; models: number; samplers: number; promptBlocks: number; stopPatterns: number;
+        budgetStrategies: number; profiles: number; interjectableActions: number;
     };
     errors: string[];
 }
@@ -54,19 +53,19 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     const d = data as Record<string, unknown>;
     if (d.version !== 1) return false;
     if (typeof d.exportedAt !== 'number') return false;
+    if (!Array.isArray(d.chats)) return false;
     if (!Array.isArray(d.characters)) return false;
     if (!Array.isArray(d.contexts)) return false;
     if (!Array.isArray(d.locations)) return false;
     if (!Array.isArray(d.audioTracks)) return false;
-    if (!Array.isArray(d.promptBlocks)) return false;
-    if (!Array.isArray(d.samplers)) return false;
-    if (!Array.isArray(d.stopPatterns)) return false;
+    if (!Array.isArray(d.worlds)) return false;
     if (!Array.isArray(d.models)) return false;
+    if (!Array.isArray(d.samplers)) return false;
+    if (!Array.isArray(d.promptBlocks)) return false;
+    if (!Array.isArray(d.stopPatterns)) return false;
     if (!Array.isArray(d.budgetStrategies)) return false;
     if (!Array.isArray(d.profiles)) return false;
-    if (!Array.isArray(d.worlds)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
-    if (!Array.isArray(d.chats)) return false;
     return true;
 }
 
@@ -74,29 +73,36 @@ export function validateExport(data: unknown): data is LoreReactorExport {
  * Exports only the selected entity IDs. Fully hydrates each entity.
  */
 export async function exportSelectedData(selection: {
+    chatIds: string[];
     characterIds: string[];
     contextIds: string[];
     locationIds: string[];
     audioTrackIds: string[];
-    promptBlockIds: string[];
-    samplerIds: string[];
-    stopPatternIds: string[];
+    worldIds: string[];
     modelIds: string[];
+    samplerIds: string[];
+    promptBlockIds: string[];
+    stopPatternIds: string[];
     budgetStrategyIds: string[];
     profileIds: string[];
-    worldIds: string[];
     includeActions: boolean;
-    chatIds: string[];
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
-        characters: [], contexts: [], locations: [], audioTracks: [],
-        promptBlocks: [], samplers: [], stopPatterns: [], models: [],
-        budgetStrategies: [], profiles: [], worlds: [],
-        interjectableActions: [], chats: [],
+        chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
+        worlds: [], models: [], samplers: [], promptBlocks: [], stopPatterns: [],
+        budgetStrategies: [], profiles: [], interjectableActions: [],
     };
 
     // Load individual entities by ID
+    for (const id of selection.chatIds) {
+        let full = await loadRawInteractionData(id, []);
+        if (!full) continue;
+        if (!full.interactionHistory.length && (full.numberOfMessages ?? 0) > 0) {
+            try { full = await loadInteractionMessages(full); } catch { /* use shell */ }
+        }
+        data.chats.push(full);
+    }
     for (const id of selection.characterIds) {
         const full = await loadRawCharacter(id);
         if (full) data.characters.push(full);
@@ -113,21 +119,25 @@ export async function exportSelectedData(selection: {
         const full = await loadRawAudioTrack(id);
         if (full) data.audioTracks.push(full);
     }
-    for (const id of selection.promptBlockIds) {
-        const full = await loadRawPromptBlock(id);
-        if (full) data.promptBlocks.push(full);
+    for (const id of selection.worldIds) {
+        const full = await loadRawWorld(id);
+        if (full) data.worlds.push(full);
+    }
+    for (const id of selection.modelIds) {
+        const full = await loadRawModel(id);
+        if (full) data.models.push(full);
     }
     for (const id of selection.samplerIds) {
         const full = await loadRawSampler(id);
         if (full) data.samplers.push(full);
     }
+    for (const id of selection.promptBlockIds) {
+        const full = await loadRawPromptBlock(id);
+        if (full) data.promptBlocks.push(full);
+    }
     for (const id of selection.stopPatternIds) {
         const full = await loadRawStopPattern(id);
         if (full) data.stopPatterns.push(full);
-    }
-    for (const id of selection.modelIds) {
-        const full = await loadRawModel(id);
-        if (full) data.models.push(full);
     }
     for (const id of selection.budgetStrategyIds) {
         const full = await loadRawBudgetStrategy(id);
@@ -137,22 +147,9 @@ export async function exportSelectedData(selection: {
         const full = await loadRawProfile(id);
         if (full) data.profiles.push(full);
     }
-    for (const id of selection.worldIds) {
-        const full = await loadRawWorld(id);
-        if (full) data.worlds.push(full);
-    }
 
     if (selection.includeActions) {
         try { data.interjectableActions = await loadInterjectableActions(); } catch { /* empty */ }
-    }
-
-    for (const id of selection.chatIds) {
-        let full = await loadRawInteractionData(id, data.characters);
-        if (!full) continue;
-        if (!full.interactionHistory.length && (full.numberOfMessages ?? 0) > 0) {
-            try { full = await loadInteractionMessages(full); } catch { /* use shell */ }
-        }
-        data.chats.push(full);
     }
 
     return data;
@@ -166,10 +163,9 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     const result: ImportResult = {
         success: true,
         counts: {
-            characters: 0, contexts: 0, locations: 0, audioTracks: 0,
-            promptBlocks: 0, samplers: 0, stopPatterns: 0, models: 0,
-            budgetStrategies: 0, profiles: 0, worlds: 0,
-            interjectableActions: 0, chats: 0,
+            chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
+            worlds: 0, models: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
+            budgetStrategies: 0, profiles: 0, interjectableActions: 0,
         },
         errors: [],
     };
@@ -191,21 +187,25 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         try { await saveRawAudioTrack(t); result.counts.audioTracks++; }
         catch (e) { result.errors.push(`Audio Track "${t.name || t.id}": ${(e as Error).message}`); }
     }
-    for (const pb of data.promptBlocks) {
-        try { await saveRawPromptBlock(pb); result.counts.promptBlocks++; }
-        catch (e) { result.errors.push(`Prompt Block "${pb.name || pb.id}": ${(e as Error).message}`); }
+    for (const w of data.worlds) {
+        try { await saveRawWorld(w); result.counts.worlds++; }
+        catch (e) { result.errors.push(`World "${w.name || w.id}": ${(e as Error).message}`); }
+    }
+    for (const m of data.models) {
+        try { await saveRawModel(m); result.counts.models++; }
+        catch (e) { result.errors.push(`Model "${m.name || m.id}": ${(e as Error).message}`); }
     }
     for (const s of data.samplers) {
         try { await saveRawSampler(s); result.counts.samplers++; }
         catch (e) { result.errors.push(`Sampler "${s.name || s.id}": ${(e as Error).message}`); }
     }
+    for (const pb of data.promptBlocks) {
+        try { await saveRawPromptBlock(pb); result.counts.promptBlocks++; }
+        catch (e) { result.errors.push(`Prompt Block "${pb.name || pb.id}": ${(e as Error).message}`); }
+    }
     for (const sp of data.stopPatterns) {
         try { await saveRawStopPattern(sp); result.counts.stopPatterns++; }
         catch (e) { result.errors.push(`Stop Pattern "${sp.name || sp.id}": ${(e as Error).message}`); }
-    }
-    for (const m of data.models) {
-        try { await saveRawModel(m); result.counts.models++; }
-        catch (e) { result.errors.push(`Model "${m.name || m.id}": ${(e as Error).message}`); }
     }
     for (const b of data.budgetStrategies) {
         try { await saveRawBudgetStrategy(b); result.counts.budgetStrategies++; }
@@ -214,10 +214,6 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const p of data.profiles) {
         try { await saveRawProfile(p); result.counts.profiles++; }
         catch (e) { result.errors.push(`Profile "${p.name || p.id}": ${(e as Error).message}`); }
-    }
-    for (const w of data.worlds) {
-        try { await saveRawWorld(w); result.counts.worlds++; }
-        catch (e) { result.errors.push(`World "${w.name || w.id}": ${(e as Error).message}`); }
     }
     if (data.interjectableActions.length > 0) {
         try { await saveInterjectableActions(data.interjectableActions); result.counts.interjectableActions = data.interjectableActions.length; }
