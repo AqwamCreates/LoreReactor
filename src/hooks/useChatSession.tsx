@@ -2,7 +2,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import type { Character, InteractionData, BudgetStrategy, BudgetData, LanguageModel, PromptBlock, ChatMessage, tool } from '../types';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
-import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
+import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData, findPreviousMessage } from './chatLogic';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { clearPartialFlag } from './messageLogic';
@@ -21,7 +21,7 @@ import { useMemoryTrigger } from './useMemoryTrigger';
 import { useCharacterResponse } from './useCharacterResponse';
 import { runSummarization } from '../services/SummarizationEngine';
 import { useSessionStore } from './useSessionStore';
-import { loadPendingToolActions, type PendingToolAction } from '../services/ToolExecutor';
+import { loadPendingToolActions } from '../services/ToolExecutor';
 
 const engine = getLanguageModelEngine();
 
@@ -189,7 +189,7 @@ export function useChatSession() {
             if (!cancelled) setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [interactionData?.interactionHistory, interactionData, selectedModel, setNumberOfTokens]);
+    }, [interactionData?.interactionHistory, interactionData, setNumberOfTokens]);
 
     // ─── Scroll Tracking ─────────────────────────────────────────────
     useEffect(() => {
@@ -302,24 +302,30 @@ export function useChatSession() {
      * and strips the pending actions key from inventory afterward.
      */
     const processPendingToolActions = useCallback(async (data: InteractionData): Promise<InteractionData> => {
-        const history = data.interactionHistory;
-        if (history.length === 0) return data;
-
-        // Find the last AI message (not protagonist)
-        let lastAiMsgIdx = -1;
-        for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].messageType === 'chat' && history[i].character.id !== data.protagonist.id) {
-                lastAiMsgIdx = i;
+        // Find the last AI message by scanning backwards for any non-protagonist chat message
+        let lastAiCharId: string | null = null;
+        for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
+            const msg = data.interactionHistory[i];
+            if (msg.messageType === 'chat' && msg.character.id !== data.protagonist.id) {
+                lastAiCharId = msg.character.id;
                 break;
             }
         }
-        if (lastAiMsgIdx === -1) return data;
+        if (!lastAiCharId) return data;
 
-        const lastAiMsg = history[lastAiMsgIdx] as ChatMessage;
-        const actions = loadPendingToolActions(lastAiMsg.inventory);
+        // Use findPreviousMessage to get the authoritative last message for this character
+        const charLastMsg = findPreviousMessage(data, lastAiCharId);
+        if (!charLastMsg || charLastMsg.messageType !== 'chat') return data;
+
+        const targetMsg = charLastMsg as ChatMessage;
+        const actions = loadPendingToolActions(targetMsg.inventory);
         if (actions.length === 0) return data;
 
-        let updatedData = { ...data, interactionHistory: [...history] };
+        // Find the index of this message in history for later cleanup
+        const targetMsgIdx = data.interactionHistory.findIndex(m => m.id === targetMsg.id);
+        if (targetMsgIdx === -1) return data;
+
+        let updatedData = { ...data, interactionHistory: [...data.interactionHistory] };
         let changed = false;
 
         for (const action of actions) {
@@ -371,13 +377,8 @@ export function useChatSession() {
                     break;
                 }
                 case 'invite': {
-                    let currentLocIdx: number | undefined;
-                    for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) {
-                        if (updatedData.interactionHistory[i].locationIndex !== undefined) {
-                            currentLocIdx = updatedData.interactionHistory[i].locationIndex;
-                            break;
-                        }
-                    }
+                    // Use getCurrentLocationIndex with the speaking character to find current location
+                    const currentLocIdx = getCurrentLocationIndex(updatedData, targetMsg.character);
                     if (currentLocIdx !== undefined) {
                         const invitedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                         if (invitedChar) {
@@ -424,7 +425,7 @@ export function useChatSession() {
 
         // Strip pending actions from the AI message's inventory
         const cleanedHistory = [...updatedData.interactionHistory];
-        const cleanedMsg = { ...cleanedHistory[lastAiMsgIdx] } as ChatMessage;
+        const cleanedMsg = { ...cleanedHistory[targetMsgIdx] } as ChatMessage;
         const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
         delete cleanedInventory['__pending_tool_actions__'];
         if (Object.keys(cleanedInventory).length === 0) {
@@ -432,7 +433,7 @@ export function useChatSession() {
         } else {
             cleanedMsg.inventory = cleanedInventory;
         }
-        cleanedHistory[lastAiMsgIdx] = cleanedMsg;
+        cleanedHistory[targetMsgIdx] = cleanedMsg;
         updatedData = { ...updatedData, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
 
         return updatedData;
