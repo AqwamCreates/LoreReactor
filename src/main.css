@@ -843,7 +843,7 @@ APP LAYOUT & HEADER
 .context-bar-extended-row {
     display: flex;
     gap: clamp(4px, 0.6vw, 8px);
-    padding: 5px clamp(10px, 1.5vw, 16px) 0 clamp(10px, 1.5vw, 16px);
+    padding: 10px clamp(10px, 1.5vw, 16px) 0 clamp(10px, 1.5vw, 16px);
     align-items: center;
     min-height: clamp(26px, 3.5vw, 36px);
     box-sizing: border-box;
