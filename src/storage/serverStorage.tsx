@@ -29,33 +29,33 @@ const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 10;
 
 /**
- * Entity Registry - Single source of truth for entity metadata.
- * Keys are used as TypeScript identifiers and match the PATHS object keys.
+ * Entity type registry - single source of truth for all entity metadata.
+ * Keys are used as both TypeScript identifiers and directory names.
  */
 const ENTITY_REGISTRY = {
-  characters: { dir: 'character_data' },
-  characterImages: { dir: 'character_images' },
-  characterVoices: { dir: 'character_voices' },
-  samplers: { dir: 'sampler_data' },
-  contexts: { dir: 'context_data' },
-  locations: { dir: 'location_data' },
-  models: { dir: 'model_data' },
-  stopPatterns: { dir: 'stop_pattern_data' },
-  interactionMessages: { dir: 'interaction_messages' },
-  interactionData: { dir: 'interaction_data' },
-  kvCaches: { dir: 'kv_caches' },
-  budgetStrategies: { dir: 'budget_strategies' },
-  profiles: { dir: 'profile_data' },
-  worlds: { dir: 'worlds' },
-  webpages: { dir: 'webpage_data' },
-  memories: { dir: 'memory_data' },
-  audioTracks: { dir: 'audio_tracks' },
-  promptBlocks: { dir: 'prompt_block_data' },
+  characters: { dir: 'character_data', hasManifest: true },
+  characterImages: { dir: 'character_images', hasManifest: false },
+  characterVoices: { dir: 'character_voices', hasManifest: false },
+  samplers: { dir: 'sampler_data', hasManifest: true },
+  contexts: { dir: 'context_data', hasManifest: true },
+  locations: { dir: 'location_data', hasManifest: true },
+  models: { dir: 'model_data', hasManifest: true },
+  stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
+  interactionMessages: { dir: 'interaction_messages', hasManifest: false },
+  interactionData: { dir: 'interaction_data', hasManifest: true },
+  kvCaches: { dir: 'kv_caches', hasManifest: false },
+  budgetStrategies: { dir: 'budget_strategies', hasManifest: true },
+  profiles: { dir: 'profile_data', hasManifest: true },
+  worlds: { dir: 'worlds', hasManifest: true },
+  webpages: { dir: 'webpage_data', hasManifest: true },
+  memories: { dir: 'memory_data', hasManifest: true },
+  audioTracks: { dir: 'audio_tracks', hasManifest: true },
+  promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
 } as const;
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
 
-// Derive PATHS from registry
+// Derive PATHS from registry for backward compatibility
 const PATHS = Object.fromEntries(
   Object.entries(ENTITY_REGISTRY).map(([key, config]) => [
     key,
@@ -360,88 +360,19 @@ function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> 
 }
 
 // =============================================================================
-// GENERIC HYDRATION & SERIALIZATION
-// =============================================================================
-
-/**
- * Hydrates a raw entity into its full type.
- * 1. Spreads defaults
- * 2. Spreads raw data (overwriting defaults)
- * 3. Injects ID
- * 4. Ensures timestamps
- * 5. Applies specific transforms for complex fields
- */
-function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
-    raw: R,
-    id: string,
-    defaults?: Partial<T>,
-    transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
-): T {
-    const now = Date.now();
-    
-    // Base object: Defaults < Raw < System Fields
-    const base = {
-        ...defaults,
-        ...raw,
-        id,
-        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    } as unknown as T;
-
-    // Apply transforms for fields that need renaming or computation
-    if (transforms) {
-        for (const [key, fn] of Object.entries(transforms)) {
-            (base as any)[key] = fn(raw, id);
-        }
-    }
-
-    return base;
-}
-
-/**
- * Serializes a hydrated entity back to raw format.
- * 1. Strips system fields (id)
- * 2. Updates timestamp
- * 3. Applies specific transforms for de-hydration
- */
-function serializeEntity<T, R>(
-    entity: T,
-    stripKeys: (keyof T)[],
-    transforms?: Partial<Record<string, (entity: T) => any>>
-): R {
-    const result = { ...entity } as any;
-    
-    // Remove keys that shouldn't be in the raw file (like 'id' which is in filename)
-    for (const key of stripKeys) {
-        delete result[key];
-    }
-    
-    result.lastUpdatedTimestamp = Date.now();
-
-    // Apply transforms (e.g., converting objects back to IDs)
-    if (transforms) {
-        for (const [key, fn] of Object.entries(transforms)) {
-            result[key] = fn(entity);
-        }
-    }
-
-    return result as R;
-}
-
-// =============================================================================
-// REPOSITORY FACTORY
+// GENERIC REPOSITORY FACTORY
 // =============================================================================
 
 interface RepositoryConfig<T, R> {
   entityKey: EntityKey;
-  defaults?: Partial<T>;
-  hydrateTransforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>;
-  serializeTransforms?: Partial<Record<string, (entity: T) => any>>;
-  stripKeys?: (keyof T)[];
+  hydrate: (raw: R, id: string) => T | Promise<T>;
+  serialize?: (entity: T) => R | Promise<R>;
+  postLoad?: (entity: T) => T | Promise<T>;
+  preSave?: (entity: T) => T | Promise<T>;
 }
 
-function createRepository<T extends { id: string }, R extends Record<string, any>>(config: RepositoryConfig<T, R>) {
-  const { entityKey, defaults, hydrateTransforms, serializeTransforms, stripKeys = ['id'] } = config;
+function createRepository<T extends { id: string }, R>(config: RepositoryConfig<T, R>) {
+  const { entityKey, hydrate, serialize, postLoad, preSave } = config;
   const folderPath = PATHS[entityKey];
 
   async function loadManifest(): Promise<string[]> {
@@ -452,7 +383,10 @@ function createRepository<T extends { id: string }, R extends Record<string, any
     try {
       const raw = await fetchJson<R>(`${folderPath}/${id}.json`);
       if (!raw) return null;
-      return hydrateEntity<T, R>(raw, id, defaults, hydrateTransforms);
+      
+      let entity = await hydrate(raw, id);
+      if (postLoad) entity = await postLoad(entity);
+      return entity;
     } catch (e) {
       console.warn(`Failed to load ${entityKey} ${id}`, e);
       return null;
@@ -466,9 +400,16 @@ function createRepository<T extends { id: string }, R extends Record<string, any
   }
 
   async function save(entity: T): Promise<void> {
-    const payload = serializeEntity<T, R>(entity, stripKeys, serializeTransforms);
-    await putJson(`${folderPath}/${entity.id}.json`, payload);
-    await updateManifest(entityKey, entity.id, 'add');
+    let processed = entity;
+    if (preSave) processed = await preSave(processed);
+    
+    const { id, ...rest } = processed as any;
+    const payload = serialize 
+      ? await serialize(processed)
+      : { ...rest, lastUpdatedTimestamp: Date.now() };
+    
+    await putJson(`${folderPath}/${id}.json`, payload);
+    await updateManifest(entityKey, id, 'add');
   }
 
   async function remove(id: string): Promise<void> {
@@ -480,20 +421,31 @@ function createRepository<T extends { id: string }, R extends Record<string, any
 }
 
 // =============================================================================
-// ENTITY REPOSITORIES
+// MEMORY REPOSITORY
 // =============================================================================
 
-// --- Memory ---
 const memoryRepo = createRepository<Memory, RawMemory>({
   entityKey: 'memories',
-  defaults: { name: 'Untitled Memory' },
-  hydrateTransforms: {
-    interactionData: () => undefined as unknown as InteractionData, // Hydrated later
+  hydrate: (raw, id) => {
+    const ts = Date.now();
+    return {
+      id,
+      name: raw.name || 'Untitled Memory',
+      description: raw.description,
+      content: raw.content,
+      interactionData: undefined as unknown as InteractionData,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || ts,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || ts,
+    };
   },
-  serializeTransforms: {
-    interactionDataId: (m) => m.interactionData?.id ?? '',
+  serialize: (memory) => {
+    const { id, interactionData, ...rest } = memory;
+    return {
+      ...rest,
+      interactionDataId: interactionData?.id ?? '',
+      lastUpdatedTimestamp: Date.now(),
+    } as RawMemory;
   },
-  stripKeys: ['id', 'interactionData'],
 });
 
 export const loadRawMemoryManifest = memoryRepo.loadManifest;
@@ -543,10 +495,28 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
   return rawMemories;
 }
 
-// --- Stop Pattern ---
+// =============================================================================
+// STOP PATTERN REPOSITORY
+// =============================================================================
+
 const stopPatternRepo = createRepository<StopPattern, RawStopPattern>({
   entityKey: 'stopPatterns',
-  defaults: { name: 'Unknown Pattern' },
+  hydrate: (raw, id) => ({
+    id,
+    name: raw.name || 'Unknown Pattern',
+    description: raw.description,
+    pattern: raw.pattern,
+    regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+    regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+    regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
+    regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
+    regularExpressionContext: raw.regularExpressionContext,
+    regularExpressionTarget: raw.regularExpressionTarget,
+    regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+    regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
+    firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
+    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+  }),
 });
 
 export const loadRawStopPatternManifest = stopPatternRepo.loadManifest;
@@ -555,366 +525,47 @@ export const loadAllRawStopPatterns = stopPatternRepo.loadAll;
 export const saveRawStopPattern = stopPatternRepo.save;
 export const deleteRawStopPattern = stopPatternRepo.remove;
 
-// --- Sampler ---
-// Samplers require async hydration for stop patterns, so we override loadRaw manually
-const samplerRepoBase = createRepository<Sampler, RawSampler>({
+// =============================================================================
+// SAMPLER REPOSITORY
+// =============================================================================
+
+const samplerRepo = createRepository<Sampler, RawSampler>({
   entityKey: 'samplers',
-  defaults: { name: 'Unknown Sampler', parameters: {}, stopPatterns: [] },
-  serializeTransforms: {
-    stopPatternIds: (s) => s.stopPatterns.map(sp => sp.id),
-  },
-  stripKeys: ['id', 'stopPatterns'],
-});
-
-export const loadRawSamplerManifest = samplerRepoBase.loadManifest;
-export const loadAllRawSamplers = samplerRepoBase.loadAll;
-export const saveRawSampler = samplerRepoBase.save;
-export const deleteRawSampler = samplerRepoBase.remove;
-
-export async function loadRawSampler(id: string): Promise<Sampler | null> {
-    const raw = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
-    if (!raw) return null;
-    
-    // Hydrate stop patterns
+  hydrate: async (raw, id) => {
     const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
-    return hydrateEntity<Sampler, RawSampler>(raw, id, samplerRepoBase.defaults, {
-        stopPatterns: () => stopPatterns
-    });
-}
-
-// --- Character ---
-// Characters require async hydration for sampler and memories
-const characterRepoBase = createRepository<Character, RawCharacter>({
-  entityKey: 'characters',
-  defaults: { 
-      name: 'Unknown Character', 
-      images: {}, 
-      tools: { ...defaultCharacterTools },
-      memories: {} 
+    return {
+      id,
+      name: raw.name || 'Unknown Sampler',
+      description: raw.description,
+      parameters: raw.parameters || {},
+      maximumNumberOfTokens: raw.maximumNumberOfTokens,
+      stopPatterns,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+    };
   },
-  serializeTransforms: {
-    samplerId: (c) => c.sampler?.id,
-    memories: (c) => serializeMemories(c.memories), // Returns Promise, handled in save override
-  },
-  stripKeys: ['id', 'sampler', 'memories'],
-});
-
-export const loadRawCharacterManifest = characterRepoBase.loadManifest;
-export const loadAllRawCharacters = characterRepoBase.loadAll; // Note: This uses the simple hydrate, might need override if deep hydration needed for list
-export const deleteRawCharacter = characterRepoBase.remove;
-
-// Override Save to handle async memory serialization
-export async function saveRawCharacter(character: Character): Promise<void> {
-    const serializedMemories = await serializeMemories(character.memories);
-    const payload = serializeEntity<Character, RawCharacter>(
-        character, 
-        ['id', 'sampler', 'memories'], 
-        { 
-            samplerId: (c) => c.sampler?.id,
-            memories: () => serializedMemories 
-        }
-    );
-    await putJson(`${PATHS.characters}/${character.id}.json`, payload);
-    await updateManifest('characters', character.id, 'add');
-}
-
-export async function loadRawCharacter(id: string): Promise<Character | null> {
-    const raw = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-    if (!raw) return null;
-
-    // Async dependencies
-    const sampler = raw.samplerId ? await loadRawSampler(raw.samplerId) : DefaultSampler;
-    const memories = await hydrateMemories(raw.memories);
-    
-    // Legacy image migration
-    const images: Record<string, string> = raw.images ?? {};
-    const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
-    if (Object.keys(images).length === 0 && legacyImage) {
-      images.neutral = legacyImage;
-    }
-
-    return hydrateEntity<Character, RawCharacter>(raw, id, characterRepoBase.defaults, {
-        sampler: () => sampler || DefaultSampler,
-        memories: () => memories,
-        images: () => images
-    });
-}
-
-export async function loadCharacterShell(id: string): Promise<Character | null> {
-    const raw = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-    if (!raw) return null;
-
-    const memories = await hydrateMemories(raw.memories);
-    const images: Record<string, string> = raw.images ?? {};
-    if (Object.keys(images).length === 0 && 'image' in raw && typeof raw.image === 'string') {
-      images.neutral = raw.image;
-    }
-
-    return hydrateEntity<Character, RawCharacter>(raw, id, { ...characterRepoBase.defaults, sampler: undefined }, {
-        memories: () => memories,
-        images: () => images
-    });
-}
-
-export async function loadAllCharacterShells(): Promise<Character[]> {
-    const ids = await loadRawCharacterManifest();
-    const results = await loadInBatches(ids, loadCharacterShell);
-    return results.filter((c): c is Character => c !== null);
-}
-
-// --- Context ---
-const contextRepo = createRepository<Context, RawContext>({
-  entityKey: 'contexts',
-  defaults: { 
-      name: 'Unknown Context', 
-      searchTerms: [], 
-      urls: [], 
-      linkFetchMode: 'full' 
+  serialize: (sampler) => {
+    const { id, stopPatterns, ...rest } = sampler;
+    return {
+      ...rest,
+      stopPatternIds: stopPatterns.map(sp => sp.id),
+      lastUpdatedTimestamp: Date.now(),
+    } as RawSampler;
   },
 });
 
-export const loadRawContextManifest = contextRepo.loadManifest;
-export const loadRawContext = contextRepo.loadRaw;
-export const loadAllRawContexts = contextRepo.loadAll;
-export const saveRawContext = contextRepo.save;
-export const deleteRawContext = contextRepo.remove;
-
-// --- Location ---
-const locationRepo = createRepository<Location, RawLocation>({
-  entityKey: 'locations',
-  defaults: { 
-      name: 'Unknown Location', 
-      backgroundImageRegularExpressionActivationTriggers: {},
-      backgroundImageWeights: {},
-      playAudioTrackOnEnterWeights: {},
-      locationBindings: [],
-      locationBindingRegularExpressionTriggers: {},
-      characterBindings: [],
-      globalWeight: 1,
-      characterWeights: {},
-      ownerBindings: [],
-      latitude: 0,
-      longitude: 0,
-      locationDistances: {},
-      messageFilterNonCoLocatedParticipants: false,
-      useBase64Encoding: false,
-  },
-});
-
-export const loadRawLocationManifest = locationRepo.loadManifest;
-export const loadRawLocation = locationRepo.loadRaw;
-export const loadAllRawLocations = locationRepo.loadAll;
-export const saveRawLocation = locationRepo.save;
-export const deleteRawLocation = locationRepo.remove;
-
-// --- Audio Track ---
-const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
-  entityKey: 'audioTracks',
-  defaults: { 
-      name: 'Untitled Track', 
-      loop: false, 
-      volume: 1, 
-      audioCategory: 'ambient', 
-      playableByParticipant: false, 
-      startFadeDurationMs: 1000, 
-      endFadeDurationMs: 1000,
-      locationBindings: [],
-      contextBindings: [],
-      characterBindings: [],
-      priority: 0,
-  },
-});
-
-export const loadRawAudioTrackManifest = audioTrackRepo.loadManifest;
-export const loadRawAudioTrack = audioTrackRepo.loadRaw;
-export const loadAllRawAudioTracks = audioTrackRepo.loadAll;
-export const saveRawAudioTrack = audioTrackRepo.save;
-export const deleteRawAudioTrack = audioTrackRepo.remove;
-
-// --- Prompt Block ---
-const promptBlockRepo = createRepository<PromptBlock, RawPromptBlock>({
-  entityKey: 'promptBlocks',
-  defaults: { 
-      name: 'Untitled Prompt Block', 
-      textContent: '', 
-      images: [],
-      characterBindings: [],
-      contextBindings: [],
-      locationBindings: [],
-  },
-});
-
-export const loadRawPromptBlockManifest = promptBlockRepo.loadManifest;
-export const loadRawPromptBlock = promptBlockRepo.loadRaw;
-export const loadAllRawPromptBlocks = promptBlockRepo.loadAll;
-export const saveRawPromptBlock = promptBlockRepo.save;
-export const deleteRawPromptBlock = promptBlockRepo.remove;
-
-// --- Language Model ---
-const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
-  entityKey: 'models',
-  defaults: { name: 'Unknown Model' },
-});
-
-export const loadRawModelManifest = modelRepo.loadManifest;
-export const loadRawModel = modelRepo.loadRaw;
-export const loadAllRawModels = modelRepo.loadAll;
-export const saveRawModel = modelRepo.save;
-export const deleteRawModel = modelRepo.remove;
-
-// --- Budget Strategy ---
-// Requires async hydration for models
-const budgetStrategyRepoBase = createRepository<BudgetStrategy, RawBudgetStrategy>({
-  entityKey: 'budgetStrategies',
-  defaults: { name: 'Unknown Strategy' },
-  serializeTransforms: {
-    onlineModelIds: (s) => s.onlineModels.map(m => m.id),
-    localModelIds: (s) => s.localModels.map(m => m.id),
-  },
-  stripKeys: ['id', 'onlineModels', 'localModels'],
-});
-
-export const loadRawBudgetStrategyManifest = budgetStrategyRepoBase.loadManifest;
-export const loadAllRawBudgetStrategies = budgetStrategyRepoBase.loadAll;
-export const saveRawBudgetStrategy = budgetStrategyRepoBase.save;
-export const deleteRawBudgetStrategy = budgetStrategyRepoBase.remove;
-
-export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy | null> {
-    const raw = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
-    if (!raw) return null;
-
-    const onlineModels = await Promise.all((raw.onlineModelIds || []).map(loadRawModel));
-    const localModels = await Promise.all((raw.localModelIds || []).map(loadRawModel));
-
-    return hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, budgetStrategyRepoBase.defaults, {
-        onlineModels: () => onlineModels.filter((m): m is LanguageModel => m !== null),
-        localModels: () => localModels.filter((m): m is LanguageModel => m !== null),
-    });
-}
-
-// --- Profile ---
-const profileRepo = createRepository<Profile, RawProfile>({
-  entityKey: 'profiles',
-  defaults: { name: 'Unknown Profile' },
-  hydrateTransforms: {
-    summarizationSteps: (raw) => raw.summarizationSteps != null
-      ? raw.summarizationSteps.map((step, i) => ({
-          id: step.id || `step-${uuidv4()}`,
-          name: step.name || step.strategyType,
-          description: step.description,
-          strategyType: step.strategyType,
-          enabled: step.enabled ?? false,
-          order: step.order ?? i,
-          slidingWindowSize: step.slidingWindowSize,
-          compressionInterval: step.compressionInterval,
-          compressionChunkSize: step.compressionChunkSize,
-          recursiveChunkSize: step.recursiveChunkSize,
-          recursiveMaxDepth: step.recursiveMaxDepth,
-          maskingRelevanceThreshold: step.maskingRelevanceThreshold,
-          maskingKeywordWeight: step.maskingKeywordWeight,
-          summaryTokenBudget: step.summaryTokenBudget,
-          summaryModelId: step.summaryModelId,
-          triggerTokenThreshold: step.triggerTokenThreshold,
-          firstCreatedTimestamp: step.firstCreatedTimestamp || Date.now(),
-          lastUpdatedTimestamp: step.lastUpdatedTimestamp || Date.now(),
-      }))
-      : getDefaultSummarizationSteps(),
-    narrateTexts: (raw) => migrateNarrateTexts(raw),
-    forceNameReveal: (raw) => raw.forceNameReveal ?? false,
-    enableCharacterExpression: (raw) => raw.enableCharacterExpression ?? false,
-    useCurrentDateAndTime: (raw) => raw.useCurrentDateAndTime ?? false,
-    useTimeElapsed: (raw) => raw.useTimeElapsed ?? false,
-    numberOfMessagesToDisableThinkPrompt: (raw) => raw.numberOfMessagesToDisableThinkPrompt ?? -1,
-    numberOfMessagesToDisableMetaThinkInstructions: (raw) => raw.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
-    numberOfMessagesToDisableDialoguePrompt: (raw) => raw.numberOfMessagesToDisableDialoguePrompt ?? -1,
-    numberOfMessagesToDisableStarterPrompt: (raw) => raw.numberOfMessagesToDisableStarterPrompt ?? -1,
-    forceEqualInitiative: (raw) => raw.forceEqualInitiative ?? false,
-    chatProbability: (raw) => raw.chatProbability ?? -1,
-    maximumChatStamina: (raw) => raw.maximumChatStamina ?? -1,
-    nameSensitivity: (raw) => raw.nameSensitivity ?? -1,
-    chatImpatienceSensitivity: (raw) => raw.chatImpatienceSensitivity ?? -1,
-    skipProbability: (raw) => raw.skipProbability ?? -1,
-    memoryRetentionWeight: (raw) => raw.memoryRetentionWeight ?? -1,
-    contextSensitivity: (raw) => raw.contextSensitivity ?? -1,
-    maximumActionStamina: (raw) => raw.maximumActionStamina ?? -1,
-    cacheInvalidationReductionLevel: (raw) => raw.cacheInvalidationReductionLevel ?? 0,
-    doNotInjectDefaultStopTokens: (raw) => raw.doNotInjectDefaultStopTokens ?? false,
-    stripThinkTokens: (raw) => raw.stripThinkTokens ?? false,
-    tools: (raw) => raw.tools ?? {},
-    enableMemoryWriting: (raw) => raw.enableMemoryWriting ?? 0,
-    enableMemoryReading: (raw) => raw.enableMemoryReading ?? 0,
-    inputStrategy: (raw) => raw.inputStrategy?.length ? raw.inputStrategy : [...defaultInputStrategy],
-  },
-  serializeTransforms: {
-    summarizationSteps: (p) => p.summarizationSteps.map(({ ...rest }) => rest),
-  },
-  stripKeys: ['id', 'summarizationSteps'], // We re-add summarizationSteps via transform
-});
-
-// Override save to handle the strip/transform logic correctly for summarizationSteps
-export async function saveRawProfile(profile: Profile): Promise<void> {
-    const payload = serializeEntity<Profile, RawProfile>(
-        profile, 
-        ['id'], // Don't strip summarizationSteps here, let transform handle it
-        { 
-            summarizationSteps: (p) => p.summarizationSteps.map(({ ...rest }) => rest) 
-        }
-    );
-    // Manually remove id if serializeEntity didn't (it should have based on stripKeys)
-    delete (payload as any).id; 
-    
-    await putJson(`${PATHS.profiles}/${profile.id}.json`, payload);
-    await updateManifest('profiles', profile.id, 'add');
-}
-
-export const loadRawProfileManifest = profileRepo.loadManifest;
-export const loadRawProfile = profileRepo.loadRaw;
-export const loadAllRawProfiles = profileRepo.loadAll;
-export const deleteRawProfile = profileRepo.remove;
-
-// --- Webpage ---
-const webpageRepo = createRepository<Webpage, RawWebpage>({
-  entityKey: 'webpages',
-  defaults: { name: 'Untitled Webpage' },
-});
-
-export const loadRawWebpageManifest = webpageRepo.loadManifest;
-export const loadRawWebpage = webpageRepo.loadRaw;
-export const loadAllRawWebpages = webpageRepo.loadAll;
-export const saveRawWebpage = webpageRepo.save;
-export const deleteRawWebpage = webpageRepo.remove;
-
-export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
-    const all = await loadAllRawWebpages();
-    return all.find(w => w.url === url) || null;
-}
-
-// --- World ---
-const worldRepo = createRepository<World, World>({
-  entityKey: 'worlds',
-  // World is same in Raw and Hydrated
-});
-
-export const loadRawWorldManifest = worldRepo.loadManifest;
-export const loadRawWorld = worldRepo.loadRaw;
-export const loadAllRawWorlds = worldRepo.loadAll;
-export const saveRawWorld = worldRepo.save;
-export const deleteRawWorld = worldRepo.remove;
+export const loadRawSamplerManifest = samplerRepo.loadManifest;
+export const loadRawSampler = samplerRepo.loadRaw;
+export const loadAllRawSamplers = samplerRepo.loadAll;
+export const saveRawSampler = samplerRepo.save;
+export const deleteRawSampler = samplerRepo.remove;
 
 // =============================================================================
-// CHAT DATA & MESSAGES (Complex Logic)
+// CHARACTER REPOSITORY
 // =============================================================================
-
-export async function deleteRawInteractionMessage(id: string): Promise<void> { 
-    await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
-}
-
-export async function loadRawChatManifest(): Promise<string[]> { 
-    return await ensureManifest('interactionData'); 
-}
 
 function createDeletedCharacterStub(id: string, now: number): Character {
     return {
@@ -942,6 +593,554 @@ function createDeletedCharacterStub(id: string, now: number): Character {
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };
+}
+
+const characterRepo = createRepository<Character, RawCharacter>({
+  entityKey: 'characters',
+  hydrate: async (raw, id) => {
+    const samplerId = raw.samplerId;
+    let sampler: Sampler = DefaultSampler;
+    
+    if (samplerId) {
+      const loadedSampler = await loadRawSampler(samplerId);
+      if (loadedSampler) sampler = loadedSampler;
+    }
+
+    const memories = await hydrateMemories(raw.memories);
+
+    const images: Record<string, string> = raw.images ?? {};
+    const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
+    if (Object.keys(images).length === 0 && legacyImage) {
+      images.neutral = legacyImage;
+    }
+
+    return {
+      id,
+      name: raw.name || 'Unknown Character',
+      images,
+      voice: raw.voice,
+      description: raw.description,
+      systemPrompt: raw.systemPrompt,
+      thinkPrompt: raw.thinkPrompt,
+      appearancePrompt: raw.appearancePrompt,
+      dialoguePrompt: raw.dialoguePrompt,
+      starterPrompt: raw.starterPrompt,
+      initiativeWeight: raw.initiativeWeight,
+      chatProbability: raw.chatProbability,
+      maximumChatStamina: raw.maximumChatStamina,
+      nameSensitivity: raw.nameSensitivity,
+      chatImpatienceSensitivity: raw.chatImpatienceSensitivity,
+      skipProbability: raw.skipProbability,
+      memoryRetentionWeight: raw.memoryRetentionWeight,
+      contextSensitivity: raw.contextSensitivity,
+      maximumActionStamina: raw.maximumActionStamina,
+      numberOfMessagesToDisableThinkPrompt: raw.numberOfMessagesToDisableThinkPrompt,
+      numberOfMessagesToDisableMetaThinkInstructions: raw.numberOfMessagesToDisableMetaThinkInstructions,
+      numberOfMessagesToDisableDialoguePrompt: raw.numberOfMessagesToDisableDialoguePrompt,
+      numberOfMessagesToDisableStarterPrompt: raw.numberOfMessagesToDisableStarterPrompt,
+      sampler,
+      doNotInjectCharacterImage: raw.doNotInjectCharacterImage,
+      tools: raw.tools,
+      enableMemoryWriting: raw.enableMemoryWriting,
+      enableMemoryReading: raw.enableMemoryReading,
+      memories,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
+    };
+  },
+  serialize: async (character) => {
+    const { id, sampler, memories, ...rest } = character;
+    const serializedMemories = await serializeMemories(memories);
+    return {
+      ...rest,
+      samplerId: sampler?.id,
+      memories: serializedMemories,
+      lastUpdatedTimestamp: Date.now(),
+    } as RawCharacter;
+  },
+});
+
+export const loadRawCharacterManifest = characterRepo.loadManifest;
+export const loadRawCharacter = characterRepo.loadRaw;
+export const loadAllRawCharacters = characterRepo.loadAll;
+export const saveRawCharacter = characterRepo.save;
+export const deleteRawCharacter = characterRepo.remove;
+
+export async function loadCharacterShell(id: string): Promise<Character | null> {
+    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!rawCharacter) return null;
+
+    const memories = await hydrateMemories(rawCharacter.memories);
+
+    const images: Record<string, string> = rawCharacter.images ?? {};
+    if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
+      images.neutral = rawCharacter.image;
+    }
+
+    return {
+        id,
+        name: rawCharacter.name || 'Unknown Character',
+        images,
+        voice: rawCharacter.voice,
+        description: rawCharacter.description,
+        systemPrompt: rawCharacter.systemPrompt,
+        thinkPrompt: rawCharacter.thinkPrompt,
+        appearancePrompt: rawCharacter.appearancePrompt,
+        dialoguePrompt: rawCharacter.dialoguePrompt,
+        starterPrompt: rawCharacter.starterPrompt,
+        initiativeWeight: rawCharacter.initiativeWeight,
+        chatProbability: rawCharacter.chatProbability,
+        maximumChatStamina: rawCharacter.maximumChatStamina,
+        nameSensitivity: rawCharacter.nameSensitivity,
+        chatImpatienceSensitivity: rawCharacter.chatImpatienceSensitivity,
+        skipProbability: rawCharacter.skipProbability,
+        memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
+        contextSensitivity: rawCharacter.contextSensitivity,
+        maximumActionStamina: rawCharacter.maximumActionStamina,
+        numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
+        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
+        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
+        numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
+        sampler: undefined,
+        doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
+        tools: rawCharacter.tools,
+        enableMemoryWriting: rawCharacter.enableMemoryWriting,
+        enableMemoryReading: rawCharacter.enableMemoryReading,
+        memories,
+        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
+        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
+    };
+}
+
+export async function loadAllCharacterShells(): Promise<Character[]> {
+    const ids = await loadRawCharacterManifest();
+    const results = await loadInBatches(ids, loadCharacterShell);
+    return results.filter((c): c is Character => c !== null);
+}
+
+// =============================================================================
+// CONTEXT REPOSITORY
+// =============================================================================
+
+const contextRepo = createRepository<Context, RawContext>({
+  entityKey: 'contexts',
+  hydrate: (raw, id) => ({
+    id,
+    name: raw.name || 'Unknown Context',
+    description: raw.description,
+    text: raw.text,
+    images: raw.images,
+    searchTerms: raw.searchTerms || [],
+    searchEngine: raw.searchEngine,
+    urls: raw.urls || [],
+    includeLinkImages: raw.includeLinkImages,
+    maximumLinkDepth: raw.maximumLinkDepth,
+    linkFetchMode: raw.linkFetchMode || 'full',
+    limitLinksToSubdirectory: raw.limitLinksToSubdirectory,
+    fetchCacheTimeToLiveMs: raw.fetchCacheTimeToLiveMs,
+    regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+    regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+    regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
+    regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
+    regularExpressionContext: raw.regularExpressionContext,
+    regularExpressionTarget: raw.regularExpressionTarget,
+    regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+    regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
+    messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
+    messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
+    messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
+    messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
+    messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
+    messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
+    messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
+    messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
+    tokenBudget: raw.tokenBudget,
+    maximumRecursionDepth: raw.maximumRecursionDepth,
+    insertionDepth: raw.insertionDepth,
+    characterBindings: raw.characterBindings,
+    useBase64Encoding: raw.useBase64Encoding,
+    isAutoGenerated: raw.isAutoGenerated,
+    firstCreatedTimestamp: raw.firstCreatedTimestamp,
+    lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
+  }),
+});
+
+export const loadRawContextManifest = contextRepo.loadManifest;
+export const loadRawContext = contextRepo.loadRaw;
+export const loadAllRawContexts = contextRepo.loadAll;
+export const saveRawContext = contextRepo.save;
+export const deleteRawContext = contextRepo.remove;
+
+// =============================================================================
+// LOCATION REPOSITORY
+// =============================================================================
+
+const locationRepo = createRepository<Location, RawLocation>({
+  entityKey: 'locations',
+  hydrate: (raw, id) => {
+    const now = Date.now();
+    return {
+      id,
+      name: raw.name || 'Unknown Location',
+      description: raw.description,
+      text: raw.text,
+      images: raw.images,
+      backgroundImageRegularExpressionActivationTriggers: raw.backgroundImageRegularExpressionActivationTriggers ?? {},
+      backgroundImageWeights: raw.backgroundImageWeights ?? {},
+      playAudioTrackOnEnterWeights: raw.playAudioTrackOnEnterWeights ?? {},
+      locationBindings: raw.locationBindings ?? [],
+      locationBindingRegularExpressionTriggers: raw.locationBindingRegularExpressionTriggers ?? {},
+      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
+      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
+      characterBindings: raw.characterBindings ?? [],
+      globalWeight: raw.globalWeight ?? 1,
+      characterWeights: raw.characterWeights ?? {},
+      ownerBindings: raw.ownerBindings ?? [],
+      latitude: raw.latitude ?? 0,
+      longitude: raw.longitude ?? 0,
+      locationDistances: raw.locationDistances ?? {},
+      messageFilterNonCoLocatedParticipants: raw.messageFilterNonCoLocatedParticipants ?? false,
+      messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
+      messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
+      messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
+      messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
+      messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
+      messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
+      messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
+      messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
+      useBase64Encoding: raw.useBase64Encoding ?? false,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+  },
+});
+
+export const loadRawLocationManifest = locationRepo.loadManifest;
+export const loadRawLocation = locationRepo.loadRaw;
+export const loadAllRawLocations = locationRepo.loadAll;
+export const saveRawLocation = locationRepo.save;
+export const deleteRawLocation = locationRepo.remove;
+
+// =============================================================================
+// AUDIO TRACK REPOSITORY
+// =============================================================================
+
+const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
+  entityKey: 'audioTracks',
+  hydrate: (raw, id) => {
+    const now = Date.now();
+    return {
+      id,
+      name: raw.name || 'Untitled Track',
+      description: raw.description,
+      filename: raw.filename,
+      loop: raw.loop ?? false,
+      volume: raw.volume ?? 1,
+      audioCategory: raw.audioCategory ?? 'ambient',
+      playableByParticipant: raw.playableByParticipant ?? false,
+      startFadeDurationMs: raw.startFadeDurationMs ?? 1000,
+      endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
+      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+      regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
+      regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
+      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
+      locationBindings: raw.locationBindings ?? [],
+      contextBindings: raw.contextBindings ?? [],
+      characterBindings: raw.characterBindings ?? [],
+      priority: raw.priority ?? 0,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+  },
+});
+
+export const loadRawAudioTrackManifest = audioTrackRepo.loadManifest;
+export const loadRawAudioTrack = audioTrackRepo.loadRaw;
+export const loadAllRawAudioTracks = audioTrackRepo.loadAll;
+export const saveRawAudioTrack = audioTrackRepo.save;
+export const deleteRawAudioTrack = audioTrackRepo.remove;
+
+// =============================================================================
+// PROMPT BLOCK REPOSITORY
+// =============================================================================
+
+const promptBlockRepo = createRepository<PromptBlock, RawPromptBlock>({
+  entityKey: 'promptBlocks',
+  hydrate: (raw, id) => {
+    const now = Date.now();
+    return {
+      id,
+      name: raw.name || 'Untitled Prompt Block',
+      description: raw.description,
+      textContent: raw.textContent ?? '',
+      images: raw.images ?? [],
+      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
+      regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
+      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
+      regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
+      regularExpressionContext: raw.regularExpressionContext,
+      regularExpressionTarget: raw.regularExpressionTarget,
+      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
+      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
+      messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
+      messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
+      messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
+      messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
+      messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
+      messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
+      messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
+      messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
+      characterBindings: raw.characterBindings ?? [],
+      contextBindings: raw.contextBindings ?? [],
+      locationBindings: raw.locationBindings ?? [],
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+  },
+});
+
+export const loadRawPromptBlockManifest = promptBlockRepo.loadManifest;
+export const loadRawPromptBlock = promptBlockRepo.loadRaw;
+export const loadAllRawPromptBlocks = promptBlockRepo.loadAll;
+export const saveRawPromptBlock = promptBlockRepo.save;
+export const deleteRawPromptBlock = promptBlockRepo.remove;
+
+// =============================================================================
+// LANGUAGE MODEL REPOSITORY
+// =============================================================================
+
+const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
+  entityKey: 'models',
+  hydrate: (raw, id) => ({
+    id,
+    name: raw.name || 'Unknown Model',
+    description: raw.description,
+    backend: raw.backend,
+    contextLength: raw.contextLength,
+    model: raw.model,
+    mmproj: raw.mmproj,
+    lora: raw.lora,
+    apiKey: raw.apiKey,
+    parameters: raw.parameters,
+    cacheHitCostPerOneMillionOfTokens: raw.cacheHitCostPerOneMillionOfTokens,
+    cacheMissCostPerOneMillionOfTokens: raw.cacheMissCostPerOneMillionOfTokens,
+    outputGenerationCostPerOneMillionOfTokens: raw.outputGenerationCostPerOneMillionOfTokens,
+    firstCreatedTimestamp: raw.firstCreatedTimestamp,
+    lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
+  }),
+});
+
+export const loadRawModelManifest = modelRepo.loadManifest;
+export const loadRawModel = modelRepo.loadRaw;
+export const loadAllRawModels = modelRepo.loadAll;
+export const saveRawModel = modelRepo.save;
+export const deleteRawModel = modelRepo.remove;
+
+// =============================================================================
+// BUDGET STRATEGY REPOSITORY
+// =============================================================================
+
+const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
+  entityKey: 'budgetStrategies',
+  hydrate: async (raw, id) => {
+    const onlineModelPromises = (raw.onlineModelIds || []).map(mid => loadRawModel(mid));
+    const onlineModelsResults = await Promise.all(onlineModelPromises);
+    const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
+
+    const localModelPromises = (raw.localModelIds || []).map(mid => loadRawModel(mid));
+    const localModelsResults = await Promise.all(localModelPromises);
+    const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
+
+    return {
+      id,
+      name: raw.name || 'Unknown Strategy',
+      description: raw.description,
+      onlineModels,
+      localModels,
+      modelCostTiers: raw.modelCostTiers,
+      switchProbability: raw.switchProbability,
+      switchOnContextSize: raw.switchOnContextSize,
+      switchOnComplexityScore: raw.switchOnComplexityScore,
+      fallbackOnLocalFailure: raw.fallbackOnLocalFailure,
+      fallbackOnQualityThreshold: raw.fallbackOnQualityThreshold,
+      fallbackOnTimeoutInSeconds: raw.fallbackOnTimeoutInSeconds,
+      maximumBudget: raw.maximumBudget,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+    };
+  },
+  serialize: (strategy) => {
+    const { id, onlineModels, localModels, ...rest } = strategy;
+    return {
+      ...rest,
+      onlineModelIds: onlineModels.map(m => m.id),
+      localModelIds: localModels.map(m => m.id),
+      lastUpdatedTimestamp: Date.now(),
+    } as RawBudgetStrategy;
+  },
+});
+
+export const loadRawBudgetStrategyManifest = budgetStrategyRepo.loadManifest;
+export const loadRawBudgetStrategy = budgetStrategyRepo.loadRaw;
+export const loadAllRawBudgetStrategies = budgetStrategyRepo.loadAll;
+export const saveRawBudgetStrategy = budgetStrategyRepo.save;
+export const deleteRawBudgetStrategy = budgetStrategyRepo.remove;
+
+// =============================================================================
+// PROFILE REPOSITORY
+// =============================================================================
+
+const profileRepo = createRepository<Profile, RawProfile>({
+  entityKey: 'profiles',
+  hydrate: (raw, id) => {
+    const now = Date.now();
+
+    const summarizationSteps: SummarizationStep[] = raw.summarizationSteps != null
+      ? raw.summarizationSteps.map((step, i) => ({
+          id: step.id || `step-${uuidv4()}`,
+          name: step.name || step.strategyType,
+          description: step.description,
+          strategyType: step.strategyType,
+          enabled: step.enabled ?? false,
+          order: step.order ?? i,
+          slidingWindowSize: step.slidingWindowSize,
+          compressionInterval: step.compressionInterval,
+          compressionChunkSize: step.compressionChunkSize,
+          recursiveChunkSize: step.recursiveChunkSize,
+          recursiveMaxDepth: step.recursiveMaxDepth,
+          maskingRelevanceThreshold: step.maskingRelevanceThreshold,
+          maskingKeywordWeight: step.maskingKeywordWeight,
+          summaryTokenBudget: step.summaryTokenBudget,
+          summaryModelId: step.summaryModelId,
+          triggerTokenThreshold: step.triggerTokenThreshold,
+          firstCreatedTimestamp: step.firstCreatedTimestamp || now,
+          lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
+      }))
+      : getDefaultSummarizationSteps();
+
+    const narrateTexts = migrateNarrateTexts(raw);
+
+    return {
+      id,
+      name: raw.name || 'Unknown Profile',
+      description: raw.description,
+      autonomousMode: raw.autonomousMode,
+      autonomousInteractionIntervalMs: raw.autonomousInteractionIntervalMs,
+      volume: raw.volume,
+      forceNameReveal: raw.forceNameReveal ?? false,
+      enableCharacterExpression: raw.enableCharacterExpression ?? false,
+      forceNoCharacterImageInjection: raw.forceNoCharacterImageInjection,
+      forceNoContextImageInjection: raw.forceNoContextImageInjection,
+      forceNoLocationImageInjection: raw.forceNoLocationImageInjection,
+      useCurrentDateAndTime: raw.useCurrentDateAndTime ?? false,
+      useWeather: raw.useWeather,
+      weatherApiKey: raw.weatherApiKey,
+      useTimeElapsed: raw.useTimeElapsed ?? false,
+      numberOfMessagesToDisableThinkPrompt: raw.numberOfMessagesToDisableThinkPrompt ?? -1,
+      numberOfMessagesToDisableMetaThinkInstructions: raw.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
+      numberOfMessagesToDisableDialoguePrompt: raw.numberOfMessagesToDisableDialoguePrompt ?? -1,
+      numberOfMessagesToDisableStarterPrompt: raw.numberOfMessagesToDisableStarterPrompt ?? -1,
+      forceEqualInitiative: raw.forceEqualInitiative ?? false,
+      chatProbability: raw.chatProbability ?? -1,
+      maximumChatStamina: raw.maximumChatStamina ?? -1,
+      nameSensitivity: raw.nameSensitivity ?? -1,
+      chatImpatienceSensitivity: raw.chatImpatienceSensitivity ?? -1,
+      skipProbability: raw.skipProbability ?? -1,
+      memoryRetentionWeight: raw.memoryRetentionWeight ?? -1,
+      contextSensitivity: raw.contextSensitivity ?? -1,
+      maximumActionStamina: raw.maximumActionStamina ?? -1,
+      cacheInvalidationReductionLevel: raw.cacheInvalidationReductionLevel ?? 0,
+      doNotInjectDefaultStopTokens: raw.doNotInjectDefaultStopTokens ?? false,
+      narrateTexts,
+      stripThinkTokens: raw.stripThinkTokens ?? false,
+      tools: raw.tools ?? {},
+      enableMemoryWriting: raw.enableMemoryWriting ?? 0,
+      enableMemoryReading: raw.enableMemoryReading ?? 0,
+      inputStrategy: raw.inputStrategy?.length ? raw.inputStrategy : [...defaultInputStrategy],
+      summarizationSteps,
+      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    };
+  },
+  serialize: (profile) => {
+    const { id, summarizationSteps, ...rest } = profile;
+    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...stepRest }) => stepRest);
+    return {
+      ...rest,
+      summarizationSteps: rawSteps,
+      lastUpdatedTimestamp: Date.now(),
+    } as RawProfile;
+  },
+});
+
+export const loadRawProfileManifest = profileRepo.loadManifest;
+export const loadRawProfile = profileRepo.loadRaw;
+export const loadAllRawProfiles = profileRepo.loadAll;
+export const saveRawProfile = profileRepo.save;
+export const deleteRawProfile = profileRepo.remove;
+
+// =============================================================================
+// WEBPAGE REPOSITORY
+// =============================================================================
+
+const webpageRepo = createRepository<Webpage, RawWebpage>({
+  entityKey: 'webpages',
+  hydrate: (raw, id) => ({
+    id,
+    name: raw.name || 'Untitled Webpage',
+    description: raw.description,
+    url: raw.url,
+    content: raw.content,
+    firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
+    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+  }),
+});
+
+export const loadRawWebpageManifest = webpageRepo.loadManifest;
+export const loadRawWebpage = webpageRepo.loadRaw;
+export const loadAllRawWebpages = webpageRepo.loadAll;
+export const saveRawWebpage = webpageRepo.save;
+export const deleteRawWebpage = webpageRepo.remove;
+
+export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
+    const all = await loadAllRawWebpages();
+    return all.find(w => w.url === url) || null;
+}
+
+// =============================================================================
+// WORLD REPOSITORY
+// =============================================================================
+
+const worldRepo = createRepository<World, World>({
+  entityKey: 'worlds',
+  hydrate: (raw, id) => raw, // World is already in final form
+  serialize: (world) => world,
+});
+
+export const loadRawWorldManifest = worldRepo.loadManifest;
+export const loadRawWorld = worldRepo.loadRaw;
+export const loadAllRawWorlds = worldRepo.loadAll;
+export const saveRawWorld = worldRepo.save;
+export const deleteRawWorld = worldRepo.remove;
+
+// =============================================================================
+// CHAT MESSAGE REPOSITORY (Special - no manifest)
+// =============================================================================
+
+export async function deleteRawInteractionMessage(id: string): Promise<void> { 
+    await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
+}
+
+// =============================================================================
+// CHAT DATA REPOSITORY (Complex hydration)
+// =============================================================================
+
+export async function loadRawChatManifest(): Promise<string[]> { 
+    return await ensureManifest('interactionData'); 
 }
 
 async function buildInteractionDataShell(
@@ -1078,7 +1277,12 @@ export async function loadRawInteractionData(
   if (rawInteractionData.contextIds?.length) {
     const ctxResults = await Promise.all(
       rawInteractionData.contextIds.map(async (cid) => {
-        try { return await loadRawContext(cid); } catch { return null; }
+        try {
+          return await loadRawContext(cid);
+        } catch {
+          console.warn(`Context ${cid} not found, skipping.`);
+          return null;
+        }
       })
     );
     for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
@@ -1088,7 +1292,12 @@ export async function loadRawInteractionData(
   if (rawInteractionData.locationIds?.length) {
     const locResults = await Promise.all(
       rawInteractionData.locationIds.map(async (lid) => {
-        try { return await loadRawLocation(lid); } catch { return null; }
+        try {
+          return await loadRawLocation(lid);
+        } catch {
+          console.warn(`Location ${lid} not found, skipping.`);
+          return null;
+        }
       })
     );
     for (const l of locResults) { if (l) locationMap.set(l.id, l); }
@@ -1104,7 +1313,12 @@ export async function loadRawInteractionData(
   if (rawInteractionData.audioTrackIds?.length) {
     const trackResults = await Promise.all(
       rawInteractionData.audioTrackIds.map(async (tid) => {
-        try { return await loadRawAudioTrack(tid); } catch { return null; }
+        try {
+          return await loadRawAudioTrack(tid);
+        } catch {
+          console.warn(`Audio track ${tid} not found, skipping.`);
+          return null;
+        }
       })
     );
     for (const t of trackResults) { if (t) audioTrackMap.set(t.id, t); }
@@ -1209,7 +1423,7 @@ export async function deleteRawInteractionData(id: string): Promise<void> {
 }
 
 // =============================================================================
-// SINGLETONS (Actions, Budget Data)
+// SINGLETON REPOSITORIES (Actions, Budget Data)
 // =============================================================================
 
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
@@ -1228,38 +1442,34 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
     try {
         const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
         if (!strategy) return null;
-        return hydrateEntity<BudgetData, RawBudgetData>(raw as unk, raw.id || 'global-budget-data', {
+
+        const now = Date.now();
+
+        return {
+            id: raw.id || 'global-budget-data',
             name: 'Global Budget Data',
             description: 'Persistent runtime budget tracking',
-            budgetSpent: 0,
-            modelLastUsedTimestamps: {},
-            modelLastQuotaHitTimeStamps: {},
-            modelLastErrorHitTimeStamps: {},
-            modelUsedCount: {},
-            modelCensorshipHitCount: {},
-            modelBrokenCount: {},
-            modelQuotaHitCount: {},
-            modelErrorHitCount: {},
-            modelBudgetSpent: {},
-            modelAverageLatencyMsPerToken: {},
-            modelAverageTimeToFirstToken: {},
-            modelTotalSessionDuration: {},
-        }, {
-            budgetStrategy: () => strategy,
-            budgetSpent: (r) => r.budgetSpent ?? 0,
-            modelLastUsedTimestamps: (r) => r.modelLastUsedTimestamps ?? {},
-            modelLastQuotaHitTimeStamps: (r) => r.modelLastQuotaHitTimeStamps ?? {},
-            modelLastErrorHitTimeStamps: (r) => r.modelLastErrorHitTimeStamps ?? {},
-            modelUsedCount: (r) => r.modelUsedCount ?? {},
-            modelCensorshipHitCount: (r) => r.modelCensorshipHitCount ?? {},
-            modelBrokenCount: (r) => r.modelBrokenCount ?? {},
-            modelQuotaHitCount: (r) => r.modelQuotaHitCount ?? {},
-            modelErrorHitCount: (r) => r.modelErrorHitCount ?? {},
-            modelBudgetSpent: (r) => r.modelBudgetSpent ?? {}, // Wait, raw has this? Yes.
-            modelAverageLatencyMsPerToken: (r) => r.modelAverageLatencyMsPerToken ?? {},
-            modelAverageTimeToFirstToken: (r) => r.modelAverageTimeToFirstToken ?? {},
-            modelTotalSessionDuration: (r) => r.modelTotalSessionDuration ?? {},
-        });
+            budgetSpent: raw.budgetSpent ?? 0,
+            resetDuration: raw.resetDuration,
+            averageLatencyMsPerTokenExponentialMovingAverageSmoothing: raw.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
+            averageTimeToFirstTokenExponentialMovingAverageSmoothing: raw.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
+            modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
+            modelUsedCount: raw.modelUsedCount ?? {},
+            modelCensorshipHitCount: raw.modelCensorshipHitCount ?? {},
+            modelBrokenCount: raw.modelBrokenCount ??{},
+            modelQuotaHitCount: raw.modelQuotaHitCount ?? {},
+            modelErrorHitCount: raw.modelErrorHitCount ?? {},
+            lastResetTimestamp: raw.lastResetTimestamp,
+            budgetStrategy: strategy,
+            modelBudgetSpent: raw.modelBudgetSpent,
+            modelAverageLatencyMsPerToken: raw.modelAverageLatencyMsPerToken || {},
+            modelAverageTimeToFirstToken: raw.modelAverageTimeToFirstToken ||{},
+            modelTotalSessionDuration: raw.modelTotalSessionDuration || {},
+            firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+        };
     } catch (e) {
         console.warn('Failed to load budget data:', e);
         return null;
@@ -1267,16 +1477,36 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
 }
 
 export async function saveRawBudgetData(data: BudgetData): Promise<void> {
-    const payload = serializeEntity<BudgetData, RawBudgetData>(data, ['id', 'budgetStrategy'], {
-        budgetStrategyId: (d) => d.budgetStrategy.id,
-    });
-    // Ensure ID is present for singleton if needed, or handled by putJson path
-    // Actually RawBudgetData has optional id.
+    const payload: RawBudgetData = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        budgetSpent: data.budgetSpent,
+        resetDuration: data.resetDuration,
+        averageLatencyMsPerTokenExponentialMovingAverageSmoothing: data.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
+        averageTimeToFirstTokenExponentialMovingAverageSmoothing: data.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
+        modelLastUsedTimestamps: data.modelLastUsedTimestamps,
+        modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
+        modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
+        modelUsedCount: data.modelUsedCount,
+        modelCensorshipHitCount: data.modelCensorshipHitCount,
+        modelBrokenCount: data.modelBrokenCount,
+        modelQuotaHitCount: data.modelQuotaHitCount,
+        modelErrorHitCount: data.modelErrorHitCount,
+        lastResetTimestamp: data.lastResetTimestamp,
+        budgetStrategyId: data.budgetStrategy.id,
+        modelBudgetSpent: data.modelBudgetSpent,
+        modelAverageLatencyMsPerToken: data.modelAverageLatencyMsPerToken,
+        modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
+        modelTotalSessionDuration: data.modelTotalSessionDuration,
+        firstCreatedTimestamp: data.firstCreatedTimestamp,
+        lastUpdatedTimestamp: Date.now(),
+    };
     await putJson(BUDGET_DATA_PATH, payload);
 }
 
 // =============================================================================
-// IMAGE & VOICE HELPERS
+// IMAGE & VOICE HELPERS (Generic utilities)
 // =============================================================================
 
 function getImageUrl(entityKey: EntityKey, ...pathParts: string[]): string | null {

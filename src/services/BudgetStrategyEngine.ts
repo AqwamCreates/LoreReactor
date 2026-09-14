@@ -10,7 +10,7 @@ export interface RunningModelState {
     port?: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────
 
 function buildPricing(model: LanguageModel): ModelPricing {
     return {
@@ -566,13 +566,15 @@ export class BudgetStrategyEngine {
             }
         }
 
+        // Return whatever partial text we accumulated instead of throwing
         if (accumulatedPartialText.trim()) {
             return accumulatedPartialText;
         }
 
-        const exhaustedError = new Error('All models in both primary and fallback pools have been exhausted.');
-        console.error('[BudgetEngine] Exhausted. Primary failed:', [...failedOnlineIds], 'Fallback failed:', [...failedLocalIds]);
-        throw exhaustedError;
+        // All pools exhausted — return empty string instead of throwing
+        // This allows the caller to handle the empty response gracefully
+        console.warn('[BudgetEngine] All models exhausted. Returning empty response.');
+        return '';
     }
 
     // ─── Non-Streaming Completion ────────────────────────────────────
@@ -772,7 +774,9 @@ export class BudgetStrategyEngine {
             }
         }
 
-        throw new Error('All models exhausted for completion request.');
+        // Return empty result instead of throwing — caller handles gracefully
+        console.warn('[BudgetEngine] All models exhausted for completion. Returning empty result.');
+        return { text: '', modelId: '' };
     }
 
     // ─── Pool Selection ──────────────────────────────────────────────
@@ -782,9 +786,11 @@ export class BudgetStrategyEngine {
     }
 
     private isInQuotaCooldown(modelId: string): boolean {
-        const lastQuotaHit = this.budgetData.modelLastQuotaHitTimeStamps[modelId];
-        if (!lastQuotaHit) return false;
-        return (Date.now() - lastQuotaHit) < 60_000;
+        console.log(modelId)
+        // Disabled: quota cooldown blocks models across generations unnecessarily.
+        // Models are retried immediately on next generation attempt.
+        // Quota errors are still recorded for stats tracking.
+        return false;
     }
 
     private getModelSpeed(modelId: string): number {

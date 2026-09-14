@@ -1,5 +1,6 @@
 // src/components/GpuMonitorModal.tsx
-import { useGpuMonitor } from '../hooks/useGPUMonitor';
+
+import { useGpuMonitor } from '../hooks/useGpuMonitor';
 import '../main.css';
 
 interface GpuMonitorModalProps {
