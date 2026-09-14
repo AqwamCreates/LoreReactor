@@ -1,6 +1,6 @@
 // src/components/EntitySelectList.tsx
 import { useMemo } from 'react';
-import './main.css';
+import '../main.css';
 
 interface EntitySelectListItem {
     id: string;

@@ -1,6 +1,6 @@
 // src/components/ManagerModal.tsx
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import './main.css';
+import '../main.css';
 
 interface ManagerModalProps<T> {
     title: string;

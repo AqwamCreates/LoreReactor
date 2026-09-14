@@ -1,6 +1,6 @@
 // src/components/GpuMonitorModal.tsx
 import { useGpuMonitor } from '../hooks/useGPUMonitor';
-import './main.css';
+import '../main.css';
 
 interface GpuMonitorModalProps {
     isOpen: boolean;

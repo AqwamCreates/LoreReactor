@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import type { World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
-import './main.css';
+import '../main.css';
 
 interface DataImportModalProps {
     isOpen: boolean;

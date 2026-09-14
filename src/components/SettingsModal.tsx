@@ -1,5 +1,5 @@
 // src/components/SettingsModal.tsx
-import './main.css';
+import '../main.css';
 
 interface SettingsItem {
     id: string;

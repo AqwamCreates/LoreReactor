@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
 import { useToast } from '../context/ToastContext';
-import './main.css';
+import '../main.css';
 
 interface DataManagerModalProps {
     isOpen: boolean;

@@ -1,5 +1,138 @@
 /* =============================================================================
-1. APP LAYOUT & HEADER
+DESIGN TOKENS & BASE RESET
+============================================================================= */
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 1024px) {
+  :root {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+    --social-bg: rgba(47, 48, 58, 0.5);
+    --shadow:
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  }
+
+  #social .button-icon {
+    filter: invert(1) brightness(2);
+  }
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#root {
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 1126px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  border-inline: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+h1, h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+}
+
+@media (max-width: 1024px) {
+  h1 {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+}
+
+@media (max-width: 1024px) {
+  h2 {
+    font-size: 20px;
+  }
+}
+
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
+
+/* =============================================================================
+APP LAYOUT & HEADER
 ============================================================================= */
 .chat-container {
     display: flex;
@@ -249,6 +382,7 @@
 .bubble-user { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); border-top-right-radius: 4px; }
 .bubble-editing { width: 90vw; border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-bg); overflow: visible; }
 .bubble-stem { opacity: 0.85; border-style: dashed; border-color: var(--border); background: rgba(0, 0, 0, 0.02); }
+
 .bubble-ambient {
     background: transparent !important;
     border: none !important;
@@ -673,20 +807,30 @@
 }
 
 /* =============================================================================
-3. INPUT AREA & CONTEXT BAR
+3. CONTEXT BAR
 ============================================================================= */
 .context-bar {
     display: flex;
-    gap: clamp(4px, 0.6vw, 8px);
-    padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 5px clamp(10px, 1.5vw, 16px);
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
     background: var(--bg);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    align-items: center;
+    align-items: stretch;
     height: auto;
-    min-height: clamp(30px, 4vw, 44px);
     box-sizing: border-box;
     transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
+}
+
+.context-bar-core-row {
+    display: flex;
+    gap: clamp(4px, 0.6vw, 8px);
+    padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 5px clamp(10px, 1.5vw, 16px);
+    align-items: center;
+    min-height: clamp(30px, 4vw, 44px);
+    box-sizing: border-box;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -694,8 +838,77 @@
     -webkit-overflow-scrolling: touch;
 }
 
-.context-bar::-webkit-scrollbar { display: none; }
+.context-bar-core-row::-webkit-scrollbar { display: none; }
 
+.context-bar-extended-row {
+    display: flex;
+    gap: clamp(4px, 0.6vw, 8px);
+    padding: 5px clamp(10px, 1.5vw, 16px) 0 clamp(10px, 1.5vw, 16px);
+    align-items: center;
+    min-height: clamp(26px, 3.5vw, 36px);
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+    animation: contextBarSlideDown 0.2s ease-out;
+}
+
+.context-bar-extended-row::-webkit-scrollbar { display: none; }
+
+@keyframes contextBarSlideDown {
+    from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
+    to { max-height: 44px; opacity: 1; padding-top: 5px; padding-bottom: 0; }
+}
+
+.context-bar-toggle {
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    min-width: clamp(26px, 3.5vw, 36px) !important;
+    max-width: clamp(26px, 3.5vw, 36px) !important;
+    height: clamp(26px, 3.5vw, 36px);
+    opacity: 0.6;
+    transition: opacity 0.15s, transform 0.2s, background 0.15s, border-color 0.15s, height 0.2s ease, min-height 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
+}
+
+.context-bar-toggle:hover {
+    opacity: 1;
+}
+
+/* Match extended row button size when expanded */
+.context-bar .context-bar-toggle[title="Hide advanced panels"] {
+    height: clamp(24px, 3vw, 32px);
+    min-height: clamp(24px, 3vw, 32px);
+    min-width: clamp(24px, 3vw, 32px) !important;
+    max-width: clamp(24px, 3vw, 32px) !important;
+}
+
+/* Rotate gear icon when expanded */
+.context-bar .context-bar-toggle[title="Hide advanced panels"] span {
+    display: inline-block;
+    transform: rotate(180deg);
+    transition: transform 0.2s ease;
+}
+
+.context-bar .context-bar-toggle[title="Show advanced panels"] span {
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform 0.2s ease;
+}
+
+/* Extended row buttons are slightly smaller to visually distinguish from core */
+.context-bar-extended-row .nav-button {
+    height: clamp(24px, 3vw, 32px);
+    font-size: clamp(0.4rem, 0.9vw, 0.7rem);
+    opacity: 0.85;
+}
+
+.context-bar-extended-row .nav-button:hover:not(:disabled) {
+    opacity: 1;
+}
+
+/* Shared nav button styles for both rows */
 .context-bar .nav-button {
     flex: 1 1 0;
     min-width: 0;
@@ -737,6 +950,9 @@
     flex-shrink: 0;
 }
 
+/* =============================================================================
+4. INPUT AREA
+============================================================================= */
 .input-wrapper {
     display: flex;
     flex-direction: column;
@@ -788,6 +1004,7 @@
 }
 
 .attachment-remove:hover { background: var(--border); }
+
 .file-input-hidden { display: none; }
 
 .attach-button {
@@ -891,7 +1108,7 @@
 }
 
 /* =============================================================================
-4. MOBILE LADDER MODE — AVATAR BELOW BUBBLE, LONG-PRESS TOOLBAR
+5. MOBILE LADDER MODE — AVATAR BELOW BUBBLE, LONG-PRESS TOOLBAR
 ============================================================================= */
 @media (max-width: 768px) {
     .message-row.message-left {
@@ -986,14 +1203,19 @@
         width: 48px !important;
     }
 
-    .context-bar .nav-button {
+    .context-bar-core-row .nav-button {
         flex: 0 0 auto;
         min-width: clamp(60px, 18vw, 90px);
+    }
+
+    .context-bar-extended-row .nav-button {
+        flex: 0 0 auto;
+        min-width: clamp(50px, 15vw, 80px);
     }
 }
 
 /* =============================================================================
-5. MODEL READINESS INDICATOR
+6. MODEL READINESS INDICATOR
 ============================================================================= */
 .model-status-banner {
     display: flex;
@@ -1072,7 +1294,7 @@
 }
 
 /* =============================================================================
-6. STATISTICS BAR
+7. STATISTICS BAR
 ============================================================================= */
 .chat-stats-bar {
     display: flex;
@@ -1223,7 +1445,7 @@
 }
 
 /* =============================================================================
-7. MODALS & MANAGER LISTS
+8. MODALS & MANAGER LISTS
 ============================================================================= */
 .modal-overlay {
     position: fixed;
@@ -1356,7 +1578,6 @@
 .manager-item:hover { border-color: var(--accent-border); transform: translateY(-2px); }
 .manager-item.selected-item { border-color: var(--accent); background: var(--accent-bg); }
 .manager-item-main-clickable { cursor: pointer; }
-
 .manager-item-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 
 .manager-item-info {
@@ -1511,15 +1732,18 @@
         border-radius: 0 !important;
         border: none !important;
     }
+
     .modal-header {
         padding: 16px 20px;
         padding-top: calc(16px + env(safe-area-inset-top, 0px));
     }
+
     .modal-body,
     .editor-modal-body {
         padding: 16px 20px;
         padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     }
+
     .editor-input,
     .editor-textarea,
     .editor-select,
@@ -1531,7 +1755,7 @@
 }
 
 /* =============================================================================
-8. GENERIC EDITOR COMPONENTS
+9. GENERIC EDITOR COMPONENTS
 ============================================================================= */
 .editor-modal-content {
     max-width: 600px;
@@ -2032,7 +2256,6 @@
 }
 
 .context-binding-hint { font-size: 0.6rem; opacity: 0.5; margin-bottom: 8px; }
-
 .context-test-row { display: flex; gap: 6px; margin-bottom: 4px; }
 .context-test-input { flex: 1; font-family: monospace; font-size: 0.75rem; }
 .context-test-button { padding: 0 12px; font-size: 0.75rem; min-height: 36px; flex-shrink: 0; }
@@ -2052,7 +2275,7 @@
 }
 
 /* =============================================================================
-9. SLIDER INPUT
+10. SLIDER INPUT
 ============================================================================= */
 .slider-input-container {
     padding: 4px 0;
@@ -2178,7 +2401,7 @@
 }
 
 /* =============================================================================
-10. SAMPLER EDITOR
+11. SAMPLER EDITOR
 ============================================================================= */
 .sampler-section-header {
     display: flex;
@@ -2275,6 +2498,7 @@
 }
 
 .sampler-param-name-enabled { opacity: 1; }
+
 .sampler-param-input-row { width: 100%; }
 .sampler-param-input-row .slider-input-container { width: 100% !important; }
 
@@ -2354,7 +2578,7 @@
 .sampler-stop-remove-button:hover { opacity: 1; }
 
 /* =============================================================================
-11. TOAST NOTIFICATIONS
+12. TOAST NOTIFICATIONS
 ============================================================================= */
 .toast-container {
     position: fixed;
@@ -2430,7 +2654,7 @@
 }
 
 /* =============================================================================
-12. ACTION MENU
+13. ACTION MENU
 ============================================================================= */
 .action-menu-container {
     position: fixed;
@@ -2629,7 +2853,7 @@
 }
 
 /* =============================================================================
-13. CINEMATIC MODE
+14. CINEMATIC MODE
 ============================================================================= */
 .mode-cinematic {
     display: flex;
@@ -2893,7 +3117,7 @@
 }
 
 /* =============================================================================
-14. SETTINGS MODAL
+15. SETTINGS MODAL
 ============================================================================= */
 .settings-list { gap: 12px; }
 
@@ -2936,7 +3160,7 @@
 }
 
 /* =============================================================================
-15. SHARED ENTITY SELECT & MODAL UTILITIES
+16. SHARED ENTITY SELECT & MODAL UTILITIES
 ============================================================================= */
 .entity-select-list { margin-bottom: 8px; }
 
@@ -3040,23 +3264,18 @@
 .entity-generate-button { width: 100%; padding: 12px; font-size: 0.9rem; }
 .entity-error-below { margin-top: 8px; }
 .entity-error-above { margin-bottom: 12px; }
-
 .entity-preview-grid { display: flex; flex-direction: column; gap: 8px; font-size: 0.75rem; }
 .entity-code { font-size: 0.65rem; }
-
 .entity-action-buttons { display: flex; gap: 8px; margin-top: 16px; }
 .entity-action-buttons .editor-button { flex: 1; }
-
 .entity-loading-state { text-align: center; padding: 60px 20px; }
 .entity-loading-icon { font-size: 2rem; margin-bottom: 12px; }
 .entity-loading-text { font-size: 0.85rem; opacity: 0.7; }
-
 .entity-upload-state { text-align: center; padding: 30px 20px; }
 .entity-upload-icon { font-size: 3rem; margin-bottom: 16px; }
 .entity-upload-title { font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; }
 .entity-upload-hint { font-size: 0.7rem; opacity: 0.6; margin-bottom: 20px; line-height: 1.5; }
 .entity-upload-button { padding: 12px 40px; font-size: 0.9rem; display: block; margin: 0 auto; }
-
 .entity-export-done-hint { text-align: center; margin-top: 16px; font-size: 0.75rem; opacity: 0.6; }
 .entity-import-done-hint { text-align: center; margin-top: 16px; font-size: 0.7rem; opacity: 0.6; }
 
@@ -3136,7 +3355,7 @@
 .entity-field-mono { font-family: monospace; font-size: 0.75rem; }
 
 /* =============================================================================
-16. PARTICIPANT CONTROL MODAL
+17. PARTICIPANT CONTROL MODAL
 ============================================================================= */
 .participant-control-subsection {
     margin-top: 12px;
@@ -3174,7 +3393,7 @@
 .participant-control-apply-button { margin-top: 12px; width: 100%; }
 
 /* =============================================================================
-17. LOADING SCREEN
+18. LOADING SCREEN
 ============================================================================= */
 .loading-screen {
     position: fixed;
@@ -3252,7 +3471,7 @@
 .loading-screen-counter { margin-top: 10px; font-size: 0.7rem; opacity: 0.4; }
 
 /* =============================================================================
-18. BUDGET CONTROL MODAL
+19. BUDGET CONTROL MODAL
 ============================================================================= */
 .budget-section {
     border: 1px solid var(--border);
@@ -3455,7 +3674,7 @@
 }
 
 /* =============================================================================
-19. LOCATION BACKGROUND IMAGE
+20. LOCATION BACKGROUND IMAGE
 ============================================================================= */
 .chat-container.has-location-bg { position: relative; }
 
@@ -3494,7 +3713,7 @@
 }
 
 /* =============================================================================
-20. CHAT MINIMAP
+21. CHAT MINIMAP
 ============================================================================= */
 .chat-minimap {
     position: absolute;
@@ -3630,7 +3849,7 @@
 .mode-cinematic .chat-minimap { display: none; }
 
 /* =============================================================================
-21. CHAT SCROLL BUTTONS
+22. CHAT SCROLL BUTTONS
 ============================================================================= */
 .chat-scroll-button {
     z-index: 10;
@@ -3685,7 +3904,7 @@
 .mode-cinematic .chat-scroll-button { display: none; }
 
 /* =============================================================================
-22. GLOBAL SELECT FIXES
+23. GLOBAL SELECT FIXES
 ============================================================================= */
 select,
 select option {
@@ -3714,9 +3933,11 @@ select {
     gap: 12px;
     align-items: center;
 }
+
 .profile-checkbox-spaced {
     margin-top: 8px;
 }
+
 .profile-checkbox-left {
     display: flex;
     align-items: center;
@@ -3729,10 +3950,12 @@ select {
     justify-content: flex-start;
     text-align: left;
 }
+
 .profile-checkbox-left span {
     display: block;
     line-height: 1.4;
 }
+
 .profile-checkbox-hint {
     font-size: 0.65rem;
     opacity: 0.6;
@@ -3740,6 +3963,7 @@ select {
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
+
 @media (max-width: 480px) {
     .profile-checkbox-row {
         grid-template-columns: 1fr;
@@ -3756,6 +3980,7 @@ select {
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
 }
+
 .voice-narration-toggle {
     display: flex;
     flex-direction: column;
@@ -3767,15 +3992,18 @@ select {
     border-radius: 6px;
     transition: background 0.15s;
 }
+
 .voice-narration-toggle:hover {
     background: var(--social-bg);
 }
+
 .voice-narration-toggle span {
     font-size: 0.7rem;
     color: var(--text-h);
     text-align: center;
     line-height: 1.3;
 }
+
 @media (max-width: 480px) {
     .voice-narration-grid {
         grid-template-columns: repeat(2, 1fr);

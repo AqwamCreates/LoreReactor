@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import type { World, Character, Context, Location, Profile, AudioTrack, PromptBlock } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
-import './main.css';
+import '../main.css';
 
 interface WorldEditorModalProps {
     isOpen: boolean;

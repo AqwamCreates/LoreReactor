@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import type { BudgetStrategy } from '../types';
 import { useBudgetDataManager } from '../hooks/useBudgetDataManager';
-import './main.css';
+import '../main.css';
 
 interface BudgetControlModalProps {
     isOpen: boolean;

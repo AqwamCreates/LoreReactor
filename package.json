@@ -4,12 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "server": "tsx server.ts",
+    "dev": "vite --host 0.0.0.0 --port 4444",
+    "server": "tsx src/server.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start:all": "concurrently \"npm run dev\" \"npm run server\" \"./start.bat\""
+    "preview": "vite preview --port 4444",
+    "start:all": "concurrently \"npm run dev\" \"npm run server\""
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

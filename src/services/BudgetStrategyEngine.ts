@@ -172,15 +172,6 @@ export class BudgetStrategyEngine {
 
     // ─── Model Selection (solves model mismatch) ────────────────────
 
-    /**
-     * Select a model for the next request without generating.
-     * Sets the engine context to the selected model so callers can
-     * build prompts with the correct model ID and tokenizer.
-     * Returns null if no models are available.
-     *
-     * Context length is treated as a soft quality signal, not a hard gate,
-     * because the backend can summarize/compress oversized context.
-     */
     async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
         const failedOnlineIds = new Set<string>();
         const failedLocalIds = new Set<string>();
@@ -360,11 +351,10 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
+                // Record censorship for model quality scoring but return text as-is
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(selectedModel.id);
-                    primaryFailedSet.add(selectedModel.id);
-                    console.warn(`Model ${selectedModel.name} returned censorship refusal, rotating.`);
-                    continue;
+                    console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                 }
 
                 return fullOutput;
@@ -462,11 +452,10 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
+                    // Record censorship for model quality scoring but return text as-is
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(selectedModel.id);
-                        fallbackFailedSet.add(selectedModel.id);
-                        console.warn(`Fallback model ${selectedModel.name} returned censorship refusal, rotating.`);
-                        continue;
+                        console.warn(`Fallback model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
                     return fullOutput;
@@ -556,11 +545,10 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
+                    // Record censorship for model quality scoring but return text as-is
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(freeModel.id);
-                        allFailedIds.add(freeModel.id);
-                        console.warn(`Free model ${freeModel.name} returned censorship refusal, rotating.`);
-                        continue;
+                        console.warn(`Free model ${freeModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
                     console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
@@ -648,11 +636,10 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
+                // Record censorship for model quality scoring but return text as-is
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(selectedModel.id);
-                    primaryFailedSet.add(selectedModel.id);
-                    console.warn(`Completion model ${selectedModel.name} returned censorship refusal, rotating.`);
-                    continue;
+                    console.warn(`Completion model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                 }
 
                 return { text: result.text, modelId: selectedModel.id };
@@ -714,11 +701,10 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
+                    // Record censorship for model quality scoring but return text as-is
                     if (isCensorshipRefusal(result.text)) {
                         this.recordCensorship(selectedModel.id);
-                        fallbackFailedSet.add(selectedModel.id);
-                        console.warn(`Fallback completion model ${selectedModel.name} returned censorship refusal, rotating.`);
-                        continue;
+                        console.warn(`Fallback completion model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
                     return { text: result.text, modelId: selectedModel.id };
@@ -770,11 +756,10 @@ export class BudgetStrategyEngine {
                     continue;
                 }
 
+                // Record censorship for model quality scoring but return text as-is
                 if (isCensorshipRefusal(result.text)) {
                     this.recordCensorship(freeModel.id);
-                    allFailedIds.add(freeModel.id);
-                    console.warn(`Free completion model ${freeModel.name} returned censorship refusal, rotating.`);
-                    continue;
+                    console.warn(`Free completion model ${freeModel.name} returned censorship refusal — returning text as-is.`);
                 }
 
                 return { text: result.text, modelId: freeModel.id };
@@ -827,19 +812,6 @@ export class BudgetStrategyEngine {
         return avgDurationSeconds < threshold;
     }
 
-    /**
-     * Soft context-fit factor.
-     *
-     * This deliberately does NOT disqualify models with smaller context windows,
-     * because the backend can summarize/compress context. Instead:
-     * - fitting models get factor 1
-     * - undersized models get a proportional penalty
-     *
-     * Example:
-     * - 8k prompt on 8k model: 1
-     * - 8k prompt on 4k model: 0.5
-     * - 8k prompt on 2k model: 0.25
-     */
     private getContextFitFactor(model: LanguageModel, requiredContextTokens?: number): number {
         if (!requiredContextTokens || requiredContextTokens <= 0) return 1;
 
@@ -863,10 +835,6 @@ export class BudgetStrategyEngine {
         const censorshipHits = this.budgetData.modelCensorshipHitCount?.[modelId] ?? 0;
         const brokenHits = this.budgetData.modelBrokenCount?.[modelId] ?? 0;
 
-        /*
-         * Keep neutral defaults non-zero so brand-new models can still be ranked
-         * by context fit instead of all collapsing to score 0/random.
-         */
         const speedFactor = Number.isFinite(speed) && speed > 0 ? 1 / speed : 1;
         const ttftFactor = Number.isFinite(ttft) && ttft > 0 ? 1 / ttft : 1;
         const avgSessionSeconds = usedCount > 0 ? Math.max(0.1, (totalDuration / usedCount) / 1000) : 1;
@@ -920,11 +888,6 @@ export class BudgetStrategyEngine {
                     return aBelowThreshold - bBelowThreshold;
                 }
 
-                /*
-                 * Context length is a soft preference, not a hard requirement.
-                 * This keeps summarization-capable smaller models eligible while
-                 * naturally preferring models that can fit more of the prompt raw.
-                 */
                 const contextFitA = this.getContextFitFactor(a, requiredContextTokens);
                 const contextFitB = this.getContextFitFactor(b, requiredContextTokens);
 

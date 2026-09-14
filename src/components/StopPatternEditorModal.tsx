@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import type { regularExpressionContext, regularExpressionTarget, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import './main.css';
+import '../main.css';
 
 interface StopPatternEditorModalProps {
     isOpen: boolean;

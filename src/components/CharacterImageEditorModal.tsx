@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storage/serverStorage';
-import './main.css';
+import '../main.css';
 
 const EMOTION_LABELS = [
     'neutral', 'admiration', 'amusement', 'anger', 'annoyance', 'approval',

@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType } from '../types';
 import { SliderInput } from './SliderInput';
-import './main.css';
+import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../defaults';
 
 interface ProfileEditorModalProps {

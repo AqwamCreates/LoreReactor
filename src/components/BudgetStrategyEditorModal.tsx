@@ -4,7 +4,7 @@ import type { BudgetStrategy, LanguageModel } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
-import './main.css';
+import '../main.css';
 
 interface BudgetStrategyEditorModalProps {
     isOpen: boolean;

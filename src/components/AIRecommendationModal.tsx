@@ -9,7 +9,7 @@ import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHisto
 import { IMAGE_PRIORITY_ITEMS, IMAGE_LABELS, IMAGE_SHORT_LABELS, IMAGE_PROMPT_DESCRIPTIONS, ENTITY_OPTIONS } from '../services/aiRecommendationTypes';
 import { buildJsonSchema } from '../services/aiRecommendationSchema';
 import { tryParseGeneratedOutput, deriveHistoryLabel, resolveWorldCrossReferences } from '../services/aiRecommendationConverters';
-import './main.css';
+import '../main.css';
 
 const recommendationEngine = getLanguageModelEngine();
 

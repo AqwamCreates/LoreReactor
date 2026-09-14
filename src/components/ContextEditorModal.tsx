@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { useSessionStore } from '../hooks/useSessionStore';
-import './main.css';
+import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
 

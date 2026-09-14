@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
-import './main.css';
+import '../main.css';
 import { defaultCharacterTools } from '../defaults';
 
 // ─── Defaults ───────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import './main.css';
+import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 import { ChatScrollButtons } from './ChatScrollButtons';
 

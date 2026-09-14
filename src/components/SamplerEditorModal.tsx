@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import type { Sampler, StopPattern } from '../types';
 import { SliderInput } from './SliderInput';
 import { v4 as uuidv4 } from 'uuid';
-import './main.css';
+import '../main.css';
 
 interface SamplerEditorModalProps {
     isOpen: boolean;

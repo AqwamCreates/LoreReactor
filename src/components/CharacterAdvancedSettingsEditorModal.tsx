@@ -1,6 +1,6 @@
 // src/components/CharacterAdvancedSettingsEditorModal.tsx
 import type { Sampler, tool } from '../types';
-import './main.css';
+import '../main.css';
 
 const TOOL_LABELS: Record<tool, string> = {
     pick: 'Random Pick',

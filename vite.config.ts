@@ -52,6 +52,8 @@ export default defineConfig({
     }),
   ],
   server: {
+    host: '0.0.0.0',
+    port: 4444,
     proxy: {
       '/api/model': {
         target: 'http://localhost:8080',
@@ -59,7 +61,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/model/, ''),
       },
       '/api/web': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:8448',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/web/, ''),
       },

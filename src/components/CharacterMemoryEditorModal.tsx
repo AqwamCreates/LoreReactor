@@ -1,7 +1,7 @@
 // src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, Memory } from '../types';
-import './main.css';
+import '../main.css';
 
 interface CharacterMemoryEditorModalProps {
     isOpen: boolean;

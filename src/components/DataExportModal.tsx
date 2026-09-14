@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
-import './main.css';
+import '../main.css';
 
 interface DataExportModalProps {
     isOpen: boolean;

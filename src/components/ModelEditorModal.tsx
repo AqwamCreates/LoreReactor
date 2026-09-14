@@ -4,7 +4,7 @@ import type { backend, LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../languageModelInformation';
-import './main.css';
+import '../main.css';
 
 interface ModelEditorModalProps {
     isOpen: boolean;

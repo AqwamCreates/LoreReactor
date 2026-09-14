@@ -14,7 +14,7 @@ import {
     type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import './main.css';
+import '../main.css';
 
 interface ChatInspectionModalProps {
     isOpen: boolean;

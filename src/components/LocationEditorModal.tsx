@@ -6,7 +6,7 @@ import { uploadLocationImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
-import './main.css';
+import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
 

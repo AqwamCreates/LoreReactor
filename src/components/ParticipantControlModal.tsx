@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
 import { getCurrentLocationIndex } from '../hooks/locationLogic';
-import './main.css';
+import '../main.css';
 
 interface ParticipantControlModalProps {
     isOpen: boolean;

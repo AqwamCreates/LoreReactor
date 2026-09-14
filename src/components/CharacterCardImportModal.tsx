@@ -7,7 +7,7 @@ import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumCh
 import { uploadCharacterImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultCharacterTools } from '../defaults';
-import './main.css';
+import '../main.css';
 
 interface CharacterCardImportModalProps {
     isOpen: boolean;

@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react';
 import * as dagre from '@dagrejs/dagre';
 import '@xyflow/react/dist/style.css';
-import './main.css';
+import '../main.css';
 
 interface AlternateTimelinesModalProps {
     isOpen: boolean;

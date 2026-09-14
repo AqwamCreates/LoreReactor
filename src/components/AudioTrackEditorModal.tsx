@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory, regularExpressionContext, regularExpressionTarget } from '../types';
 import { uploadAudioTrack, getAudioTrackUrl } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import './main.css';
+import '../main.css';
 
 interface AudioTrackEditorModalProps {
     isOpen: boolean;
