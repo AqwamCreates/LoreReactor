@@ -631,8 +631,8 @@ export function detectUnsummarizedLocationDepartures(
                 locationIndex: prevLoc,
                 startIdx: charMessages[segStart].historyIdx,
                 endIdx: charMessages[segEnd].historyIdx,
-                lastMessageId: lastMsg.id,
-            });
+                lastMsgId: lastMsg.id,
+            } as LocationVisitSegment);
         }
 
         if (i < charMessages.length && (prevLoc !== currLoc || prevLoc === undefined)) {
@@ -1732,7 +1732,11 @@ export function createChatMessage(
     const id = uuidv4();
 
     const files = options?.files ?? [];
-    const isPartial = options?.isPartial || undefined;
+    
+    // FIX: Default AI messages to partial=true so cursor shows immediately.
+    // User/Protagonist messages are never partial.
+    const isProtagonist = character.id === interactionData.protagonist?.id;
+    const isPartial = options?.isPartial ?? !isProtagonist;
 
     let locationIndex = options?.locationIndex;
     if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {

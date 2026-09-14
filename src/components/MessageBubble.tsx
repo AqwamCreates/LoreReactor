@@ -596,6 +596,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
+                            {/* Cursor removed per request. isPartial still manages stream/finalize transitions correctly. */}
                             <MemoizedMessageText text={message.textContent} />
 
                             {message.files && message.files.length > 0 && (

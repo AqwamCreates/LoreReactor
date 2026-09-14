@@ -2,12 +2,10 @@
 
 /**
  * Manages the two-phase display text accumulation during streaming generation.
- *
  * Streaming output goes through two states:
- * - Live: tokens received since the last tool resolution or stream start
- * - Committed: display text that has been finalized (either by tool replacement
- *   or by stream completion)
- *
+ * Live: tokens received since the last tool resolution or stream start
+ * Committed: display text that has been finalized (either by tool replacement
+ * or by stream completion)
  * The displayed text at any point is committed + live. When a tool invocation
  * resolves, live text is folded into committed with replacements applied,
  * and live resets to empty for the next segment.
@@ -29,7 +27,6 @@ export class StreamingAccumulator {
 
     /**
      * Processes a new raw chunk from the stream and returns the full display text.
-     *
      * @param rawFullText - The complete raw text from the stream so far (not just the delta)
      * @param displayChunk - The display-safe portion of the new delta (after tool parsing)
      * @returns The concatenated display text (committed + updated live)
@@ -43,9 +40,8 @@ export class StreamingAccumulator {
     /**
      * Commits the current live text into the permanent buffer and resets live state.
      * Called after a tool invocation has been resolved and its replacement applied.
-     *
      * @param replacementText - Optional text to append to committed instead of live
-     *                          (e.g., calculator result that should appear inline)
+     *                     (e.g., calculator result that should appear inline)
      */
     commitLive(replacementText?: string): void {
         this.committed += replacementText ?? this.live;
@@ -61,9 +57,13 @@ export class StreamingAccumulator {
         this.committed += text;
     }
 
-    /** Returns the current display text: committed + live. */
+    /** 
+     * Returns the current display text: committed + live.
+     * Strips any trailing cursor characters to prevent them from leaking 
+     * into saved message history. Cursor rendering is handled purely by the UI layer.
+     */
     getDisplayText(): string {
-        return this.committed + this.live;
+        return StreamingAccumulator.sanitizeCursor(this.committed + this.live);
     }
 
     /** Returns only the committed (finalized) portion. */
@@ -87,5 +87,13 @@ export class StreamingAccumulator {
     resetLive(): void {
         this.live = '';
         this.lastRawLength = 0;
+    }
+
+    /**
+     * Removes trailing cursor characters from text.
+     * This ensures the accumulator never persists UI-only artifacts.
+     */
+    private static sanitizeCursor(text: string): string {
+        return text.replace(/▋$/g, '');
     }
 }
