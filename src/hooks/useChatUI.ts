@@ -2,7 +2,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useCharacterVoice } from './useCharacterVoice';
-import type { InteractionData } from '../types';
+import type { Character, InteractionData } from '../types';
 
 // Accept isAtBottomRef as an argument to avoid "modify local variable" errors in parent
 export function useChatUI(
@@ -40,16 +40,20 @@ export function useChatUI(
         return () => el.removeEventListener('scroll', fn);
     }, [isAtBottomRef]);
 
+    // FIX: Only auto-scroll during active streaming.
+    // When isLoading transitions to false (stop/completion), do NOT auto-scroll
+    // to messageEndRef — the relevant message may not be at the bottom
+    // (e.g., stopped mid-resume). Fresh sends handle their own scrolling
+    // via isAtBottomRef being set to true before generation starts.
     useEffect(() => {
         if (!isAtBottomRef.current) return;
+        
         if (isLoading && streamingText && messageEndRef.current) {
             messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        } else if (!isLoading && messageEndRef.current && interactionData?.interactionHistory.length) {
-            messageEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [streamingText, isLoading, interactionData?.interactionHistory.length, isAtBottomRef]);
+    }, [streamingText, isLoading, isAtBottomRef]);
 
-    const playVoice = useCallback((text: string, character: any) => {
+    const playVoice = useCallback((text: string, character: Character) => {
         // FIX: Added optional chaining (?.) to prevent crash when interactionData is null
         if (character.id !== interactionData?.protagonist?.id) {
             speakMessage(text, character);
