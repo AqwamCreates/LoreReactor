@@ -1,6 +1,6 @@
 // src/components/DataManagerModal.tsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
 import { useToast } from '../context/ToastContext';
 import './main.css';
 
@@ -18,6 +18,7 @@ interface DataManagerModalProps {
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
+    allMemories: Memory[];
     rawChatShells: RawInteractionData[];
     onDeleteCharacter: (id: string) => void;
     onDeleteContext: (id: string) => void;
@@ -30,12 +31,13 @@ interface DataManagerModalProps {
     onDeleteStopPattern: (id: string) => void;
     onDeleteBudgetStrategy: (id: string) => void;
     onDeleteProfile: (id: string) => void;
+    onDeleteMemory: (id: string) => void;
     onDeleteChat: (id: string) => void;
 }
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -85,6 +87,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     stopPattern: { icon: '🛑', label: 'Stop Patterns' },
     budgetStrategy: { icon: '💰', label: 'Budget Strategies' },
     profile: { icon: '👤', label: 'Profiles' },
+    memory: { icon: '🧠', label: 'Memories' },
 };
 
 const EXCLUSION_TYPE_META: Record<ExclusionEntityType, { icon: string; label: string }> = {
@@ -151,6 +154,10 @@ function isEntityHollow(
             const bs = entity as BudgetStrategy;
             return !(bs.onlineModels?.length) && !(bs.localModels?.length);
         }
+        case 'memory': {
+            const m = entity as Memory;
+            return !m.content?.trim();
+        }
         case 'profile':
             return false;
     }
@@ -181,6 +188,7 @@ export function DataManagerModal({
     allStopPatterns,
     allBudgetStrategies,
     allProfiles,
+    allMemories,
     rawChatShells,
     onDeleteCharacter,
     onDeleteContext,
@@ -193,6 +201,7 @@ export function DataManagerModal({
     onDeleteStopPattern,
     onDeleteBudgetStrategy,
     onDeleteProfile,
+    onDeleteMemory,
     onDeleteChat,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
@@ -238,13 +247,26 @@ export function DataManagerModal({
             { label: 'Stop Patterns', icon: '🛑', count: allStopPatterns.length, estimatedSizeKb: estimateKb(allStopPatterns, 256) },
             { label: 'Budget Strategies', icon: '💰', count: allBudgetStrategies.length, estimatedSizeKb: estimateKb(allBudgetStrategies, 1024) },
             { label: 'Profiles', icon: '👤', count: allProfiles.length, estimatedSizeKb: estimateKb(allProfiles, 2048) },
+            { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
             { label: 'Chat Sessions', icon: '💬', count: rawChatShells.length, estimatedSizeKb: estimateKb(rawChatShells, 8192) },
         ]);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
 
     // ─── Cleanup Scan ───────────────────────────────────────────────
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
+
+        const charIdSet = new Set(allCharacters.map(c => c.id));
+        const ctxIdSet = new Set(allContexts.map(c => c.id));
+        const locIdSet = new Set(allLocations.map(l => l.id));
+        const audioIdSet = new Set(allAudioTracks.map(a => a.id));
+        const pbIdSet = new Set(allPromptBlocks.map(b => b.id));
+        const modelIdSet = new Set(allModels.map(m => m.id));
+        const samplerIdSet = new Set(allSamplers.map(s => s.id));
+        const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
+        const profileIdSet = new Set(allProfiles.map(p => p.id));
+        const memoryIdSet = new Set(allMemories.map(m => m.id));
+        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id!));
 
         const referencedCharIds = new Set<string>();
         const referencedCtxIds = new Set<string>();
@@ -255,54 +277,90 @@ export function DataManagerModal({
         const referencedSamplerIds = new Set<string>();
         const referencedStopPatternIds = new Set<string>();
         const referencedProfileIds = new Set<string>();
+        const referencedMemoryIds = new Set<string>();
 
+        // --- Direct references from Worlds ---
         for (const world of allWorlds) {
-            for (const id of world.characterIds) referencedCharIds.add(id);
-            for (const id of world.contextIds) referencedCtxIds.add(id);
-            for (const id of world.locationIds) referencedLocIds.add(id);
-            for (const id of world.audioTrackIds) referencedAudioIds.add(id);
-            for (const id of world.promptBlockIds) referencedPbIds.add(id);
-            if (world.profileId) referencedProfileIds.add(world.profileId);
+            for (const id of world.characterIds) if (charIdSet.has(id)) referencedCharIds.add(id);
+            for (const id of world.contextIds) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
+            for (const id of world.locationIds) if (locIdSet.has(id)) referencedLocIds.add(id);
+            for (const id of world.audioTrackIds) if (audioIdSet.has(id)) referencedAudioIds.add(id);
+            for (const id of world.promptBlockIds) if (pbIdSet.has(id)) referencedPbIds.add(id);
+            if (world.profileId && profileIdSet.has(world.profileId)) referencedProfileIds.add(world.profileId);
         }
 
+        // --- Direct references from Chat Shells ---
         for (const shell of rawChatShells) {
-            for (const id of (shell.participantIds || [])) referencedCharIds.add(id);
-            for (const id of (shell.contextIds || [])) referencedCtxIds.add(id);
-            for (const id of (shell.locationIds || [])) referencedLocIds.add(id);
-            for (const id of (shell.audioTrackIds || [])) referencedAudioIds.add(id);
-            if (shell.ProfileId) referencedProfileIds.add(shell.ProfileId);
+            for (const id of (shell.participantIds || [])) if (charIdSet.has(id)) referencedCharIds.add(id);
+            if (shell.protagonistId && charIdSet.has(shell.protagonistId)) referencedCharIds.add(shell.protagonistId);
+            for (const id of (shell.contextIds || [])) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
+            for (const id of (shell.locationIds || [])) if (locIdSet.has(id)) referencedLocIds.add(id);
+            for (const id of (shell.audioTrackIds || [])) if (audioIdSet.has(id)) referencedAudioIds.add(id);
+            if (shell.ProfileId && profileIdSet.has(shell.ProfileId)) referencedProfileIds.add(shell.ProfileId);
         }
 
+        // --- Transitive: Characters → Samplers → Stop Patterns ---
+        // --- Transitive: Characters → Memories ---
         for (const c of allCharacters) {
-            if (c.sampler?.id) referencedSamplerIds.add(c.sampler.id);
+            if (c.sampler?.id && samplerIdSet.has(c.sampler.id)) {
+                referencedSamplerIds.add(c.sampler.id);
+            }
+            if (c.memories) {
+                for (const memArr of Object.values(c.memories)) {
+                    for (const mem of memArr) {
+                        if (mem.id && memoryIdSet.has(mem.id)) referencedMemoryIds.add(mem.id);
+                    }
+                }
+            }
         }
-
         for (const s of allSamplers) {
-            for (const sp of (s.stopPatterns || [])) referencedStopPatternIds.add(sp.id);
+            if (referencedSamplerIds.has(s.id)) {
+                for (const sp of (s.stopPatterns || [])) {
+                    if (stopPatternIdSet.has(sp.id)) referencedStopPatternIds.add(sp.id);
+                }
+            }
         }
 
+        // --- Transitive: Budget Strategies → Models ---
         for (const bs of allBudgetStrategies) {
-            for (const m of (bs.onlineModels || [])) referencedModelIds.add(m.id);
-            for (const m of (bs.localModels || [])) referencedModelIds.add(m.id);
+            for (const m of (bs.onlineModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
+            for (const m of (bs.localModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
         }
 
+        // --- Transitive: Memories → InteractionData (chat binding) ---
+        for (const mem of allMemories) {
+            const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
+            if (interactionId && chatIdSet.has(interactionId)) {
+                referencedMemoryIds.add(mem.id);
+            }
+        }
+
+        // --- Bindings: Contexts → Characters ---
         for (const ctx of allContexts) {
-            for (const id of (ctx.characterBindings || [])) referencedCharIds.add(id);
+            for (const binding of (ctx.characterBindings || [])) {
+                if (charIdSet.has(binding)) referencedCharIds.add(binding);
+            }
         }
+
+        // --- Bindings: Locations → Characters, Locations ---
         for (const loc of allLocations) {
-            for (const id of (loc.characterBindings || [])) referencedCharIds.add(id);
-            for (const id of (loc.locationBindings || [])) referencedLocIds.add(id);
-            for (const id of (loc.ownerBindings || [])) referencedCharIds.add(id);
+            for (const binding of (loc.characterBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
+            for (const binding of (loc.locationBindings || [])) if (locIdSet.has(binding)) referencedLocIds.add(binding);
+            for (const binding of (loc.ownerBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
         }
+
+        // --- Bindings: Audio Tracks → Characters, Contexts, Locations ---
         for (const at of allAudioTracks) {
-            for (const id of (at.characterBindings || [])) referencedCharIds.add(id);
-            for (const id of (at.contextBindings || [])) referencedCtxIds.add(id);
-            for (const id of (at.locationBindings || [])) referencedLocIds.add(id);
+            for (const binding of (at.characterBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
+            for (const binding of (at.contextBindings || [])) if (ctxIdSet.has(binding)) referencedCtxIds.add(binding);
+            for (const binding of (at.locationBindings || [])) if (locIdSet.has(binding)) referencedLocIds.add(binding);
         }
+
+        // --- Bindings: Prompt Blocks → Characters, Contexts, Locations ---
         for (const pb of allPromptBlocks) {
-            for (const id of pb.characterBindings) referencedCharIds.add(id);
-            for (const id of pb.contextBindings) referencedCtxIds.add(id);
-            for (const id of pb.locationBindings) referencedLocIds.add(id);
+            for (const binding of pb.characterBindings) if (charIdSet.has(binding)) referencedCharIds.add(binding);
+            for (const binding of pb.contextBindings) if (ctxIdSet.has(binding)) referencedCtxIds.add(binding);
+            for (const binding of pb.locationBindings) if (locIdSet.has(binding)) referencedLocIds.add(binding);
         }
 
         const staleCutoff = Date.now() - staleDaysCleanup * 86400000;
@@ -328,12 +386,13 @@ export function DataManagerModal({
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
         for (const bs of allBudgetStrategies) check('budgetStrategy', bs.id, bs.name, bs.lastUpdatedTimestamp, true, bs);
         for (const p of allProfiles) check('profile', p.id, p.name, p.lastUpdatedTimestamp, referencedProfileIds.has(p.id), p);
+        for (const m of allMemories) check('memory', m.id, m.name, m.lastUpdatedTimestamp, referencedMemoryIds.has(m.id), m);
 
         setCleanupItems(found);
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     // ─── Integrity Check ────────────────────────────────────────────
     const scanIntegrity = useCallback(() => {
@@ -348,38 +407,40 @@ export function DataManagerModal({
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
+        const memoryIdSet = new Set(allMemories.map(m => m.id));
+        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id!));
 
         for (const ctx of allContexts) {
-            for (const charId of (ctx.characterBindings || [])) {
-                if (!charIdSet.has(charId)) issues.push({ entityType: 'Context', entityName: ctx.name, issue: 'References missing character', refType: 'Character', refId: charId });
+            for (const binding of (ctx.characterBindings || [])) {
+                if (!charIdSet.has(binding)) issues.push({ entityType: 'Context', entityName: ctx.name, issue: 'References missing character binding', refType: 'Character', refId: binding });
             }
         }
         for (const loc of allLocations) {
-            for (const charId of (loc.characterBindings || [])) {
-                if (!charIdSet.has(charId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing character binding', refType: 'Character', refId: charId });
+            for (const binding of (loc.characterBindings || [])) {
+                if (!charIdSet.has(binding)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing character binding', refType: 'Character', refId: binding });
             }
-            for (const locId of (loc.locationBindings || [])) {
-                if (!locIdSet.has(locId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing location binding', refType: 'Location', refId: locId });
+            for (const binding of (loc.locationBindings || [])) {
+                if (!locIdSet.has(binding)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing location binding', refType: 'Location', refId: binding });
             }
             for (const ownerId of (loc.ownerBindings || [])) {
                 if (!charIdSet.has(ownerId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing owner character', refType: 'Character', refId: ownerId });
             }
         }
         for (const at of allAudioTracks) {
-            for (const locId of (at.locationBindings || [])) {
-                if (!locIdSet.has(locId)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing location binding', refType: 'Location', refId: locId });
+            for (const binding of (at.locationBindings || [])) {
+                if (!locIdSet.has(binding)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing location binding', refType: 'Location', refId: binding });
             }
-            for (const ctxId of (at.contextBindings || [])) {
-                if (!ctxIdSet.has(ctxId)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing context binding', refType: 'Context', refId: ctxId });
+            for (const binding of (at.contextBindings || [])) {
+                if (!ctxIdSet.has(binding)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing context binding', refType: 'Context', refId: binding });
             }
-            for (const charId of (at.characterBindings || [])) {
-                if (!charIdSet.has(charId)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing character binding', refType: 'Character', refId: charId });
+            for (const binding of (at.characterBindings || [])) {
+                if (!charIdSet.has(binding)) issues.push({ entityType: 'Audio Track', entityName: at.filename || at.name, issue: 'References missing character binding', refType: 'Character', refId: binding });
             }
         }
         for (const pb of allPromptBlocks) {
-            for (const charId of pb.characterBindings) { if (!charIdSet.has(charId)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing character binding', refType: 'Character', refId: charId }); }
-            for (const ctxId of pb.contextBindings) { if (!ctxIdSet.has(ctxId)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing context binding', refType: 'Context', refId: ctxId }); }
-            for (const locId of pb.locationBindings) { if (!locIdSet.has(locId)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing location binding', refType: 'Location', refId: locId }); }
+            for (const binding of pb.characterBindings) { if (!charIdSet.has(binding)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing character binding', refType: 'Character', refId: binding }); }
+            for (const binding of pb.contextBindings) { if (!ctxIdSet.has(binding)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing context binding', refType: 'Context', refId: binding }); }
+            for (const binding of pb.locationBindings) { if (!locIdSet.has(binding)) issues.push({ entityType: 'Prompt Block', entityName: pb.name, issue: 'References missing location binding', refType: 'Location', refId: binding }); }
         }
         for (const world of allWorlds) {
             for (const charId of world.characterIds) { if (!charIdSet.has(charId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing character', refType: 'Character', refId: charId }); }
@@ -391,6 +452,13 @@ export function DataManagerModal({
         }
         for (const c of allCharacters) {
             if (c.sampler?.id && !samplerIdSet.has(c.sampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing sampler', refType: 'Sampler', refId: c.sampler.id });
+            if (c.memories) {
+                for (const [key, memArr] of Object.entries(c.memories)) {
+                    for (const mem of memArr) {
+                        if (mem.id && !memoryIdSet.has(mem.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: `References missing memory in group "${key}"`, refType: 'Memory', refId: mem.id });
+                    }
+                }
+            }
         }
         for (const s of allSamplers) {
             for (const sp of (s.stopPatterns || [])) {
@@ -401,10 +469,17 @@ export function DataManagerModal({
             for (const m of (bs.onlineModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing online model', refType: 'Language Model', refId: m.id }); }
             for (const m of (bs.localModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing local model', refType: 'Language Model', refId: m.id }); }
         }
+        // Memory → InteractionData integrity
+        for (const mem of allMemories) {
+            const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
+            if (interactionId && !chatIdSet.has(interactionId)) {
+                issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing chat session', refType: 'Chat', refId: interactionId });
+            }
+        }
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
 
     // ─── Effects ────────────────────────────────────────────────────
     useEffect(() => {
@@ -472,6 +547,7 @@ export function DataManagerModal({
                 case 'stopPattern': onDeleteStopPattern(item.id); break;
                 case 'budgetStrategy': onDeleteBudgetStrategy(item.id); break;
                 case 'profile': onDeleteProfile(item.id); break;
+                case 'memory': onDeleteMemory(item.id); break;
             }
             deletedCount++;
         }
@@ -507,6 +583,7 @@ export function DataManagerModal({
     const isShellExcluded = useCallback((shell: RawInteractionData): boolean => {
         if (exclusions.length === 0) return false;
         for (const id of (shell.participantIds || [])) { if (exclusionIdSet.character.has(id)) return true; }
+        if (shell.protagonistId && exclusionIdSet.character.has(shell.protagonistId)) return true;
         for (const id of (shell.contextIds || [])) { if (exclusionIdSet.context.has(id)) return true; }
         for (const id of (shell.locationIds || [])) { if (exclusionIdSet.location.has(id)) return true; }
         for (const id of (shell.audioTrackIds || [])) { if (exclusionIdSet.audioTrack.has(id)) return true; }
@@ -597,6 +674,7 @@ export function DataManagerModal({
             case 'stopPatterns': for (const sp of allStopPatterns) { onDeleteStopPattern(sp.id); count++; } break;
             case 'budgetStrategies': for (const bs of allBudgetStrategies) { onDeleteBudgetStrategy(bs.id); count++; } break;
             case 'profiles': for (const p of allProfiles) { onDeleteProfile(p.id); count++; } break;
+            case 'memories': for (const m of allMemories) { onDeleteMemory(m.id); count++; } break;
             case 'chats': for (const s of rawChatShells) { if (s.id) { onDeleteChat(s.id); count++; } } break;
         }
         addToast(`Wiped ${count} ${entityType}.`, 'success');
@@ -725,7 +803,7 @@ export function DataManagerModal({
                     {/* ─── INTEGRITY TAB ─── */}
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -845,6 +923,7 @@ export function DataManagerModal({
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },
                                         { key: 'profiles', label: 'All Profiles', count: allProfiles.length },
+                                        { key: 'memories', label: 'All Memories', count: allMemories.length },
                                         { key: 'chats', label: 'All Chats', count: rawChatShells.length },
                                     ].map(entity => (
                                         <button key={entity.key} type="button" className="editor-button"

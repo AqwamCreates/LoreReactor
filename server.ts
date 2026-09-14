@@ -12,7 +12,9 @@ const PORT = 3001;
 const ROOT_DIR = process.cwd();
 const APP_NAME = "LoreReactor";
 
-const LLAMA_SERVER_PATH = path.join(ROOT_DIR, 'llama', 'llama-server.exe');
+const LOCAL_BACKENDS_PATH = 'local_backends'
+
+const LLAMA_SERVER_PATH = path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'llama', 'llama-server.exe');
 
 interface ModelInstance {
   id: string;

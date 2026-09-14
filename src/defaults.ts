@@ -3,31 +3,30 @@ import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, Pr
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const now = Date.now()
+const now = Date.now();
 
 export const DefaultSampler: Sampler = {
-  id: "default-sampler", 
-  name: "Default", 
-  description: "Fallback sampler",
-  parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
-  stopPatterns: [], 
-  maximumNumberOfTokens: 512,
-  firstCreatedTimestamp: now,
-  lastUpdatedTimestamp: now,
+    id: "default-sampler",
+    name: "Default",
+    description: "Fallback sampler",
+    parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
+    stopPatterns: [],
+    maximumNumberOfTokens: 512,
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
 };
 
 export const DefaultModel: LanguageModel = {
-  id: "default-model",
-  name: "Default Model",
-  description: "Fallback model",
-  backend: "Llama.cpp",
-  contextLength: 4096,
-  firstCreatedTimestamp: now,
-  lastUpdatedTimestamp: now,
+    id: "default-model",
+    name: "Default Model",
+    description: "Fallback model",
+    backend: "Llama.cpp",
+    contextLength: 4096,
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
 };
 
 export const DefaultBudgetData: BudgetData = {
-
     id: 'global-budget-data',
     name: 'Global Budget Data',
     description: 'Auto-created on first budget strategy activation',
@@ -51,8 +50,7 @@ export const DefaultBudgetData: BudgetData = {
     modelTotalSessionDuration: {},
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
-
-}
+};
 
 export const DefaultActions: InterjectableAction[] = [
     { label: 'Hug', count: 0 }, { label: 'Kiss At', count: 0 }, { label: 'Slap', count: 0 },
@@ -65,11 +63,13 @@ export const DefaultActions: InterjectableAction[] = [
     { label: 'Bow At', count: 0 }, { label: 'Nod At', count: 0 }, { label: 'Shake At', count: 0 },
     { label: 'Point At', count: 0 }, { label: 'Wink At', count: 0 }, { label: 'Blush At', count: 0 },
     { label: 'Frown At', count: 0 }, { label: 'Smile At', count: 0 }, { label: 'Grin At', count: 0 },
-    { label: 'Pout At', count: 0 }
+    { label: 'Pout At', count: 0 },
 ];
 
 export const defaultInputStrategy: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed', 'Fatigue Information', 'Tool Instructions', 'Starter Prompt', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
+    'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed',
+    'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Text Injection',
 ];
 
 export const defaultCharacterTools: Record<tool, boolean> = {

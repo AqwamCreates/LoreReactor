@@ -1,21 +1,13 @@
 // src/components/CharacterCardImportModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
-import type { Character, Context, Sampler, tool } from '../types';
+import type { Character, Context, Sampler } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { uploadCharacterImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
+import { defaultCharacterTools } from '../defaults';
 import './main.css';
-
-const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
-    pick: true, date: false, coin: true, dice: true, random: true, rng: false,
-    move: false, timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
-    map: false, audio: false, note: false, inventory: false,
-    invite: false, kick: false, teleport: false, lock: false, unlock: false,
-    summon: false, narrate: false, inspect: false,
-    administrator: false, creator: false, destroyer: false,
-};
 
 interface CharacterCardImportModalProps {
     isOpen: boolean;
@@ -121,11 +113,14 @@ export function CharacterCardImportModal({
                 name: fields.name || 'Unnamed Character',
                 description: fields.description || '',
                 systemPrompt: fields.systemPrompt || '',
-                thinkPrompt: fields.thinkPrompt || undefined,
+                thinkPrompt: undefined,
                 appearancePrompt: fields.appearancePrompt || undefined,
                 dialoguePrompt: fields.dialoguePrompt || undefined,
+                starterPrompt: fields.starterPrompt || undefined,
                 images,
+                voice: undefined,
                 sampler: defaultSampler,
+                stopPatterns: undefined,
                 initiativeWeight,
                 chatProbability,
                 maximumChatStamina,
@@ -135,13 +130,15 @@ export function CharacterCardImportModal({
                 memoryRetentionWeight,
                 contextSensitivity,
                 maximumActionStamina,
-                tools: { ...DEFAULT_CHARACTER_TOOLS },
+                doNotInjectCharacterImage: false,
+                tools: { ...defaultCharacterTools },
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
                 memories: {},
-                numberOfMessagesToDisableThinkPrompt: 0,
-                numberOfMessagesToDisableMetaThinkInstructions: 0,
-                numberOfMessagesToDisableDialoguePrompt: 0,
+                numberOfMessagesToDisableThinkPrompt: 1,
+                numberOfMessagesToDisableMetaThinkInstructions: 1,
+                numberOfMessagesToDisableDialoguePrompt: 1,
+                numberOfMessagesToDisableStarterPrompt: 1,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             };
@@ -150,12 +147,39 @@ export function CharacterCardImportModal({
             const lorebookContexts: Context[] = (extended.lorebookContexts || []).map(entry => ({
                 id: uuidv4(),
                 name: entry.name || 'Lorebook Entry',
+                description: undefined,
                 text: entry.text || '',
-                regularExpressionActivationTrigger: entry.regularExpressionActivationTrigger,
-                insertionDepth: entry.insertionDepth ?? 0,
-                tokenBudget: entry.tokenBudget,
-                useBase64Encoding: false,
+                images: undefined,
+                searchTerms: undefined,
+                searchEngine: undefined,
+                urls: undefined,
+                includeLinkImages: false,
+                maximumLinkDepth: 1,
+                linkFetchMode: 'summary' as const,
                 limitLinksToSubdirectory: false,
+                fetchCacheTimeToLiveMs: undefined,
+                regularExpressionActivationTrigger: entry.regularExpressionActivationTrigger,
+                regularExpressionDeactivationTrigger: undefined,
+                regularExpressionExclusionActivationTrigger: undefined,
+                regularExpressionExclusionDeactivationTrigger: undefined,
+                regularExpressionContext: 'global' as const,
+                regularExpressionTarget: 'everyone' as const,
+                regularExpressionExclusionContext: 'global' as const,
+                regularExpressionExclusionTarget: 'everyone' as const,
+                messageFilterRegularExpressionActivationTrigger: undefined,
+                messageFilterRegularExpressionDeactivationTrigger: undefined,
+                messageFilterRegularExpressionExclusionActivationTrigger: undefined,
+                messageFilterRegularExpressionExclusionDeactivationTrigger: undefined,
+                messageFilterRegularExpressionContext: 'global' as const,
+                messageFilterRegularExpressionTarget: 'everyone' as const,
+                messageFilterRegularExpressionExclusionContext: 'global' as const,
+                messageFilterRegularExpressionExclusionTarget: 'everyone' as const,
+                tokenBudget: entry.tokenBudget,
+                maximumRecursionDepth: 1,
+                insertionDepth: entry.insertionDepth ?? 0,
+                characterBindings: [],
+                useBase64Encoding: false,
+                isAutoGenerated: undefined,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             } as Context));

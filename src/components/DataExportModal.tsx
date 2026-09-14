@@ -1,6 +1,6 @@
 // src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import './main.css';
@@ -19,14 +19,15 @@ interface DataExportModalProps {
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
-    rawChatShells: { id?: string; name?: string; lastUpdatedTimestamp?: number }[];
+    allMemories: Memory[];
+    rawChatShells: RawInteractionData[];
 }
 
 export function DataExportModal({
     isOpen, onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allModels, allSamplers, allPromptBlocks, allStopPatterns,
-    allBudgetStrategies, allProfiles, rawChatShells,
+    allBudgetStrategies, allProfiles, allMemories, rawChatShells,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function DataExportModal({
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+    const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
@@ -58,6 +60,7 @@ export function DataExportModal({
     const [stopPatternSearch, setStopPatternSearch] = useState('');
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
+    const [memorySearch, setMemorySearch] = useState('');
 
     const reset = () => {
         setSummary(null); setError(null); setIsExporting(false);
@@ -65,10 +68,12 @@ export function DataExportModal({
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
+        setSelectedMemoryIds([]);
         setIncludeActions(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
+        setMemorySearch('');
     };
 
     const handleClose = () => { if (isExporting) return; reset(); onClose(); };
@@ -81,7 +86,7 @@ export function DataExportModal({
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
-        (includeActions ? 1 : 0);
+        selectedMemoryIds.length + (includeActions ? 1 : 0);
 
     const handleExport = async () => {
         if (totalSelected === 0) { setError('Select at least one item to export.'); return; }
@@ -94,7 +99,7 @@ export function DataExportModal({
                 audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, modelIds: selectedModelIds,
                 samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
                 stopPatternIds: selectedStopPatternIds, budgetStrategyIds: selectedBudgetStrategyIds,
-                profileIds: selectedProfileIds, includeActions,
+                profileIds: selectedProfileIds, memoryIds: selectedMemoryIds, includeActions,
             });
             setSummary(data);
 
@@ -112,6 +117,8 @@ export function DataExportModal({
     };
 
     if (!isOpen) return null;
+
+    const validChatShells = rawChatShells.filter((s): s is RawInteractionData & { id: string } => !!s.id);
 
     return (
         <div className="modal-overlay" onClick={handleClose}>
@@ -134,7 +141,7 @@ export function DataExportModal({
                                 <span className="editor-section-title">Select Items to Export</span>
                                 <div className="entity-ref-hint">Click items to select/deselect. Only selected items will be included in the export.</div>
 
-                                <EntitySelectList label="Chat Sessions" items={rawChatShells.filter((s): s is typeof s & { id: string } => !!s.id)} selectedIds={selectedChatIds}
+                                <EntitySelectList label="Chat Sessions" items={validChatShells} selectedIds={selectedChatIds}
                                     onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
                                 <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds}
                                     onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />
@@ -158,6 +165,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
                                 <EntitySelectList label="Profiles" items={allProfiles} selectedIds={selectedProfileIds}
                                     onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
+                                <EntitySelectList label="Memories" items={allMemories} selectedIds={selectedMemoryIds}
+                                    onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
 
                                 <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
                                     <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
@@ -197,6 +206,7 @@ export function DataExportModal({
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
                                     <div><strong>Budget Strategies:</strong> {summary.budgetStrategies.length}</div>
                                     <div><strong>Profiles:</strong> {summary.profiles.length}</div>
+                                    <div><strong>Memories:</strong> {summary.memories?.length ?? 0}</div>
                                     <div><strong>Actions:</strong> {summary.interjectableActions.length}</div>
                                     <div><strong>Exported At:</strong> {new Date(summary.exportedAt).toLocaleString()}</div>
                                 </div>

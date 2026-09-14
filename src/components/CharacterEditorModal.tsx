@@ -48,12 +48,15 @@ interface CharacterEditorModalProps {
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
+    /** Pre-resolved map of interactionData ID → display name. Passed from AppModals. */
+    chatNameMap?: Map<string, string>;
 }
 
 export function CharacterEditorModal({
     isOpen, onClose, onSave, existingCharacter,
     allSamplers, isLoadingSamplers = false,
-    selectedModel, runningModels
+    selectedModel, runningModels,
+    chatNameMap,
 }: CharacterEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -138,7 +141,6 @@ export function CharacterEditorModal({
         if (tokenCountTimeoutsRef.current[field]) clearTimeout(tokenCountTimeoutsRef.current[field]);
         tokenCountTimeoutsRef.current[field] = setTimeout(async () => {
             setCountingField(field);
-            // Engine context is already set by the useEffect above
             const count = await tokenEngine.countTokens(text);
             setTokenCounts(prev => ({ ...prev, [field]: count }));
             setCountingField(prev => prev === field ? null : prev);
@@ -294,8 +296,14 @@ export function CharacterEditorModal({
         const card = await parseCharacterCard(file);
         if (!card) { setSubmitError("Not a valid character card PNG."); return; }
         const fields = mapCardToEditorFields(card);
-        setName(fields.name); setDescription(fields.description); setSystemPrompt(fields.systemPrompt); setThinkPrompt(fields.thinkPrompt);
-        setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setStarterPrompt(fields.starterPrompt || ''); setFirstMessage(fields.firstMessage);
+        setName(fields.name);
+        setDescription(fields.description);
+        setSystemPrompt(fields.systemPrompt);
+        setThinkPrompt('');
+        setAppearancePrompt(fields.appearancePrompt);
+        setDialoguePrompt(fields.dialoguePrompt);
+        setStarterPrompt(fields.starterPrompt || '');
+        setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
         setAutoDetected({ iw: null, cp: null, ms: null });
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
@@ -303,12 +311,17 @@ export function CharacterEditorModal({
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
-        setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0'); setNumberOfMessagesToDisableStarterPromptStr('0');
+        setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
+        setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
+        setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
+        setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
         setTools({ ...defaultCharacterTools });
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
-        countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
-        countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
+        countFieldTokens('systemPrompt', fields.systemPrompt);
+        countFieldTokens('thinkPrompt', '');
+        countFieldTokens('appearancePrompt', fields.appearancePrompt);
+        countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
         countFieldTokens('starterPrompt', fields.starterPrompt || '');
         setSubmitError(null);
         const extended = card as ParsedCharacterCardExtended;
@@ -595,6 +608,7 @@ export function CharacterEditorModal({
                 onClose={() => setShowMemoryManager(false)}
                 character={existingCharacter || null}
                 onSaveMemories={setMemories}
+                chatNameMap={chatNameMap}
             />
 
             <CharacterImageEditorModal

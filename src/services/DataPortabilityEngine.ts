@@ -1,7 +1,7 @@
 // src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
-    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction,
+    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
 } from '../types';
 import {
     loadRawCharacter, saveRawCharacter,
@@ -15,6 +15,7 @@ import {
     loadRawStopPattern, saveRawStopPattern,
     loadRawBudgetStrategy, saveRawBudgetStrategy,
     loadRawProfile, saveRawProfile,
+    loadRawMemory, saveRawMemory,
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
@@ -35,6 +36,7 @@ export interface LoreReactorExport {
     stopPatterns: StopPattern[];
     budgetStrategies: BudgetStrategy[];
     profiles: Profile[];
+    memories: Memory[];
     interjectableActions: InterjectableAction[];
 }
 
@@ -43,7 +45,7 @@ export interface ImportResult {
     counts: {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
         worlds: number; models: number; samplers: number; promptBlocks: number; stopPatterns: number;
-        budgetStrategies: number; profiles: number; interjectableActions: number;
+        budgetStrategies: number; profiles: number; memories: number; interjectableActions: number;
     };
     errors: string[];
 }
@@ -65,6 +67,8 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.stopPatterns)) return false;
     if (!Array.isArray(d.budgetStrategies)) return false;
     if (!Array.isArray(d.profiles)) return false;
+    // memories may be absent in older exports — treat as optional for backward compat
+    if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     return true;
 }
@@ -85,13 +89,14 @@ export async function exportSelectedData(selection: {
     stopPatternIds: string[];
     budgetStrategyIds: string[];
     profileIds: string[];
+    memoryIds: string[];
     includeActions: boolean;
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
         worlds: [], models: [], samplers: [], promptBlocks: [], stopPatterns: [],
-        budgetStrategies: [], profiles: [], interjectableActions: [],
+        budgetStrategies: [], profiles: [], memories: [], interjectableActions: [],
     };
 
     // Load individual entities by ID
@@ -147,6 +152,10 @@ export async function exportSelectedData(selection: {
         const full = await loadRawProfile(id);
         if (full) data.profiles.push(full);
     }
+    for (const id of selection.memoryIds) {
+        const full = await loadRawMemory(id);
+        if (full) data.memories.push(full);
+    }
 
     if (selection.includeActions) {
         try { data.interjectableActions = await loadInterjectableActions(); } catch { /* empty */ }
@@ -165,12 +174,17 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         counts: {
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
             worlds: 0, models: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
-            budgetStrategies: 0, profiles: 0, interjectableActions: 0,
+            budgetStrategies: 0, profiles: 0, memories: 0, interjectableActions: 0,
         },
         errors: [],
     };
 
     // Import in dependency order: base entities first, then dependents
+    // Memories before characters — characters reference memory IDs
+    for (const mem of (data.memories ?? [])) {
+        try { await saveRawMemory(mem); result.counts.memories++; }
+        catch (e) { result.errors.push(`Memory "${mem.name || mem.id}": ${(e as Error).message}`); }
+    }
     for (const char of data.characters) {
         try { await saveRawCharacter(char); result.counts.characters++; }
         catch (e) { result.errors.push(`Character "${char.name || char.id}": ${(e as Error).message}`); }

@@ -521,8 +521,8 @@ export type PromptBlockType =
   | 'Date And Time'
   | 'Time Elapsed'
   | 'Fatigue Information'
-  | 'Tool Instructions'
   | 'Starter Prompt'
+  | 'Tool Instructions'
   | 'Text Injection';
 
 export interface PromptBlock extends ObjectData {
@@ -671,7 +671,7 @@ export interface ParsedCharacterCard {
   mesExample?: string;
   creatorNotes?: string;
   systemPrompt?: string;
-  postHistoryInstructions?: string;
+  starterPrompt?: string;
   alternateGreetings?: string[];
   tags?: string[];
   creator?: string;

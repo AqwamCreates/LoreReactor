@@ -354,6 +354,7 @@ export function useChatSession() {
                             numberOfMessagesToDisableThinkPrompt: 0,
                             numberOfMessagesToDisableMetaThinkInstructions: 0,
                             numberOfMessagesToDisableDialoguePrompt: 0,
+                            numberOfMessagesToDisableStarterPrompt: 0,
                             firstCreatedTimestamp: Date.now(),
                             lastUpdatedTimestamp: Date.now(),
                         };

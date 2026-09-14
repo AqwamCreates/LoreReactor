@@ -1,5 +1,5 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -58,6 +58,7 @@ interface AppModalsProps {
     allExtensions: Extension[];
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
+    allMemories: Memory[];
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
@@ -117,6 +118,8 @@ interface AppModalsProps {
     onDeleteWorld: (id: string) => void;
     // Prompt block callbacks
     onDeletePromptBlock: (id: string) => void;
+    // Memory callbacks
+    onDeleteMemory: (id: string) => void;
     // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -136,7 +139,7 @@ export function AppModals({
     modals, runningModels,
     rawChatShells, allCharacters, allContexts, allLocations, allAudioTracks,
     allSamplers, allStopPatterns, allModels, allBudgetStrategies,
-    allProfiles, allExtensions, allWorlds, allPromptBlocks,
+    allProfiles, allExtensions, allWorlds, allPromptBlocks, allMemories,
     // Entity modals
     charModal, contextModal, locationModal, audioTrackModal,
     samplerModal, stopModal, modelModal, budgetModal,
@@ -167,6 +170,8 @@ export function AppModals({
     onSaveWorld, onLoadWorld, onDeleteWorld,
     // Prompt block callbacks
     onDeletePromptBlock,
+    // Memory callbacks
+    onDeleteMemory,
     // Interaction data callbacks
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     // General callbacks
@@ -190,6 +195,15 @@ export function AppModals({
         () => rawChatShells.filter((s): s is ChatShellWithId => !!s.id),
         [rawChatShells],
     );
+
+    // Pre-resolved chat name map — built once from already-loaded shells, passed down to avoid redundant fetches
+    const chatNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const shell of chatShellsWithIds) {
+            map.set(shell.id, shell.name || 'Untitled Chat');
+        }
+        return map;
+    }, [chatShellsWithIds]);
 
     // Lazy-load chat shells when chat list modal opens
     useEffect(() => {
@@ -621,6 +635,7 @@ export function AppModals({
                     allStopPatterns={allStopPatterns}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
+                    allMemories={allMemories}
                     rawChatShells={chatShellsWithIds}
                 />
             )}
@@ -641,6 +656,7 @@ export function AppModals({
                     allStopPatterns={allStopPatterns}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
+                    allMemories={allMemories}
                     rawChatShells={chatShellsWithIds}
                     onDeleteCharacter={onDeleteCharacter}
                     onDeleteContext={onDeleteContext}
@@ -653,6 +669,7 @@ export function AppModals({
                     onDeleteStopPattern={onDeleteStopPattern}
                     onDeleteBudgetStrategy={onDeleteBudgetStrategy}
                     onDeleteProfile={onDeleteProfile}
+                    onDeleteMemory={onDeleteMemory}
                     onDeleteChat={onDeleteChat}
                 />
             )}
@@ -679,6 +696,7 @@ export function AppModals({
                     allSamplers={allSamplers}
                     selectedModel={allModels.find(m => m.id === selectedModelId) || null}
                     runningModels={runningModels}
+                    chatNameMap={chatNameMap}
                 />
             )}
 

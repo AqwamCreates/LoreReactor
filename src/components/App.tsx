@@ -15,6 +15,7 @@ import { useStopPatternManager } from '../hooks/useStopPatternManager';
 import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
+import { useMemoryManager } from '../hooks/useMemoryManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
@@ -93,6 +94,7 @@ function App() {
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
+    const { memories: allMemories, deleteMemory } = useMemoryManager();
 
     // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
@@ -931,6 +933,7 @@ function App() {
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
+                    allMemories={allMemories}
                     // Entity modals
                     charModal={charModal}
                     contextModal={contextModal}
@@ -990,6 +993,8 @@ function App() {
                     // Extension callbacks
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
+                    // Memory callbacks
+                    onDeleteMemory={deleteMemory}
                     // Interaction data callbacks
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);

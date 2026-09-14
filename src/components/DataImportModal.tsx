@@ -31,6 +31,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+    const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
@@ -45,6 +46,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [stopPatternSearch, setStopPatternSearch] = useState('');
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
+    const [memorySearch, setMemorySearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
@@ -52,10 +54,12 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
+        setSelectedMemoryIds([]);
         setIncludeActions(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
+        setMemorySearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -88,6 +92,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
             setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
             setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
+            setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
             setIncludeActions(json.interjectableActions.length > 0);
         } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
     };
@@ -111,6 +116,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
             budgetStrategies: parsedData.budgetStrategies.filter(b => selectedBudgetStrategyIds.includes(b.id)),
             profiles: parsedData.profiles.filter(p => selectedProfileIds.includes(p.id)),
+            memories: parsedData.memories?.filter(m => selectedMemoryIds.includes(m.id)) ?? [],
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
         };
 
@@ -126,7 +132,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
-        (includeActions ? 1 : 0);
+        selectedMemoryIds.length + (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -218,6 +224,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selectedProfileIds}
                                         onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
                                 )}
+                                {(parsedData.memories?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Memories" items={parsedData.memories!} selectedIds={selectedMemoryIds}
+                                        onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
+                                )}
 
                                 {parsedData.interjectableActions.length > 0 && (
                                     <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
@@ -262,6 +272,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
+                                    <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
                                 </div>
                             </div>

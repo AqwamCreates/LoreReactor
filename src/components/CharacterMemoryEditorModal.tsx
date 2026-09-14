@@ -1,7 +1,6 @@
 // src/components/CharacterMemoryEditorModal.tsx
 import { useState, useEffect } from 'react';
 import type { Character, Memory } from '../types';
-import { loadAllRawInteractionDataShells } from '../storage/serverStorage';
 import './main.css';
 
 interface CharacterMemoryEditorModalProps {
@@ -9,6 +8,8 @@ interface CharacterMemoryEditorModalProps {
     onClose: () => void;
     character: Character | null;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
+    /** Pre-resolved map of interactionData ID → display name. Passed from AppModals. */
+    chatNameMap?: Map<string, string>;
 }
 
 export function CharacterMemoryEditorModal({
@@ -16,45 +17,39 @@ export function CharacterMemoryEditorModal({
     onClose,
     character,
     onSaveMemories,
+    chatNameMap,
 }: CharacterMemoryEditorModalProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
-    const [chatNameMap, setChatNameMap] = useState<Map<string, string>>(new Map());
     const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>({});
     const [hasChanges, setHasChanges] = useState(false);
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
 
     useEffect(() => {
         if (isOpen && character) {
-            // Safely clone memories, defaulting to empty object if undefined
             try {
                 setLocalMemories(structuredClone(character.memories ?? {}));
             } catch (e) {
                 console.warn("Failed to clone memories, using reference:", e);
                 setLocalMemories(character.memories ?? {});
             }
-            
+
             setHasChanges(false);
             setEditingId(null);
             setEditContent('');
             setShowMassDeleteConfirm(false);
-
-            (async () => {
-                try {
-                    const chats = await loadAllRawInteractionDataShells();
-                    const map = new Map<string, string>();
-                    for (const c of chats) {
-                        if (c?.id) map.set(c.id, c.name || 'Untitled Chat');
-                    }
-                    setChatNameMap(map);
-                } catch { /* ignore */ }
-            })();
         }
     }, [isOpen, character]);
 
-    // If not open, return null. 
-    // If character is null but modal is open, show empty state instead of disappearing completely
     if (!isOpen) return null;
+
+    const resolveChatInfo = (mem: Memory): { name: string; id: string } => {
+        const id = mem.interactionData?.id
+            ?? (mem as unknown as { interactionDataId?: string }).interactionDataId
+            ?? 'unknown';
+        const name = chatNameMap?.get(id) || 'Unknown Chat';
+        return { name, id };
+    };
 
     const handleStartEdit = (mem: Memory) => {
         setEditingId(mem.id);
@@ -85,7 +80,6 @@ export function CharacterMemoryEditorModal({
         for (const [key, mems] of Object.entries(localMemories)) {
             updated[key] = mems.filter(m => m.id !== memId);
         }
-        // Remove empty keys
         for (const key of Object.keys(updated)) {
             if (updated[key].length === 0) delete updated[key];
         }
@@ -179,14 +173,13 @@ export function CharacterMemoryEditorModal({
                             {entries.map(([key, mems]) => (
                                 <div key={key} className="editor-section">
                                     <span className="editor-section-title">
-                                        {key === 'global' ? '🌐 Global' : `💬 ${key}`}
+                                        {key === 'global' ? '🌐 Global' : `💬 ${chatNameMap?.get(key) || key}`}
                                     </span>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {mems.map(mem => {
                                             const isEditing = editingId === mem.id;
-                                            const chatId = mem.interactionData?.id ?? 'Unknown ID';
-                                            const chatName = chatNameMap.get(chatId) || 'Unknown Chat';
+                                            const { name: chatName, id: chatId } = resolveChatInfo(mem);
 
                                             return (
                                                 <div key={mem.id} style={{

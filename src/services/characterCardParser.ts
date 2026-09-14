@@ -10,8 +10,6 @@ export interface ParsedCharacterCardExtended extends ParsedCharacterCard {
     lorebookContexts?: Partial<Context>[];
     /** Emotion/expression images extracted from V3 assets or extensions */
     emotionImages?: Record<string, string>;
-    /** Alternate first messages for swipe selection */
-    alternateGreetings?: string[];
     /** Display nickname separate from AI-facing name */
     nickname?: string;
     /** Greetings only used in group chats */
@@ -183,7 +181,7 @@ function normalizeV1(json: RawV1Card): ParsedCharacterCardExtended {
         scenario: json.scenario || undefined,
         mesExample: json.mes_example || undefined,
         systemPrompt: json.system_prompt || undefined,
-        postHistoryInstructions: json.post_history_instructions || undefined,
+        starterPrompt: undefined,
         tags: json.tags || undefined,
         creator: json.creator || undefined,
         characterVersion: json.character_version || undefined,
@@ -202,7 +200,7 @@ function normalizeV2(data: RawV2Data): ParsedCharacterCardExtended {
         mesExample: data.mes_example || undefined,
         creatorNotes: data.creator_notes || undefined,
         systemPrompt: data.system_prompt || undefined,
-        postHistoryInstructions: data.post_history_instructions || undefined,
+        starterPrompt: undefined,
         alternateGreetings: data.alternate_greetings?.length ? data.alternate_greetings : undefined,
         tags: data.tags || undefined,
         creator: (data.extensions as Record<string, unknown>)?.creator as string | undefined || data.creator || undefined,
@@ -445,14 +443,16 @@ function extractExtensionImages(extensions: Record<string, unknown> | undefined)
 /**
  * Maps parsed card data to fields compatible with CharacterEditorModal.
  * Combines personality + scenario into system prompt if system_prompt is empty.
+ * Uses post_history_instructions as starterPrompt fallback when no explicit
+ * starter prompt field exists in the card spec.
  */
 export function mapCardToEditorFields(card: ParsedCharacterCard): {
     name: string;
     description: string;
     systemPrompt: string;
-    thinkPrompt: string;
     appearancePrompt: string;
     dialoguePrompt: string;
+    starterPrompt: string;
     firstMessage: string;
 } {
     // Build system prompt from available fields
@@ -465,7 +465,10 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
     }
 
     // Use post_history_instructions as think prompt if available
-    const thinkPrompt = card.postHistoryInstructions || '';
+
+    // Starter prompt: use explicit starterPrompt if present, otherwise
+    // fall back to post_history_instructions (common convention in ST cards)
+    const starterPrompt = card.starterPrompt || '';
 
     // Description: combine description + creator_notes if useful
     let description = card.description || '';
@@ -477,9 +480,9 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
         name: card.name || '',
         description,
         systemPrompt,
-        thinkPrompt,
         appearancePrompt: '',
         dialoguePrompt: card.mesExample || '',
+        starterPrompt,
         firstMessage: card.firstMes || '',
     };
 }

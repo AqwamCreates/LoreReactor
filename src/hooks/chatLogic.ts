@@ -5,7 +5,7 @@ import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
-import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt } from './characterLogic';
+import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
@@ -1308,6 +1308,17 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
+    const starterPromptLines: string[] = [];
+
+    const starterPrompt = character.starterPrompt;
+
+    if (starterPrompt?.trim()) {
+        starterPromptLines.push(startOfStarterPromptLine);
+        const replacedStarter = replacePlaceholders(starterPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+        starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
+        starterPromptLines.push(endOfStarterPromptLines);
+    }
+
     const toolInstructions: string[] = [];
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
@@ -1329,17 +1340,6 @@ export async function buildPromptAndStopPatterns(
         if (remainingChatStaminaInstructions) fatigueLines.push(remainingChatStaminaInstructions);
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) fatigueLines.push(fatigue);
-    }
-
-    const starterPromptLines: string[] = [];
-
-    const starterPrompt = character.starterPrompt;
-
-    if (starterPrompt?.trim()) {
-        starterPromptLines.push(startOfStarterPromptLine);
-        const replacedStarter = replacePlaceholders(starterPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
-        starterPromptLines.push(endOfStarterPromptLines);
     }
 
     const textInjectionLines: string[] = [];
@@ -1374,15 +1374,15 @@ export async function buildPromptAndStopPatterns(
         'Date And Time': dateAndTimeLines,
         'Time Elapsed': timeElapsedLines,
         'Fatigue Information': fatigueLines,
-        'Tool Instructions': toolInstructions,
         'Starter Prompt': starterPromptLines,
+        'Tool Instructions': toolInstructions,
         'Text Injection': textInjectionLines,
     };
 
     const numberOfMessagesToDisableThinkPrompt = getEffectiveMessagesToDisableThinkPrompt(character, profile);
     const numberOfMessagesToDisableMetaThinkInstructions = getEffectiveMessagesToDisableMetaThinkInstructions(character, profile);
     const numberOfMessagesToDisableDialoguePrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
-    const numberOfMessagesToDisableStarterPrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
+    const numberOfMessagesToDisableStarterPrompt = getEffectiveMessagesToDisableStarterPrompt(character, profile);
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
         blockMap['Think Prompt'] = undefined;
