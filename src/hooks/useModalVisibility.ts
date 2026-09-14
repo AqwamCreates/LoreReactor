@@ -42,9 +42,9 @@ export function useModalVisibility() {
     const [contextList, setContextListOpen] = useState(false);
     const [locationList, setLocationListOpen] = useState(false);
     const [audioTrackList, setAudioTrackListOpen] = useState(false);
+    const [promptBlockList, setPromptBlockListOpen] = useState(false);
     const [modelList, setModelListOpen] = useState(false);
     const [samplerList, setSamplerListOpen] = useState(false);
-    const [promptBlockList, setPromptBlockListOpen] = useState(false);
     const [stopList, setStopListOpen] = useState(false);
     const [budgetStrategyList, setBudgetStrategyListOpen] = useState(false);
     const [profileList, setProfileListOpen] = useState(false);
@@ -66,9 +66,9 @@ export function useModalVisibility() {
         setContextListOpen(false);
         setLocationListOpen(false);
         setAudioTrackListOpen(false);
+        setPromptBlockListOpen(false);
         setModelListOpen(false);
         setSamplerListOpen(false);
-        setPromptBlockListOpen(false);
         setStopListOpen(false);
         setBudgetStrategyListOpen(false);
         setProfileListOpen(false);
@@ -91,9 +91,9 @@ export function useModalVisibility() {
         contextList: createModalState(contextList, setContextListOpen),
         locationList: createModalState(locationList, setLocationListOpen),
         audioTrackList: createModalState(audioTrackList, setAudioTrackListOpen),
+        promptBlockList: createModalState(promptBlockList, setPromptBlockListOpen),
         modelList: createModalState(modelList, setModelListOpen),
         samplerList: createModalState(samplerList, setSamplerListOpen),
-        promptBlockList: createModalState(promptBlockList, setPromptBlockListOpen),
         stopList: createModalState(stopList, setStopListOpen),
         budgetStrategyList: createModalState(budgetStrategyList, setBudgetStrategyListOpen),
         profileList: createModalState(profileList, setProfileListOpen),

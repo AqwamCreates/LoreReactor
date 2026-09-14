@@ -28,7 +28,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 export function ContextBar({
     viewMode,
     onOpenChatList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
-    onOpenModels, onOpenSamplers, onOpenPromptBlocks, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
+    onOpenPromptBlocks, onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
 }: ContextBarProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -39,9 +39,9 @@ export function ContextBar({
             {/* Extended configuration buttons — above core, collapsible */}
             {expanded && (
                 <div className="context-bar-extended-row">
+                     <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
                     <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
                     <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
-                    <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
                     <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
                     <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
                     <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />

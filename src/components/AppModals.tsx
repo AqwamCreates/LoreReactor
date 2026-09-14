@@ -51,27 +51,27 @@ interface AppModalsProps {
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
+    allPromptBlocks: PromptBlock[];
+    allModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
-    allModels: LanguageModel[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allExtensions: Extension[];
     allWorlds: World[];
-    allPromptBlocks: PromptBlock[];
     allMemories: Memory[];
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
     locationModal: EntityModalState<Location>;
     audioTrackModal: EntityModalState<AudioTrack>;
+    promptBlockModal: EntityModalState<PromptBlock>;
+    modelModal: EntityModalState<LanguageModel>;
     samplerModal: EntityModalState<Sampler>;
     stopModal: EntityModalState<StopPattern>;
-    modelModal: EntityModalState<LanguageModel>;
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
     worldModal: EntityModalState<World>;
-    promptBlockModal: EntityModalState<PromptBlock>;
     // Chat callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -96,6 +96,8 @@ interface AppModalsProps {
     onDeleteAudioTrack: (id: string) => void;
     onToggleAudioTrack: (id: string) => void;
     onSaveAudioTrack: (t: AudioTrack) => void;
+    // Prompt block callbacks
+    onDeletePromptBlock: (id: string) => void;
     // Model callbacks
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
@@ -117,8 +119,6 @@ interface AppModalsProps {
     onSaveWorld: (w: World) => void;
     onLoadWorld: (world: World) => void;
     onDeleteWorld: (id: string) => void;
-    // Prompt block callbacks
-    onDeletePromptBlock: (id: string) => void;
     // Memory callbacks
     onDeleteMemory: (id: string) => void;
     // Interaction data callbacks
@@ -342,6 +342,22 @@ export function AppModals({
                 />
             )}
 
+            {/* Prompt Blocks List */}
+            {modals.promptBlockList.isOpen && (
+                <ManagerModal
+                    title="Prompt Blocks"
+                    items={allPromptBlocks}
+                    isOpen={modals.promptBlockList.isOpen}
+                    onClose={modals.promptBlockList.close}
+                    onSelect={(b: PromptBlock) => promptBlockModal.open(b)}
+                    onDelete={promptBlockModal.handleDelete}
+                    onCreateNew={() => promptBlockModal.open()}
+                    renderSubtext={(b: PromptBlock) => `${b.textContent ? `📝 ${b.textContent.length} chars` : ''}${b.images.length > 0 ? ` • 🖼️ ${b.images.length}` : ''}${b.characterBindings.length > 0 ? ` • 🎭${b.characterBindings.length}` : ''}${b.contextBindings.length > 0 ? ` • 📜${b.contextBindings.length}` : ''}${b.locationBindings.length > 0 ? ` • 📍${b.locationBindings.length}` : ''}`}
+                    emptyMessage="No prompt blocks found."
+                    actionLabel="Delete"
+                />
+            )}
+
             {/* Language Models List */}
             {useMemo(() => {
                 if (!modals.modelList.isOpen) return null;
@@ -400,22 +416,6 @@ export function AppModals({
                     onCreateNew={() => samplerModal.open()}
                     renderSubtext={(s: Sampler) => `Temp: ${s?.parameters?.temperature}, TopP: ${s?.parameters?.top_p}, Tokens: ${s?.maximumNumberOfTokens}`}
                     emptyMessage="No samplers found."
-                    actionLabel="Delete"
-                />
-            )}
-
-            {/* Prompt Blocks List */}
-            {modals.promptBlockList.isOpen && (
-                <ManagerModal
-                    title="Prompt Blocks"
-                    items={allPromptBlocks}
-                    isOpen={modals.promptBlockList.isOpen}
-                    onClose={modals.promptBlockList.close}
-                    onSelect={(b: PromptBlock) => promptBlockModal.open(b)}
-                    onDelete={promptBlockModal.handleDelete}
-                    onCreateNew={() => promptBlockModal.open()}
-                    renderSubtext={(b: PromptBlock) => `${b.textContent ? `📝 ${b.textContent.length} chars` : ''}${b.images.length > 0 ? ` • 🖼️ ${b.images.length}` : ''}${b.characterBindings.length > 0 ? ` • 🎭${b.characterBindings.length}` : ''}${b.contextBindings.length > 0 ? ` • 📜${b.contextBindings.length}` : ''}${b.locationBindings.length > 0 ? ` • 📍${b.locationBindings.length}` : ''}`}
-                    emptyMessage="No prompt blocks found."
                     actionLabel="Delete"
                 />
             )}

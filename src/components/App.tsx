@@ -87,9 +87,9 @@ function App() {
     const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
     const { audioTracks: allAudioTracks, isLoading: audioTracksLoading, saveAudioTrack, deleteAudioTrack } = useAudioTrackManager();
     const { worlds: allWorlds, isLoading: worldsLoading, saveWorld, deleteWorld } = useWorldManager();
+    const { promptBlocks: allPromptBlocks, isLoading: promptBlocksLoading, savePromptBlock, deletePromptBlock } = usePromptBlockManager();
     const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
     const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
-    const { promptBlocks: allPromptBlocks, isLoading: promptBlocksLoading, savePromptBlock, deletePromptBlock } = usePromptBlockManager();
     const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
     const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
@@ -404,13 +404,13 @@ function App() {
         { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
         { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracksLoading },
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
+        { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocksLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
-        { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocksLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
-    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, modelsLoading, samplersLoading, promptBlocksLoading, stopLoading, budgetLoading, profilesLoading]);
+    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, promptBlocksLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -911,7 +911,7 @@ function App() {
                         <div ref={messageEndRef} style={{ height: '1px' }} />
                     </div>
 
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenPromptBlocks={modals.promptBlockList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
+                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
 
                     <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
                 </>}
