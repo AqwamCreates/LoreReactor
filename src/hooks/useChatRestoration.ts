@@ -1,6 +1,6 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
-import type { Character, InteractionData, RawInteractionData } from '../types';
+import type { Character, InteractionData, RawInteractionData, ChatMessage } from '../types';
 import { loadRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,6 +20,38 @@ interface UseChatRestorationOptions {
     setCurrentCharacter: (char: Character | null) => void;
     setSelectedModelId: (id: string | null) => void;
     startNewChat: (char: Character) => void;
+}
+
+/**
+ * Strips any trailing cursor characters that may have been baked into
+ * streamed text before the browser was refreshed mid-generation.
+ */
+function sanitizeStreamedText(text: string): string {
+    return text.replace(/▋$/g, '').trimEnd();
+}
+
+/**
+ * Finalizes any messages that were left in a partial state due to
+ * a browser refresh or crash mid-generation. After a reload, there is
+ * no active stream to complete them, so they must be treated as finished.
+ */
+function finalizeStalePartials(data: InteractionData): InteractionData {
+    let changed = false;
+    const history = data.interactionHistory.map(m => {
+        if (m.messageType === 'chat' && (m as ChatMessage).isPartial) {
+            changed = true;
+            return {
+                ...m,
+                textContent: sanitizeStreamedText(m.textContent),
+                isPartial: false,
+                lastUpdatedTimestamp: Date.now(),
+            } as ChatMessage;
+        }
+        return m;
+    });
+
+    if (!changed) return data;
+    return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
 function createEmptyChat(): InteractionData {
@@ -53,7 +85,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
     useEffect(() => {
         if (restorationDoneRef.current) return;
         if (charsLoading || chatsLoading || contextsLoading || locationsLoading || profilesLoading) return;
-
         restorationDoneRef.current = true;
 
         const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
@@ -66,6 +97,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
 
+            // Reload full message history if the shell has messages but empty history
             if (!fullChat.interactionHistory.length && (fullChat.numberOfMessages ?? 0) > 0) {
                 try {
                     const reloaded = await loadRawInteractionData(fullChat.id, allCharacters);
@@ -75,9 +107,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 }
             }
 
+            // FIX: Finalize any stale partial messages left from a mid-generation refresh
+            fullChat = finalizeStalePartials(fullChat);
+
             if (fullChat.protagonist) {
                 let protagonist = fullChat.protagonist;
-
                 const freshProtag = allCharacters.find(c => c.id === protagonist.id);
                 if (freshProtag) {
                     const fullChar = await loadFullCharacter(freshProtag.id);
@@ -104,7 +138,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     protagonist,
                     participants: hydratedParticipants,
                 });
-
                 setCurrentCharacter(protagonist);
             } else {
                 setInteractionData(fullChat);
@@ -115,7 +148,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             try {
                 if (!savedChatId) {
                     if (rawChatShells.length > 0) {
-                        // Hydrate the first raw shell on demand
                         const firstChatId = rawChatShells[0].id;
                         if (firstChatId) {
                             const loaded = await loadRawInteractionData(firstChatId, allCharacters);
@@ -132,7 +164,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 }
 
                 const interactionDataResult = await loadRawInteractionData(savedChatId, allCharacters);
-
                 if (interactionDataResult) {
                     await activateChat(interactionDataResult);
                 } else {
