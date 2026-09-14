@@ -4,9 +4,8 @@ import { useChatState } from './useChatState';
 import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
-import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData, editInteractionMessageInInteractionData } from './chatLogic';
+import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
 import { runSummarization } from '../services/SummarizationEngine';
-import { clearPartialFlag } from './messageLogic';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
@@ -89,6 +88,8 @@ export function useChatSession() {
 
     const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
 
+    const { processMemoryTrigger } = useMemoryTrigger();
+
     const chatEngine = useChatEngine({
         getState: state.getState,
         setInteractionData: state.setInteractionData,
@@ -97,6 +98,7 @@ export function useChatSession() {
         setStats: state.setStats,
         setCurrentCharacterExpression: state.setCurrentCharacterExpression,
         addToast,
+        processMemoryTrigger,
     });
 
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -263,8 +265,6 @@ export function useChatSession() {
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
 
-        const t = streamingTextRef.current;
-        const c = state.getState().streamingCharacter;
         const resumeId = resumingMessageIdRef.current;
         const currentData = state.getState().interactionData;
 
@@ -272,22 +272,32 @@ export function useChatSession() {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
 
-        if (resumeId && t && t.trim().length > 0 && currentData) {
-            const cleanText = sanitizeStreamedText(t);
-            const updated = editInteractionMessageInInteractionData(currentData, resumeId, cleanText);
-            const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
+        if (resumeId && currentData) {
+            const idx = currentData.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
+                const targetMsg = currentData.interactionHistory[idx] as ChatMessage;
+                
+                // FIX: Use the authoritative text from interactionData, NOT the potentially 
+                // stale streamingTextRef. useChatEngine has already been updating this 
+                // message incrementally. Overwriting it with streamingTextRef causes 
+                // text loss and visual flashing/disappearance.
+                const cleanText = sanitizeStreamedText(targetMsg.textContent);
+                
                 const paragraphs = (cleanText.match(/\n\n/g) || []).length + 1;
-                if (paragraphs > 0) consumeChatStaminaForMessage(updated.interactionHistory[idx], paragraphs);
-                const withPartial = [...updated.interactionHistory];
-                const targetMsg = withPartial[idx];
-                if (targetMsg.messageType === 'chat') {
-                    withPartial[idx] = { ...targetMsg, isPartial: true, lastUpdatedTimestamp: Date.now() } as ChatMessage;
-                }
-                // FIX: Atomically update interaction data AND clear streaming state
-                // in a single setState call to prevent intermediate render flash
+                
+                const withPartial = [...currentData.interactionHistory];
+                withPartial[idx] = { 
+                    ...targetMsg, 
+                    textContent: cleanText,
+                    isPartial: true, 
+                    lastUpdatedTimestamp: Date.now() 
+                } as ChatMessage;
+                
+                if (paragraphs > 0) consumeChatStaminaForMessage(withPartial[idx], paragraphs);
+
+                // Atomic update: interaction data + streaming state + isLoading in ONE call.
                 state.setState({
-                    interactionData: { ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() },
+                    interactionData: { ...currentData, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() },
                     streamingCharacter: null,
                     streamingText: '',
                     isLoading: false,
@@ -299,8 +309,9 @@ export function useChatSession() {
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
         } else {
+            const t = streamingTextRef.current;
+            const c = state.getState().streamingCharacter;
             pendingPartialRef.current = (t?.trim() && c) ? { text: sanitizeStreamedText(t), character: c } : null;
-            // FIX: Atomically clear streaming state
             state.setState({
                 streamingCharacter: null,
                 streamingText: '',
@@ -310,9 +321,10 @@ export function useChatSession() {
             });
         }
 
-        releaseLock();
+        // Only reset the ref. isLoading: false was already set atomically above.
+        isLoadingRef.current = false;
         resetStream();
-    }, [releaseLock, resetStream, state, streamingTextRef]);
+    }, [resetStream, state, streamingTextRef, isLoadingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = state.getState().interactionData;
@@ -333,7 +345,6 @@ export function useChatSession() {
         wasStoppedRef.current = false;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
-        // FIX: Set streaming text to existing text so content is visible immediately
         setStreamingText(existingText);
         streamingTextRef.current = existingText;
         state.setStreamingState(char, existingText);
@@ -347,11 +358,17 @@ export function useChatSession() {
             );
             if (!result) return;
 
-            const cleared = await clearPartialFlag(result, messageId);
-            const processed = await chatEngine.processPendingTools(cleared);
-            const finalized = finalizeMessageById(processed, messageId, wasStoppedRef.current);
+            const finalized = finalizeMessageById(result, messageId, wasStoppedRef.current);
 
-            state.setInteractionData(finalized);
+            // FIX: Atomically update interaction data AND clear streaming state.
+            // This prevents the one-frame double-message flash where isLoading is true
+            // but hasPartialInHistory is false (because isPartial was just set to false).
+            state.setState({
+                interactionData: finalized,
+                streamingCharacter: null,
+                streamingText: '',
+            });
+
             await saveRawInteractionData(finalized);
 
             resumingMessageIdRef.current = null;

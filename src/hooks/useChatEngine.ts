@@ -1,6 +1,6 @@
 // src/hooks/useChatEngine.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, PromptBlock, BudgetStrategy, ChatMessage, tool, BudgetData } from '../types';
+import type { Character, InteractionData, PromptBlock, BudgetStrategy, ChatMessage, BudgetData } from '../types';
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
@@ -21,12 +21,14 @@ interface EngineDependencies {
     setStats: (l: any) => void;
     setCurrentCharacterExpression: (e: string) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+    processMemoryTrigger: (rawText: string, character: Character, data: InteractionData) => Promise<void>;
 }
 
 export function useChatEngine(deps: EngineDependencies) {
     const { 
         getState, setInteractionData, setStreamingState, 
-        setBudgetData, setStats, setCurrentCharacterExpression, addToast 
+        setBudgetData, setStats, setCurrentCharacterExpression, addToast,
+        processMemoryTrigger,
     } = deps;
 
     const processPendingTools = useCallback(async (data: InteractionData): Promise<InteractionData> => {
@@ -62,7 +64,7 @@ export function useChatEngine(deps: EngineDependencies) {
                             initiativeWeight: 1, chatProbability: 0.5, maximumChatStamina: 4,
                             nameSensitivity: 1, chatImpatienceSensitivity: 0, skipProbability: 0,
                             memoryRetentionWeight: 1, contextSensitivity: 1, maximumActionStamina: 5,
-                            tools: {} as Record<tool, boolean>, enableMemoryWriting: false, enableMemoryReading: false,
+                            tools: {} as Record<string, boolean>, enableMemoryWriting: false, enableMemoryReading: false,
                             memories: {}, numberOfMessagesToDisableThinkPrompt: 0, numberOfMessagesToDisableMetaThinkInstructions: 0,
                             numberOfMessagesToDisableDialoguePrompt: 0, numberOfMessagesToDisableStarterPrompt: 0,
                             firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
@@ -130,9 +132,6 @@ export function useChatEngine(deps: EngineDependencies) {
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
 
-        // FIX: Track whether we're resuming an existing partial message.
-        // During resume, we must update the message in history on each token
-        // so the MessageBubble renders streaming text incrementally.
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
         const callbacks = {
@@ -140,10 +139,8 @@ export function useChatEngine(deps: EngineDependencies) {
                 setStreamingState(character, text);
                 onToken?.(text);
 
-                // FIX: During resume, also update the partial message in interaction history
-                // so the MessageBubble renders the streaming text incrementally.
-                // Without this, the bubble shows stale textContent while StreamingIndicators
-                // is suppressed by hasPartialInHistory, causing text to "appear" at completion.
+                // During resume, update the partial message in interaction history incrementally.
+                // This is the authoritative source of truth for the message text during streaming.
                 if (isResuming) {
                     const currentState = getState();
                     const currentData = currentState.interactionData;
@@ -186,9 +183,23 @@ export function useChatEngine(deps: EngineDependencies) {
             totalCost: prev.totalCost + result.statsDelta.totalCost,
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
+
+        // FIX: During resume, CharacterActor returns the ORIGINAL data unchanged
+        // (because message lifecycle is owned by the session layer). But onDisplayText
+        // has been incrementally updating interactionData in the store throughout streaming.
+        // We MUST read the CURRENT store state to get the latest text, not use
+        // result.updatedData which is the stale pre-stream snapshot.
+        const effectiveData = isResuming
+            ? (getState().interactionData ?? result.updatedData)
+            : result.updatedData;
+
+        // Memory trigger runs post-generation with full raw text
+        if (result.rawText) {
+            await processMemoryTrigger(result.rawText, character, effectiveData);
+        }
         
-        return result.updatedData;
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setInteractionData, addToast]);
+        return effectiveData;
+    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setInteractionData, addToast, processMemoryTrigger]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,

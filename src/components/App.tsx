@@ -248,8 +248,9 @@ function App() {
         return total;
     }, [interactionData]);
 
-    // FIX: Check if any partial message exists in history to suppress StreamingIndicators
-    // This prevents the double-message flash during resume generation
+    // Suppress StreamingIndicators when a partial message exists in history OR when streamingText is empty.
+    // The streamingText check prevents the one-frame double-message flash on completion where
+    // isLoading is still true but hasPartialInHistory just became false (isPartial was set to false).
     const hasPartialInHistory = useMemo(() => {
         return InteractionMessages.some(m => m.isPartial && m.messageType === 'chat');
     }, [InteractionMessages]);
@@ -310,7 +311,6 @@ function App() {
             localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
             return;
         }
-        // Re-hydrate model references from current allModels to ensure golden star reflects latest state
         const modelMap = new Map(allModels.map(m => [m.id, m]));
         const freshOnline = strategy.onlineModels
             .map(m => modelMap.get(m.id))
@@ -508,7 +508,6 @@ function App() {
                     participantCounts[interactionData.protagonist.id] = 0;
                 }
 
-                // Resolve tokenizer model: prefer selectedModelId, fall back to activeStrategy's first online model
                 let tokenizerModel: LanguageModel | undefined;
                 if (selectedModelId) {
                     tokenizerModel = allModels.find(m => m.id === selectedModelId);
@@ -526,7 +525,6 @@ function App() {
                     engine.setRunningModels(runningModels);
                     engine.setContext(tokenizerModel);
                 } else {
-                    // No model available for tokenization — skip counting this cycle
                     return;
                 }
 
@@ -841,8 +839,9 @@ function App() {
                             <ChatScrollButtons containerRef={chatHistoryRef} />
                         )}
 
-                        {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
-                        {viewMode === 'cinematic' && isLoading && !hasPartialInHistory && (
+                        {/* FIX: Added `streamingText` to guard. Prevents the one-frame double-message flash
+                            on completion where isLoading is true but hasPartialInHistory just became false. */}
+                        {viewMode === 'cinematic' && isLoading && !hasPartialInHistory && streamingText && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}
@@ -903,8 +902,8 @@ function App() {
                             );
                         })}
 
-                        {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
-                        {viewMode === 'ladder' && isLoading && !hasPartialInHistory && (
+                        {/* FIX: Added `streamingText` to guard. */}
+                        {viewMode === 'ladder' && isLoading && !hasPartialInHistory && streamingText && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}
@@ -925,7 +924,6 @@ function App() {
                 </>}
 
                 <AppModals
-                    // Modals & data
                     modals={modals}
                     runningModels={runningModels}
                     rawChatShells={rawChatShells}
@@ -942,7 +940,6 @@ function App() {
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
                     allMemories={allMemories}
-                    // Entity modals
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
@@ -954,56 +951,41 @@ function App() {
                     stopModal={stopModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
-                    // Chat callbacks
                     onSwitchChat={handleSwitchChat}
                     onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
                     onRenameChat={handleRenameChat}
-                    // Character callbacks
                     onDeleteCharacter={deleteCharacter}
                     onLoadFullCharacter={loadFullCharacter}
                     onToggleParticipant={handleToggleParticipant}
                     onSetProtagonist={handleSetChatProtagonist}
                     onSaveCharacter={saveCharacter}
-                    // Context callbacks
                     onDeleteContext={contextModal.handleDelete}
                     onToggleContext={handleToggleContext}
                     onSaveContext={saveContext}
-                    // Location callbacks
                     onDeleteLocation={locationModal.handleDelete}
                     onToggleLocation={handleToggleLocation}
                     onSaveLocation={saveLocation}
-                    // Audio track callbacks
                     onDeleteAudioTrack={audioTrackModal.handleDelete}
                     onToggleAudioTrack={handleToggleAudioTrack}
                     onSaveAudioTrack={saveAudioTrack}
-                    // World callbacks
                     onSaveWorld={saveWorld}
                     onLoadWorld={handleLoadWorld}
                     onDeleteWorld={deleteWorld}
-                    // Model callbacks
                     onDeleteModel={deleteModel}
                     onToggleModelLoad={toggleModelLoad}
-                    // Sampler callbacks
                     onDeleteSampler={samplerModal.handleDelete}
-                    // Prompt block callbacks
                     onDeletePromptBlock={promptBlockModal.handleDelete}
-                    // Stop pattern callbacks
                     onDeleteStopPattern={stopModal.handleDelete}
-                    // Budget strategy callbacks
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
-                    // Profile callbacks
                     onDeleteProfile={deleteProfile}
                     onActivateProfile={handleActivateProfile}
                     onSaveProfile={saveProfile}
-                    // Extension callbacks
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
-                    // Memory callbacks
                     onDeleteMemory={deleteMemory}
-                    // Interaction data callbacks
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);
                         setInteractionData(withLocations);
@@ -1013,7 +995,6 @@ function App() {
                     onSendCustomMessage={handleSendCustomMessage}
                     onInjectCustomMessage={handleInjectCustomMessage}
                     onInjectFirstMessage={handleInjectFirstMessage}
-                    // General callbacks
                     onImportComplete={handleImportComplete}
                     addToast={addToast}
                     ensureChatsLoaded={ensureChatsLoaded}
