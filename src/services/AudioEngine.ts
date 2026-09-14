@@ -57,7 +57,7 @@ export class AudioEngine {
 
         try {
             const url = getAudioTrackUrl(filename);
-            const response = await fetch(url);
+            const response = await fetch(url || "");
             if (!response.ok) return null;
             const arrayBuffer = await response.arrayBuffer();
             const context = this.ensureContext();

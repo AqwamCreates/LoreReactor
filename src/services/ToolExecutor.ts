@@ -1633,7 +1633,7 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
     switch (subcommand) {
         case 'list_chats': {
             const content = `Current session: "${interactionData.name}" (${interactionData.participants.length} participants, ${interactionData.interactionHistory.length} messages)`;
-            return { toolType: 'administrator', args, content, displayReplacement: `[🔧 Session info listed]` };
+            return { toolType: 'administrator', args, content, displayReplacement: "[🔧 Session info listed]" };
         }
 
         case 'move_protagonist': {
@@ -1664,7 +1664,7 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
 
         case 'list_models': {
             const content = 'Model listing requires access to model manager data. Use the Language Models panel instead.';
-            return { toolType: 'administrator', args, content, displayReplacement: `[🔧 Use Language Models panel]` };
+            return { toolType: 'administrator', args, content, displayReplacement: "[🔧 Use Language Models panel]" };
         }
 
         default: {
