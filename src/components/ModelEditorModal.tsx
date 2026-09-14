@@ -1,6 +1,6 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
-import type { backend, LanguageModel, StopPattern } from '../types';
+import type { backend, LanguageModel, StopPattern, localBackend } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../languageModelInformation';
@@ -80,6 +80,27 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
+// ─── Backend capability flags ───────────────────────────────────────
+
+/** Backends that support GPU layer offloading */
+const GPU_LAYERS_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama', 'mistral.rs']);
+
+/** Backends that support llama.cpp-style KV cache quantization (separate K/V types) */
+const SEPARATE_KV_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama']);
+
+/** Backends where speculative decoding is supported */
+const SPEC_DECODING_BACKENDS = new Set<string>(['Llama.cpp', 'vLLM', 'SGLang', 'ExLlamaV3', 'ExLlamaV3 HF']);
+
+/** Backends that support llama.cpp-specific memory options (mmap, mlock, numa, etc.) */
+const LLAMA_MEMORY_BACKENDS = new Set<string>(['Llama.cpp']);
+
+/** Backends where VRAM estimation is supported */
+const VRAM_SUPPORTED_BACKENDS = new Set<string>([
+    'Llama.cpp', 'Ollama', 'LM Studio', 'mistral.rs',
+    'ExLlamaV2', 'ExLlamaV3', 'ExLlamaV3 HF',
+    'vLLM', 'SGLang', 'Transformers', 'TensorRT-LLM', 'LocalAI',
+]);
+
 const getCacheTypes = (backend: string) => {
     switch (backend) {
         case 'Llama.cpp': return [
@@ -96,6 +117,13 @@ const getCacheTypes = (backend: string) => {
         case 'Ollama': return [
             { value: 'f16', label: 'F16' },
             { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q4_0', label: 'Q4_0' },
+        ];
+        case 'mistral.rs': return [
+            { value: 'f16', label: 'F16' },
+            { value: 'bf16', label: 'BF16' },
+            { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q4_k', label: 'Q4_K' },
             { value: 'q4_0', label: 'Q4_0' },
         ];
         case 'ExLlamaV3': case 'ExLlamaV3 HF':
@@ -125,6 +153,26 @@ const getCacheTypes = (backend: string) => {
                 { value: 'quantized', label: 'Quantized' }, { value: 'sliding_window', label: 'Sliding Window' },
                 { value: 'sink', label: 'Sink' },
             ];
+        case 'vLLM':
+            return [
+                { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
+                { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
+            ];
+        case 'SGLang':
+            return [
+                { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
+                { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
+            ];
+        case 'LM Studio':
+            return [
+                { value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' },
+                { value: 'q4_k', label: 'Q4_K' }, { value: 'q4_0', label: 'Q4_0' },
+            ];
+        case 'LocalAI':
+            return [
+                { value: 'default', label: 'Default' }, { value: 'f16', label: 'F16' },
+                { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' },
+            ];
         case 'DeepSeek': return [{ value: 'auto', label: 'Auto' }];
         case 'Qwen': return [{ value: 'align', label: 'Align' }, { value: 'dynamic', label: 'Dynamic' }];
         default: return [{ value: 'default', label: 'Default' }];
@@ -144,7 +192,7 @@ export function ModelEditorModal({
 }: ModelEditorModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [backend, setBackend] = useState<backend>('Llama.cpp');
+    const [selectedBackend, setSelectedBackend] = useState<backend>('Llama.cpp');
     const [contextLength, setContextLength] = useState<number>(0);
     const [modelPath, setModelPath] = useState('');
     const [mmprojPath, setMmprojPath] = useState('');
@@ -160,7 +208,6 @@ export function ModelEditorModal({
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
-    // Refs for file inputs
     const modelFileRef = useRef<HTMLInputElement>(null);
     const mmprojFileRef = useRef<HTMLInputElement>(null);
     const loraFileRef = useRef<HTMLInputElement>(null);
@@ -168,90 +215,94 @@ export function ModelEditorModal({
 
     const isLoadingExistingRef = useRef(false);
 
-    const { estimatedVRAM, isEstimating, error } = vramUseEstimation({
+    const { estimatedVRAM, isEstimating, error: vramError } = vramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
         keyCacheType: settings.cache_type_k,
         valueCacheType: settings.cache_type_v,
         contextSize: contextLength || 8192,
-        backend: backend || "",
+        backend: selectedBackend || "",
     });
 
-    const isCloudBackend = cloudBackends.includes(backend || "");
-    const isLlamaCpp = backend === 'Llama.cpp';
+    const isCloudBackend = cloudBackends.includes(selectedBackend || "");
+    const supportsGpuLayers = GPU_LAYERS_BACKENDS.has(selectedBackend);
+    const supportsSeparateKV = SEPARATE_KV_BACKENDS.has(selectedBackend);
+    const supportsSpecDecoding = SPEC_DECODING_BACKENDS.has(selectedBackend);
+    const supportsLlamaMemory = LLAMA_MEMORY_BACKENDS.has(selectedBackend);
+    const supportsVRAM = VRAM_SUPPORTED_BACKENDS.has(selectedBackend);
 
     useEffect(() => {
         if (isOpen) {
             const timer = window.setTimeout(() => {
                 if (existingModel) {
-                isLoadingExistingRef.current = true;
+                    isLoadingExistingRef.current = true;
 
-                setName(existingModel.name || '');
-                setDescription(existingModel.description || '');
-                setBackend(existingModel.backend || 'Llama.cpp');
-                setContextLength(existingModel.contextLength || 0);
-                setModelPath(existingModel.model || '');
-                setMmprojPath(existingModel.mmproj || '');
-                setLoraPath(existingModel.lora || '');
-                setApiKey(existingModel.apiKey || '');
-                setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
-                setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
-                setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
+                    setName(existingModel.name || '');
+                    setDescription(existingModel.description || '');
+                    setSelectedBackend(existingModel.backend || 'Llama.cpp');
+                    setContextLength(existingModel.contextLength || 0);
+                    setModelPath(existingModel.model || '');
+                    setMmprojPath(existingModel.mmproj || '');
+                    setLoraPath(existingModel.lora || '');
+                    setApiKey(existingModel.apiKey || '');
+                    setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
+                    setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
+                    setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
 
-                const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
-                setSelectedStopPatternIds(storedIds);
+                    const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
+                    setSelectedStopPatternIds(storedIds);
 
-                if (existingModel.parameters) {
-                    const params = existingModel.parameters;
+                    if (existingModel.parameters) {
+                        const params = existingModel.parameters;
 
-                    const cacheK = (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k;
-                    const cacheV = (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v;
-                    const cacheCombined = (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type;
+                        const cacheK = (params.cache_type_k as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_k;
+                        const cacheV = (params.cache_type_v as string) ?? (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type_v;
+                        const cacheCombined = (params.cache_type as string) ?? DEFAULT_SETTINGS.cache_type;
 
-                    setSettings({
-                        gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
-                        cache_type_k: cacheK,
-                        cache_type_v: cacheV,
-                        cache_type: cacheCombined,
-                        split_mode: (params.split_mode as string) ?? DEFAULT_SETTINGS.split_mode,
-                        ik: (params.ik as boolean) ?? DEFAULT_SETTINGS.ik,
-                        spec_type: (params.spec_type as string) ?? DEFAULT_SETTINGS.spec_type,
-                        draft_max: (params.draft_max as number) ?? DEFAULT_SETTINGS.draft_max,
-                        draft_model: (params.draft_model as string) ?? DEFAULT_SETTINGS.draft_model,
-                        gpu_layers_draft: (params.gpu_layers_draft as number) ?? DEFAULT_SETTINGS.gpu_layers_draft,
-                        device_draft: (params.device_draft as string) ?? DEFAULT_SETTINGS.device_draft,
-                        parallel: (params.parallel as number) ?? DEFAULT_SETTINGS.parallel,
-                        threads: (params.threads as number) ?? DEFAULT_SETTINGS.threads,
-                        threads_batch: (params.threads_batch as number) ?? DEFAULT_SETTINGS.threads_batch,
-                        batch_size: (params.batch_size as number) ?? DEFAULT_SETTINGS.batch_size,
-                        ubatch_size: (params.ubatch_size as number) ?? DEFAULT_SETTINGS.ubatch_size,
-                        fit_target: (params.fit_target as string) ?? DEFAULT_SETTINGS.fit_target,
-                        tensor_split: (params.tensor_split as string) ?? DEFAULT_SETTINGS.tensor_split,
-                        extra_flags: (params.extra_flags as string) ?? DEFAULT_SETTINGS.extra_flags,
-                        cpu_moe: (params.cpu_moe as boolean) ?? DEFAULT_SETTINGS.cpu_moe,
-                        no_kv_offload: (params.no_kv_offload as boolean) ?? DEFAULT_SETTINGS.no_kv_offload,
-                        no_mmap: (params.no_mmap as boolean) ?? DEFAULT_SETTINGS.no_mmap,
-                        mlock: (params.mlock as boolean) ?? DEFAULT_SETTINGS.mlock,
-                        numa: (params.numa as boolean) ?? DEFAULT_SETTINGS.numa,
-                    });
+                        setSettings({
+                            gpu_layers: (params.gpu_layers as number) ?? DEFAULT_SETTINGS.gpu_layers,
+                            cache_type_k: cacheK,
+                            cache_type_v: cacheV,
+                            cache_type: cacheCombined,
+                            split_mode: (params.split_mode as string) ?? DEFAULT_SETTINGS.split_mode,
+                            ik: (params.ik as boolean) ?? DEFAULT_SETTINGS.ik,
+                            spec_type: (params.spec_type as string) ?? DEFAULT_SETTINGS.spec_type,
+                            draft_max: (params.draft_max as number) ?? DEFAULT_SETTINGS.draft_max,
+                            draft_model: (params.draft_model as string) ?? DEFAULT_SETTINGS.draft_model,
+                            gpu_layers_draft: (params.gpu_layers_draft as number) ?? DEFAULT_SETTINGS.gpu_layers_draft,
+                            device_draft: (params.device_draft as string) ?? DEFAULT_SETTINGS.device_draft,
+                            parallel: (params.parallel as number) ?? DEFAULT_SETTINGS.parallel,
+                            threads: (params.threads as number) ?? DEFAULT_SETTINGS.threads,
+                            threads_batch: (params.threads_batch as number) ?? DEFAULT_SETTINGS.threads_batch,
+                            batch_size: (params.batch_size as number) ?? DEFAULT_SETTINGS.batch_size,
+                            ubatch_size: (params.ubatch_size as number) ?? DEFAULT_SETTINGS.ubatch_size,
+                            fit_target: (params.fit_target as string) ?? DEFAULT_SETTINGS.fit_target,
+                            tensor_split: (params.tensor_split as string) ?? DEFAULT_SETTINGS.tensor_split,
+                            extra_flags: (params.extra_flags as string) ?? DEFAULT_SETTINGS.extra_flags,
+                            cpu_moe: (params.cpu_moe as boolean) ?? DEFAULT_SETTINGS.cpu_moe,
+                            no_kv_offload: (params.no_kv_offload as boolean) ?? DEFAULT_SETTINGS.no_kv_offload,
+                            no_mmap: (params.no_mmap as boolean) ?? DEFAULT_SETTINGS.no_mmap,
+                            mlock: (params.mlock as boolean) ?? DEFAULT_SETTINGS.mlock,
+                            numa: (params.numa as boolean) ?? DEFAULT_SETTINGS.numa,
+                        });
+                    } else {
+                        setSettings({ ...DEFAULT_SETTINGS });
+                    }
                 } else {
+                    isLoadingExistingRef.current = false;
+                    setName('');
+                    setDescription('');
+                    setSelectedBackend('Llama.cpp');
+                    setContextLength(0);
+                    setModelPath('');
+                    setMmprojPath('');
+                    setLoraPath('');
+                    setApiKey('');
+                    setCacheHitCostPerMillion(0);
+                    setCacheMissCostPerMillion(0);
+                    setOutputGenerationCostPerMillion(0);
                     setSettings({ ...DEFAULT_SETTINGS });
-                }
-                } else {
-                isLoadingExistingRef.current = false;
-                setName('');
-                setDescription('');
-                setBackend('Llama.cpp');
-                setContextLength(0);
-                setModelPath('');
-                setMmprojPath('');
-                setLoraPath('');
-                setApiKey('');
-                setCacheHitCostPerMillion(0);
-                setCacheMissCostPerMillion(0);
-                setOutputGenerationCostPerMillion(0);
-                setSettings({ ...DEFAULT_SETTINGS });
-                setSelectedStopPatternIds([]);
+                    setSelectedStopPatternIds([]);
                 }
                 setErrors({});
             }, 0);
@@ -261,7 +312,7 @@ export function ModelEditorModal({
     }, [isOpen, existingModel]);
 
     useEffect(() => {
-        const cacheTypes = getCacheTypes(backend || "");
+        const cacheTypes = getCacheTypes(selectedBackend || "");
         if (cacheTypes.length === 0) return;
 
         const validValues = cacheTypes.map(ct => ct.value);
@@ -294,7 +345,7 @@ export function ModelEditorModal({
                 cache_type_v: defaultVal,
             }));
         }
-    }, [backend]);
+    }, [selectedBackend]);
 
     const handleSettingChange = <K extends keyof ModelSettings>(key: K, value: ModelSettings[K]) => {
         setSettings(prev => {
@@ -329,9 +380,9 @@ export function ModelEditorModal({
         }
 
         const params: Record<string, unknown> = {};
-        if (settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
+        if (supportsGpuLayers && settings.gpu_layers !== DEFAULT_SETTINGS.gpu_layers) params.gpu_layers = settings.gpu_layers;
 
-        if (isLlamaCpp) {
+        if (supportsSeparateKV) {
             params.cache_type_k = settings.cache_type_k;
             params.cache_type_v = settings.cache_type_v;
             params.cache_type = settings.cache_type;
@@ -339,13 +390,13 @@ export function ModelEditorModal({
             params.cache_type = settings.cache_type;
         }
 
-        if (settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
-        if (settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
-        if (settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
-        if (settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
-        if (settings.draft_model?.trim()) params.draft_model = settings.draft_model;
-        if (settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
-        if (settings.device_draft?.trim()) params.device_draft = settings.device_draft;
+        if (supportsGpuLayers && settings.split_mode !== DEFAULT_SETTINGS.split_mode) params.split_mode = settings.split_mode;
+        if (supportsGpuLayers && settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
+        if (supportsSpecDecoding && settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
+        if (supportsSpecDecoding && settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
+        if (supportsSpecDecoding && settings.draft_model?.trim()) params.draft_model = settings.draft_model;
+        if (supportsSpecDecoding && settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
+        if (supportsSpecDecoding && settings.device_draft?.trim()) params.device_draft = settings.device_draft;
         if (settings.parallel !== DEFAULT_SETTINGS.parallel) params.parallel = settings.parallel;
         if (settings.threads !== DEFAULT_SETTINGS.threads) params.threads = settings.threads;
         if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) params.threads_batch = settings.threads_batch;
@@ -354,11 +405,13 @@ export function ModelEditorModal({
         if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) params.fit_target = settings.fit_target;
         if (settings.tensor_split?.trim()) params.tensor_split = settings.tensor_split;
         if (settings.extra_flags?.trim()) params.extra_flags = settings.extra_flags;
-        if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
-        if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;
-        if (settings.no_mmap !== DEFAULT_SETTINGS.no_mmap) params.no_mmap = settings.no_mmap;
-        if (settings.mlock !== DEFAULT_SETTINGS.mlock) params.mlock = settings.mlock;
-        if (settings.numa !== DEFAULT_SETTINGS.numa) params.numa = settings.numa;
+        if (supportsLlamaMemory) {
+            if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
+            if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;
+            if (settings.no_mmap !== DEFAULT_SETTINGS.no_mmap) params.no_mmap = settings.no_mmap;
+            if (settings.mlock !== DEFAULT_SETTINGS.mlock) params.mlock = settings.mlock;
+            if (settings.numa !== DEFAULT_SETTINGS.numa) params.numa = settings.numa;
+        }
 
         if (selectedStopPatternIds.length > 0) params.stop_pattern_ids = selectedStopPatternIds;
         if (apiKey.trim()) params.api_key = apiKey.trim();
@@ -368,7 +421,7 @@ export function ModelEditorModal({
             id: isNewClone ? uuidv4() : (existingModel?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
-            backend,
+            backend: selectedBackend,
             contextLength: contextLength || 0,
             model: modelPath.trim() || undefined,
             mmproj: mmprojPath.trim() || undefined,
@@ -397,21 +450,17 @@ export function ModelEditorModal({
         onClose();
     };
 
-    // Helper to handle file selection
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
         const file = e.target.files?.[0];
         if (file) {
-            // For security reasons, browsers only provide the filename, not the full path.
-            // However, for local apps or specific configurations, this might be sufficient.
-            // If you need the full path, you might need a different approach (e.g., drag-and-drop with path access if supported).
             setter((file as File & { path?: string }).path ?? file.name);
         }
     };
 
     if (!isOpen) return null;
 
-    const cacheTypes = getCacheTypes(backend || "");
-    const displayVRAM = isEstimating ? '...' : (error ? 'Unknown' : estimatedVRAM);
+    const cacheTypes = getCacheTypes(selectedBackend || "");
+    const displayVRAM = isEstimating ? '...' : (vramError ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
     return (
@@ -420,7 +469,7 @@ export function ModelEditorModal({
                 <div className="modal-header">
                     <h2>{existingModel ? 'Edit Model' : 'Create New Model'}</h2>
                     <div className="editor-modal-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {backend === 'Llama.cpp' && (
+                        {supportsVRAM && !isCloudBackend && (
                             <div style={{ fontSize: '0.7rem', color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', fontWeight: 'bold' }}>
                                 💾 {displayVRAM} GB
                             </div>
@@ -449,7 +498,7 @@ export function ModelEditorModal({
 
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Backend</label>
-                        <select value={backend ?? ""} onChange={(e) => setBackend(e.target.value as backend)} className="editor-select">
+                        <select value={selectedBackend ?? ""} onChange={(e) => setSelectedBackend(e.target.value as backend)} className="editor-select">
                             {backends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                         </select>
                     </div>
@@ -457,27 +506,27 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <input 
-                                type="text" 
-                                value={modelPath} 
-                                onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} 
-                                className={`editor-input ${errors.model ? 'error' : ''}`} 
-                                style={{ fontFamily: 'monospace', flex: 1 }} 
-                                placeholder="/path/to/model.gguf" 
+                            <input
+                                type="text"
+                                value={modelPath}
+                                onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }}
+                                className={`editor-input ${errors.model ? 'error' : ''}`}
+                                style={{ fontFamily: 'monospace', flex: 1 }}
+                                placeholder="/path/to/model.gguf"
                             />
-                            <button 
-                                type="button" 
-                                onClick={() => modelFileRef.current?.click()} 
+                            <button
+                                type="button"
+                                onClick={() => modelFileRef.current?.click()}
                                 className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
                             </button>
-                            <input 
-                                ref={modelFileRef} 
-                                type="file" 
-                                style={{ display: 'none' }} 
-                                onChange={(e) => handleFileSelect(e, setModelPath)} 
+                            <input
+                                ref={modelFileRef}
+                                type="file"
+                                style={{ display: 'none' }}
+                                onChange={(e) => handleFileSelect(e, setModelPath)}
                             />
                         </div>
                         {errors.model && <div className="editor-error-message">{errors.model}</div>}
@@ -486,76 +535,74 @@ export function ModelEditorModal({
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">MMProj Path</label>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <input 
-                                type="text" 
-                                value={mmprojPath} 
-                                onChange={(e) => setMmprojPath(e.target.value)} 
-                                className="editor-input" 
-                                style={{ fontFamily: 'monospace', flex: 1 }} 
-                                placeholder="/path/to/mmproj.gguf" 
+                            <input
+                                type="text"
+                                value={mmprojPath}
+                                onChange={(e) => setMmprojPath(e.target.value)}
+                                className="editor-input"
+                                style={{ fontFamily: 'monospace', flex: 1 }}
+                                placeholder="/path/to/mmproj.gguf"
                             />
-                            <button 
-                                type="button" 
-                                onClick={() => mmprojFileRef.current?.click()} 
+                            <button
+                                type="button"
+                                onClick={() => mmprojFileRef.current?.click()}
                                 className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
                             </button>
-                            <input 
-                                ref={mmprojFileRef} 
-                                type="file" 
-                                style={{ display: 'none' }} 
-                                onChange={(e) => handleFileSelect(e, setMmprojPath)} 
+                            <input
+                                ref={mmprojFileRef}
+                                type="file"
+                                style={{ display: 'none' }}
+                                onChange={(e) => handleFileSelect(e, setMmprojPath)}
                             />
                         </div>
                         {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
                     </div>
 
-                    {/* ✅ LoRA Adapter Path */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">LoRA Adapter Path</label>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <input 
-                                type="text" 
-                                value={loraPath} 
-                                onChange={(e) => setLoraPath(e.target.value)} 
-                                className="editor-input" 
-                                style={{ fontFamily: 'monospace', flex: 1 }} 
-                                placeholder="/path/to/lora-adapter.gguf" 
+                            <input
+                                type="text"
+                                value={loraPath}
+                                onChange={(e) => setLoraPath(e.target.value)}
+                                className="editor-input"
+                                style={{ fontFamily: 'monospace', flex: 1 }}
+                                placeholder="/path/to/lora-adapter.gguf"
                             />
-                            <button 
-                                type="button" 
-                                onClick={() => loraFileRef.current?.click()} 
+                            <button
+                                type="button"
+                                onClick={() => loraFileRef.current?.click()}
                                 className="editor-button editor-button-cancel"
                                 style={{ padding: '6px 12px' }}
                             >
                                 📁
                             </button>
-                            <input 
-                                ref={loraFileRef} 
-                                type="file" 
-                                style={{ display: 'none' }} 
-                                onChange={(e) => handleFileSelect(e, setLoraPath)} 
+                            <input
+                                ref={loraFileRef}
+                                type="file"
+                                style={{ display: 'none' }}
+                                onChange={(e) => handleFileSelect(e, setLoraPath)}
                             />
                         </div>
                         {loraPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Language model has been modified.</div>}
                     </div>
 
-                    {/* Context Length */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Context Length</label>
-                        <input 
-                            type="number" 
-                            value={contextLength} 
-                            onChange={(e) => setContextLength(Math.max(0, Number(e.target.value) || 0))} 
-                            className="editor-input" 
-                            min="0" 
-                            step="1024" 
-                            placeholder="0 (Auto-detect from model)" 
+                        <input
+                            type="number"
+                            value={contextLength}
+                            onChange={(e) => setContextLength(Math.max(0, Number(e.target.value) || 0))}
+                            className="editor-input"
+                            min="0"
+                            step="1024"
+                            placeholder="0 (Auto-detect from model)"
                         />
                         <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px' }}>
-                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 16384, 32768, 65536, 131072). Sent to server as -c flag.
+                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 16384, 32768, 65536, 131072).
                         </div>
                     </div>
 
@@ -575,26 +622,13 @@ export function ModelEditorModal({
                                 onClick={() => setShowApiKey(!showApiKey)}
                                 className="editor-button"
                                 style={{
-                                    padding: '6px 10px',
-                                    width: 'auto',
-                                    minWidth: '40px',
-                                    color: 'var(--accent)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    background: 'transparent',
-                                    border: '1px solid var(--border)',
-                                    transition: 'all 0.2s'
+                                    padding: '6px 10px', width: 'auto', minWidth: '40px',
+                                    color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: 'transparent', border: '1px solid var(--border)', transition: 'all 0.2s'
                                 }}
                                 title={showApiKey ? 'Hide API key' : 'Show API key'}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = 'var(--accent-bg)';
-                                    e.currentTarget.style.borderColor = 'var(--accent)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'transparent';
-                                    e.currentTarget.style.borderColor = 'var(--border)';
-                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}
                             >
                                 {showApiKey ? '🙈' : '👁️'}
                             </button>
@@ -602,167 +636,172 @@ export function ModelEditorModal({
                         {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
                     </div>
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Main Options</span>
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">GPU Layers</label>
-                                <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Split Mode</label>
-                                <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
-                                    {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">Use IK</label>
-                                <div style={{ paddingTop: '6px' }}>
-                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                        <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
-                                        <span>IK Llama.cpp</span>
-                                    </label>
+                    {/* ─── Main Options (GPU layers backends only) ─── */}
+                    {(supportsGpuLayers || !isCloudBackend) && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Main Options</span>
+                            {supportsGpuLayers && (
+                                <div className="editor-row">
+                                    <div>
+                                        <label className="editor-label editor-label-small">GPU Layers</label>
+                                        <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Split Mode</label>
+                                        <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
+                                            {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
+                            {supportsGpuLayers && (
+                                <div className="editor-row">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Use IK</label>
+                                        <div style={{ paddingTop: '6px' }}>
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
+                                                <span>IK Llama.cpp</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {!isCloudBackend && (
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
+                                    ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
+                                </div>
+                            )}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
-                            ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
-                        </div>
-                    </div>
+                    )}
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Key-Value Cache Quantization</span>
-                        {isLlamaCpp ? (
-                            <>
-                                <div style={{ marginBottom: '12px' }}>
-                                    <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
-                                    <select
-                                        value={settings.cache_type}
-                                        onChange={(e) => handleSettingChange('cache_type', e.target.value)}
-                                        className="editor-select"
-                                    >
+                    {/* ─── KV Cache Quantization ─── */}
+                    {!isCloudBackend && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Key-Value Cache Quantization</span>
+                            {supportsSeparateKV ? (
+                                <>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
+                                        <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
+                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                    </div>
+                                    <div className="editor-row">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Key Cache Type</label>
+                                            <select value={settings.cache_type_k} onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} className="editor-select">
+                                                {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Value Cache Type</label>
+                                            <select value={settings.cache_type_v} onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} className="editor-select">
+                                                {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div>
+                                    <label className="editor-label editor-label-small">Cache Type</label>
+                                    <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
                                         {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                     </select>
                                 </div>
+                            )}
+                        </div>
+                    )}
 
-                                <div className="editor-row">
-                                    <div>
-                                        <label className="editor-label editor-label-small">Key Cache Type</label>
-                                        <select
-                                            value={settings.cache_type_k}
-                                            onChange={(e) => handleSettingChange('cache_type_k', e.target.value)}
-                                            className="editor-select"
-                                        >
-                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="editor-label editor-label-small">Value Cache Type</label>
-                                        <select
-                                            value={settings.cache_type_v}
-                                            onChange={(e) => handleSettingChange('cache_type_v', e.target.value)}
-                                            className="editor-select"
-                                        >
-                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
-                                    </div>
+                    {/* ─── Speculative Decoding (supported backends only) ─── */}
+                    {supportsSpecDecoding && !isCloudBackend && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Speculative Decoding</span>
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label">Draft Model Path</label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        value={settings.draft_model}
+                                        onChange={(e) => handleSettingChange('draft_model', e.target.value)}
+                                        className="editor-input"
+                                        style={{ fontFamily: 'monospace', flex: 1 }}
+                                        placeholder="/path/to/draft/model.gguf"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => draftFileRef.current?.click()}
+                                        className="editor-button editor-button-cancel"
+                                        style={{ padding: '6px 12px' }}
+                                    >
+                                        📁
+                                    </button>
+                                    <input
+                                        ref={draftFileRef}
+                                        type="file"
+                                        style={{ display: 'none' }}
+                                        onChange={(e) => handleFileSelect(e, (val) => handleSettingChange('draft_model', val))}
+                                    />
                                 </div>
-                            </>
-                        ) : (
-                            <div>
-                                <label className="editor-label editor-label-small">Cache Type</label>
-                                <select
-                                    value={settings.cache_type}
-                                    onChange={(e) => handleSettingChange('cache_type', e.target.value)}
-                                    className="editor-select"
-                                >
-                                    {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
                             </div>
-                        )}
-                    </div>
+                            <div className="editor-row">
+                                <div>
+                                    <label className="editor-label editor-label-small">Speculation Type</label>
+                                    <select value={settings.spec_type} onChange={(e) => handleSettingChange('spec_type', e.target.value)} className="editor-select">
+                                        {SPEC_TYPE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Draft Maximum</label>
+                                    <input type="number" value={settings.draft_max} onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)} className="editor-input" min="1" step="1" placeholder="3" />
+                                </div>
+                            </div>
+                            <div className="editor-row">
+                                <div>
+                                    <label className="editor-label editor-label-small">GPU Layers (Draft)</label>
+                                    <input type="number" value={settings.gpu_layers_draft} onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)} className="editor-input" min="0" step="1" placeholder="256" />
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Device (Draft)</label>
+                                    <input type="text" value={settings.device_draft} onChange={(e) => handleSettingChange('device_draft', e.target.value)} className="editor-input" placeholder="CUDA0,CUDA1" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Speculative Decoding</span>
-                        <div style={{ marginBottom: '16px' }}>
-                            <label className="editor-label">Draft Model Path</label>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <input 
-                                    type="text" 
-                                    value={settings.draft_model} 
-                                    onChange={(e) => handleSettingChange('draft_model', e.target.value)} 
-                                    className="editor-input" 
-                                    style={{ fontFamily: 'monospace', flex: 1 }} 
-                                    placeholder="/path/to/draft/model.gguf" 
-                                />
-                                <button 
-                                    type="button" 
-                                    onClick={() => draftFileRef.current?.click()} 
-                                    className="editor-button editor-button-cancel"
-                                    style={{ padding: '6px 12px' }}
-                                >
-                                    📁
-                                </button>
-                                <input 
-                                    ref={draftFileRef} 
-                                    type="file" 
-                                    style={{ display: 'none' }} 
-                                    onChange={(e) => handleFileSelect(e, (val) => handleSettingChange('draft_model', val))} 
-                                />
+                    {/* ─── Other Options ─── */}
+                    {!isCloudBackend && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Other Options</span>
+                            <div className="editor-row">
+                                <div><label className="editor-label editor-label-small">Parallel Slots</label><input type="number" value={settings.parallel} onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)} className="editor-input" min="1" step="1" placeholder="1" /></div>
+                                <div><label className="editor-label editor-label-small">Thread Count</label><input type="number" value={settings.threads} onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
                             </div>
-                        </div>
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">Speculation Type</label>
-                                <select value={settings.spec_type} onChange={(e) => handleSettingChange('spec_type', e.target.value)} className="editor-select">
-                                    {SPEC_TYPE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
+                            <div className="editor-row">
+                                <div><label className="editor-label editor-label-small">Thread Count (Batch)</label><input type="number" value={settings.threads_batch} onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                                <div><label className="editor-label editor-label-small">Batch Size</label><input type="number" value={settings.batch_size} onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Draft Maximum</label>
-                                <input type="number" value={settings.draft_max} onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)} className="editor-input" min="1" step="1" placeholder="3" />
+                            <div className="editor-row">
+                                <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
+                                <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
                             </div>
-                        </div>
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">GPU Layers (Draft)</label>
-                                <input type="number" value={settings.gpu_layers_draft} onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)} className="editor-input" min="0" step="1" placeholder="256" />
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Device (Draft)</label>
-                                <input type="text" value={settings.device_draft} onChange={(e) => handleSettingChange('device_draft', e.target.value)} className="editor-input" placeholder="CUDA0,CUDA1" />
-                            </div>
-                        </div>
-                    </div>
+                            <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
+                            <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Other Options</span>
-                        <div className="editor-row">
-                            <div><label className="editor-label editor-label-small">Parallel Slots</label><input type="number" value={settings.parallel} onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)} className="editor-input" min="1" step="1" placeholder="1" /></div>
-                            <div><label className="editor-label editor-label-small">Thread Count</label><input type="number" value={settings.threads} onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                            {/* llama.cpp-specific memory options */}
+                            {supportsLlamaMemory && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
+                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
+                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
+                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
+                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
+                                </div>
+                            )}
                         </div>
-                        <div className="editor-row">
-                            <div><label className="editor-label editor-label-small">Thread Count (Batch)</label><input type="number" value={settings.threads_batch} onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
-                            <div><label className="editor-label editor-label-small">Batch Size</label><input type="number" value={settings.batch_size} onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
-                        </div>
-                        <div className="editor-row">
-                            <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
-                            <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
-                        </div>
-                        <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
-                        <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
+                    )}
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
-                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
-                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
-                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
-                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
-                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
-                        </div>
-                    </div>
-
+                    {/* ─── Stop Patterns ─── */}
                     <div className="editor-section">
                         <span className="editor-section-title">Model Stop Patterns</span>
                         <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
@@ -815,6 +854,7 @@ export function ModelEditorModal({
                         </div>
                     </div>
 
+                    {/* ─── Cost ─── */}
                     <div className="editor-section">
                         <span className="editor-section-title">Cost</span>
                         <div className="editor-row">

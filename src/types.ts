@@ -193,7 +193,10 @@ export interface RawLocation extends RawData {
   useBase64Encoding: boolean;
 }
 
-export type localBackend = 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF' | 'ExLlamaV2' | 'TensorRT-LLM' | 'Ollama'
+export type localBackend =
+  | 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF'
+  | 'ExLlamaV2' | 'TensorRT-LLM' | 'Ollama'
+  | 'vLLM' | 'SGLang' | 'LM Studio' | 'LocalAI' | 'mistral.rs';
 
 export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
 
