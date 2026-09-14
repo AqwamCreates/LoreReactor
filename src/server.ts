@@ -1,4 +1,4 @@
-// src/server.ts
+// server.ts
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -48,26 +48,17 @@ type LocalBackend =
 
 interface BackendConfig {
   binaryPath: string;
-  /** Build launch args given model path, port, and user-supplied extra args */
   buildArgs: (modelPath: string, port: number, extraArgs: string[]) => string[];
-  /** Health check URL for readiness polling */
   healthUrl: (port: number) => string;
-  /** Working directory for the spawned process (relative to ROOT_DIR) */
   cwd?: string;
-  /** Log label prefix */
   logLabel: string;
-  /** Stdout pattern that indicates the server is ready (optional, supplements health polling) */
   readyPattern?: RegExp;
-  /** Environment variable overrides for the spawned process */
   envOverrides?: (port: number) => Record<string, string>;
-  /** If true, modelPath is a tag/name rather than a file path on disk */
   modelNameNotPath?: boolean;
 }
 
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
 
-  // ─── Llama.cpp (native /completion API) ──────────────────────────
-  // Windows: llama-server.exe  |  Linux/macOS: llama-server
   'Llama.cpp': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'llama', bin('llama-server')),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -79,8 +70,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /HTTP server listening/i,
   },
 
-  // ─── HuggingFace Transformers / TGI ──────────────────────────────
-  // Docker-only in production; binary name has no .exe on any platform
   'Transformers': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'transformers', 'text-generation-launcher'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -92,8 +81,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Connected/i,
   },
 
-  // ─── ExLlamaV3 via TabbyAPI ──────────────────────────────────────
-  // Windows: python.exe  |  Linux/macOS: python  (symlink → venv)
   'ExLlamaV3': {
     binaryPath: pythonBin('exllamav3'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -105,7 +92,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
   },
 
-  // ─── ExLlamaV3 HF via TabbyAPI (HuggingFace model format) ───────
   'ExLlamaV3 HF': {
     binaryPath: pythonBin('exllamav3_hf'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -117,7 +103,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
   },
 
-  // ─── ExLlamaV2 via TabbyAPI ──────────────────────────────────────
   'ExLlamaV2': {
     binaryPath: pythonBin('exllamav2'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -129,8 +114,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
   },
 
-  // ─── NVIDIA TensorRT-LLM via Triton Inference Server ─────────────
-  // Docker-only; tritonserver has no .exe extension on any platform
   'TensorRT-LLM': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'tensorrt-llm', 'tritonserver'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -142,8 +125,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Started HTTPService/i,
   },
 
-  // ─── Ollama ──────────────────────────────────────────────────────
-  // Windows: ollama.exe  |  Linux/macOS: ollama
   'Ollama': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'ollama', bin('ollama')),
     buildArgs: (_modelPath, _port, _extraArgs) => ['serve'],
@@ -155,8 +136,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
   },
 
-  // ─── vLLM (PagedAttention, high-throughput serving) ─────────────
-  // Windows: python.exe  |  Linux/macOS: python  (symlink → venv)
   'vLLM': {
     binaryPath: pythonBin('vllm'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -169,8 +148,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Application startup complete/i,
   },
 
-  // ─── SGLang (RadixAttention, structured generation) ─────────────
-  // Windows: python.exe  |  Linux/macOS: python  (symlink → venv)
   'SGLang': {
     binaryPath: pythonBin('sglang'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -183,8 +160,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /The server is fired up and ready/i,
   },
 
-  // ─── LM Studio (GUI-backed local server) ────────────────────────
-  // Windows: lms.exe  |  Linux/macOS: lms
   'LM Studio': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'lmstudio', bin('lms')),
     buildArgs: (_modelPath, port, extraArgs) => [
@@ -197,8 +172,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
   },
 
-  // ─── LocalAI (multi-modal drop-in OpenAI replacement) ───────────
-  // No .exe on any platform — LocalAI ships as a plain ELF/Mach-O binary
   'LocalAI': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'localai', 'local-ai'),
     buildArgs: (_modelPath, port, extraArgs) => [
@@ -211,8 +184,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
   },
 
-  // ─── mistral.rs (Rust-based, no Python dependency) ──────────────
-  // Windows: mistralrs-server.exe  |  Linux/macOS: mistralrs-server
   'mistral.rs': {
     binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -319,7 +290,6 @@ interface GpuStatus {
   timestamp: number;
 }
 
-/** Detect which GPU monitoring CLI is available on this system */
 function detectGpuVendor(): GpuVendor {
   const checks: { vendor: GpuVendor; cmd: string }[] = [
     { vendor: 'nvidia', cmd: 'nvidia-smi --query-gpu=name --format=csv,noheader,nounits' },
@@ -334,7 +304,6 @@ function detectGpuVendor(): GpuVendor {
     } catch { /* not available */ }
   }
 
-  // Apple Silicon detection
   if (IS_MACOS) {
     try {
       execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
@@ -490,6 +459,257 @@ let lastGpuStatus: GpuStatus | null = null;
 let lastGpuQueryTime = 0;
 const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 
+// ─── Startup Data Sanitizer ──────────────────────────────────────────
+// Cleans orphaned manifest entries and unreferenced/hollow message files
+// on every server boot to prevent repeated 404 errors.
+
+/**
+ * Read a manifest.json array, remove IDs whose .json files no longer exist,
+ * rewrite the manifest. Returns count of removed entries.
+ */
+function sanitizeManifestDir(dirName: string): number {
+  const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
+  const manifestPath = path.join(dirPath, 'manifest.json');
+
+  if (!fs.existsSync(manifestPath)) return 0;
+
+  try {
+    const raw = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest: unknown = JSON.parse(raw);
+
+    if (!Array.isArray(manifest)) return 0;
+
+    const validIds: string[] = [];
+    let removedCount = 0;
+
+    for (const entry of manifest) {
+      const id = typeof entry === 'string' ? entry : String(entry);
+      const filePath = path.join(dirPath, `${id}.json`);
+      if (fs.existsSync(filePath)) {
+        validIds.push(id);
+      } else {
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      fs.writeFileSync(manifestPath, JSON.stringify(validIds, null, 2), 'utf-8');
+      log.warn(`Sanitized ${dirName}/manifest.json: removed ${removedCount} orphaned entr${removedCount === 1 ? 'y' : 'ies'}`);
+    }
+
+    return removedCount;
+  } catch (e) {
+    log.warn(`Failed to sanitize ${dirName}/manifest.json: ${(e as Error).message}`);
+    return 0;
+  }
+}
+
+/**
+ * Scan interaction_messages/ for .json files not referenced by any chat's
+ * interactionIdHistory. Deletes orphans and rewrites the messages manifest.
+ */
+function sanitizeOrphanedMessages(): number {
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+  const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
+
+  if (!fs.existsSync(messagesDir)) return 0;
+
+  // Build set of all message IDs referenced by any chat
+  const referencedMessageIds = new Set<string>();
+
+  if (fs.existsSync(chatsDir)) {
+    const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+    for (const file of chatFiles) {
+      try {
+        const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
+        const chat = JSON.parse(raw);
+        if (Array.isArray(chat.interactionIdHistory)) {
+          for (const msgId of chat.interactionIdHistory) {
+            if (typeof msgId === 'string') referencedMessageIds.add(msgId);
+          }
+        }
+      } catch { /* skip corrupt chat files */ }
+    }
+  }
+
+  // Also collect IDs from nested interactionHistory arrays (hydrated format)
+  if (fs.existsSync(chatsDir)) {
+    const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+    for (const file of chatFiles) {
+      try {
+        const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
+        const chat = JSON.parse(raw);
+        if (Array.isArray(chat.interactionHistory)) {
+          for (const msg of chat.interactionHistory) {
+            if (msg && typeof msg.id === 'string') referencedMessageIds.add(msg.id);
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // Find and delete orphaned message files
+  const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+  let orphanedCount = 0;
+
+  for (const file of messageFiles) {
+    const msgId = file.replace(/\.json$/, '');
+    if (!referencedMessageIds.has(msgId)) {
+      try {
+        fs.unlinkSync(path.join(messagesDir, file));
+        orphanedCount++;
+      } catch { /* skip permission errors */ }
+    }
+  }
+
+  // Rewrite messages manifest to match surviving files
+  const messagesManifestPath = path.join(messagesDir, 'manifest.json');
+  if (fs.existsSync(messagesManifestPath)) {
+    try {
+      const raw = fs.readFileSync(messagesManifestPath, 'utf-8');
+      const manifest: unknown = JSON.parse(raw);
+      if (Array.isArray(manifest)) {
+        const cleaned = manifest.filter((id: unknown) =>
+          typeof id === 'string' && referencedMessageIds.has(id)
+        );
+        fs.writeFileSync(messagesManifestPath, JSON.stringify(cleaned, null, 2), 'utf-8');
+      }
+    } catch { /* skip */ }
+  }
+
+  if (orphanedCount > 0) {
+    log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
+  }
+
+  return orphanedCount;
+}
+
+/**
+ * Delete chat messages with empty textContent (hollow chat messages).
+ * Interaction-type messages are preserved — they're legitimate silent markers.
+ */
+function sanitizeHollowMessages(): number {
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+  if (!fs.existsSync(messagesDir)) return 0;
+
+  const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+  let hollowCount = 0;
+
+  for (const file of messageFiles) {
+    try {
+      const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
+      const msg = JSON.parse(raw);
+
+      // Only target chat messages with empty content
+      if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent).trim())) {
+        fs.unlinkSync(path.join(messagesDir, file));
+        hollowCount++;
+      }
+    } catch { /* skip corrupt files */ }
+  }
+
+  if (hollowCount > 0) {
+    log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
+  }
+
+  return hollowCount;
+}
+
+/**
+ * Remove stale IDs from chat interactionIdHistory arrays that point to
+ * message files that no longer exist on disk.
+ */
+function sanitizeChatHistories(): number {
+  const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+
+  if (!fs.existsSync(chatsDir)) return 0;
+
+  // Build set of existing message IDs
+  const existingMessageIds = new Set<string>();
+  if (fs.existsSync(messagesDir)) {
+    const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+    for (const f of msgFiles) {
+      existingMessageIds.add(f.replace(/\.json$/, ''));
+    }
+  }
+
+  const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+  let totalPruned = 0;
+
+  for (const file of chatFiles) {
+    try {
+      const filePath = path.join(chatsDir, file);
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const chat = JSON.parse(raw);
+
+      if (Array.isArray(chat.interactionIdHistory)) {
+        const originalLength = chat.interactionIdHistory.length;
+        chat.interactionIdHistory = chat.interactionIdHistory.filter(
+          (id: unknown) => typeof id === 'string' && existingMessageIds.has(id)
+        );
+        const pruned = originalLength - chat.interactionIdHistory.length;
+        if (pruned > 0) {
+          fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), 'utf-8');
+          totalPruned += pruned;
+        }
+      }
+    } catch { /* skip corrupt files */ }
+  }
+
+  if (totalPruned > 0) {
+    log.warn(`Sanitized chat histories: pruned ${totalPruned} dangling message reference${totalPruned === 1 ? '' : 's'}`);
+  }
+
+  return totalPruned;
+}
+
+/** Run all sanitization passes on server startup */
+function runStartupSanitization(): void {
+  log.info('Running startup data sanitization...');
+
+  const manifestDirs = [
+    'interaction_data',
+    'interaction_messages',
+    'character_data',
+    'context_data',
+    'location_data',
+    'audio_tracks',
+    'world_data',
+    'model_data',
+    'sampler_data',
+    'stop_pattern_data',
+    'budget_strategies',
+    'profile_data',
+    'memory_data',
+    'webpage_data',
+    'kv_caches',
+  ];
+
+  let totalManifestOrphans = 0;
+  for (const dir of manifestDirs) {
+    totalManifestOrphans += sanitizeManifestDir(dir);
+  }
+
+  const hollowMessages = sanitizeHollowMessages();
+  const orphanedMessages = sanitizeOrphanedMessages();
+  const prunedReferences = sanitizeChatHistories();
+
+  // Re-run manifest sanitization after deleting files
+  sanitizeManifestDir('interaction_messages');
+
+  const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
+  if (totalCleaned > 0) {
+    log.success(
+      `Startup sanitization complete: ${totalCleaned} issue${totalCleaned === 1 ? '' : 's'} fixed ` +
+      `(${totalManifestOrphans} manifest orphans, ${hollowMessages} hollow messages, ` +
+      `${orphanedMessages} unreferenced messages, ${prunedReferences} dangling references)`
+    );
+  } else {
+    log.info('Startup sanitization: data is clean.');
+  }
+}
+
 // --- /user_data routes ---
 app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
@@ -503,12 +723,59 @@ app.use('/user_data', (req, response) => {
 
   const originalStatus = response.status.bind(response);
   response.status = (code: number) => {
-    if (req.method === 'GET' && code >= 400) log.reqError(req.method || 'GET', req.url || '/', code);
+    if ((req.method === 'GET' || req.method === 'HEAD') && code >= 400) log.reqError(req.method, req.url || '/', code);
     return originalStatus(code);
   };
 
+  // ─── HEAD Request Handler (for existence checks) ─────────────────
+  if (req.method === 'HEAD') {
+    if (!fs.existsSync(filePath)) {
+        // Try common image extensions for extensionless requests
+        const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+        for (const ext of imageExts) {
+            if (fs.existsSync(filePath + ext)) {
+                response.status(200).end();
+                return;
+            }
+        }
+        return response.status(404).end();
+    }
+    
+    fs.stat(filePath, (error, stats) => {
+        if (error) return response.status(500).end();
+        response.setHeader('Content-Length', stats.size);
+        const ext = path.extname(filePath).toLowerCase();
+        if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+            const mimeMap: Record<string, string> = {
+                '.png': 'image/png', '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+            };
+            response.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+        }
+        response.status(200).end();
+    });
+    return;
+  }
+
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
+      // Try common image extensions for extensionless requests
+      const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+      for (const ext of imageExts) {
+        const withExt = filePath + ext;
+        if (fs.existsSync(withExt)) {
+          const mimeMap: Record<string, string> = {
+            '.png': 'image/png', '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+          };
+          response.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+          fs.readFile(withExt, (ie, buf) => {
+            if (ie) return response.status(500).send('Image Error');
+            response.send(buf);
+          });
+          return;
+        }
+      }
       log.reqError('GET', req.url || '/', 404);
       return response.status(404).json({ error: 'Resource not found' });
     }
@@ -658,7 +925,6 @@ app.post('/models/load', async (req, response) => {
 
   const envOverrides = config.envOverrides ? config.envOverrides(port) : {};
 
-  // On Windows, shell: true is needed for .exe resolution in some environments
   const proc = spawn(config.binaryPath, launchArgs, {
     cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -732,7 +998,6 @@ app.post('/models/unload', (req, response) => {
 
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
 
-  // SIGTERM is not supported on Windows — use taskkill via shell instead
   if (IS_WINDOWS) {
     try {
       execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' });
@@ -849,10 +1114,12 @@ app.post('/fetch', async (req, response) => {
 const startServer = () => {
   detectedGpuVendor = detectGpuVendor();
 
+  // Clean orphaned data before serving
+  runStartupSanitization();
+
   const border = '────────────────────────────────────────';
   const title  = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
 
-  // Detailed platform string: OS + arch
   const archLabel = process.arch === 'x64'   ? 'x64'
                   : process.arch === 'ia32'  ? 'x86 (32-bit)'
                   : process.arch === 'arm64' ? 'ARM64'

@@ -5,8 +5,7 @@ import type {
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
-  BudgetData,
-  RawBudgetData,
+  BudgetData, RawBudgetData,
   AudioTrack, RawAudioTrack,
   PromptBlock, RawPromptBlock,
   tool, textType,
@@ -20,6 +19,57 @@ import {
 } from './browserStorage';
 
 import { DefaultActions, DefaultSampler, defaultCharacterTools, defaultInputStrategy } from '../defaults';
+
+// =============================================================================
+// CONFIGURATION & CONSTANTS
+// =============================================================================
+
+const MANIFEST_FILE = 'manifest.json';
+const BATCH_SIZE = 10;
+const BATCH_DELAY_MS = 10;
+
+/**
+ * Entity Registry - Single source of truth for entity metadata.
+ * Keys are used as TypeScript identifiers and match the PATHS object keys.
+ */
+const ENTITY_REGISTRY = {
+  characters: { dir: 'character_data' },
+  characterImages: { dir: 'character_images' },
+  characterVoices: { dir: 'character_voices' },
+  samplers: { dir: 'sampler_data' },
+  contexts: { dir: 'context_data' },
+  locations: { dir: 'location_data' },
+  models: { dir: 'model_data' },
+  stopPatterns: { dir: 'stop_pattern_data' },
+  interactionMessages: { dir: 'interaction_messages' },
+  interactionData: { dir: 'interaction_data' },
+  kvCaches: { dir: 'kv_caches' },
+  budgetStrategies: { dir: 'budget_strategies' },
+  profiles: { dir: 'profile_data' },
+  worlds: { dir: 'worlds' },
+  webpages: { dir: 'webpage_data' },
+  memories: { dir: 'memory_data' },
+  audioTracks: { dir: 'audio_tracks' },
+  promptBlocks: { dir: 'prompt_block_data' },
+} as const;
+
+type EntityKey = keyof typeof ENTITY_REGISTRY;
+
+// Derive PATHS from registry
+const PATHS = Object.fromEntries(
+  Object.entries(ENTITY_REGISTRY).map(([key, config]) => [
+    key,
+    `/user_data/${config.dir}`
+  ])
+) as Record<EntityKey, string>;
+
+// Special singleton paths
+const ACTIONS_PATH = '/user_data/actions.json';
+const BUDGET_DATA_PATH = '/user_data/budget_data.json';
+
+// =============================================================================
+// DEFAULTS & MIGRATIONS
+// =============================================================================
 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
@@ -87,29 +137,9 @@ const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
     braced: false,
 };
 
-const PATHS = {
-  characters: "/user_data/character_data", 
-  characterImages: "/user_data/character_images",
-  characterVoices: "/user_data/character_voices",
-  samplers: "/user_data/sampler_data", 
-  contexts: "/user_data/context_data",
-  locations: "/user_data/location_data",
-  models: "/user_data/model_data",
-  stopPatterns: "/user_data/stop_pattern_data", 
-  interactionMessages: "/user_data/interaction_messages", 
-  interactionData: "/user_data/interaction_data", 
-  kvCaches: "/user_data/kv_caches",
-  budgetStrategies: "/user_data/budget_strategies",
-  profiles: "/user_data/profile_data",
-  actions: "/user_data/actions.json",
-  worlds: "/user_data/worlds",
-  budgetData: "/user_data/budget_data.json",
-  webpages: "/user_data/webpage_data",
-  memories: "/user_data/memory_data",
-  audioTracks: "/user_data/audio_tracks",
-  promptBlocks: "/user_data/prompt_block_data",
-};
-const MANIFEST_FILE = 'manifest.json';
+// =============================================================================
+// SERVER AVAILABILITY & HTTP HELPERS
+// =============================================================================
 
 let _serverAvailable: boolean | null = null;
 
@@ -123,15 +153,17 @@ export function resetServerAvailability(): void {
     _serverAvailable = null;
 }
 
+function normalizeUrl(url: string): string {
+    return url.startsWith('/') ? url : `/${url}`;
+}
+
 async function fetchJson<T>(url: string): Promise<T | null> {
   if (!(await getServerAvailable())) {
     return browserReadJson<T>(url);
   }
 
   try {
-    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-    const targetUrl = `${localURL}${cleanUrl}`;
-    
+    const targetUrl = `${localURL}${normalizeUrl(url)}`;
     const response = await fetch(targetUrl);
     
     if (!response.ok) {
@@ -172,8 +204,7 @@ async function putJson<T>(url: string, data: T): Promise<void> {
   }
 
   try {
-    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-    const targetUrl = `${localURL}${cleanUrl}`;
+    const targetUrl = `${localURL}${normalizeUrl(url)}`;
     const response = await fetch(targetUrl, { 
       method: 'PUT', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -198,8 +229,7 @@ async function deleteResource(url: string): Promise<void> {
   }
 
   try {
-    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-    const targetUrl = `${localURL}${cleanUrl}`;
+    const targetUrl = `${localURL}${normalizeUrl(url)}`;
     const response = await fetch(targetUrl, { method: 'DELETE' });
     if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
   } catch (e) {
@@ -213,7 +243,12 @@ async function deleteResource(url: string): Promise<void> {
   }
 }
 
-async function ensureManifest(folderPath: string): Promise<string[]> {
+// =============================================================================
+// MANIFEST MANAGEMENT
+// =============================================================================
+
+async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
+  const folderPath = PATHS[entityKey];
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   
   const currentIds = await fetchJson<string[]>(manifestUrl);
@@ -256,8 +291,9 @@ async function ensureManifest(folderPath: string): Promise<string[]> {
   return [];
 }
 
-async function updateManifest(folderPath: string, id: string, action: 'add' | 'remove'): Promise<void> {
-  const currentIds = await ensureManifest(folderPath);
+async function updateManifest(entityKey: EntityKey, id: string, action: 'add' | 'remove'): Promise<void> {
+  const folderPath = PATHS[entityKey];
+  const currentIds = await ensureManifest(entityKey);
   
   let newIds: string[];
   if (action === 'add') { 
@@ -270,6 +306,27 @@ async function updateManifest(folderPath: string, id: string, action: 'add' | 'r
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   await putJson(manifestUrl, newIds);
 }
+
+// =============================================================================
+// BATCH LOADING UTILITY
+// =============================================================================
+
+async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>): Promise<(T | null)[]> {
+  const results: (T | null)[] = [];
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(loader));
+    results.push(...batchResults);
+    if (i + BATCH_SIZE < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    }
+  }
+  return results;
+}
+
+// =============================================================================
+// FILE UTILITIES
+// =============================================================================
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -284,27 +341,8 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-async function loadInBatches<T>(ids: string[], loader: (id: string) => Promise<T | null>): Promise<(T | null)[]> {
-  const numberOfIds = ids.length
-  const batchSize = Math.cbrt(numberOfIds)
-  const results: (T | null)[] = [];
-  for (let i = 0; i < ids.length; i += batchSize) {
-    const batch = ids.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map(loader));
-    results.push(...batchResults);
-    if (i + batchSize < ids.length) {
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-  }
-  return results;
-}
-
-function getCleanPath(path: string){
-  return path.startsWith('/') ? path : `/${path}`;
-}
-
-function getCleanFileName(file: { name: string }){
-  return file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+function getCleanFileName(file: { name: string }): string {
+  return file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> {
@@ -321,48 +359,148 @@ function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> 
     };
 }
 
-// --- Memory Repository ---
+// =============================================================================
+// GENERIC HYDRATION & SERIALIZATION
+// =============================================================================
 
-export async function loadRawMemoryManifest(): Promise<string[]> { 
-  return await ensureManifest(PATHS.memories); 
+/**
+ * Hydrates a raw entity into its full type.
+ * 1. Spreads defaults
+ * 2. Spreads raw data (overwriting defaults)
+ * 3. Injects ID
+ * 4. Ensures timestamps
+ * 5. Applies specific transforms for complex fields
+ */
+function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
+    raw: R,
+    id: string,
+    defaults?: Partial<T>,
+    transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
+): T {
+    const now = Date.now();
+    
+    // Base object: Defaults < Raw < System Fields
+    const base = {
+        ...defaults,
+        ...raw,
+        id,
+        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    } as unknown as T;
+
+    // Apply transforms for fields that need renaming or computation
+    if (transforms) {
+        for (const [key, fn] of Object.entries(transforms)) {
+            (base as any)[key] = fn(raw, id);
+        }
+    }
+
+    return base;
 }
 
-export async function loadRawMemory(id: string): Promise<Memory | null> {
-  const raw = await fetchJson<RawMemory>(`${PATHS.memories}/${id}.json`);
-  if (!raw) return null;
-  const ts = Date.now();
-  return {
-    id,
-    name: raw.name || 'Untitled Memory',
-    description: raw.description,
-    content: raw.content,
-    interactionData: undefined as unknown as InteractionData,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp || ts,
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || ts,
-  };
+/**
+ * Serializes a hydrated entity back to raw format.
+ * 1. Strips system fields (id)
+ * 2. Updates timestamp
+ * 3. Applies specific transforms for de-hydration
+ */
+function serializeEntity<T, R>(
+    entity: T,
+    stripKeys: (keyof T)[],
+    transforms?: Partial<Record<string, (entity: T) => any>>
+): R {
+    const result = { ...entity } as any;
+    
+    // Remove keys that shouldn't be in the raw file (like 'id' which is in filename)
+    for (const key of stripKeys) {
+        delete result[key];
+    }
+    
+    result.lastUpdatedTimestamp = Date.now();
+
+    // Apply transforms (e.g., converting objects back to IDs)
+    if (transforms) {
+        for (const [key, fn] of Object.entries(transforms)) {
+            result[key] = fn(entity);
+        }
+    }
+
+    return result as R;
 }
 
-export async function loadAllRawMemories(): Promise<Memory[]> {
-  const ids = await loadRawMemoryManifest();
-  const results = await loadInBatches(ids, loadRawMemory);
-  return results.filter((m): m is Memory => m !== null);
+// =============================================================================
+// REPOSITORY FACTORY
+// =============================================================================
+
+interface RepositoryConfig<T, R> {
+  entityKey: EntityKey;
+  defaults?: Partial<T>;
+  hydrateTransforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>;
+  serializeTransforms?: Partial<Record<string, (entity: T) => any>>;
+  stripKeys?: (keyof T)[];
 }
 
-export async function saveRawMemory(memory: Memory): Promise<void> {
-  const { id, interactionData, ...rest } = memory;
-  const payload: RawMemory = {
-    ...rest,
-    interactionDataId: interactionData?.id ?? '',
-    lastUpdatedTimestamp: Date.now(),
-  };
-  await putJson(`${PATHS.memories}/${id}.json`, payload);
-  await updateManifest(PATHS.memories, id, 'add');
+function createRepository<T extends { id: string }, R extends Record<string, any>>(config: RepositoryConfig<T, R>) {
+  const { entityKey, defaults, hydrateTransforms, serializeTransforms, stripKeys = ['id'] } = config;
+  const folderPath = PATHS[entityKey];
+
+  async function loadManifest(): Promise<string[]> {
+    return await ensureManifest(entityKey);
+  }
+
+  async function loadRaw(id: string): Promise<T | null> {
+    try {
+      const raw = await fetchJson<R>(`${folderPath}/${id}.json`);
+      if (!raw) return null;
+      return hydrateEntity<T, R>(raw, id, defaults, hydrateTransforms);
+    } catch (e) {
+      console.warn(`Failed to load ${entityKey} ${id}`, e);
+      return null;
+    }
+  }
+
+  async function loadAll(): Promise<T[]> {
+    const ids = await loadManifest();
+    const results = await loadInBatches(ids, loadRaw);
+    return results.filter((item): item is T => item !== null);
+  }
+
+  async function save(entity: T): Promise<void> {
+    const payload = serializeEntity<T, R>(entity, stripKeys, serializeTransforms);
+    await putJson(`${folderPath}/${entity.id}.json`, payload);
+    await updateManifest(entityKey, entity.id, 'add');
+  }
+
+  async function remove(id: string): Promise<void> {
+    await deleteResource(`${folderPath}/${id}.json`);
+    await updateManifest(entityKey, id, 'remove');
+  }
+
+  return { loadManifest, loadRaw, loadAll, save, remove };
 }
 
-export async function deleteRawMemory(id: string): Promise<void> {
-  await deleteResource(`${PATHS.memories}/${id}.json`);
-  await updateManifest(PATHS.memories, id, 'remove');
-}
+// =============================================================================
+// ENTITY REPOSITORIES
+// =============================================================================
+
+// --- Memory ---
+const memoryRepo = createRepository<Memory, RawMemory>({
+  entityKey: 'memories',
+  defaults: { name: 'Untitled Memory' },
+  hydrateTransforms: {
+    interactionData: () => undefined as unknown as InteractionData, // Hydrated later
+  },
+  serializeTransforms: {
+    interactionDataId: (m) => m.interactionData?.id ?? '',
+  },
+  stripKeys: ['id', 'interactionData'],
+});
+
+export const loadRawMemoryManifest = memoryRepo.loadManifest;
+export const loadRawMemory = memoryRepo.loadRaw;
+export const loadAllRawMemories = memoryRepo.loadAll;
+export const saveRawMemory = memoryRepo.save;
+export const deleteRawMemory = memoryRepo.remove;
 
 export function resolveMemoryInteractionData(character: Character, allChats: InteractionData[]): Character {
   if (!character.memories || Object.keys(character.memories).length === 0) return character;
@@ -405,238 +543,120 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
   return rawMemories;
 }
 
-// --- Stop Pattern Repository ---
-export async function loadRawStopPatternManifest(): Promise<string[]> { 
-  return await ensureManifest(PATHS.stopPatterns); 
-}
+// --- Stop Pattern ---
+const stopPatternRepo = createRepository<StopPattern, RawStopPattern>({
+  entityKey: 'stopPatterns',
+  defaults: { name: 'Unknown Pattern' },
+});
 
-export async function loadRawStopPattern(id: string): Promise<StopPattern | null> {
-  const rawPattern = await fetchJson<RawStopPattern>(`${PATHS.stopPatterns}/${id}.json`);
-  if (!rawPattern) return null;
-  return { 
-    id, 
-    name: rawPattern.name || 'Unknown Pattern', 
-    description: rawPattern.description, 
-    pattern: rawPattern.pattern,
-    regularExpressionActivationTrigger: rawPattern.regularExpressionActivationTrigger,
-    regularExpressionDeactivationTrigger: rawPattern.regularExpressionDeactivationTrigger,
-    regularExpressionExclusionActivationTrigger: rawPattern.regularExpressionExclusionActivationTrigger,
-    regularExpressionExclusionDeactivationTrigger: rawPattern.regularExpressionExclusionDeactivationTrigger,
-    regularExpressionContext: rawPattern.regularExpressionContext,
-    regularExpressionTarget: rawPattern.regularExpressionTarget,
-    regularExpressionExclusionContext: rawPattern.regularExpressionExclusionContext,
-    regularExpressionExclusionTarget: rawPattern.regularExpressionExclusionTarget,
-    firstCreatedTimestamp: rawPattern.firstCreatedTimestamp || Date.now(),
-    lastUpdatedTimestamp: rawPattern.lastUpdatedTimestamp || Date.now(),
-  };
-}
+export const loadRawStopPatternManifest = stopPatternRepo.loadManifest;
+export const loadRawStopPattern = stopPatternRepo.loadRaw;
+export const loadAllRawStopPatterns = stopPatternRepo.loadAll;
+export const saveRawStopPattern = stopPatternRepo.save;
+export const deleteRawStopPattern = stopPatternRepo.remove;
 
-export async function loadAllRawStopPatterns(): Promise<StopPattern[]> {
-  const ids = await loadRawStopPatternManifest();
-  const results = await loadInBatches(ids, loadRawStopPattern);
-  return results.filter((p): p is StopPattern => p !== null);
-}
+// --- Sampler ---
+// Samplers require async hydration for stop patterns, so we override loadRaw manually
+const samplerRepoBase = createRepository<Sampler, RawSampler>({
+  entityKey: 'samplers',
+  defaults: { name: 'Unknown Sampler', parameters: {}, stopPatterns: [] },
+  serializeTransforms: {
+    stopPatternIds: (s) => s.stopPatterns.map(sp => sp.id),
+  },
+  stripKeys: ['id', 'stopPatterns'],
+});
 
-export async function saveRawStopPattern(pattern: StopPattern): Promise<void> {
-  const { id, ...rawPattern } = pattern; 
-  const payload = {
-    ...rawPattern,
-    lastUpdatedTimestamp: Date.now(),
-  };
-  await putJson(`${PATHS.stopPatterns}/${id}.json`, payload);
-  await updateManifest(PATHS.stopPatterns, id, 'add');
-}
-
-export async function deleteRawStopPattern(id: string): Promise<void> {
-  await deleteResource(`${PATHS.stopPatterns}/${id}.json`);
-  await updateManifest(PATHS.stopPatterns, id, 'remove');
-}
-
-// --- Sampler Repository ---
-export async function loadRawSamplerManifest(): Promise<string[]> { 
-  return await ensureManifest(PATHS.samplers); 
-}
+export const loadRawSamplerManifest = samplerRepoBase.loadManifest;
+export const loadAllRawSamplers = samplerRepoBase.loadAll;
+export const saveRawSampler = samplerRepoBase.save;
+export const deleteRawSampler = samplerRepoBase.remove;
 
 export async function loadRawSampler(id: string): Promise<Sampler | null> {
-  try {
-    const rawSampler = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
-    if (!rawSampler) return null;
+    const raw = await fetchJson<RawSampler>(`${PATHS.samplers}/${id}.json`);
+    if (!raw) return null;
     
-    const stopPatternIds = rawSampler.stopPatternIds || [];
+    // Hydrate stop patterns
+    const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
-    return { 
-      id, 
-      name: rawSampler.name || 'Unknown Sampler', 
-      description: rawSampler.description, 
-      parameters: rawSampler.parameters || {}, 
-      maximumNumberOfTokens: rawSampler.maximumNumberOfTokens, 
-      stopPatterns,
-      firstCreatedTimestamp: rawSampler.firstCreatedTimestamp || Date.now(),
-      lastUpdatedTimestamp: rawSampler.lastUpdatedTimestamp || Date.now(),
-    };
-  } catch (e) {
-    console.warn(`Failed to load sampler ${id}`, e);
-    return null;
-  }
+    return hydrateEntity<Sampler, RawSampler>(raw, id, samplerRepoBase.defaults, {
+        stopPatterns: () => stopPatterns
+    });
 }
 
-export async function loadAllRawSamplers(): Promise<Sampler[]> {
-  const ids = await loadRawSamplerManifest();
-  const results = await loadInBatches(ids, loadRawSampler);
-  return results.filter((s): s is Sampler => s !== null);
-}
+// --- Character ---
+// Characters require async hydration for sampler and memories
+const characterRepoBase = createRepository<Character, RawCharacter>({
+  entityKey: 'characters',
+  defaults: { 
+      name: 'Unknown Character', 
+      images: {}, 
+      tools: { ...defaultCharacterTools },
+      memories: {} 
+  },
+  serializeTransforms: {
+    samplerId: (c) => c.sampler?.id,
+    memories: (c) => serializeMemories(c.memories), // Returns Promise, handled in save override
+  },
+  stripKeys: ['id', 'sampler', 'memories'],
+});
 
-export async function saveRawSampler(sampler: Sampler): Promise<void> {
-  const { id, stopPatterns, ...rawSampler } = sampler; 
-  const payload: RawSampler = { 
-    ...rawSampler, 
-    stopPatternIds: stopPatterns.map(sp => sp.id),
-    lastUpdatedTimestamp: Date.now(),
-  };
-  await putJson(`${PATHS.samplers}/${id}.json`, payload);
-  await updateManifest(PATHS.samplers, id, 'add');
-}
+export const loadRawCharacterManifest = characterRepoBase.loadManifest;
+export const loadAllRawCharacters = characterRepoBase.loadAll; // Note: This uses the simple hydrate, might need override if deep hydration needed for list
+export const deleteRawCharacter = characterRepoBase.remove;
 
-export async function deleteRawSampler(id: string): Promise<void> {
-  await deleteResource(`${PATHS.samplers}/${id}.json`);
-  await updateManifest(PATHS.samplers, id, 'remove');
-}
-
-// --- Character Repository ---
-export async function loadRawCharacterManifest(): Promise<string[]> { 
-  return await ensureManifest(PATHS.characters); 
+// Override Save to handle async memory serialization
+export async function saveRawCharacter(character: Character): Promise<void> {
+    const serializedMemories = await serializeMemories(character.memories);
+    const payload = serializeEntity<Character, RawCharacter>(
+        character, 
+        ['id', 'sampler', 'memories'], 
+        { 
+            samplerId: (c) => c.sampler?.id,
+            memories: () => serializedMemories 
+        }
+    );
+    await putJson(`${PATHS.characters}/${character.id}.json`, payload);
+    await updateManifest('characters', character.id, 'add');
 }
 
 export async function loadRawCharacter(id: string): Promise<Character | null> {
-  try {
-    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-    if (!rawCharacter) return null;
+    const raw = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!raw) return null;
 
-    const samplerId = rawCharacter.samplerId;
-    let sampler: Sampler = DefaultSampler;
+    // Async dependencies
+    const sampler = raw.samplerId ? await loadRawSampler(raw.samplerId) : DefaultSampler;
+    const memories = await hydrateMemories(raw.memories);
     
-    if (samplerId) {
-      const loadedSampler = await loadRawSampler(samplerId);
-      if (loadedSampler) sampler = loadedSampler;
-    }
-
-    const memories = await hydrateMemories(rawCharacter.memories);
-
-    const images: Record<string, string> = rawCharacter.images ?? {};
-    const legacyImage = ('image' in rawCharacter && typeof rawCharacter.image === 'string') ? rawCharacter.image : undefined;
+    // Legacy image migration
+    const images: Record<string, string> = raw.images ?? {};
+    const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
     if (Object.keys(images).length === 0 && legacyImage) {
       images.neutral = legacyImage;
     }
 
-    return { 
-      id, 
-      name: rawCharacter.name || 'Unknown Character', 
-      images,
-      voice: rawCharacter.voice,
-      description: rawCharacter.description, 
-      systemPrompt: rawCharacter.systemPrompt,
-      thinkPrompt: rawCharacter.thinkPrompt,
-      appearancePrompt: rawCharacter.appearancePrompt,
-      dialoguePrompt: rawCharacter.dialoguePrompt,
-      starterPrompt: rawCharacter.starterPrompt,
-      initiativeWeight: rawCharacter.initiativeWeight,
-      chatProbability: rawCharacter.chatProbability, 
-      maximumChatStamina: rawCharacter.maximumChatStamina,
-      nameSensitivity: rawCharacter.nameSensitivity,
-      chatImpatienceSensitivity: rawCharacter.chatImpatienceSensitivity,
-      skipProbability: rawCharacter.skipProbability,
-      memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
-      contextSensitivity: rawCharacter.contextSensitivity,
-      maximumActionStamina: rawCharacter.maximumActionStamina,
-      numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
-      numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
-      numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
-      numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
-      sampler,
-      doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
-      tools: rawCharacter.tools,
-      enableMemoryWriting: rawCharacter.enableMemoryWriting,
-      enableMemoryReading: rawCharacter.enableMemoryReading,
-      memories,
-      firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
-      lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
-    };
-  } catch (e) {
-    console.warn(`Failed to load character ${id}`, e);
-    return null;
-  }
-}
-
-export async function loadAllRawCharacters(): Promise<Character[]> {
-  const ids = await loadRawCharacterManifest();
-  const results = await loadInBatches(ids, loadRawCharacter);
-  return results.filter((c): c is Character => c !== null);
-}
-
-export async function saveRawCharacter(character: Character): Promise<void> {
-  const { id, sampler, memories, ...rawCharacter } = character; 
-  const serializedMemories = await serializeMemories(memories);
-  const payload: RawCharacter = { 
-    ...rawCharacter, 
-    samplerId: sampler?.id,
-    memories: serializedMemories,
-    lastUpdatedTimestamp: Date.now(),
-  };
-  await putJson(`${PATHS.characters}/${id}.json`, payload);
-  await updateManifest(PATHS.characters, id, 'add');
-}
-
-export async function deleteRawCharacter(id: string): Promise<void> {
-  await deleteResource(`${PATHS.characters}/${id}.json`);
-  await updateManifest(PATHS.characters, id, 'remove');
+    return hydrateEntity<Character, RawCharacter>(raw, id, characterRepoBase.defaults, {
+        sampler: () => sampler || DefaultSampler,
+        memories: () => memories,
+        images: () => images
+    });
 }
 
 export async function loadCharacterShell(id: string): Promise<Character | null> {
-    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-    if (!rawCharacter) return null;
+    const raw = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!raw) return null;
 
-    const memories = await hydrateMemories(rawCharacter.memories);
-
-    const images: Record<string, string> = rawCharacter.images ?? {};
-    if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
-      images.neutral = rawCharacter.image;
+    const memories = await hydrateMemories(raw.memories);
+    const images: Record<string, string> = raw.images ?? {};
+    if (Object.keys(images).length === 0 && 'image' in raw && typeof raw.image === 'string') {
+      images.neutral = raw.image;
     }
 
-    return {
-        id,
-        name: rawCharacter.name || 'Unknown Character',
-        images,
-        voice: rawCharacter.voice,
-        description: rawCharacter.description,
-        systemPrompt: rawCharacter.systemPrompt,
-        thinkPrompt: rawCharacter.thinkPrompt,
-        appearancePrompt: rawCharacter.appearancePrompt,
-        dialoguePrompt: rawCharacter.dialoguePrompt,
-        starterPrompt: rawCharacter.starterPrompt,
-        initiativeWeight: rawCharacter.initiativeWeight,
-        chatProbability: rawCharacter.chatProbability,
-        maximumChatStamina: rawCharacter.maximumChatStamina,
-        nameSensitivity: rawCharacter.nameSensitivity,
-        chatImpatienceSensitivity: rawCharacter.chatImpatienceSensitivity,
-        skipProbability: rawCharacter.skipProbability,
-        memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
-        contextSensitivity: rawCharacter.contextSensitivity,
-        maximumActionStamina: rawCharacter.maximumActionStamina,
-        numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
-        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
-        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
-        numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
-        sampler: undefined,
-        doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
-        tools: rawCharacter.tools,
-        enableMemoryWriting: rawCharacter.enableMemoryWriting,
-        enableMemoryReading: rawCharacter.enableMemoryReading,
-        memories,
-        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
-    };
+    return hydrateEntity<Character, RawCharacter>(raw, id, { ...characterRepoBase.defaults, sampler: undefined }, {
+        memories: () => memories,
+        images: () => images
+    });
 }
 
 export async function loadAllCharacterShells(): Promise<Character[]> {
@@ -645,396 +665,143 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
     return results.filter((c): c is Character => c !== null);
 }
 
-// --- Context Repository ---
-export async function loadRawContextManifest(): Promise<string[]> { 
-    return await ensureManifest(PATHS.contexts); 
-}
+// --- Context ---
+const contextRepo = createRepository<Context, RawContext>({
+  entityKey: 'contexts',
+  defaults: { 
+      name: 'Unknown Context', 
+      searchTerms: [], 
+      urls: [], 
+      linkFetchMode: 'full' 
+  },
+});
 
-export async function loadRawContext(id: string): Promise<Context | null> {
-    const rawContext = await fetchJson<RawContext>(`${PATHS.contexts}/${id}.json`);
-    if (!rawContext) return null;
+export const loadRawContextManifest = contextRepo.loadManifest;
+export const loadRawContext = contextRepo.loadRaw;
+export const loadAllRawContexts = contextRepo.loadAll;
+export const saveRawContext = contextRepo.save;
+export const deleteRawContext = contextRepo.remove;
 
-    return { 
-        id, 
-        name: rawContext.name || 'Unknown Context', 
-        description: rawContext.description, 
-        text: rawContext.text,
-        images: rawContext.images,
-        searchTerms: rawContext.searchTerms || [],
-        searchEngine: rawContext.searchEngine,
-        urls: rawContext.urls || [],
-        includeLinkImages: rawContext.includeLinkImages,
-        maximumLinkDepth: rawContext.maximumLinkDepth,
-        linkFetchMode: rawContext.linkFetchMode || 'full',
-        limitLinksToSubdirectory: rawContext.limitLinksToSubdirectory,
-        fetchCacheTimeToLiveMs: rawContext.fetchCacheTimeToLiveMs,
-        regularExpressionActivationTrigger: rawContext.regularExpressionActivationTrigger,
-        regularExpressionDeactivationTrigger: rawContext.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionActivationTrigger: rawContext.regularExpressionExclusionActivationTrigger,
-        regularExpressionExclusionDeactivationTrigger: rawContext.regularExpressionExclusionDeactivationTrigger,
-        regularExpressionContext: rawContext.regularExpressionContext,
-        regularExpressionTarget: rawContext.regularExpressionTarget,
-        regularExpressionExclusionContext: rawContext.regularExpressionExclusionContext,
-        regularExpressionExclusionTarget: rawContext.regularExpressionExclusionTarget,
-        messageFilterRegularExpressionActivationTrigger: rawContext.messageFilterRegularExpressionActivationTrigger,
-        messageFilterRegularExpressionDeactivationTrigger: rawContext.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionActivationTrigger: rawContext.messageFilterRegularExpressionExclusionActivationTrigger,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: rawContext.messageFilterRegularExpressionExclusionDeactivationTrigger,
-        messageFilterRegularExpressionContext: rawContext.messageFilterRegularExpressionContext,
-        messageFilterRegularExpressionTarget: rawContext.messageFilterRegularExpressionTarget,
-        messageFilterRegularExpressionExclusionContext: rawContext.messageFilterRegularExpressionExclusionContext,
-        messageFilterRegularExpressionExclusionTarget: rawContext.messageFilterRegularExpressionExclusionTarget,
-        tokenBudget: rawContext.tokenBudget,
-        maximumRecursionDepth: rawContext.maximumRecursionDepth,
-        insertionDepth: rawContext.insertionDepth,
-        characterBindings: rawContext.characterBindings,
-        useBase64Encoding: rawContext.useBase64Encoding,
-        isAutoGenerated: rawContext.isAutoGenerated,
-        firstCreatedTimestamp: rawContext.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawContext.lastUpdatedTimestamp,
-    };
-}
+// --- Location ---
+const locationRepo = createRepository<Location, RawLocation>({
+  entityKey: 'locations',
+  defaults: { 
+      name: 'Unknown Location', 
+      backgroundImageRegularExpressionActivationTriggers: {},
+      backgroundImageWeights: {},
+      playAudioTrackOnEnterWeights: {},
+      locationBindings: [],
+      locationBindingRegularExpressionTriggers: {},
+      characterBindings: [],
+      globalWeight: 1,
+      characterWeights: {},
+      ownerBindings: [],
+      latitude: 0,
+      longitude: 0,
+      locationDistances: {},
+      messageFilterNonCoLocatedParticipants: false,
+      useBase64Encoding: false,
+  },
+});
 
-export async function loadAllRawContexts(): Promise<Context[]> {
-    const ids = await loadRawContextManifest();
-    const results = await loadInBatches(ids, loadRawContext);
-    return results.filter((i): i is Context => i !== null);
-}
+export const loadRawLocationManifest = locationRepo.loadManifest;
+export const loadRawLocation = locationRepo.loadRaw;
+export const loadAllRawLocations = locationRepo.loadAll;
+export const saveRawLocation = locationRepo.save;
+export const deleteRawLocation = locationRepo.remove;
 
-export async function saveRawContext(context: Context): Promise<void> {
-    const { id, ...rawContext } = context; 
-    const payload: RawContext = {
-        ...rawContext,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.contexts}/${id}.json`, payload);
-    await updateManifest(PATHS.contexts, id, 'add');
-}
+// --- Audio Track ---
+const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
+  entityKey: 'audioTracks',
+  defaults: { 
+      name: 'Untitled Track', 
+      loop: false, 
+      volume: 1, 
+      audioCategory: 'ambient', 
+      playableByParticipant: false, 
+      startFadeDurationMs: 1000, 
+      endFadeDurationMs: 1000,
+      locationBindings: [],
+      contextBindings: [],
+      characterBindings: [],
+      priority: 0,
+  },
+});
 
-export async function deleteRawContext(id: string): Promise<void> {
-    await deleteResource(`${PATHS.contexts}/${id}.json`);
-    await updateManifest(PATHS.contexts, id, 'remove');
-}
+export const loadRawAudioTrackManifest = audioTrackRepo.loadManifest;
+export const loadRawAudioTrack = audioTrackRepo.loadRaw;
+export const loadAllRawAudioTracks = audioTrackRepo.loadAll;
+export const saveRawAudioTrack = audioTrackRepo.save;
+export const deleteRawAudioTrack = audioTrackRepo.remove;
 
-// --- Location Repository ---
-export async function loadRawLocationManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.locations);
-}
+// --- Prompt Block ---
+const promptBlockRepo = createRepository<PromptBlock, RawPromptBlock>({
+  entityKey: 'promptBlocks',
+  defaults: { 
+      name: 'Untitled Prompt Block', 
+      textContent: '', 
+      images: [],
+      characterBindings: [],
+      contextBindings: [],
+      locationBindings: [],
+  },
+});
 
-export async function loadRawLocation(id: string): Promise<Location | null> {
-    const rawLocation = await fetchJson<RawLocation>(`${PATHS.locations}/${id}.json`);
-    if (!rawLocation) return null;
+export const loadRawPromptBlockManifest = promptBlockRepo.loadManifest;
+export const loadRawPromptBlock = promptBlockRepo.loadRaw;
+export const loadAllRawPromptBlocks = promptBlockRepo.loadAll;
+export const saveRawPromptBlock = promptBlockRepo.save;
+export const deleteRawPromptBlock = promptBlockRepo.remove;
 
-    const now = Date.now();
+// --- Language Model ---
+const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
+  entityKey: 'models',
+  defaults: { name: 'Unknown Model' },
+});
 
-    return {
-        id,
-        name: rawLocation.name || 'Unknown Location',
-        description: rawLocation.description,
-        text: rawLocation.text,
-        images: rawLocation.images,
-        backgroundImageRegularExpressionActivationTriggers: rawLocation.backgroundImageRegularExpressionActivationTriggers ?? {},
-        backgroundImageWeights: rawLocation.backgroundImageWeights ?? {},
-        playAudioTrackOnEnterWeights: rawLocation.playAudioTrackOnEnterWeights ?? {},
-        locationBindings: rawLocation.locationBindings ?? [],
-        locationBindingRegularExpressionTriggers: rawLocation.locationBindingRegularExpressionTriggers ?? {},
-        regularExpressionActivationTrigger: rawLocation.regularExpressionActivationTrigger,
-        regularExpressionExclusionActivationTrigger: rawLocation.regularExpressionExclusionActivationTrigger,
-        regularExpressionExclusionContext: rawLocation.regularExpressionExclusionContext,
-        regularExpressionExclusionTarget: rawLocation.regularExpressionExclusionTarget,
-        characterBindings: rawLocation.characterBindings ?? [],
-        globalWeight: rawLocation.globalWeight ?? 1,
-        characterWeights: rawLocation.characterWeights ?? {},
-        ownerBindings: rawLocation.ownerBindings ?? [],
-        latitude: rawLocation.latitude ?? 0,
-        longitude: rawLocation.longitude ?? 0,
-        locationDistances: rawLocation.locationDistances ?? {},
-        messageFilterNonCoLocatedParticipants: rawLocation.messageFilterNonCoLocatedParticipants ?? false,
-        messageFilterRegularExpressionActivationTrigger: rawLocation.messageFilterRegularExpressionActivationTrigger,
-        messageFilterRegularExpressionDeactivationTrigger: rawLocation.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionActivationTrigger: rawLocation.messageFilterRegularExpressionExclusionActivationTrigger,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: rawLocation.messageFilterRegularExpressionExclusionDeactivationTrigger,
-        messageFilterRegularExpressionContext: rawLocation.messageFilterRegularExpressionContext,
-        messageFilterRegularExpressionTarget: rawLocation.messageFilterRegularExpressionTarget,
-        messageFilterRegularExpressionExclusionContext: rawLocation.messageFilterRegularExpressionExclusionContext,
-        messageFilterRegularExpressionExclusionTarget: rawLocation.messageFilterRegularExpressionExclusionTarget,
-        useBase64Encoding: rawLocation.useBase64Encoding ?? false,
-        firstCreatedTimestamp: rawLocation.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: rawLocation.lastUpdatedTimestamp || now,
-    };
-}
+export const loadRawModelManifest = modelRepo.loadManifest;
+export const loadRawModel = modelRepo.loadRaw;
+export const loadAllRawModels = modelRepo.loadAll;
+export const saveRawModel = modelRepo.save;
+export const deleteRawModel = modelRepo.remove;
 
-export async function loadAllRawLocations(): Promise<Location[]> {
-    const ids = await loadRawLocationManifest();
-    const results = await loadInBatches(ids, loadRawLocation);
-    return results.filter((l): l is Location => l !== null);
-}
+// --- Budget Strategy ---
+// Requires async hydration for models
+const budgetStrategyRepoBase = createRepository<BudgetStrategy, RawBudgetStrategy>({
+  entityKey: 'budgetStrategies',
+  defaults: { name: 'Unknown Strategy' },
+  serializeTransforms: {
+    onlineModelIds: (s) => s.onlineModels.map(m => m.id),
+    localModelIds: (s) => s.localModels.map(m => m.id),
+  },
+  stripKeys: ['id', 'onlineModels', 'localModels'],
+});
 
-export async function saveRawLocation(location: Location): Promise<void> {
-    const { id, ...rawLocation } = location;
-    const payload: RawLocation = {
-        ...rawLocation,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.locations}/${id}.json`, payload);
-    await updateManifest(PATHS.locations, id, 'add');
-}
-
-export async function deleteRawLocation(id: string): Promise<void> {
-    await deleteResource(`${PATHS.locations}/${id}.json`);
-    await updateManifest(PATHS.locations, id, 'remove');
-}
-
-// --- Audio Track Repository ---
-export async function loadRawAudioTrackManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.audioTracks);
-}
-
-export async function loadRawAudioTrack(id: string): Promise<AudioTrack | null> {
-    const raw = await fetchJson<RawAudioTrack>(`${PATHS.audioTracks}/${id}.json`);
-    if (!raw) return null;
-
-    const now = Date.now();
-
-    return {
-        id,
-        name: raw.name || 'Untitled Track',
-        description: raw.description,
-        filename: raw.filename,
-        loop: raw.loop ?? false,
-        volume: raw.volume ?? 1,
-        audioCategory: raw.audioCategory ?? 'ambient',
-        playableByParticipant: raw.playableByParticipant ?? false,
-        startFadeDurationMs: raw.startFadeDurationMs ?? 1000,
-        endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
-        regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-        regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-        regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-        regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-        regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-        locationBindings: raw.locationBindings ?? [],
-        contextBindings: raw.contextBindings ?? [],
-        characterBindings: raw.characterBindings ?? [],
-        priority: raw.priority ?? 0,
-        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
-}
-
-export async function loadAllRawAudioTracks(): Promise<AudioTrack[]> {
-    const ids = await loadRawAudioTrackManifest();
-    const results = await loadInBatches(ids, loadRawAudioTrack);
-    return results.filter((t): t is AudioTrack => t !== null);
-}
-
-export async function saveRawAudioTrack(track: AudioTrack): Promise<void> {
-    const { id, ...rawTrack } = track;
-    const payload: RawAudioTrack = {
-        ...rawTrack,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.audioTracks}/${id}.json`, payload);
-    await updateManifest(PATHS.audioTracks, id, 'add');
-}
-
-export async function deleteRawAudioTrack(id: string): Promise<void> {
-    await deleteResource(`${PATHS.audioTracks}/${id}.json`);
-    await updateManifest(PATHS.audioTracks, id, 'remove');
-}
-
-// --- Prompt Block Repository ---
-export async function loadRawPromptBlockManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.promptBlocks);
-}
-
-export async function loadRawPromptBlock(id: string): Promise<PromptBlock | null> {
-    const raw = await fetchJson<RawPromptBlock>(`${PATHS.promptBlocks}/${id}.json`);
-    if (!raw) return null;
-
-    const now = Date.now();
-
-    return {
-        id,
-        name: raw.name || 'Untitled Prompt Block',
-        description: raw.description,
-        textContent: raw.textContent ?? '',
-        images: raw.images ?? [],
-        regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-        regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-        regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-        regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-        regularExpressionContext: raw.regularExpressionContext,
-        regularExpressionTarget: raw.regularExpressionTarget,
-        regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-        regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-        messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
-        messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
-        messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
-        messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
-        messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
-        messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
-        messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
-        characterBindings: raw.characterBindings ?? [],
-        contextBindings: raw.contextBindings ?? [],
-        locationBindings: raw.locationBindings ?? [],
-        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
-}
-
-export async function loadAllRawPromptBlocks(): Promise<PromptBlock[]> {
-    const ids = await loadRawPromptBlockManifest();
-    const results = await loadInBatches(ids, loadRawPromptBlock);
-    return results.filter((b): b is PromptBlock => b !== null);
-}
-
-export async function saveRawPromptBlock(block: PromptBlock): Promise<void> {
-    const { id, ...rawBlock } = block;
-    const payload: RawPromptBlock = {
-        ...rawBlock,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.promptBlocks}/${id}.json`, payload);
-    await updateManifest(PATHS.promptBlocks, id, 'add');
-}
-
-export async function deleteRawPromptBlock(id: string): Promise<void> {
-    await deleteResource(`${PATHS.promptBlocks}/${id}.json`);
-    await updateManifest(PATHS.promptBlocks, id, 'remove');
-}
-
-// --- Language Model Repository ---
-export async function loadRawModelManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.models);
-}
-
-export async function loadRawModel(id: string): Promise<LanguageModel | null> {
-    const rawModel = await fetchJson<RawLanguageModel>(`${PATHS.models}/${id}.json`);
-    if (!rawModel) return null;
-    
-    return {
-        id,
-        name: rawModel.name || 'Unknown Model',
-        description: rawModel.description,
-        backend: rawModel.backend,
-        contextLength: rawModel.contextLength,
-        model: rawModel.model,
-        mmproj: rawModel.mmproj,
-        lora: rawModel.lora,
-        apiKey: rawModel.apiKey,
-        parameters: rawModel.parameters,
-        cacheHitCostPerOneMillionOfTokens: rawModel.cacheHitCostPerOneMillionOfTokens,
-        cacheMissCostPerOneMillionOfTokens: rawModel.cacheMissCostPerOneMillionOfTokens,
-        outputGenerationCostPerOneMillionOfTokens: rawModel.outputGenerationCostPerOneMillionOfTokens,
-        firstCreatedTimestamp: rawModel.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawModel.lastUpdatedTimestamp,
-    };
-}
-
-export async function loadAllRawModels(): Promise<LanguageModel[]> {
-    const ids = await loadRawModelManifest();
-    const results = await loadInBatches(ids, loadRawModel);
-    return results.filter((m): m is LanguageModel => m !== null);
-}
-
-export async function saveRawModel(model: LanguageModel): Promise<void> {
-    const { id, ...rawModel } = model;
-    const payload: RawLanguageModel = {
-        ...rawModel,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.models}/${id}.json`, payload);
-    await updateManifest(PATHS.models, id, 'add');
-}
-
-export async function deleteRawModel(id: string): Promise<void> {
-    await deleteResource(`${PATHS.models}/${id}.json`);
-    await updateManifest(PATHS.models, id, 'remove');
-}
-
-// --- Budget Strategy Repository ---
-export async function loadRawBudgetStrategyManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.budgetStrategies);
-}
+export const loadRawBudgetStrategyManifest = budgetStrategyRepoBase.loadManifest;
+export const loadAllRawBudgetStrategies = budgetStrategyRepoBase.loadAll;
+export const saveRawBudgetStrategy = budgetStrategyRepoBase.save;
+export const deleteRawBudgetStrategy = budgetStrategyRepoBase.remove;
 
 export async function loadRawBudgetStrategy(id: string): Promise<BudgetStrategy | null> {
-    const rawStrategy = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
-    if (!rawStrategy) return null;
-    
-    try {
-      const onlineModelPromises = (rawStrategy.onlineModelIds || []).map(mid => loadRawModel(mid));
-      const onlineModelsResults = await Promise.all(onlineModelPromises);
-      const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
+    const raw = await fetchJson<RawBudgetStrategy>(`${PATHS.budgetStrategies}/${id}.json`);
+    if (!raw) return null;
 
-      const localModelPromises = (rawStrategy.localModelIds || []).map(mid => loadRawModel(mid));
-      const localModelsResults = await Promise.all(localModelPromises);
-      const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
+    const onlineModels = await Promise.all((raw.onlineModelIds || []).map(loadRawModel));
+    const localModels = await Promise.all((raw.localModelIds || []).map(loadRawModel));
 
-      const strategy: BudgetStrategy & { _rawOnlineModelIds?: string[]; _rawLocalModelIds?: string[] } = {
-          id,
-          name: rawStrategy.name || 'Unknown Strategy',
-          description: rawStrategy.description,
-          onlineModels,
-          localModels,
-          modelCostTiers: rawStrategy.modelCostTiers,
-          switchProbability: rawStrategy.switchProbability,
-          switchOnContextSize: rawStrategy.switchOnContextSize,
-          switchOnComplexityScore: rawStrategy.switchOnComplexityScore,
-          fallbackOnLocalFailure: rawStrategy.fallbackOnLocalFailure,
-          fallbackOnQualityThreshold: rawStrategy.fallbackOnQualityThreshold,
-          fallbackOnTimeoutInSeconds: rawStrategy.fallbackOnTimeoutInSeconds,
-          maximumBudget: rawStrategy.maximumBudget,
-          firstCreatedTimestamp: rawStrategy.firstCreatedTimestamp || Date.now(),
-          lastUpdatedTimestamp: rawStrategy.lastUpdatedTimestamp || Date.now(),
-          _rawOnlineModelIds: rawStrategy.onlineModelIds || [],
-          _rawLocalModelIds: rawStrategy.localModelIds || [],
-      };
-
-      return strategy;
-    } catch (e) {
-      console.warn(`Failed to load budget strategy ${id}`, e);
-      return null;
-    }
+    return hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, budgetStrategyRepoBase.defaults, {
+        onlineModels: () => onlineModels.filter((m): m is LanguageModel => m !== null),
+        localModels: () => localModels.filter((m): m is LanguageModel => m !== null),
+    });
 }
 
-export async function loadAllRawBudgetStrategies(): Promise<BudgetStrategy[]> {
-    const ids = await loadRawBudgetStrategyManifest();
-    const results = await loadInBatches(ids, loadRawBudgetStrategy);
-    return results.filter((s): s is BudgetStrategy => s !== null);
-}
-
-export async function saveRawBudgetStrategy(strategy: BudgetStrategy): Promise<void> {
-    const { id, onlineModels, localModels, ...rawStrategy } = strategy;
-    const payload: RawBudgetStrategy = {
-        ...rawStrategy,
-        onlineModelIds: onlineModels.map(m => m.id),
-        localModelIds: localModels.map(m => m.id),
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.budgetStrategies}/${id}.json`, payload);
-    await updateManifest(PATHS.budgetStrategies, id, 'add');
-}
-
-export async function deleteRawBudgetStrategy(id: string): Promise<void> {
-    await deleteResource(`${PATHS.budgetStrategies}/${id}.json`);
-    await updateManifest(PATHS.budgetStrategies, id, 'remove');
-}
-
-// --- Profile Repository ---
-export async function loadRawProfileManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.profiles);
-}
-
-export async function loadRawProfile(id: string): Promise<Profile | null> {
-    const rawProfile = await fetchJson<RawProfile>(`${PATHS.profiles}/${id}.json`);
-    if (!rawProfile) return null;
-
-    const now = Date.now();
-
-    const summarizationSteps: SummarizationStep[] = rawProfile.summarizationSteps != null
-      ? rawProfile.summarizationSteps.map((step, i) => ({
+// --- Profile ---
+const profileRepo = createRepository<Profile, RawProfile>({
+  entityKey: 'profiles',
+  defaults: { name: 'Unknown Profile' },
+  hydrateTransforms: {
+    summarizationSteps: (raw) => raw.summarizationSteps != null
+      ? raw.summarizationSteps.map((step, i) => ({
           id: step.id || `step-${uuidv4()}`,
           name: step.name || step.strategyType,
           description: step.description,
@@ -1051,133 +818,102 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
           summaryTokenBudget: step.summaryTokenBudget,
           summaryModelId: step.summaryModelId,
           triggerTokenThreshold: step.triggerTokenThreshold,
-          firstCreatedTimestamp: step.firstCreatedTimestamp || now,
-          lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
+          firstCreatedTimestamp: step.firstCreatedTimestamp || Date.now(),
+          lastUpdatedTimestamp: step.lastUpdatedTimestamp || Date.now(),
       }))
-      : getDefaultSummarizationSteps();
+      : getDefaultSummarizationSteps(),
+    narrateTexts: (raw) => migrateNarrateTexts(raw),
+    forceNameReveal: (raw) => raw.forceNameReveal ?? false,
+    enableCharacterExpression: (raw) => raw.enableCharacterExpression ?? false,
+    useCurrentDateAndTime: (raw) => raw.useCurrentDateAndTime ?? false,
+    useTimeElapsed: (raw) => raw.useTimeElapsed ?? false,
+    numberOfMessagesToDisableThinkPrompt: (raw) => raw.numberOfMessagesToDisableThinkPrompt ?? -1,
+    numberOfMessagesToDisableMetaThinkInstructions: (raw) => raw.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
+    numberOfMessagesToDisableDialoguePrompt: (raw) => raw.numberOfMessagesToDisableDialoguePrompt ?? -1,
+    numberOfMessagesToDisableStarterPrompt: (raw) => raw.numberOfMessagesToDisableStarterPrompt ?? -1,
+    forceEqualInitiative: (raw) => raw.forceEqualInitiative ?? false,
+    chatProbability: (raw) => raw.chatProbability ?? -1,
+    maximumChatStamina: (raw) => raw.maximumChatStamina ?? -1,
+    nameSensitivity: (raw) => raw.nameSensitivity ?? -1,
+    chatImpatienceSensitivity: (raw) => raw.chatImpatienceSensitivity ?? -1,
+    skipProbability: (raw) => raw.skipProbability ?? -1,
+    memoryRetentionWeight: (raw) => raw.memoryRetentionWeight ?? -1,
+    contextSensitivity: (raw) => raw.contextSensitivity ?? -1,
+    maximumActionStamina: (raw) => raw.maximumActionStamina ?? -1,
+    cacheInvalidationReductionLevel: (raw) => raw.cacheInvalidationReductionLevel ?? 0,
+    doNotInjectDefaultStopTokens: (raw) => raw.doNotInjectDefaultStopTokens ?? false,
+    stripThinkTokens: (raw) => raw.stripThinkTokens ?? false,
+    tools: (raw) => raw.tools ?? {},
+    enableMemoryWriting: (raw) => raw.enableMemoryWriting ?? 0,
+    enableMemoryReading: (raw) => raw.enableMemoryReading ?? 0,
+    inputStrategy: (raw) => raw.inputStrategy?.length ? raw.inputStrategy : [...defaultInputStrategy],
+  },
+  serializeTransforms: {
+    summarizationSteps: (p) => p.summarizationSteps.map(({ ...rest }) => rest),
+  },
+  stripKeys: ['id', 'summarizationSteps'], // We re-add summarizationSteps via transform
+});
 
-    const narrateTexts = migrateNarrateTexts(rawProfile);
-
-    return {
-        id,
-        name: rawProfile.name || 'Unknown Profile',
-        description: rawProfile.description,
-        autonomousMode: rawProfile.autonomousMode,
-        autonomousInteractionIntervalMs: rawProfile.autonomousInteractionIntervalMs,
-        volume: rawProfile.volume,
-        forceNameReveal: rawProfile.forceNameReveal ?? false,
-        enableCharacterExpression: rawProfile.enableCharacterExpression ?? false,
-        forceNoCharacterImageInjection: rawProfile.forceNoCharacterImageInjection,
-        forceNoContextImageInjection: rawProfile.forceNoContextImageInjection,
-        forceNoLocationImageInjection: rawProfile.forceNoLocationImageInjection,
-        useCurrentDateAndTime: rawProfile.useCurrentDateAndTime ?? false,
-        useWeather: rawProfile.useWeather,
-        weatherApiKey: rawProfile.weatherApiKey,
-        useTimeElapsed: rawProfile.useTimeElapsed ?? false,
-        numberOfMessagesToDisableThinkPrompt: rawProfile.numberOfMessagesToDisableThinkPrompt ?? -1,
-        numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
-        numberOfMessagesToDisableDialoguePrompt: rawProfile.numberOfMessagesToDisableDialoguePrompt ?? -1,
-        numberOfMessagesToDisableStarterPrompt: rawProfile.numberOfMessagesToDisableStarterPrompt ?? -1,
-        forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
-        chatProbability: rawProfile.chatProbability ?? -1,
-        maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
-        nameSensitivity: rawProfile.nameSensitivity ?? -1,
-        chatImpatienceSensitivity: rawProfile.chatImpatienceSensitivity ?? -1,
-        skipProbability: rawProfile.skipProbability ?? -1,
-        memoryRetentionWeight: rawProfile.memoryRetentionWeight ?? -1,
-        contextSensitivity: rawProfile.contextSensitivity ?? -1,
-        maximumActionStamina: rawProfile.maximumActionStamina ?? -1,
-        cacheInvalidationReductionLevel: rawProfile.cacheInvalidationReductionLevel ?? 0,
-        doNotInjectDefaultStopTokens: rawProfile.doNotInjectDefaultStopTokens ?? false,
-        narrateTexts,
-        stripThinkTokens: rawProfile.stripThinkTokens ?? false,
-        tools: rawProfile.tools ?? {},
-        enableMemoryWriting: rawProfile.enableMemoryWriting ?? 0,
-        enableMemoryReading: rawProfile.enableMemoryReading ?? 0,
-        inputStrategy: rawProfile.inputStrategy?.length ? rawProfile.inputStrategy : [...defaultInputStrategy],
-        summarizationSteps,
-        firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
-        lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || now,
-    };
-}
-
-export async function loadAllRawProfiles(): Promise<Profile[]> {
-    const ids = await loadRawProfileManifest();
-    const results = await loadInBatches(ids, loadRawProfile);
-    return results.filter((p): p is Profile => p !== null);
-}
-
+// Override save to handle the strip/transform logic correctly for summarizationSteps
 export async function saveRawProfile(profile: Profile): Promise<void> {
-    const { id, summarizationSteps, ...rawProfile } = profile;
-    const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...rest }) => rest);
-    const payload: RawProfile = {
-        ...rawProfile,
-        summarizationSteps: rawSteps,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.profiles}/${id}.json`, payload);
-    await updateManifest(PATHS.profiles, id, 'add');
+    const payload = serializeEntity<Profile, RawProfile>(
+        profile, 
+        ['id'], // Don't strip summarizationSteps here, let transform handle it
+        { 
+            summarizationSteps: (p) => p.summarizationSteps.map(({ ...rest }) => rest) 
+        }
+    );
+    // Manually remove id if serializeEntity didn't (it should have based on stripKeys)
+    delete (payload as any).id; 
+    
+    await putJson(`${PATHS.profiles}/${profile.id}.json`, payload);
+    await updateManifest('profiles', profile.id, 'add');
 }
 
-export async function deleteRawProfile(id: string): Promise<void> {
-    await deleteResource(`${PATHS.profiles}/${id}.json`);
-    await updateManifest(PATHS.profiles, id, 'remove');
-}
+export const loadRawProfileManifest = profileRepo.loadManifest;
+export const loadRawProfile = profileRepo.loadRaw;
+export const loadAllRawProfiles = profileRepo.loadAll;
+export const deleteRawProfile = profileRepo.remove;
 
-// --- Webpage Repository ---
-export async function loadRawWebpageManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.webpages);
-}
+// --- Webpage ---
+const webpageRepo = createRepository<Webpage, RawWebpage>({
+  entityKey: 'webpages',
+  defaults: { name: 'Untitled Webpage' },
+});
 
-export async function loadRawWebpage(id: string): Promise<Webpage | null> {
-    const rawWebpage = await fetchJson<RawWebpage>(`${PATHS.webpages}/${id}.json`);
-    if (!rawWebpage) return null;
-
-    return {
-        id,
-        name: rawWebpage.name || 'Untitled Webpage',
-        description: rawWebpage.description,
-        url: rawWebpage.url,
-        content: rawWebpage.content,
-        firstCreatedTimestamp: rawWebpage.firstCreatedTimestamp || Date.now(),
-        lastUpdatedTimestamp: rawWebpage.lastUpdatedTimestamp || Date.now(),
-    };
-}
-
-export async function loadAllRawWebpages(): Promise<Webpage[]> {
-    const ids = await loadRawWebpageManifest();
-    const results = await loadInBatches(ids, loadRawWebpage);
-    return results.filter((w): w is Webpage => w !== null);
-}
-
-export async function saveRawWebpage(webpage: Webpage): Promise<void> {
-    const { id, ...rawWebpage } = webpage;
-    const payload: RawWebpage = {
-        ...rawWebpage,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(`${PATHS.webpages}/${id}.json`, payload);
-    await updateManifest(PATHS.webpages, id, 'add');
-}
-
-export async function deleteRawWebpage(id: string): Promise<void> {
-    await deleteResource(`${PATHS.webpages}/${id}.json`);
-    await updateManifest(PATHS.webpages, id, 'remove');
-}
+export const loadRawWebpageManifest = webpageRepo.loadManifest;
+export const loadRawWebpage = webpageRepo.loadRaw;
+export const loadAllRawWebpages = webpageRepo.loadAll;
+export const saveRawWebpage = webpageRepo.save;
+export const deleteRawWebpage = webpageRepo.remove;
 
 export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
     const all = await loadAllRawWebpages();
     return all.find(w => w.url === url) || null;
 }
 
-// --- Chat Message Repository ---
+// --- World ---
+const worldRepo = createRepository<World, World>({
+  entityKey: 'worlds',
+  // World is same in Raw and Hydrated
+});
+
+export const loadRawWorldManifest = worldRepo.loadManifest;
+export const loadRawWorld = worldRepo.loadRaw;
+export const loadAllRawWorlds = worldRepo.loadAll;
+export const saveRawWorld = worldRepo.save;
+export const deleteRawWorld = worldRepo.remove;
+
+// =============================================================================
+// CHAT DATA & MESSAGES (Complex Logic)
+// =============================================================================
+
 export async function deleteRawInteractionMessage(id: string): Promise<void> { 
     await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
 }
 
-// --- Chat Data Repository ---
 export async function loadRawChatManifest(): Promise<string[]> { 
-    return await ensureManifest(PATHS.interactionData); 
+    return await ensureManifest('interactionData'); 
 }
 
 function createDeletedCharacterStub(id: string, now: number): Character {
@@ -1342,12 +1078,7 @@ export async function loadRawInteractionData(
   if (rawInteractionData.contextIds?.length) {
     const ctxResults = await Promise.all(
       rawInteractionData.contextIds.map(async (cid) => {
-        try {
-          return await loadRawContext(cid);
-        } catch {
-          console.warn(`Context ${cid} not found, skipping.`);
-          return null;
-        }
+        try { return await loadRawContext(cid); } catch { return null; }
       })
     );
     for (const c of ctxResults) { if (c) contextMap.set(c.id, c); }
@@ -1357,12 +1088,7 @@ export async function loadRawInteractionData(
   if (rawInteractionData.locationIds?.length) {
     const locResults = await Promise.all(
       rawInteractionData.locationIds.map(async (lid) => {
-        try {
-          return await loadRawLocation(lid);
-        } catch {
-          console.warn(`Location ${lid} not found, skipping.`);
-          return null;
-        }
+        try { return await loadRawLocation(lid); } catch { return null; }
       })
     );
     for (const l of locResults) { if (l) locationMap.set(l.id, l); }
@@ -1378,12 +1104,7 @@ export async function loadRawInteractionData(
   if (rawInteractionData.audioTrackIds?.length) {
     const trackResults = await Promise.all(
       rawInteractionData.audioTrackIds.map(async (tid) => {
-        try {
-          return await loadRawAudioTrack(tid);
-        } catch {
-          console.warn(`Audio track ${tid} not found, skipping.`);
-          return null;
-        }
+        try { return await loadRawAudioTrack(tid); } catch { return null; }
       })
     );
     for (const t of trackResults) { if (t) audioTrackMap.set(t.id, t); }
@@ -1401,20 +1122,20 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
 
   const results: (RawInteractionData | null)[] = [];
 
-  for (let i = 0; i < ids.length; i += 10) {
-    const batchIds = ids.slice(i, i + 10);
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batchIds = ids.slice(i, i + BATCH_SIZE);
     const batchPromises = batchIds.map(async (id): Promise<RawInteractionData | null> => {
       const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
       if (!raw) return null;
-      raw.id = id
+      raw.id = id;
       return raw;
     });
 
     const batchResults = await Promise.all(batchPromises);
     results.push(...batchResults);
 
-    if (i + 10 < ids.length) {
-      await new Promise(resolve => setTimeout(resolve, 5));
+    if (i + BATCH_SIZE < ids.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS / 2));
     }
   }
 
@@ -1434,8 +1155,8 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     return putJson(`${PATHS.interactionMessages}/${id}.json`, payload);
   });
   
-  for (let i = 0; i < saveMessagePromises.length; i += 10) {
-    await Promise.all(saveMessagePromises.slice(i, i + 10));
+  for (let i = 0; i < saveMessagePromises.length; i += BATCH_SIZE) {
+    await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
   const { id, protagonist, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
@@ -1453,7 +1174,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
-  await updateManifest(PATHS.interactionData, id, 'add');
+  await updateManifest('interactionData', id, 'add');
 }
 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentInteractionMessageId: string): Promise<string> {
@@ -1477,89 +1198,68 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     ProfileId: sourceChat.Profile?.id,
   };
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
-  await updateManifest(PATHS.interactionData, newChatId, 'add');
+  await updateManifest('interactionData', newChatId, 'add');
   return newChatId;
 }
 
 export async function deleteRawInteractionData(id: string): Promise<void> {
   try { await deleteResource(`${PATHS.kvCaches}/${id}`); } catch (e) { console.warn("KV cache cleanup failed", e); }
   await deleteResource(`${PATHS.interactionData}/${id}.json`);
-  await updateManifest(PATHS.interactionData, id, 'remove');
+  await updateManifest('interactionData', id, 'remove');
 }
 
+// =============================================================================
+// SINGLETONS (Actions, Budget Data)
+// =============================================================================
+
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
-  const actions = await fetchJson<InterjectableAction[]>(PATHS.actions);
+  const actions = await fetchJson<InterjectableAction[]>(ACTIONS_PATH);
   return actions && actions.length > 0 ? actions : DefaultActions;
 }
 
 export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {
-  await putJson(PATHS.actions, actions);
+  await putJson(ACTIONS_PATH, actions);
 }
-
-// --- World Repository ---
-export async function loadRawWorldManifest(): Promise<string[]> {
-    return await ensureManifest(PATHS.worlds);
-}
-
-export async function loadRawWorld(id: string): Promise<World | null> {
-    const raw = await fetchJson<World>(`${PATHS.worlds}/${id}.json`);
-    if (!raw) return null;
-    return raw;
-}
-
-export async function loadAllRawWorlds(): Promise<World[]> {
-    const ids = await loadRawWorldManifest();
-    const results = await loadInBatches(ids, loadRawWorld);
-    return results.filter((w): w is World => w !== null);
-}
-
-export async function saveRawWorld(world: World): Promise<void> {
-    await putJson(`${PATHS.worlds}/${world.id}.json`, world);
-    await updateManifest(PATHS.worlds, world.id, 'add');
-}
-
-export async function deleteRawWorld(id: string): Promise<void> {
-    await deleteResource(`${PATHS.worlds}/${id}.json`);
-    await updateManifest(PATHS.worlds, id, 'remove');
-}
-
-// --- Budget Data Repository (Global Singleton) ---
 
 export async function loadRawBudgetData(): Promise<BudgetData | null> {
-    const raw = await fetchJson<RawBudgetData>(PATHS.budgetData);
+    const raw = await fetchJson<RawBudgetData>(BUDGET_DATA_PATH);
     if (!raw) return null;
 
     try {
         const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
         if (!strategy) return null;
-
-        const now = Date.now()
-
-        return {
-            id: raw.id || 'global-budget-data',
+        return hydrateEntity<BudgetData, RawBudgetData>(raw as unk, raw.id || 'global-budget-data', {
             name: 'Global Budget Data',
             description: 'Persistent runtime budget tracking',
-            budgetSpent: raw.budgetSpent ?? 0,
-            resetDuration: raw.resetDuration,
-            averageLatencyMsPerTokenExponentialMovingAverageSmoothing: raw.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
-            averageTimeToFirstTokenExponentialMovingAverageSmoothing: raw.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
-            modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
-            modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
-            modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
-            modelUsedCount: raw.modelUsedCount ?? {},
-            modelCensorshipHitCount: raw.modelCensorshipHitCount ?? {},
-            modelBrokenCount: raw.modelBrokenCount ??{},
-            modelQuotaHitCount: raw.modelQuotaHitCount ?? {},
-            modelErrorHitCount: raw.modelErrorHitCount ?? {},
-            lastResetTimestamp: raw.lastResetTimestamp,
-            budgetStrategy: strategy,
-            modelBudgetSpent: raw.modelBudgetSpent,
-            modelAverageLatencyMsPerToken: raw.modelAverageLatencyMsPerToken || {},
-            modelAverageTimeToFirstToken: raw.modelAverageTimeToFirstToken ||{},
-            modelTotalSessionDuration: raw.modelTotalSessionDuration || {},
-            firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-        };
+            budgetSpent: 0,
+            modelLastUsedTimestamps: {},
+            modelLastQuotaHitTimeStamps: {},
+            modelLastErrorHitTimeStamps: {},
+            modelUsedCount: {},
+            modelCensorshipHitCount: {},
+            modelBrokenCount: {},
+            modelQuotaHitCount: {},
+            modelErrorHitCount: {},
+            modelBudgetSpent: {},
+            modelAverageLatencyMsPerToken: {},
+            modelAverageTimeToFirstToken: {},
+            modelTotalSessionDuration: {},
+        }, {
+            budgetStrategy: () => strategy,
+            budgetSpent: (r) => r.budgetSpent ?? 0,
+            modelLastUsedTimestamps: (r) => r.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: (r) => r.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: (r) => r.modelLastErrorHitTimeStamps ?? {},
+            modelUsedCount: (r) => r.modelUsedCount ?? {},
+            modelCensorshipHitCount: (r) => r.modelCensorshipHitCount ?? {},
+            modelBrokenCount: (r) => r.modelBrokenCount ?? {},
+            modelQuotaHitCount: (r) => r.modelQuotaHitCount ?? {},
+            modelErrorHitCount: (r) => r.modelErrorHitCount ?? {},
+            modelBudgetSpent: (r) => r.modelBudgetSpent ?? {}, // Wait, raw has this? Yes.
+            modelAverageLatencyMsPerToken: (r) => r.modelAverageLatencyMsPerToken ?? {},
+            modelAverageTimeToFirstToken: (r) => r.modelAverageTimeToFirstToken ?? {},
+            modelTotalSessionDuration: (r) => r.modelTotalSessionDuration ?? {},
+        });
     } catch (e) {
         console.warn('Failed to load budget data:', e);
         return null;
@@ -1567,40 +1267,34 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
 }
 
 export async function saveRawBudgetData(data: BudgetData): Promise<void> {
-    const payload: RawBudgetData = {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        budgetSpent: data.budgetSpent,
-        resetDuration: data.resetDuration,
-        averageLatencyMsPerTokenExponentialMovingAverageSmoothing: data.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
-        averageTimeToFirstTokenExponentialMovingAverageSmoothing: data.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
-        modelLastUsedTimestamps: data.modelLastUsedTimestamps,
-        modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
-        modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
-        modelUsedCount: data.modelUsedCount,
-        modelCensorshipHitCount: data.modelCensorshipHitCount,
-        modelBrokenCount: data.modelBrokenCount,
-        modelQuotaHitCount: data.modelQuotaHitCount,
-        modelErrorHitCount: data.modelErrorHitCount,
-        lastResetTimestamp: data.lastResetTimestamp,
-        budgetStrategyId: data.budgetStrategy.id,
-        modelBudgetSpent: data.modelBudgetSpent,
-        modelAverageLatencyMsPerToken: data.modelAverageLatencyMsPerToken,
-        modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
-        modelTotalSessionDuration: data.modelTotalSessionDuration,
-        firstCreatedTimestamp: data.firstCreatedTimestamp,
-        lastUpdatedTimestamp: Date.now(),
-    };
-    await putJson(PATHS.budgetData, payload);
+    const payload = serializeEntity<BudgetData, RawBudgetData>(data, ['id', 'budgetStrategy'], {
+        budgetStrategyId: (d) => d.budgetStrategy.id,
+    });
+    // Ensure ID is present for singleton if needed, or handled by putJson path
+    // Actually RawBudgetData has optional id.
+    await putJson(BUDGET_DATA_PATH, payload);
 }
 
-// --- Image & Voice Helpers ---
+// =============================================================================
+// IMAGE & VOICE HELPERS
+// =============================================================================
+
+function getImageUrl(entityKey: EntityKey, ...pathParts: string[]): string | null {
+  const basePath = PATHS[entityKey];
+  const cleanPath = basePath.startsWith('/') ? basePath : `/${basePath}`;
+  return `${localURL}${cleanPath}/${pathParts.join('/')}`;
+}
+
+async function uploadImage(entityKey: EntityKey, file: File, ...pathParts: string[]): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const filename = getCleanFileName(file);
+  const imagePath = `${PATHS[entityKey]}/${[...pathParts, filename].join('/')}`;
+  await putJson(imagePath, { base64 });
+  return filename;
+}
 
 export function getCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
-    const effectiveCharacterExpression = characterExpression || "neutral";
-    const cleanPath = PATHS.characterImages.startsWith('/') ? PATHS.characterImages : `/${PATHS.characterImages}`;
-    return `${localURL}${cleanPath}/${characterId}/${effectiveCharacterExpression}`;
+    return getImageUrl('characterImages', characterId, characterExpression || 'neutral');
 }
 
 export async function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): Promise<string | null> {
@@ -1631,79 +1325,50 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
 }
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
-    const base64 = await fileToBase64(file);
-    const filename = getCleanFileName(file);
-    const imagePath = `${PATHS.characterImages}/${characterId}/${filename}`;
-    await putJson(imagePath, { base64 });
-    return filename;
+    return uploadImage('characterImages', file, characterId);
 }
 
 export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
-  const cleanPath = PATHS.characterVoices.startsWith('/') ? PATHS.characterVoices : `/${PATHS.characterVoices}`;
-  return `${localURL}${cleanPath}/${voiceFileName}`;
+  return getImageUrl('characterVoices', voiceFileName);
 }
 
 export async function uploadCharacterVoice(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = getCleanFileName(file);
-  const voicePath = `${PATHS.characterVoices}/${filename}`;
-  await putJson(voicePath, { base64 });
-  return filename;
+  return uploadImage('characterVoices', file);
 }
 
 export function getContextImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = getCleanPath(PATHS.contexts);
-  return `${localURL}${cleanPath}/${imageFilename}`;
+  return getImageUrl('contexts', imageFilename);
 }
 
 export async function uploadContextImage(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = getCleanFileName(file);
-  const imagePath = `${PATHS.contexts}/${filename}`;
-  await putJson(imagePath, { base64 });
-  return filename;
+  return uploadImage('contexts', file);
 }
 
 export function getLocationImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = getCleanPath(PATHS.locations);
-  return `${localURL}${cleanPath}/${imageFilename}`;
+  return getImageUrl('locations', imageFilename);
 }
 
 export async function uploadLocationImage(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = getCleanFileName(file);
-  const imagePath = `${PATHS.locations}/${filename}`;
-  await putJson(imagePath, { base64 });
-  return filename;
+  return uploadImage('locations', file);
 }
 
 export function getAudioTrackUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = getCleanPath(PATHS.audioTracks);
-  return `${localURL}${cleanPath}/${imageFilename}`;
+  return getImageUrl('audioTracks', imageFilename);
 }
 
 export async function uploadAudioTrack(file: File): Promise<string> {
-    const base64 = await fileToBase64(file);
-    const filename = getCleanFileName(file);
-    const audioPath = `${PATHS.audioTracks}/${filename}`;
-    await putJson(audioPath, { base64 });
-    return filename;
+    return uploadImage('audioTracks', file);
 }
 
 export function getPromptBlockImageUrl(imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  const cleanPath = getCleanPath(PATHS.promptBlocks);
-  return `${localURL}${cleanPath}/${imageFilename}`;
+  return getImageUrl('promptBlocks', imageFilename);
 }
 
 export async function uploadPromptBlockImage(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = getCleanFileName(file);
-  const imagePath = `${PATHS.promptBlocks}/${filename}`;
-  await putJson(imagePath, { base64 });
-  return filename;
+  return uploadImage('promptBlocks', file);
 }
