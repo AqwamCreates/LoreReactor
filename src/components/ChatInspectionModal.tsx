@@ -495,7 +495,7 @@ export function ChatInspectionModal({
                                                     onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                                 />
                                             ) : (
-                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', aspectRatio: '9 / 16' }} />
+                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
                                             )}
                                             <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
                                                 {p.name}
@@ -554,7 +554,7 @@ export function ChatInspectionModal({
                                                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                                         />
                                                     ) : (
-                                                        <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', aspectRatio: '9 / 16' }} />
+                                                        <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', borderRadius: '2px', aspectRatio: '9 / 16' }} />
                                                     )}
                                                     <span style={{ fontSize: '0.65rem' }}>
                                                         {pp.name} ({pp.index + 1})

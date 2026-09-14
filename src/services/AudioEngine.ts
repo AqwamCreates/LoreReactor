@@ -2,6 +2,7 @@
 import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location } from '../types';
 import { localURL } from '../configurations';
 import { getUniversalMessageFilterFlags } from '../hooks/chatLogic';
+import { getAudioTrackUrl } from '../storage/serverStorage';
 
 interface ActiveTrackState {
     track: AudioTrack;
@@ -50,17 +51,12 @@ export class AudioEngine {
         return track.volume;
     }
 
-    private getAudioUrl(filename: string): string {
-        const cleanPath = '/user_data/audio_tracks';
-        return `${localURL}${cleanPath}/${filename}`;
-    }
-
     private async loadBuffer(filename: string): Promise<AudioBuffer | null> {
         const cached = this.bufferCache.get(filename);
         if (cached) return cached;
 
         try {
-            const url = this.getAudioUrl(filename);
+            const url = getAudioTrackUrl(filename);
             const response = await fetch(url);
             if (!response.ok) return null;
             const arrayBuffer = await response.arrayBuffer();

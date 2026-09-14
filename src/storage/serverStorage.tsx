@@ -49,7 +49,7 @@ const ENTITY_REGISTRY = {
   worlds: { dir: 'world_data', hasManifest: true },
   webpages: { dir: 'webpage_data', hasManifest: true },
   memories: { dir: 'memory_data', hasManifest: true },
-  audioTracks: { dir: 'audio_tracks', hasManifest: true },
+  audioTracks: { dir: 'audio_track_data', hasManifest: true },
   promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
 } as const;
 
