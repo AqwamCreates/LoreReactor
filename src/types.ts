@@ -332,7 +332,9 @@ export interface ChatMessage extends BaseMessage {
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
-  kvCachePath?: string;
+  kvCacheTextContentPaths?: Record<string, string>;
+  kvCacheTextContentSummaryPaths: Record<string, string>;
+  kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
 export type HistoryMessage = InteractionMessage | ChatMessage;
@@ -363,7 +365,9 @@ export interface RawChatMessage extends RawBaseMessage {
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
-  kvCachePath?: string;
+  kvCacheTextContentPaths?: Record<string, string>;
+  kvCacheTextContentSummaryPaths: Record<string, string>;
+  kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
 export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;

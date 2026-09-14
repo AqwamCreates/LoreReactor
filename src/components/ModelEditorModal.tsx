@@ -1,6 +1,6 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
-import type { backend, LanguageModel, StopPattern, localBackend } from '../types';
+import type { backend, LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../languageModelInformation';
