@@ -346,7 +346,11 @@ export const MessageBubble = React.memo(function MessageBubble({
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
-    const isResumingThisMessage = isLoading && message.isPartial && !isProtag;
+
+    // FIX: Removed isResumingThisMessage guard entirely.
+    // The bubble must always render so it stays visible during resume generation.
+    // Deduplication with StreamingIndicators is handled in App.tsx via
+    // the hasPartialInHistory check instead.
 
     React.useEffect(() => {
         if (isEditing) {
@@ -423,8 +427,6 @@ export const MessageBubble = React.memo(function MessageBubble({
         setEditTokenCount(0);
         onCancelEditing();
     }, [onCancelEditing]);
-
-    if (isResumingThisMessage) return null;
 
     const rowClass = [
         'message-row',
@@ -596,7 +598,6 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
-                            {/* Cursor removed per request. isPartial still manages stream/finalize transitions correctly. */}
                             <MemoizedMessageText text={message.textContent} />
 
                             {message.files && message.files.length > 0 && (

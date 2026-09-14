@@ -5,7 +5,7 @@ import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
-import { findPreviousMessage } from './chatLogic';
+import { findPreviousMessage, updatePartialMessageInInteractionData } from './chatLogic';
 import { getCurrentLocationIndex } from './locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { loadPendingToolActions } from '../services/ToolExecutor';
@@ -29,8 +29,6 @@ export function useChatEngine(deps: EngineDependencies) {
         setBudgetData, setStats, setCurrentCharacterExpression, addToast 
     } = deps;
 
-    // --- Pure Logic: Process Pending Tools ---
-    // Moved from useChatSession to keep logic in Engine/Service layer
     const processPendingTools = useCallback(async (data: InteractionData): Promise<InteractionData> => {
         let lastAiCharId: string | null = null;
         for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
@@ -119,7 +117,6 @@ export function useChatEngine(deps: EngineDependencies) {
         return { ...updatedData, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
     }, [addToast]);
 
-    // --- Core Generation Logic ---
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
         character: Character, 
@@ -133,10 +130,32 @@ export function useChatEngine(deps: EngineDependencies) {
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
 
+        // FIX: Track whether we're resuming an existing partial message.
+        // During resume, we must update the message in history on each token
+        // so the MessageBubble renders streaming text incrementally.
+        const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+
         const callbacks = {
             onDisplayText: (text: string) => {
                 setStreamingState(character, text);
                 onToken?.(text);
+
+                // FIX: During resume, also update the partial message in interaction history
+                // so the MessageBubble renders the streaming text incrementally.
+                // Without this, the bubble shows stale textContent while StreamingIndicators
+                // is suppressed by hasPartialInHistory, causing text to "appear" at completion.
+                if (isResuming) {
+                    const currentState = getState();
+                    const currentData = currentState.interactionData;
+                    if (currentData) {
+                        const updated = updatePartialMessageInInteractionData(
+                            currentData, character.id, text
+                        );
+                        if (updated !== currentData) {
+                            setInteractionData(updated);
+                        }
+                    }
+                }
             },
             onLatency: (ms: number) => setStats({ latency: ms }),
             onTimeToFirstToken: (ms: number) => setStats({ timeToFirstToken: ms }),
@@ -169,9 +188,8 @@ export function useChatEngine(deps: EngineDependencies) {
         }));
         
         return result.updatedData;
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, addToast]);
+    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setInteractionData, addToast]);
 
-    // --- Orchestration Logic ---
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
@@ -200,7 +218,6 @@ export function useChatEngine(deps: EngineDependencies) {
         return initialData;
     }, [handleServerResponse, setStreamingState, setInteractionData, processPendingTools]);
 
-    // --- Autonomous Simulation ---
     const startAutonomousMode = useCallback((
         checkCanAct: () => boolean,
         getData: () => InteractionData | null,

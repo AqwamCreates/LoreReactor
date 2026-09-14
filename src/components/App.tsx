@@ -248,6 +248,12 @@ function App() {
         return total;
     }, [interactionData]);
 
+    // FIX: Check if any partial message exists in history to suppress StreamingIndicators
+    // This prevents the double-message flash during resume generation
+    const hasPartialInHistory = useMemo(() => {
+        return InteractionMessages.some(m => m.isPartial && m.messageType === 'chat');
+    }, [InteractionMessages]);
+
     // ─── Budget Strategy Engine Local Model Loader ───────────────────
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existing = runningModels[modelId];
@@ -835,7 +841,8 @@ function App() {
                             <ChatScrollButtons containerRef={chatHistoryRef} />
                         )}
 
-                        {viewMode === 'cinematic' && (
+                        {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
+                        {viewMode === 'cinematic' && !hasPartialInHistory && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}
@@ -896,7 +903,8 @@ function App() {
                             );
                         })}
 
-                        {viewMode === 'ladder' && (
+                        {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
+                        {viewMode === 'ladder' && !hasPartialInHistory && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}

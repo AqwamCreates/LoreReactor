@@ -20,23 +20,15 @@ import type { Character, InteractionData, PromptBlock, ChatMessage } from '../ty
 
 const engine = getLanguageModelEngine();
 
-/**
- * Strips any trailing cursor characters that may have leaked from the streaming accumulator.
- */
 function sanitizeStreamedText(text: string): string {
     return text.replace(/▋$/g, '').trimEnd();
 }
 
-/**
- * Finalizes the last AI message only if the stream was NOT aborted.
- * Returns the original data unchanged if abortedSignal is true.
- */
 function finalizeLastAIMessage(
     data: InteractionData,
     protagonistId: string,
     wasAborted: boolean
 ): InteractionData {
-    // If the user stopped generation, do NOT finalize — keep isPartial: true
     if (wasAborted) return data;
 
     const history = data.interactionHistory;
@@ -61,9 +53,6 @@ function finalizeLastAIMessage(
     return data;
 }
 
-/**
- * Finalizes a specific message by ID only if the stream was NOT aborted.
- */
 function finalizeMessageById(
     data: InteractionData,
     messageId: string,
@@ -88,26 +77,18 @@ function finalizeMessageById(
 export function useChatSession() {
     const { addToast } = useToast();
 
-    // 1. State
     const state = useChatState();
 
-    // --- Refs ---
     const abortControllerRef = useRef<AbortController | null>(null);
     const isProcessingSilentlyRef = useRef(false);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
     const resumingMessageIdRef = useRef<string | null>(null);
     const resumingExistingTextRef = useRef<string>('');
     const isAtBottomRef = useRef(true);
-
-    // Track whether the current generation was explicitly stopped by the user.
-    // This prevents the async completion path from finalizing a message that
-    // stopGeneration intentionally left as partial.
     const wasStoppedRef = useRef(false);
 
-    // 2. UI
     const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
 
-    // 3. Engine
     const chatEngine = useChatEngine({
         getState: state.getState,
         setInteractionData: state.setInteractionData,
@@ -118,12 +99,10 @@ export function useChatSession() {
         addToast,
     });
 
-    // --- Local Hooks ---
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(state.setStreamingState, setStreamingText, streamingTextRef);
 
-    // --- Mount Effects ---
     useEffect(() => {
         (async () => {
             try {
@@ -163,7 +142,6 @@ export function useChatSession() {
         return () => { cancelled = true; };
     }, [state.interactionData?.interactionHistory, state.interactionData, state.setNumberOfTokens]);
 
-    // --- Autonomous Mode ---
     useEffect(() => {
         const autonomousEnabled = state.interactionData?.Profile?.autonomousMode ?? false;
         if (autonomousEnabled && state.interactionData) {
@@ -180,7 +158,6 @@ export function useChatSession() {
         return () => { chatEngine.stopAutonomousMode(); };
     }, [state.interactionData?.Profile?.autonomousMode, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
 
-    // --- Helpers ---
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = state.getState().selectedModel;
         if (!m) return false;
@@ -206,7 +183,6 @@ export function useChatSession() {
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
-    // --- Public Actions ---
     const sendMessage = useCallback(async (text: string, files?: File[], allPromptBlocks?: PromptBlock[]) => {
         if (!state.interactionData || !state.currentCharacter || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -214,7 +190,7 @@ export function useChatSession() {
 
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
-        wasStoppedRef.current = false; // Reset stop flag for new generation
+        wasStoppedRef.current = false;
         resetStream();
         state.setStreamingState(null, '');
         state.setStats({ latency: 0, timeToFirstToken: 0 });
@@ -252,8 +228,6 @@ export function useChatSession() {
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 const processed = await chatEngine.processPendingTools(ud);
-
-                // FIX: Only finalize if the user did NOT stop generation
                 const finalized = finalizeLastAIMessage(processed, state.currentCharacter.id, wasStoppedRef.current);
 
                 await saveRawInteractionData(finalized);
@@ -287,8 +261,6 @@ export function useChatSession() {
     }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
 
     const stopGeneration = useCallback(() => {
-        // Mark that the user explicitly stopped — this prevents the async
-        // completion path from finalizing the message after we set isPartial: true
         wasStoppedRef.current = true;
 
         const t = streamingTextRef.current;
@@ -296,8 +268,11 @@ export function useChatSession() {
         const resumeId = resumingMessageIdRef.current;
         const currentData = state.getState().interactionData;
 
+        // Abort first to prevent further stream chunks
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+
         if (resumeId && t && t.trim().length > 0 && currentData) {
-            // Stopping during a resume: update the existing message, keep isPartial: true
             const cleanText = sanitizeStreamedText(t);
             const updated = editInteractionMessageInInteractionData(currentData, resumeId, cleanText);
             const idx = updated.interactionHistory.findIndex(m => m.id === resumeId);
@@ -309,20 +284,34 @@ export function useChatSession() {
                 if (targetMsg.messageType === 'chat') {
                     withPartial[idx] = { ...targetMsg, isPartial: true, lastUpdatedTimestamp: Date.now() } as ChatMessage;
                 }
-                state.setInteractionData({ ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() });
+                // FIX: Atomically update interaction data AND clear streaming state
+                // in a single setState call to prevent intermediate render flash
+                state.setState({
+                    interactionData: { ...updated, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() },
+                    streamingCharacter: null,
+                    streamingText: '',
+                    isLoading: false,
+                    latency: 0,
+                    timeToFirstToken: 0,
+                });
             }
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
         } else {
-            // Stopping during a normal send: store as pending partial for next send
             pendingPartialRef.current = (t?.trim() && c) ? { text: sanitizeStreamedText(t), character: c } : null;
+            // FIX: Atomically clear streaming state
+            state.setState({
+                streamingCharacter: null,
+                streamingText: '',
+                isLoading: false,
+                latency: 0,
+                timeToFirstToken: 0,
+            });
         }
-        abortControllerRef.current?.abort();
-        abortControllerRef.current = null;
+
         releaseLock();
         resetStream();
-        state.setStats({ latency: 0, timeToFirstToken: 0 });
     }, [releaseLock, resetStream, state, streamingTextRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
@@ -341,23 +330,25 @@ export function useChatSession() {
         const char = msg.character;
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
-        wasStoppedRef.current = false; // Reset stop flag for resume
+        wasStoppedRef.current = false;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
+        // FIX: Set streaming text to existing text so content is visible immediately
         setStreamingText(existingText);
         streamingTextRef.current = existingText;
-        state.setStreamingState(char, '');
+        state.setStreamingState(char, existingText);
         state.setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
 
         try {
-            const result = await chatEngine.handleServerResponse(currentInteractionData, char, ctrl.signal, throttledSetStreamingText, undefined, existingText, allPromptBlocks);
+            const result = await chatEngine.handleServerResponse(
+                currentInteractionData, char, ctrl.signal,
+                throttledSetStreamingText, undefined, existingText, allPromptBlocks
+            );
             if (!result) return;
 
             const cleared = await clearPartialFlag(result, messageId);
             const processed = await chatEngine.processPendingTools(cleared);
-
-            // FIX: Only finalize if the user did NOT stop generation
             const finalized = finalizeMessageById(processed, messageId, wasStoppedRef.current);
 
             state.setInteractionData(finalized);
@@ -409,7 +400,7 @@ export function useChatSession() {
         resetStream();
         state.setStreamingState(null, '');
         state.setStats({ latency: 0, timeToFirstToken: 0 });
-        wasStoppedRef.current = false; // Reset stop flag for regen
+        wasStoppedRef.current = false;
         isAtBottomRef.current = true;
 
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
@@ -421,8 +412,6 @@ export function useChatSession() {
 
             if (ud.interactionHistory.length > preCount) {
                 const processed = await chatEngine.processPendingTools(ud);
-
-                // FIX: Only finalize if the user did NOT stop generation
                 const finalized = finalizeLastAIMessage(processed, currentInteractionData.protagonist.id, wasStoppedRef.current);
 
                 await saveRawInteractionData(finalized);

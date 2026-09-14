@@ -156,8 +156,12 @@ export class CharacterActor {
         let latestExpression: string | null = null;
         let previousExpression: string | null = null;
 
-        // Create the message upfront so tool executors can mutate it (inventory, audio, etc.)
-        const aiMessage = createChatMessage(data, character, '');
+        // Only create a new message for non-resume turns.
+        // During resume, the partial message already exists in history and is
+        // updated incrementally by useChatEngine's onDisplayText callback.
+        // Message lifecycle (creation, finalization) is owned by the session layer.
+        const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+        const aiMessage = isResuming ? null : createChatMessage(data, character, '');
 
         try {
             let rawText: string;
@@ -250,7 +254,6 @@ export class CharacterActor {
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
 
-                // Initialize with existing text for resume mode
                 if (currentExistingText) {
                     accumulator.initializeWithExisting(currentExistingText);
                 }
@@ -276,7 +279,7 @@ export class CharacterActor {
                     if (requestCost > 0) statsDelta.numberOfRequests++;
                     statsDelta.totalCost += requestCost;
 
-                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage, data);
+                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -310,7 +313,6 @@ export class CharacterActor {
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
 
-                // Initialize with existing text for resume mode
                 if (currentExistingText) {
                     accumulator.initializeWithExisting(currentExistingText);
                 }
@@ -345,7 +347,7 @@ export class CharacterActor {
                         }
                     }
 
-                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage, data);
+                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -370,35 +372,31 @@ export class CharacterActor {
             const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, data);
 
-            // Finalize the message with the completed text
-            aiMessage.textContent = displayText;
-
+            // Final expression analysis
             const enableExpression = data.Profile?.enableCharacterExpression ?? false;
             if (enableExpression && sentimentEngine.isReady()) {
                 const sentiment = await sentimentEngine.analyze(rawText);
                 if (sentiment) {
-                    aiMessage.characterExpression = sentiment.topEmotion;
                     latestExpression = sentiment.topEmotion;
                 }
             }
 
             let updatedData: InteractionData;
 
-            if (existingCharacterText) {
-                // Resume mode: update existing partial message via helper
-                updatedData = updatePartialMessageInInteractionData(
-                    data,
-                    character.id,
-                    displayText,
-                    aiMessage.characterExpression ?? undefined,
-                );
-                // Fallback: no partial message found, add as new
-                if (updatedData === data) {
-                    updatedData = addMessageToInteractionData(data, aiMessage);
-                }
+            if (isResuming) {
+                // Resume mode: message lifecycle is owned by the session layer.
+                // useChatEngine.onDisplayText already updated the partial message
+                // incrementally during streaming. useChatSession.resumeGeneration
+                // will finalize it (set isPartial: false) after this returns.
+                // We just return the data as-is — no message mutation here.
+                updatedData = data;
             } else {
-                // Normal mode: add new message
-                updatedData = addMessageToInteractionData(data, aiMessage);
+                // Normal mode: finalize the pre-created message and add to history
+                if (aiMessage) {
+                    aiMessage.textContent = displayText;
+                    aiMessage.characterExpression = latestExpression ?? undefined;
+                }
+                updatedData = addMessageToInteractionData(data, aiMessage!);
             }
 
             return {
