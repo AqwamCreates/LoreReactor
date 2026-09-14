@@ -19,7 +19,7 @@ import {
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
-import { DefaultActions, DefaultSampler } from '../defaults';
+import { DefaultActions, DefaultSampler, defaultCharacterTools, defaultInputStrategy } from '../defaults';
 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
@@ -540,6 +540,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       thinkPrompt: rawCharacter.thinkPrompt,
       appearancePrompt: rawCharacter.appearancePrompt,
       dialoguePrompt: rawCharacter.dialoguePrompt,
+      starterPrompt: rawCharacter.starterPrompt,
       initiativeWeight: rawCharacter.initiativeWeight,
       chatProbability: rawCharacter.chatProbability, 
       maximumChatStamina: rawCharacter.maximumChatStamina,
@@ -552,6 +553,7 @@ export async function loadRawCharacter(id: string): Promise<Character | null> {
       numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
       numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
       numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
+      numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
       sampler,
       doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
       tools: rawCharacter.tools,
@@ -610,6 +612,9 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         description: rawCharacter.description,
         systemPrompt: rawCharacter.systemPrompt,
         thinkPrompt: rawCharacter.thinkPrompt,
+        appearancePrompt: rawCharacter.appearancePrompt,
+        dialoguePrompt: rawCharacter.dialoguePrompt,
+        starterPrompt: rawCharacter.starterPrompt,
         initiativeWeight: rawCharacter.initiativeWeight,
         chatProbability: rawCharacter.chatProbability,
         maximumChatStamina: rawCharacter.maximumChatStamina,
@@ -622,7 +627,9 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
         numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
         numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
+        numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
         sampler: undefined,
+        doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
         tools: rawCharacter.tools,
         enableMemoryWriting: rawCharacter.enableMemoryWriting,
         enableMemoryReading: rawCharacter.enableMemoryReading,
@@ -1067,9 +1074,10 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         useWeather: rawProfile.useWeather,
         weatherApiKey: rawProfile.weatherApiKey,
         useTimeElapsed: rawProfile.useTimeElapsed ?? false,
-        numberOfMessagesToDisableThinkPrompt: rawProfile.numberOfMessagesToDisableThinkPrompt ?? 1,
-        numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? 1,
-        numberOfMessagesToDisableDialoguePrompt: rawProfile.numberOfMessagesToDisableDialoguePrompt ?? 1,
+        numberOfMessagesToDisableThinkPrompt: rawProfile.numberOfMessagesToDisableThinkPrompt ?? -1,
+        numberOfMessagesToDisableMetaThinkInstructions: rawProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
+        numberOfMessagesToDisableDialoguePrompt: rawProfile.numberOfMessagesToDisableDialoguePrompt ?? -1,
+        numberOfMessagesToDisableStarterPrompt: rawProfile.numberOfMessagesToDisableStarterPrompt ?? -1,
         forceEqualInitiative: rawProfile.forceEqualInitiative ?? false,
         chatProbability: rawProfile.chatProbability ?? -1,
         maximumChatStamina: rawProfile.maximumChatStamina ?? -1,
@@ -1086,7 +1094,7 @@ export async function loadRawProfile(id: string): Promise<Profile | null> {
         tools: rawProfile.tools ?? {},
         enableMemoryWriting: rawProfile.enableMemoryWriting ?? 0,
         enableMemoryReading: rawProfile.enableMemoryReading ?? 0,
-        inputStrategy: rawProfile.inputStrategy ?? ['System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Fatigue Information', 'Date And Time', 'Weather', 'Time Elapsed', 'Tool Instructions', 'Text Injection'],
+        inputStrategy: rawProfile.inputStrategy?.length ? rawProfile.inputStrategy : [...defaultInputStrategy],
         summarizationSteps,
         firstCreatedTimestamp: rawProfile.firstCreatedTimestamp || now,
         lastUpdatedTimestamp: rawProfile.lastUpdatedTimestamp || now,
@@ -1172,6 +1180,34 @@ export async function loadRawChatManifest(): Promise<string[]> {
     return await ensureManifest(PATHS.interactionData); 
 }
 
+function createDeletedCharacterStub(id: string, now: number): Character {
+    return {
+        id,
+        name: '[Deleted Character]',
+        description: 'This character has been deleted.',
+        images: {},
+        initiativeWeight: 1,
+        chatProbability: 0.5,
+        maximumChatStamina: 4,
+        nameSensitivity: 1,
+        chatImpatienceSensitivity: 0,
+        skipProbability: 0,
+        memoryRetentionWeight: 1,
+        contextSensitivity: 1,
+        maximumActionStamina: 5,
+        numberOfMessagesToDisableThinkPrompt: 1,
+        numberOfMessagesToDisableMetaThinkInstructions: 1,
+        numberOfMessagesToDisableDialoguePrompt: 1,
+        numberOfMessagesToDisableStarterPrompt: 1,
+        tools: { ...defaultCharacterTools },
+        enableMemoryWriting: false,
+        enableMemoryReading: false,
+        memories: {},
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
 async function buildInteractionDataShell(
   id: string, 
   rawInteractionData: RawInteractionData, 
@@ -1186,60 +1222,11 @@ async function buildInteractionDataShell(
   
   let protagonist = charMap.get(rawInteractionData.protagonistId);
   if (!protagonist) {
-    protagonist = {
-      id: rawInteractionData.protagonistId,
-      name: '[Deleted Character]',
-      description: 'This character has been deleted.',
-      images: {},
-      initiativeWeight: 1,
-      chatProbability: 0.5,
-      maximumChatStamina: 4,
-      nameSensitivity: 1,
-      chatImpatienceSensitivity: 1,
-      skipProbability: 1,
-      memoryRetentionWeight: 1,
-      contextSensitivity: 1,
-      maximumActionStamina: 1,
-      numberOfMessagesToDisableThinkPrompt: 0,
-      numberOfMessagesToDisableMetaThinkInstructions: 0,
-      numberOfMessagesToDisableDialoguePrompt: 0,
-      tools: {} as Record<tool, boolean>,
-      enableMemoryWriting: false,
-      enableMemoryReading: false,
-      memories: {},
-      firstCreatedTimestamp: now,
-      lastUpdatedTimestamp: now,
-    };
+    protagonist = createDeletedCharacterStub(rawInteractionData.protagonistId, now);
   }
 
   const participants = rawInteractionData.participantIds
-    .map(pid => {
-      const found = charMap.get(pid);
-      if (found) return found;
-      return {
-        id: pid,
-        name: '[Deleted Character]',
-        description: 'This character has been deleted.',
-        images: {},
-        initiativeWeight: 1,
-        chatProbability: 0.5,
-        maximumChatStamina: 4,
-        nameSensitivity: 1,
-        skipProbability: 1,
-        memoryRetentionWeight: 1,
-        contextSensitivity: 1,
-        maximumActionStamina: 1,
-        numberOfMessagesToDisableThinkPrompt: 0,
-        numberOfMessagesToDisableMetaThinkInstructions: 0,
-        numberOfMessagesToDisableDialoguePrompt: 0,
-        tools: {},
-        enableMemoryWriting: false,
-        enableMemoryReading: false,
-        memories: {},
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-      } as Character;
-    });
+    .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid, now));
     
   if (!participants.find(p => p.id === protagonist.id)) {
     participants.push(protagonist);
@@ -1307,6 +1294,23 @@ export async function loadInteractionMessages(interactionData: InteractionData):
                 id: characterId,
                 name: '[Unknown]',
                 images: {},
+                initiativeWeight: 1,
+                chatProbability: 0.5,
+                maximumChatStamina: 4,
+                nameSensitivity: 1,
+                chatImpatienceSensitivity: 0,
+                skipProbability: 0,
+                memoryRetentionWeight: 1,
+                contextSensitivity: 1,
+                maximumActionStamina: 5,
+                numberOfMessagesToDisableThinkPrompt: 1,
+                numberOfMessagesToDisableMetaThinkInstructions: 1,
+                numberOfMessagesToDisableDialoguePrompt: 1,
+                numberOfMessagesToDisableStarterPrompt: 1,
+                tools: {} as Record<tool, boolean>,
+                enableMemoryWriting: false,
+                enableMemoryReading: false,
+                memories: {},
                 firstCreatedTimestamp: Date.now(),
                 lastUpdatedTimestamp: Date.now()
             } as Character

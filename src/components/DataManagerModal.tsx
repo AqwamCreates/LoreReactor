@@ -108,14 +108,15 @@ function isEntityHollow(
     switch (type) {
         case 'character': {
             const c = entity as Character;
-            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || c.dialoguePrompt?.trim() || c.thinkPrompt?.trim())
+            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || c.dialoguePrompt?.trim() || c.thinkPrompt?.trim() || c.starterPrompt?.trim())
                 && !(c.images && Object.keys(c.images).length > 0)
+                && !c.voice?.trim()
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
                 && !(c.tools && Object.values(c.tools).some(v => v));
         }
         case 'context': {
             const c = entity as Context;
-            return !c.text?.trim() && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length);
+            return !c.text?.trim() && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length) && !c.searchEngine;
         }
         case 'location': {
             const l = entity as Location;

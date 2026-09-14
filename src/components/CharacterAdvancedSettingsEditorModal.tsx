@@ -77,6 +77,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     numberOfMessagesToDisableThinkPromptStr: string;
     numberOfMessagesToDisableMetaThinkInstructionsStr: string;
     numberOfMessagesToDisableDialoguePromptStr: string;
+    numberOfMessagesToDisableStarterPromptStr: string;
     tools: Record<tool, boolean>;
     enableMemoryWriting: boolean;
     enableMemoryReading: boolean;
@@ -95,6 +96,7 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onDisableThinkChange: (val: string) => void;
     onDisableMetaChange: (val: string) => void;
     onDisableDialogueChange: (val: string) => void;
+    onDisableStarterChange: (val: string) => void;
     onToolToggle: (toolName: tool) => void;
     onEnableMemoryWritingChange: (val: boolean) => void;
     onEnableMemoryReadingChange: (val: boolean) => void;
@@ -116,6 +118,7 @@ export function CharacterAdvancedSettingsEditorModal({
     numberOfMessagesToDisableThinkPromptStr,
     numberOfMessagesToDisableMetaThinkInstructionsStr,
     numberOfMessagesToDisableDialoguePromptStr,
+    numberOfMessagesToDisableStarterPromptStr,
     tools,
     enableMemoryWriting,
     enableMemoryReading,
@@ -134,6 +137,7 @@ export function CharacterAdvancedSettingsEditorModal({
     onDisableThinkChange,
     onDisableMetaChange,
     onDisableDialogueChange,
+    onDisableStarterChange,
     onToolToggle,
     onEnableMemoryWritingChange,
     onEnableMemoryReadingChange,
@@ -344,6 +348,18 @@ export function CharacterAdvancedSettingsEditorModal({
                                     min="0"
                                     value={numberOfMessagesToDisableDialoguePromptStr}
                                     onChange={(e) => onDisableDialogueChange(e.target.value)}
+                                    className="editor-input editor-stat-input"
+                                    disabled={isUploading}
+                                />
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Starter Prompt</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={numberOfMessagesToDisableStarterPromptStr}
+                                    onChange={(e) => onDisableStarterChange(e.target.value)}
                                     className="editor-input editor-stat-input"
                                     disabled={isUploading}
                                 />

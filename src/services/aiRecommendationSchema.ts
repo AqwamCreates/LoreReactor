@@ -15,30 +15,61 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
 
     if (includeCharacter) {
         parts.push(`  "characters": [{
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
-    "systemPrompt": "string", "thinkPrompt": "string",
-    "appearancePrompt": "string", "dialoguePrompt": "string",
-    "initiativeWeight": "number (0-10, default 5)", "chatProbability": "number (0-1, default 0.8)",
-    "maximumChatStamina": "number (1-20, default 5)", "maximumActionStamina": "number (1-20, default 5)",
-    "nameSensitivity": "number (0-1, default 0.3)",
-    "chatImpatienceSensitivity": "number (0-1, default 0.2)", "skipProbability": "number (0-1, default 0.1)",
-    "memoryRetentionWeight": "number (0-1, default 0.5)", "contextSensitivity": "number (0-1, default 0.5)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
+    "images": {"expression name": "image filename string"},
+    "voice": "string (optional voice ID or path)",
+    "systemPrompt": "string",
+    "thinkPrompt": "string",
+    "appearancePrompt": "string",
+    "dialoguePrompt": "string",
+    "starterPrompt": "string",
+    "initiativeWeight": "number (≥0, default 1.2)",
+    "chatProbability": "number (0-1, default 0.5)",
+    "maximumChatStamina": "number (≥0, default 4)",
+    "maximumActionStamina": "number (≥0, default 5)",
+    "nameSensitivity": "number (≥0, default 1)",
+    "chatImpatienceSensitivity": "number (≥0, default 0)",
+    "skipProbability": "number (0-1, default 0)",
+    "memoryRetentionWeight": "number (≥0, default 1)",
+    "contextSensitivity": "number (≥0, default 1)",
     "doNotInjectCharacterImage": "boolean (default false)",
-    "numberOfMessagesToDisableThinkPrompt": "number (default 1)",
-    "numberOfMessagesToDisableMetaThinkInstructions": "number (default 1)",
-    "numberOfMessagesToDisableDialoguePrompt": "number (default 1)",
-    "tools": {"pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)", "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)", "move": "boolean (default false)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)", "calculator": "boolean (default false)", "web": "boolean (default false)", "lookup": "boolean (default false)", "map": "boolean (default false)", "audio": "boolean (default false)", "note": "boolean (default false)", "inventory": "boolean (default false)", "invite": "boolean (default false)", "kick": "boolean (default false)", "teleport": "boolean (default false)", "lock": "boolean (default false)", "unlock": "boolean (default false)", "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)", "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)"},
-    "enableMemoryWriting": "boolean (default false)", "enableMemoryReading": "boolean (default false)"
+    "numberOfMessagesToDisableThinkPrompt": "number (≥0, default 1)",
+    "numberOfMessagesToDisableMetaThinkInstructions": "number (≥0, default 1)",
+    "numberOfMessagesToDisableDialoguePrompt": "number (≥0, default 1)",
+    "numberOfMessagesToDisableStarterPrompt": "number (≥0, default 1)",
+    "tools": {
+      "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
+      "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
+      "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
+      "calculator": "boolean (default false)", "web": "boolean (default false)", "lookup": "boolean (default false)",
+      "map": "boolean (default false)", "audio": "boolean (default false)", "note": "boolean (default false)",
+      "inventory": "boolean (default false)", "invite": "boolean (default false)", "kick": "boolean (default false)",
+      "teleport": "boolean (default false)", "lock": "boolean (default false)", "unlock": "boolean (default false)",
+      "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
+      "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)"
+    },
+    "enableMemoryWriting": "boolean (default false)",
+    "enableMemoryReading": "boolean (default false)"
   }]`);
     }
+
     if (includeContext) {
         parts.push(`  "contexts": [{
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
-    "text": "string (required)",
-    "searchTerms": ["string array"], "urls": ["string array"],
-    "includeLinkImages": "boolean (default false)", "maximumLinkDepth": "number (default 1)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
+    "text": "string",
+    "images": ["string array (image filenames)"],
+    "searchTerms": ["string array"],
+    "searchEngine": "'Google' | 'Bing' | 'DuckDuckGo' | 'Yandex' | 'Baidu' (optional)",
+    "urls": ["string array"],
+    "includeLinkImages": "boolean (default false)",
+    "maximumLinkDepth": "number (default 1)",
     "linkFetchMode": "'full' | 'summary' | 'extract' (default 'summary')",
-    "limitLinksToSubdirectory": "boolean (default false)", "fetchCacheTimeToLiveMs": "number",
+    "limitLinksToSubdirectory": "boolean (default false)",
+    "fetchCacheTimeToLiveMs": "number (optional)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
@@ -55,15 +86,21 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "messageFilterRegularExpressionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "messageFilterRegularExpressionExclusionContext": "'global' | 'local' | 'previous' (default 'global')",
     "messageFilterRegularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
-    "tokenBudget": "number (default 512)", "maximumRecursionDepth": "number (default 1)",
-    "insertionDepth": "number (default 0)", "characterBindings": ["character name or ID strings"],
-    "useBase64Encoding": "boolean (default false)"
+    "tokenBudget": "number (default 512)",
+    "maximumRecursionDepth": "number (default 1)",
+    "insertionDepth": "number (default 0)",
+    "characterBindings": ["character name or ID strings"],
+    "useBase64Encoding": "boolean (default false)",
+    "isAutoGenerated": "boolean (optional)"
   }]`);
     }
+
     if (includeLocation) {
         parts.push(`  "locations": [{
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
-    "text": "string (required)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
+    "text": "string",
     "images": ["string array (image filenames for location visuals)"],
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
@@ -76,7 +113,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "locationBindings": ["location name or ID strings"],
     "locationBindingRegularExpressionTriggers": {"location name or ID": "regex pattern"},
     "characterBindings": ["character name or ID strings"],
-    "globalWeight": "number (0-10, default 1)", "characterWeights": {"character name or ID": weight},
+    "globalWeight": "number (≥0, default 1)",
+    "characterWeights": {"character name or ID": "weight (number)"},
     "ownerBindings": ["character name or ID strings"],
     "latitude": "number (-90 to 90, optional, real-world latitude for local weather and time)",
     "longitude": "number (-180 to 180, optional, real-world longitude for local weather and time)",
@@ -93,15 +131,19 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "useBase64Encoding": "boolean (default false)"
   }]`);
     }
+
     if (includeAudioTrack) {
         parts.push(`  "audioTracks": [{
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
     "filename": "string (suggested filename, user will provide actual file)",
-    "loop": "boolean (default true)", "volume": "number (0-1, default 1)",
-    "startFadeDurationMs": "number (default 1000)", "endFadeDurationMs": "number (default 1000)",
+    "loop": "boolean (default true)",
+    "volume": "number (0-1, default 1)",
     "audioCategory": "'ambient' | 'music' | 'sound effect' (default 'ambient')",
-    "priority": "number (default 0)",
     "playableByParticipant": "boolean (default false)",
+    "startFadeDurationMs": "number (default 1000)",
+    "endFadeDurationMs": "number (default 1000)",
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
     "regularExpressionDeactivationTrigger": "string (regex without delimiters)",
     "regularExpressionExclusionActivationTrigger": "string (regex without delimiters, overrides activation when matched)",
@@ -110,12 +152,16 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "regularExpressionExclusionTarget": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator' (default 'everyone')",
     "locationBindings": ["location name or ID strings"],
     "contextBindings": ["context name or ID strings"],
-    "characterBindings": ["character name or ID strings"]
+    "characterBindings": ["character name or ID strings"],
+    "priority": "number (default 0)"
   }]`);
     }
+
     if (includePromptBlock) {
         parts.push(`  "promptBlocks": [{
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
     "textContent": "string (required)",
     "images": ["string array (image filenames)"],
     "regularExpressionActivationTrigger": "string (regex without delimiters)",
@@ -139,36 +185,77 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "locationBindings": ["location name or ID strings"]
   }]`);
     }
+
     if (includeProfile) {
         parts.push(`  "profile": {
-    "id": "string (UUID)", "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "id": "string (UUID)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
     "autonomousMode": "boolean (default false)",
     "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
-    "forceNameReveal": "boolean (default false)", "enableCharacterExpression": "boolean (default false)",
-    "forceNoCharacterImageInjection": "boolean (default false)", "forceNoContextImageInjection": "boolean (default false)",
+    "forceNameReveal": "boolean (default false)",
+    "enableCharacterExpression": "boolean (default false)",
+    "forceNoCharacterImageInjection": "boolean (default false)",
+    "forceNoContextImageInjection": "boolean (default false)",
     "forceNoLocationImageInjection": "boolean (default false)",
-    "useCurrentDateAndTime": "boolean (default false)", "useWeather": "boolean (default false)",
+    "useCurrentDateAndTime": "boolean (default false)",
+    "useWeather": "boolean (default false)",
     "weatherApiKey": "string (OpenWeather API key, required if useWeather is true)",
     "useTimeElapsed": "boolean (default false)",
-    "numberOfMessagesToDisableThinkPrompt": "number (default 0)",
-    "numberOfMessagesToDisableMetaThinkInstructions": "number (default 0)",
-    "numberOfMessagesToDisableDialoguePrompt": "number (default 0)",
+    "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
+    "numberOfMessagesToDisableMetaThinkInstructions": "number (-1 or ≥0, default -1 defers to character)",
+    "numberOfMessagesToDisableDialoguePrompt": "number (-1 or ≥0, default -1 defers to character)",
+    "numberOfMessagesToDisableStarterPrompt": "number (-1 or ≥0, default -1 defers to character)",
     "forceEqualInitiative": "boolean (default false)",
-    "chatProbability": "number (0-1, default 0.8)", "maximumChatStamina": "number (default 4)",
-    "maximumActionStamina": "number (1-20, default 5)",
-    "nameSensitivity": "number (0-1, default 0.3)", "chatImpatienceSensitivity": "number (0-1, default 0.2)",
-    "skipProbability": "number (0-1, default 0.1)", "memoryRetentionWeight": "number (0-1, default 0.5)",
-    "contextSensitivity": "number (0-1, default 0.5)", "cacheInvalidationReductionLevel": "number (0-3, default 0)",
+    "chatProbability": "number (-1 or 0-1, default -1 defers to character)",
+    "maximumChatStamina": "number (-1 or ≥0, default -1 defers to character)",
+    "maximumActionStamina": "number (-1 or ≥0, default -1 defers to character)",
+    "nameSensitivity": "number (-1 or ≥0, default -1 defers to character)",
+    "chatImpatienceSensitivity": "number (-1 or ≥0, default -1 defers to character)",
+    "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
+    "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
+    "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
+    "cacheInvalidationReductionLevel": "number (0-3, default 0)",
     "doNotInjectDefaultStopTokens": "boolean (default false)",
-    "narrateTexts": {"normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)", "italicized": "boolean (default false)", "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)", "braced": "boolean (default false)"},
+    "narrateTexts": {
+      "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",
+      "italicized": "boolean (default false)", "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)",
+      "braced": "boolean (default false)"
+    },
     "stripThinkTokens": "boolean (default true)",
-    "tools": {"pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)", "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)", "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)", "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "lookup": "number (-1, 0, or 1, default 0)", "map": "number (-1, 0, or 1, default 0)", "audio": "number (-1, 0, or 1, default 0)", "note": "number (-1, 0, or 1, default 0)", "inventory": "number (-1, 0, or 1, default 0)", "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)", "teleport": "number (-1, 0, or 1, default 0)", "lock": "number (-1, 0, or 1, default 0)", "unlock": "number (-1, 0, or 1, default 0)", "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)", "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"},
-    "enableMemoryWriting": "number (-1, 0, or 1, default 0)", "enableMemoryReading": "number (-1, 0, or 1, default 0)",
-    "inputStrategy": ["array of built-in block types and/or custom prompt block UUIDs. ${defaultInputStrategy.join(", ")}. Custom prompt blocks are referenced by their UUID string."],
-    "summarizationSteps": [{"strategyType": "string", "enabled": true, "order": 0}]
+    "tools": {
+      "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
+      "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
+      "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
+      "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "lookup": "number (-1, 0, or 1, default 0)",
+      "map": "number (-1, 0, or 1, default 0)", "audio": "number (-1, 0, or 1, default 0)", "note": "number (-1, 0, or 1, default 0)",
+      "inventory": "number (-1, 0, or 1, default 0)", "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)",
+      "teleport": "number (-1, 0, or 1, default 0)", "lock": "number (-1, 0, or 1, default 0)", "unlock": "number (-1, 0, or 1, default 0)",
+      "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
+      "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"
+    },
+    "enableMemoryWriting": "number (-1, 0, or 1, default 0)",
+    "enableMemoryReading": "number (-1, 0, or 1, default 0)",
+    "inputStrategy": ["array of PromptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
+    "summarizationSteps": [{
+      "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking'",
+      "enabled": "boolean (default true)",
+      "order": "number (default 0)",
+      "slidingWindowSize": "number (optional)",
+      "compressionInterval": "number (optional)",
+      "compressionChunkSize": "number (optional)",
+      "recursiveChunkSize": "number (optional)",
+      "recursiveMaxDepth": "number (optional)",
+      "maskingRelevanceThreshold": "number (optional)",
+      "maskingKeywordWeight": "number (optional)",
+      "summaryTokenBudget": "number (optional)",
+      "summaryModelId": "string (optional UUID)",
+      "triggerTokenThreshold": "number (optional)"
+    }]
   }`);
     }
+
     if (hasWorld) {
         const worldParts: string[] = [];
         if (includeCharacter) worldParts.push('"characters": [/* same character schema */]');
@@ -178,9 +265,11 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
         if (includePromptBlock) worldParts.push('"promptBlocks": [/* same promptBlock schema */]');
         if (includeProfile) worldParts.push('"profile": {/* same profile schema */}');
         parts.push(`  "world": {
-    "name": "string (required)", "description": "string (display only, NOT used as AI input)",
+    "name": "string (required)",
+    "description": "string (display only, NOT used as AI input)",
     ${worldParts.join(',\n    ')}
   }`);
     }
+
     return `{\n${parts.join(',\n')}\n}`;
 }

@@ -90,6 +90,10 @@ export function getEffectiveMessagesToDisableDialoguePrompt(character: Character
     return getEffectiveNumeric("numberOfMessagesToDisableDialoguePrompt", character, profile);
 }
 
+export function getEffectiveMessagesToDisableStarterPrompt(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("numberOfMessagesToDisableStarterPrompt", character, profile);
+}
+
 export function getEffectiveEnableMemoryWriting(character: Character, profile?: Profile): boolean {
     return getEffectiveTriStateBoolean("enableMemoryWriting", character, profile);
 }
@@ -204,10 +208,10 @@ export function generateChatStaminaForMessage(interactionMessage: HistoryMessage
         remainingChatStamina + amountOfChatStaminaGenerated
     );
 
-    interactionMessage.remainingChatStamina = newRemainingChatStamina
+    interactionMessage.remainingChatStamina = newRemainingChatStamina;
 }
 
-export function generateActionStaminaForMessage(interactionMessage: HistoryMessage,  amountOfActionStaminaGenerated: number, character: Character, profile?: Profile) {
+export function generateActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaGenerated: number, character: Character, profile?: Profile) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
     const remainingActionStamina = interactionMessage.remainingActionStamina;
 
@@ -220,8 +224,7 @@ export function generateActionStaminaForMessage(interactionMessage: HistoryMessa
         remainingActionStamina + amountOfActionStaminaGenerated
     );
 
-    interactionMessage.remainingActionStamina = newRemainingActionStamina
-
+    interactionMessage.remainingActionStamina = newRemainingActionStamina;
 }
 
 /**
@@ -230,9 +233,9 @@ export function generateActionStaminaForMessage(interactionMessage: HistoryMessa
  */
 export function generateChatStaminaForInteractionData(data: InteractionData, amountOfChatStamina: number, character: Character) {
     const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.Profile);
-    if (maximumChatStamina === Number.POSITIVE_INFINITY) return
-    const previousMessage = findPreviousMessage(data, character.id)
-    if (!previousMessage) return
+    if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
+    const previousMessage = findPreviousMessage(data, character.id);
+    if (!previousMessage) return;
     generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.Profile);
 }
 
@@ -242,9 +245,9 @@ export function generateChatStaminaForInteractionData(data: InteractionData, amo
  */
 export function generateActionStaminaForInteractionData(data: InteractionData, amountOfActionStamina: number, character: Character) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.Profile);
-    if (maximumActionStamina === Number.POSITIVE_INFINITY) return
-    const previousMessage = findPreviousMessage(data, character.id)
-    if (!previousMessage) return
+    if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
+    const previousMessage = findPreviousMessage(data, character.id);
+    if (!previousMessage) return;
     generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.Profile);
 }
 

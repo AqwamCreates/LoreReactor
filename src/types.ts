@@ -242,6 +242,7 @@ export interface Character extends ObjectData {
   thinkPrompt?: string;
   appearancePrompt?: string;
   dialoguePrompt?: string;
+  starterPrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -257,6 +258,7 @@ export interface Character extends ObjectData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
+  numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
@@ -270,6 +272,7 @@ export interface RawCharacter extends RawData {
   thinkPrompt?: string;
   appearancePrompt?: string;
   dialoguePrompt?: string;
+  starterPrompt?: string;
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -285,6 +288,7 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
+  numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
@@ -518,6 +522,7 @@ export type PromptBlockType =
   | 'Time Elapsed'
   | 'Fatigue Information'
   | 'Tool Instructions'
+  | 'Starter Prompt'
   | 'Text Injection';
 
 export interface PromptBlock extends ObjectData {
@@ -585,6 +590,7 @@ export interface Profile extends ObjectData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
+  numberOfMessagesToDisableStarterPrompt: number;
   forceEqualInitiative: boolean;
   chatProbability: number;
   maximumChatStamina: number;
@@ -621,6 +627,7 @@ export interface RawProfile extends RawData {
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
+  numberOfMessagesToDisableStarterPrompt: number;
   forceEqualInitiative: boolean;
   chatProbability: number;
   maximumChatStamina: number;

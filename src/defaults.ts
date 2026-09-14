@@ -69,7 +69,7 @@ export const DefaultActions: InterjectableAction[] = [
 ];
 
 export const defaultInputStrategy: PromptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed', 'Fatigue Information', 'Tool Instructions', 'Text Injection'
+    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt', 'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed', 'Fatigue Information', 'Tool Instructions', 'Starter Prompt', 'Text Injection'
 ];
 
 export const defaultCharacterTools: Record<tool, boolean> = {

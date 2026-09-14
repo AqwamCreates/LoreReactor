@@ -26,9 +26,8 @@ const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
 const DEFAULT_DISABLE_THINK_PROMPT = 1;
 const DEFAULT_DISABLE_META_THINK = 1;
 const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
+const DEFAULT_DISABLE_STARTER_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
-
-
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -37,6 +36,7 @@ interface TokenCounts {
     thinkPrompt: number | null;
     appearancePrompt: number | null;
     dialoguePrompt: number | null;
+    starterPrompt: number | null;
 }
 
 interface CharacterEditorModalProps {
@@ -61,6 +61,7 @@ export function CharacterEditorModal({
     const [thinkPrompt, setThinkPrompt] = useState('');
     const [appearancePrompt, setAppearancePrompt] = useState('');
     const [dialoguePrompt, setDialoguePrompt] = useState('');
+    const [starterPrompt, setStarterPrompt] = useState('');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -88,6 +89,7 @@ export function CharacterEditorModal({
     const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(DEFAULT_DISABLE_THINK_PROMPT));
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(DEFAULT_DISABLE_META_THINK));
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
+    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(DEFAULT_DISABLE_STARTER_PROMPT));
 
     const [tools, setTools] = useState<Record<tool, boolean>>({ ...defaultCharacterTools });
     const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
@@ -107,7 +109,7 @@ export function CharacterEditorModal({
     });
 
     const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
-        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null,
+        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null, starterPrompt: null,
     });
     const [countingField, setCountingField] = useState<keyof TokenCounts | null>(null);
 
@@ -171,6 +173,7 @@ export function CharacterEditorModal({
             setThinkPrompt(existingCharacter.thinkPrompt || '');
             setAppearancePrompt(existingCharacter.appearancePrompt || '');
             setDialoguePrompt(existingCharacter.dialoguePrompt || '');
+            setStarterPrompt(existingCharacter.starterPrompt || '');
             setFirstMessage('');
 
             const imgs = existingCharacter.images ?? {};
@@ -198,6 +201,7 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setNumberOfMessagesToDisableStarterPromptStr(String(existingCharacter.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
             setTools(existingCharacter.tools ?? { ...defaultCharacterTools });
             setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
             setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
@@ -206,8 +210,9 @@ export function CharacterEditorModal({
             countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
             countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
             countFieldTokens('dialoguePrompt', existingCharacter.dialoguePrompt || '');
+            countFieldTokens('starterPrompt', existingCharacter.starterPrompt || '');
         } else {
-            setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setFirstMessage('');
+            setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setStarterPrompt(''); setFirstMessage('');
             setImageFile(null); setImagePreview(null);
             setEmotionImages({});
             setPendingCharacterId(uuidv4());
@@ -221,10 +226,11 @@ export function CharacterEditorModal({
             setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
             setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
             setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
+            setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
             setTools({ ...defaultCharacterTools });
             setEnableMemoryWriting(false); setEnableMemoryReading(false);
             setMemories({});
-            setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0 });
+            setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0, starterPrompt: 0 });
         }
     }, [isOpen, existingCharacter, allSamplers, countFieldTokens]);
 
@@ -289,7 +295,7 @@ export function CharacterEditorModal({
         if (!card) { setSubmitError("Not a valid character card PNG."); return; }
         const fields = mapCardToEditorFields(card);
         setName(fields.name); setDescription(fields.description); setSystemPrompt(fields.systemPrompt); setThinkPrompt(fields.thinkPrompt);
-        setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setFirstMessage(fields.firstMessage);
+        setAppearancePrompt(fields.appearancePrompt); setDialoguePrompt(fields.dialoguePrompt); setStarterPrompt(fields.starterPrompt || ''); setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
         setAutoDetected({ iw: null, cp: null, ms: null });
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
@@ -297,12 +303,13 @@ export function CharacterEditorModal({
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
-        setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0');
+        setNumberOfMessagesToDisableThinkPromptStr('0'); setNumberOfMessagesToDisableMetaThinkInstructionsStr('0'); setNumberOfMessagesToDisableDialoguePromptStr('0'); setNumberOfMessagesToDisableStarterPromptStr('0');
         setTools({ ...defaultCharacterTools });
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
         countFieldTokens('systemPrompt', fields.systemPrompt); countFieldTokens('thinkPrompt', fields.thinkPrompt);
         countFieldTokens('appearancePrompt', fields.appearancePrompt); countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
+        countFieldTokens('starterPrompt', fields.starterPrompt || '');
         setSubmitError(null);
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
@@ -350,6 +357,7 @@ export function CharacterEditorModal({
         const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
         const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
         const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
+        const rawDisableStarter = Number.parseInt(numberOfMessagesToDisableStarterPromptStr);
 
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
@@ -419,6 +427,7 @@ export function CharacterEditorModal({
             thinkPrompt: thinkPrompt.trim() || undefined,
             appearancePrompt: appearancePrompt.trim() || undefined,
             dialoguePrompt: dialoguePrompt.trim() || undefined,
+            starterPrompt: starterPrompt.trim() || undefined,
             images: finalImages,
             voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
@@ -429,6 +438,7 @@ export function CharacterEditorModal({
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
+            numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? DEFAULT_DISABLE_STARTER_PROMPT : Math.max(0, rawDisableStarter),
             tools: { ...tools },
             enableMemoryWriting,
             enableMemoryReading,
@@ -512,6 +522,7 @@ export function CharacterEditorModal({
                                 <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
                                 <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
                                 <div className="editor-field-wrapper"><textarea value={dialoguePrompt} onChange={(e) => { setDialoguePrompt(e.target.value); countFieldTokens('dialoguePrompt', e.target.value); }} className="editor-textarea editor-textarea-dialogue" placeholder="Dialogue Examples" disabled={isUploading} />{renderTokenCount('dialoguePrompt')}</div>
+                                <div className="editor-field-wrapper"><textarea value={starterPrompt} onChange={(e) => { setStarterPrompt(e.target.value); countFieldTokens('starterPrompt', e.target.value); }} className="editor-textarea editor-textarea-starter" placeholder="Starter Prompt" disabled={isUploading} />{renderTokenCount('starterPrompt')}</div>
 
                                 <div className="editor-bottom-section">
                                     <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading}>
@@ -553,6 +564,7 @@ export function CharacterEditorModal({
                 numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
                 numberOfMessagesToDisableMetaThinkInstructionsStr={numberOfMessagesToDisableMetaThinkInstructionsStr}
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
+                numberOfMessagesToDisableStarterPromptStr={numberOfMessagesToDisableStarterPromptStr}
                 tools={tools}
                 enableMemoryWriting={enableMemoryWriting}
                 enableMemoryReading={enableMemoryReading}
@@ -571,6 +583,7 @@ export function CharacterEditorModal({
                 onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}
                 onDisableMetaChange={setNumberOfMessagesToDisableMetaThinkInstructionsStr}
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
+                onDisableStarterChange={setNumberOfMessagesToDisableStarterPromptStr}
                 onToolToggle={handleToolToggle}
                 onEnableMemoryWritingChange={setEnableMemoryWriting}
                 onEnableMemoryReadingChange={setEnableMemoryReading}

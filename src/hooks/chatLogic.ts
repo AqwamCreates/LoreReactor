@@ -57,10 +57,10 @@ const noRestrictionsInstructions = "I understand that the amount and intensity o
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
 
 const startingAppearancePromptLine = `${contextStartString}Start Of The Characters' Appearances List.${contextEndString}`;
-const endingAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
+const endOfAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
 
 const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
-const endingDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
+const endOfDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
 
 const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
 const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
@@ -71,6 +71,9 @@ const endOfContextLine = `${contextStartString}End Of The Context.${contextEndSt
 const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
 const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
 const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
+
+const startOfStarterPromptLine = `${contextStartString}Start Of This Character's Starter Prompt.${contextEndString}`;
+const endOfStarterPromptLines = `${contextStartString}Start Of This Character's Starter Prompt.${contextEndString}`;
 
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
@@ -344,7 +347,7 @@ function getMessageFilterFlags(
             const msg = chatMessages[i];
 
             if (including) {
-                if (deactivationRegex && deactivationRegex.test(msg.textContent)) {
+                if (deactivationRegex?.test(msg.textContent)) {
                     return;
                 }
             } else {
@@ -951,7 +954,7 @@ export async function buildPromptAndStopPatterns(
             appearancePromptLines.push(appearanceText);
         }
 
-        appearancePromptLines.push(endingAppearancePromptLine);
+        appearancePromptLines.push(endOfAppearancePromptLine);
     }
 
     const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
@@ -1276,7 +1279,7 @@ export async function buildPromptAndStopPatterns(
         dialoguePromptLines.push(startingDialoguePromptLine);
         const replacedDialogue = replacePlaceholders(dialoguePrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
         dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
-        dialoguePromptLines.push(endingDialoguePromptLine);
+        dialoguePromptLines.push(endOfDialoguePromptLine);
     }
 
     const memoryLines: string[] = [];
@@ -1328,6 +1331,17 @@ export async function buildPromptAndStopPatterns(
         if (fatigue) fatigueLines.push(fatigue);
     }
 
+    const starterPromptLines: string[] = [];
+
+    const starterPrompt = character.starterPrompt;
+
+    if (starterPrompt?.trim()) {
+        starterPromptLines.push(startOfStarterPromptLine);
+        const replacedStarter = replacePlaceholders(starterPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+        starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
+        starterPromptLines.push(endOfStarterPromptLines);
+    }
+
     const textInjectionLines: string[] = [];
 
     if (contextLines.length > 0) {
@@ -1361,12 +1375,14 @@ export async function buildPromptAndStopPatterns(
         'Time Elapsed': timeElapsedLines,
         'Fatigue Information': fatigueLines,
         'Tool Instructions': toolInstructions,
+        'Starter Prompt': starterPromptLines,
         'Text Injection': textInjectionLines,
     };
 
     const numberOfMessagesToDisableThinkPrompt = getEffectiveMessagesToDisableThinkPrompt(character, profile);
     const numberOfMessagesToDisableMetaThinkInstructions = getEffectiveMessagesToDisableMetaThinkInstructions(character, profile);
     const numberOfMessagesToDisableDialoguePrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
+    const numberOfMessagesToDisableStarterPrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
         blockMap['Think Prompt'] = undefined;
@@ -1378,6 +1394,10 @@ export async function buildPromptAndStopPatterns(
 
     if (numberOfMessagesByParticipant >= numberOfMessagesToDisableDialoguePrompt) {
         blockMap['Dialogue Prompt'] = undefined;
+    }
+
+    if (numberOfMessagesByParticipant >= numberOfMessagesToDisableStarterPrompt) {
+        blockMap['Starter Prompt'] = undefined
     }
 
     const promptBlockById = new Map<string, PromptBlock>();

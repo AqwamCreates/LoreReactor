@@ -188,6 +188,7 @@ export function ProfileEditorModal({
     const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(-1);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(-1);
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(-1);
+    const [numberOfMessagesToDisableStarterPrompt, setNumberOfMessagesToDisableStarterPrompt] = useState<number>(-1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(false);
     const [forceNoLocationImageInjection, setForceNoLocationImageInjection] = useState(false);
     const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(false);
@@ -253,6 +254,7 @@ export function ProfileEditorModal({
             setNumberOfMessagesToDisableThinkPrompt(existingProfile.numberOfMessagesToDisableThinkPrompt ?? -1);
             setNumberOfMessagesToDisableMetaThinkInstructions(existingProfile.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
             setNumberOfMessagesToDisableDialoguePrompt(existingProfile.numberOfMessagesToDisableDialoguePrompt ?? -1);
+            setNumberOfMessagesToDisableStarterPrompt(existingProfile.numberOfMessagesToDisableStarterPrompt ?? -1);
             setForceNoContextImageInjection(existingProfile.forceNoContextImageInjection ?? false);
             setForceNoLocationImageInjection(existingProfile.forceNoLocationImageInjection ?? false);
             setUseCurrentDateAndTime(existingProfile.useCurrentDateAndTime ?? false);
@@ -288,7 +290,7 @@ export function ProfileEditorModal({
             setAutonomousInteractionIntervalMs(10000);
             setForceNameReveal(false); setEnableCharacterExpression(false);
             setForceNoCharacterImageInjection(false); setForceNoContextImageInjection(false); setForceNoLocationImageInjection(false);
-            setNumberOfMessagesToDisableThinkPrompt(-1); setNumberOfMessagesToDisableMetaThinkInstructions(-1); setNumberOfMessagesToDisableDialoguePrompt(-1);
+            setNumberOfMessagesToDisableThinkPrompt(-1); setNumberOfMessagesToDisableMetaThinkInstructions(-1); setNumberOfMessagesToDisableDialoguePrompt(-1); setNumberOfMessagesToDisableStarterPrompt(-1);
             setUseCurrentDateAndTime(false); setUseWeather(false); setWeatherApiKey(''); setUseTimeElapsed(false);
             setForceEqualInitiative(false); setChatProbability(0); setMaximumChatStamina(0);
             setNameSensitivity(-1); setSkipProbability(-1); setChatImpatienceSensitivity(-1);
@@ -321,7 +323,7 @@ export function ProfileEditorModal({
             autonomousInteractionIntervalMs,
             forceNameReveal, enableCharacterExpression,
             forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection,
-            numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt,
+            numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt,
             useCurrentDateAndTime, useWeather, weatherApiKey, useTimeElapsed,
             forceEqualInitiative, chatProbability, maximumChatStamina,
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
@@ -551,6 +553,9 @@ export function ProfileEditorModal({
                         </div>
                         <div style={{ marginTop: '12px' }}>
                             <SliderInput label="Number of Messages to Disable Dialogue Prompt" value={numberOfMessagesToDisableDialoguePrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
+                        </div>
+                        <div style={{ marginTop: '12px' }}>
+                            <SliderInput label="Number of Messages to Disable Starter Prompt" value={numberOfMessagesToDisableStarterPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableStarterPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
                         </div>
                     </div>
 
