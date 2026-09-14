@@ -29,7 +29,7 @@ const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 10;
 
 /**
- * Entity type registry - single source of truth for all entity metadata.
+ * Entity Registry - Single source of truth for all entity metadata.
  * Keys are used as both TypeScript identifiers and directory names.
  */
 const ENTITY_REGISTRY = {
@@ -49,7 +49,7 @@ const ENTITY_REGISTRY = {
   worlds: { dir: 'world_data', hasManifest: true },
   webpages: { dir: 'webpage_data', hasManifest: true },
   memories: { dir: 'memory_data', hasManifest: true },
-  audioTracks: { dir: 'audio_track_data', hasManifest: true },
+  audioTracks: { dir: 'audio_tracks', hasManifest: true },
   promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
 } as const;
 
@@ -244,7 +244,7 @@ async function deleteResource(url: string): Promise<void> {
 }
 
 // =============================================================================
-// MANIFEST MANAGEMENT
+// MANIFEST MANAGEMENT (SELF-HEALING)
 // =============================================================================
 
 async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
@@ -254,7 +254,34 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
   const currentIds = await fetchJson<string[]>(manifestUrl);
   
   if (currentIds && Array.isArray(currentIds)) {
-    return currentIds;
+    // SELF-HEALING: Verify that files for these IDs actually exist
+    // This prevents 404 spam when loading lists if files were deleted manually
+    const validIds: string[] = [];
+    let hasChanges = false;
+
+    // Check in batches to avoid overwhelming the server
+    for (let i = 0; i < currentIds.length; i += BATCH_SIZE) {
+        const batch = currentIds.slice(i, i + BATCH_SIZE);
+        // We use fetchJson to check existence. If it returns null, the file is gone.
+        // Note: fetchJson returns null for 404s.
+        const checks = await Promise.all(batch.map(id => fetchJson(`${folderPath}/${id}.json`)));
+        
+        batch.forEach((id, index) => {
+            if (checks[index] !== null) {
+                validIds.push(id);
+            } else {
+                console.warn(`[Manifest Repair] Removing missing ID ${id} from ${entityKey} manifest`);
+                hasChanges = true;
+            }
+        });
+    }
+
+    if (hasChanges) {
+        console.log(`[Manifest Repair] Updating ${entityKey} manifest: ${currentIds.length} -> ${validIds.length} items`);
+        await putJson(manifestUrl, validIds);
+    }
+
+    return validIds;
   }
 
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
@@ -360,6 +387,42 @@ function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> 
 }
 
 // =============================================================================
+// GENERIC HYDRATION UTILITY
+// =============================================================================
+
+/**
+ * Hydrates a raw entity into its full type using a key mapping.
+ * This reduces boilerplate by automatically copying fields that share the same name
+ * and applying defaults for missing fields.
+ */
+function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
+    raw: R,
+    id: string,
+    defaults?: Partial<T>,
+    transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
+): T {
+    const now = Date.now();
+    
+    // Base object: Defaults < Raw < System Fields
+    const base = {
+        ...defaults,
+        ...raw,
+        id,
+        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    } as unknown as T;
+
+    // Apply transforms for fields that need renaming or computation
+    if (transforms) {
+        for (const [key, fn] of Object.entries(transforms)) {
+            if (fn) (base as any)[key] = fn(raw, id);
+        }
+    }
+
+    return base;
+}
+
+// =============================================================================
 // GENERIC REPOSITORY FACTORY
 // =============================================================================
 
@@ -428,15 +491,12 @@ const memoryRepo = createRepository<Memory, RawMemory>({
   entityKey: 'memories',
   hydrate: (raw, id) => {
     const ts = Date.now();
-    return {
-      id,
-      name: raw.name || 'Untitled Memory',
-      description: raw.description,
-      content: raw.content,
-      interactionData: undefined as unknown as InteractionData,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || ts,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || ts,
-    };
+    return hydrateEntity<Memory, RawMemory>(raw, id, {
+        name: 'Untitled Memory',
+        interactionData: undefined as unknown as InteractionData,
+    }, {
+        interactionData: () => undefined as unknown as InteractionData, // Hydrated later
+    });
   },
   serialize: (memory) => {
     const { id, interactionData, ...rest } = memory;
@@ -501,21 +561,8 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
 
 const stopPatternRepo = createRepository<StopPattern, RawStopPattern>({
   entityKey: 'stopPatterns',
-  hydrate: (raw, id) => ({
-    id,
-    name: raw.name || 'Unknown Pattern',
-    description: raw.description,
-    pattern: raw.pattern,
-    regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-    regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-    regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-    regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-    regularExpressionContext: raw.regularExpressionContext,
-    regularExpressionTarget: raw.regularExpressionTarget,
-    regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-    regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+  hydrate: (raw, id) => hydrateEntity<StopPattern, RawStopPattern>(raw, id, {
+    name: 'Unknown Pattern',
   }),
 });
 
@@ -536,16 +583,13 @@ const samplerRepo = createRepository<Sampler, RawSampler>({
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
-    return {
-      id,
-      name: raw.name || 'Unknown Sampler',
-      description: raw.description,
-      parameters: raw.parameters || {},
-      maximumNumberOfTokens: raw.maximumNumberOfTokens,
-      stopPatterns,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
-    };
+    return hydrateEntity<Sampler, RawSampler>(raw, id, {
+        name: 'Unknown Sampler',
+        parameters: {},
+        stopPatterns: [],
+    }, {
+        stopPatterns: () => stopPatterns
+    });
   },
   serialize: (sampler) => {
     const { id, stopPatterns, ...rest } = sampler;
@@ -614,39 +658,16 @@ const characterRepo = createRepository<Character, RawCharacter>({
       images.neutral = legacyImage;
     }
 
-    return {
-      id,
-      name: raw.name || 'Unknown Character',
-      images,
-      voice: raw.voice,
-      description: raw.description,
-      systemPrompt: raw.systemPrompt,
-      thinkPrompt: raw.thinkPrompt,
-      appearancePrompt: raw.appearancePrompt,
-      dialoguePrompt: raw.dialoguePrompt,
-      starterPrompt: raw.starterPrompt,
-      initiativeWeight: raw.initiativeWeight,
-      chatProbability: raw.chatProbability,
-      maximumChatStamina: raw.maximumChatStamina,
-      nameSensitivity: raw.nameSensitivity,
-      chatImpatienceSensitivity: raw.chatImpatienceSensitivity,
-      skipProbability: raw.skipProbability,
-      memoryRetentionWeight: raw.memoryRetentionWeight,
-      contextSensitivity: raw.contextSensitivity,
-      maximumActionStamina: raw.maximumActionStamina,
-      numberOfMessagesToDisableThinkPrompt: raw.numberOfMessagesToDisableThinkPrompt,
-      numberOfMessagesToDisableMetaThinkInstructions: raw.numberOfMessagesToDisableMetaThinkInstructions,
-      numberOfMessagesToDisableDialoguePrompt: raw.numberOfMessagesToDisableDialoguePrompt,
-      numberOfMessagesToDisableStarterPrompt: raw.numberOfMessagesToDisableStarterPrompt,
-      sampler,
-      doNotInjectCharacterImage: raw.doNotInjectCharacterImage,
-      tools: raw.tools,
-      enableMemoryWriting: raw.enableMemoryWriting,
-      enableMemoryReading: raw.enableMemoryReading,
-      memories,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
-    };
+    return hydrateEntity<Character, RawCharacter>(raw, id, {
+        name: 'Unknown Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
+    }, {
+        sampler: () => sampler,
+        memories: () => memories,
+        images: () => images,
+    });
   },
   serialize: async (character) => {
     const { id, sampler, memories, ...rest } = character;
@@ -677,39 +698,16 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
       images.neutral = rawCharacter.image;
     }
 
-    return {
-        id,
-        name: rawCharacter.name || 'Unknown Character',
-        images,
-        voice: rawCharacter.voice,
-        description: rawCharacter.description,
-        systemPrompt: rawCharacter.systemPrompt,
-        thinkPrompt: rawCharacter.thinkPrompt,
-        appearancePrompt: rawCharacter.appearancePrompt,
-        dialoguePrompt: rawCharacter.dialoguePrompt,
-        starterPrompt: rawCharacter.starterPrompt,
-        initiativeWeight: rawCharacter.initiativeWeight,
-        chatProbability: rawCharacter.chatProbability,
-        maximumChatStamina: rawCharacter.maximumChatStamina,
-        nameSensitivity: rawCharacter.nameSensitivity,
-        chatImpatienceSensitivity: rawCharacter.chatImpatienceSensitivity,
-        skipProbability: rawCharacter.skipProbability,
-        memoryRetentionWeight: rawCharacter.memoryRetentionWeight,
-        contextSensitivity: rawCharacter.contextSensitivity,
-        maximumActionStamina: rawCharacter.maximumActionStamina,
-        numberOfMessagesToDisableThinkPrompt: rawCharacter.numberOfMessagesToDisableThinkPrompt,
-        numberOfMessagesToDisableMetaThinkInstructions: rawCharacter.numberOfMessagesToDisableMetaThinkInstructions,
-        numberOfMessagesToDisableDialoguePrompt: rawCharacter.numberOfMessagesToDisableDialoguePrompt,
-        numberOfMessagesToDisableStarterPrompt: rawCharacter.numberOfMessagesToDisableStarterPrompt,
+    return hydrateEntity<Character, RawCharacter>(rawCharacter, id, {
+        name: 'Unknown Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
         sampler: undefined,
-        doNotInjectCharacterImage: rawCharacter.doNotInjectCharacterImage,
-        tools: rawCharacter.tools,
-        enableMemoryWriting: rawCharacter.enableMemoryWriting,
-        enableMemoryReading: rawCharacter.enableMemoryReading,
-        memories,
-        firstCreatedTimestamp: rawCharacter.firstCreatedTimestamp,
-        lastUpdatedTimestamp: rawCharacter.lastUpdatedTimestamp,
-    };
+    }, {
+        memories: () => memories,
+        images: () => images,
+    });
 }
 
 export async function loadAllCharacterShells(): Promise<Character[]> {
@@ -724,44 +722,14 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
 
 const contextRepo = createRepository<Context, RawContext>({
   entityKey: 'contexts',
-  hydrate: (raw, id) => ({
-    id,
-    name: raw.name || 'Unknown Context',
-    description: raw.description,
-    text: raw.text,
-    images: raw.images,
-    searchTerms: raw.searchTerms || [],
-    searchEngine: raw.searchEngine,
-    urls: raw.urls || [],
-    includeLinkImages: raw.includeLinkImages,
-    maximumLinkDepth: raw.maximumLinkDepth,
-    linkFetchMode: raw.linkFetchMode || 'full',
-    limitLinksToSubdirectory: raw.limitLinksToSubdirectory,
-    fetchCacheTimeToLiveMs: raw.fetchCacheTimeToLiveMs,
-    regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-    regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-    regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-    regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-    regularExpressionContext: raw.regularExpressionContext,
-    regularExpressionTarget: raw.regularExpressionTarget,
-    regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-    regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-    messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
-    messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
-    messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
-    messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
-    messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
-    messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
-    messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
-    messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
-    tokenBudget: raw.tokenBudget,
-    maximumRecursionDepth: raw.maximumRecursionDepth,
-    insertionDepth: raw.insertionDepth,
-    characterBindings: raw.characterBindings,
-    useBase64Encoding: raw.useBase64Encoding,
-    isAutoGenerated: raw.isAutoGenerated,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp,
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
+  hydrate: (raw, id) => hydrateEntity<Context, RawContext>(raw, id, {
+    name: 'Unknown Context',
+    searchTerms: [],
+    urls: [],
+    linkFetchMode: 'full',
+    limitLinksToSubdirectory: false,
+    useBase64Encoding: false,
+    isAutoGenerated: false,
   }),
 });
 
@@ -777,44 +745,23 @@ export const deleteRawContext = contextRepo.remove;
 
 const locationRepo = createRepository<Location, RawLocation>({
   entityKey: 'locations',
-  hydrate: (raw, id) => {
-    const now = Date.now();
-    return {
-      id,
-      name: raw.name || 'Unknown Location',
-      description: raw.description,
-      text: raw.text,
-      images: raw.images,
-      backgroundImageRegularExpressionActivationTriggers: raw.backgroundImageRegularExpressionActivationTriggers ?? {},
-      backgroundImageWeights: raw.backgroundImageWeights ?? {},
-      playAudioTrackOnEnterWeights: raw.playAudioTrackOnEnterWeights ?? {},
-      locationBindings: raw.locationBindings ?? [],
-      locationBindingRegularExpressionTriggers: raw.locationBindingRegularExpressionTriggers ?? {},
-      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-      characterBindings: raw.characterBindings ?? [],
-      globalWeight: raw.globalWeight ?? 1,
-      characterWeights: raw.characterWeights ?? {},
-      ownerBindings: raw.ownerBindings ?? [],
-      latitude: raw.latitude ?? 0,
-      longitude: raw.longitude ?? 0,
-      locationDistances: raw.locationDistances ?? {},
-      messageFilterNonCoLocatedParticipants: raw.messageFilterNonCoLocatedParticipants ?? false,
-      messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
-      messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
-      messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
-      messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
-      messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
-      messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
-      messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
-      messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
-      useBase64Encoding: raw.useBase64Encoding ?? false,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
-  },
+  hydrate: (raw, id) => hydrateEntity<Location, RawLocation>(raw, id, {
+    name: 'Unknown Location',
+    backgroundImageRegularExpressionActivationTriggers: {},
+    backgroundImageWeights: {},
+    playAudioTrackOnEnterWeights: {},
+    locationBindings: [],
+    locationBindingRegularExpressionTriggers: {},
+    characterBindings: [],
+    globalWeight: 1,
+    characterWeights: {},
+    ownerBindings: [],
+    latitude: 0,
+    longitude: 0,
+    locationDistances: {},
+    messageFilterNonCoLocatedParticipants: false,
+    useBase64Encoding: false,
+  }),
 });
 
 export const loadRawLocationManifest = locationRepo.loadManifest;
@@ -829,33 +776,19 @@ export const deleteRawLocation = locationRepo.remove;
 
 const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
   entityKey: 'audioTracks',
-  hydrate: (raw, id) => {
-    const now = Date.now();
-    return {
-      id,
-      name: raw.name || 'Untitled Track',
-      description: raw.description,
-      filename: raw.filename,
-      loop: raw.loop ?? false,
-      volume: raw.volume ?? 1,
-      audioCategory: raw.audioCategory ?? 'ambient',
-      playableByParticipant: raw.playableByParticipant ?? false,
-      startFadeDurationMs: raw.startFadeDurationMs ?? 1000,
-      endFadeDurationMs: raw.endFadeDurationMs ?? 1000,
-      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-      regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-      regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-      locationBindings: raw.locationBindings ?? [],
-      contextBindings: raw.contextBindings ?? [],
-      characterBindings: raw.characterBindings ?? [],
-      priority: raw.priority ?? 0,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
-  },
+  hydrate: (raw, id) => hydrateEntity<AudioTrack, RawAudioTrack>(raw, id, {
+    name: 'Untitled Track',
+    loop: false,
+    volume: 1,
+    audioCategory: 'ambient',
+    playableByParticipant: false,
+    startFadeDurationMs: 1000,
+    endFadeDurationMs: 1000,
+    locationBindings: [],
+    contextBindings: [],
+    characterBindings: [],
+    priority: 0,
+  }),
 });
 
 export const loadRawAudioTrackManifest = audioTrackRepo.loadManifest;
@@ -870,37 +803,14 @@ export const deleteRawAudioTrack = audioTrackRepo.remove;
 
 const promptBlockRepo = createRepository<PromptBlock, RawPromptBlock>({
   entityKey: 'promptBlocks',
-  hydrate: (raw, id) => {
-    const now = Date.now();
-    return {
-      id,
-      name: raw.name || 'Untitled Prompt Block',
-      description: raw.description,
-      textContent: raw.textContent ?? '',
-      images: raw.images ?? [],
-      regularExpressionActivationTrigger: raw.regularExpressionActivationTrigger,
-      regularExpressionDeactivationTrigger: raw.regularExpressionDeactivationTrigger,
-      regularExpressionExclusionActivationTrigger: raw.regularExpressionExclusionActivationTrigger,
-      regularExpressionExclusionDeactivationTrigger: raw.regularExpressionExclusionDeactivationTrigger,
-      regularExpressionContext: raw.regularExpressionContext,
-      regularExpressionTarget: raw.regularExpressionTarget,
-      regularExpressionExclusionContext: raw.regularExpressionExclusionContext,
-      regularExpressionExclusionTarget: raw.regularExpressionExclusionTarget,
-      messageFilterRegularExpressionActivationTrigger: raw.messageFilterRegularExpressionActivationTrigger,
-      messageFilterRegularExpressionDeactivationTrigger: raw.messageFilterRegularExpressionDeactivationTrigger,
-      messageFilterRegularExpressionExclusionActivationTrigger: raw.messageFilterRegularExpressionExclusionActivationTrigger,
-      messageFilterRegularExpressionExclusionDeactivationTrigger: raw.messageFilterRegularExpressionExclusionDeactivationTrigger,
-      messageFilterRegularExpressionContext: raw.messageFilterRegularExpressionContext,
-      messageFilterRegularExpressionTarget: raw.messageFilterRegularExpressionTarget,
-      messageFilterRegularExpressionExclusionContext: raw.messageFilterRegularExpressionExclusionContext,
-      messageFilterRegularExpressionExclusionTarget: raw.messageFilterRegularExpressionExclusionTarget,
-      characterBindings: raw.characterBindings ?? [],
-      contextBindings: raw.contextBindings ?? [],
-      locationBindings: raw.locationBindings ?? [],
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
-  },
+  hydrate: (raw, id) => hydrateEntity<PromptBlock, RawPromptBlock>(raw, id, {
+    name: 'Untitled Prompt Block',
+    textContent: '',
+    images: [],
+    characterBindings: [],
+    contextBindings: [],
+    locationBindings: [],
+  }),
 });
 
 export const loadRawPromptBlockManifest = promptBlockRepo.loadManifest;
@@ -915,22 +825,8 @@ export const deleteRawPromptBlock = promptBlockRepo.remove;
 
 const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
   entityKey: 'models',
-  hydrate: (raw, id) => ({
-    id,
-    name: raw.name || 'Unknown Model',
-    description: raw.description,
-    backend: raw.backend,
-    contextLength: raw.contextLength,
-    model: raw.model,
-    mmproj: raw.mmproj,
-    lora: raw.lora,
-    apiKey: raw.apiKey,
-    parameters: raw.parameters,
-    cacheHitCostPerOneMillionOfTokens: raw.cacheHitCostPerOneMillionOfTokens,
-    cacheMissCostPerOneMillionOfTokens: raw.cacheMissCostPerOneMillionOfTokens,
-    outputGenerationCostPerOneMillionOfTokens: raw.outputGenerationCostPerOneMillionOfTokens,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp,
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp,
+  hydrate: (raw, id) => hydrateEntity<LanguageModel, RawLanguageModel>(raw, id, {
+    name: 'Unknown Model',
   }),
 });
 
@@ -955,23 +851,12 @@ const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
     const localModelsResults = await Promise.all(localModelPromises);
     const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
 
-    return {
-      id,
-      name: raw.name || 'Unknown Strategy',
-      description: raw.description,
-      onlineModels,
-      localModels,
-      modelCostTiers: raw.modelCostTiers,
-      switchProbability: raw.switchProbability,
-      switchOnContextSize: raw.switchOnContextSize,
-      switchOnComplexityScore: raw.switchOnComplexityScore,
-      fallbackOnLocalFailure: raw.fallbackOnLocalFailure,
-      fallbackOnQualityThreshold: raw.fallbackOnQualityThreshold,
-      fallbackOnTimeoutInSeconds: raw.fallbackOnTimeoutInSeconds,
-      maximumBudget: raw.maximumBudget,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
-    };
+    return hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, {
+        name: 'Unknown Strategy',
+    }, {
+        onlineModels: () => onlineModels,
+        localModels: () => localModels,
+    });
   },
   serialize: (strategy) => {
     const { id, onlineModels, localModels, ...rest } = strategy;
@@ -1024,47 +909,36 @@ const profileRepo = createRepository<Profile, RawProfile>({
 
     const narrateTexts = migrateNarrateTexts(raw);
 
-    return {
-      id,
-      name: raw.name || 'Unknown Profile',
-      description: raw.description,
-      autonomousMode: raw.autonomousMode,
-      autonomousInteractionIntervalMs: raw.autonomousInteractionIntervalMs,
-      volume: raw.volume,
-      forceNameReveal: raw.forceNameReveal ?? false,
-      enableCharacterExpression: raw.enableCharacterExpression ?? false,
-      forceNoCharacterImageInjection: raw.forceNoCharacterImageInjection,
-      forceNoContextImageInjection: raw.forceNoContextImageInjection,
-      forceNoLocationImageInjection: raw.forceNoLocationImageInjection,
-      useCurrentDateAndTime: raw.useCurrentDateAndTime ?? false,
-      useWeather: raw.useWeather,
-      weatherApiKey: raw.weatherApiKey,
-      useTimeElapsed: raw.useTimeElapsed ?? false,
-      numberOfMessagesToDisableThinkPrompt: raw.numberOfMessagesToDisableThinkPrompt ?? -1,
-      numberOfMessagesToDisableMetaThinkInstructions: raw.numberOfMessagesToDisableMetaThinkInstructions ?? -1,
-      numberOfMessagesToDisableDialoguePrompt: raw.numberOfMessagesToDisableDialoguePrompt ?? -1,
-      numberOfMessagesToDisableStarterPrompt: raw.numberOfMessagesToDisableStarterPrompt ?? -1,
-      forceEqualInitiative: raw.forceEqualInitiative ?? false,
-      chatProbability: raw.chatProbability ?? -1,
-      maximumChatStamina: raw.maximumChatStamina ?? -1,
-      nameSensitivity: raw.nameSensitivity ?? -1,
-      chatImpatienceSensitivity: raw.chatImpatienceSensitivity ?? -1,
-      skipProbability: raw.skipProbability ?? -1,
-      memoryRetentionWeight: raw.memoryRetentionWeight ?? -1,
-      contextSensitivity: raw.contextSensitivity ?? -1,
-      maximumActionStamina: raw.maximumActionStamina ?? -1,
-      cacheInvalidationReductionLevel: raw.cacheInvalidationReductionLevel ?? 0,
-      doNotInjectDefaultStopTokens: raw.doNotInjectDefaultStopTokens ?? false,
-      narrateTexts,
-      stripThinkTokens: raw.stripThinkTokens ?? false,
-      tools: raw.tools ?? {},
-      enableMemoryWriting: raw.enableMemoryWriting ?? 0,
-      enableMemoryReading: raw.enableMemoryReading ?? 0,
-      inputStrategy: raw.inputStrategy?.length ? raw.inputStrategy : [...defaultInputStrategy],
-      summarizationSteps,
-      firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-      lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-    };
+    return hydrateEntity<Profile, RawProfile>(raw, id, {
+        name: 'Unknown Profile',
+        forceNameReveal: false,
+        enableCharacterExpression: false,
+        useCurrentDateAndTime: false,
+        useTimeElapsed: false,
+        numberOfMessagesToDisableThinkPrompt: -1,
+        numberOfMessagesToDisableMetaThinkInstructions: -1,
+        numberOfMessagesToDisableDialoguePrompt: -1,
+        numberOfMessagesToDisableStarterPrompt: -1,
+        forceEqualInitiative: false,
+        chatProbability: -1,
+        maximumChatStamina: -1,
+        nameSensitivity: -1,
+        chatImpatienceSensitivity: -1,
+        skipProbability: -1,
+        memoryRetentionWeight: -1,
+        contextSensitivity: -1,
+        maximumActionStamina: -1,
+        cacheInvalidationReductionLevel: 0,
+        doNotInjectDefaultStopTokens: false,
+        stripThinkTokens: false,
+        tools: {},
+        enableMemoryWriting: 0,
+        enableMemoryReading: 0,
+        inputStrategy: [...defaultInputStrategy],
+    }, {
+        summarizationSteps: () => summarizationSteps,
+        narrateTexts: () => narrateTexts,
+    });
   },
   serialize: (profile) => {
     const { id, summarizationSteps, ...rest } = profile;
@@ -1089,14 +963,8 @@ export const deleteRawProfile = profileRepo.remove;
 
 const webpageRepo = createRepository<Webpage, RawWebpage>({
   entityKey: 'webpages',
-  hydrate: (raw, id) => ({
-    id,
-    name: raw.name || 'Untitled Webpage',
-    description: raw.description,
-    url: raw.url,
-    content: raw.content,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp || Date.now(),
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || Date.now(),
+  hydrate: (raw, id) => hydrateEntity<Webpage, RawWebpage>(raw, id, {
+    name: 'Untitled Webpage',
   }),
 });
 
@@ -1445,31 +1313,38 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
 
         const now = Date.now();
 
-        return {
-            id: raw.id || 'global-budget-data',
+        return hydrateEntity<BudgetData, RawBudgetData>(raw as any, raw.id || 'global-budget-data', {
             name: 'Global Budget Data',
             description: 'Persistent runtime budget tracking',
-            budgetSpent: raw.budgetSpent ?? 0,
-            resetDuration: raw.resetDuration,
-            averageLatencyMsPerTokenExponentialMovingAverageSmoothing: raw.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
-            averageTimeToFirstTokenExponentialMovingAverageSmoothing: raw.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
-            modelLastUsedTimestamps: raw.modelLastUsedTimestamps ?? {},
-            modelLastQuotaHitTimeStamps: raw.modelLastQuotaHitTimeStamps ?? {},
-            modelLastErrorHitTimeStamps: raw.modelLastErrorHitTimeStamps ?? {},
-            modelUsedCount: raw.modelUsedCount ?? {},
-            modelCensorshipHitCount: raw.modelCensorshipHitCount ?? {},
-            modelBrokenCount: raw.modelBrokenCount ??{},
-            modelQuotaHitCount: raw.modelQuotaHitCount ?? {},
-            modelErrorHitCount: raw.modelErrorHitCount ?? {},
-            lastResetTimestamp: raw.lastResetTimestamp,
-            budgetStrategy: strategy,
-            modelBudgetSpent: raw.modelBudgetSpent,
-            modelAverageLatencyMsPerToken: raw.modelAverageLatencyMsPerToken || {},
-            modelAverageTimeToFirstToken: raw.modelAverageTimeToFirstToken ||{},
-            modelTotalSessionDuration: raw.modelTotalSessionDuration || {},
-            firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-            lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-        };
+            budgetSpent: 0,
+            modelLastUsedTimestamps: {},
+            modelLastQuotaHitTimeStamps: {},
+            modelLastErrorHitTimeStamps: {},
+            modelUsedCount: {},
+            modelCensorshipHitCount: {},
+            modelBrokenCount: {},
+            modelQuotaHitCount: {},
+            modelErrorHitCount: {},
+            modelBudgetSpent: {},
+            modelAverageLatencyMsPerToken: {},
+            modelAverageTimeToFirstToken: {},
+            modelTotalSessionDuration: {},
+        }, {
+            budgetStrategy: () => strategy,
+            budgetSpent: (r) => r.budgetSpent ?? 0,
+            modelLastUsedTimestamps: (r) => r.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: (r) => r.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: (r) => r.modelLastErrorHitTimeStamps ?? {},
+            modelUsedCount: (r) => r.modelUsedCount ?? {},
+            modelCensorshipHitCount: (r) => r.modelCensorshipHitCount ?? {},
+            modelBrokenCount: (r) => r.modelBrokenCount ?? {},
+            modelQuotaHitCount: (r) => r.modelQuotaHitCount ?? {},
+            modelErrorHitCount: (r) => r.modelErrorHitCount ?? {},
+            modelBudgetSpent: (r) => r.modelBudgetSpent ?? {},
+            modelAverageLatencyMsPerToken: (r) => r.modelAverageLatencyMsPerToken ?? {},
+            modelAverageTimeToFirstToken: (r) => r.modelAverageTimeToFirstToken ?? {},
+            modelTotalSessionDuration: (r) => r.modelTotalSessionDuration ?? {},
+        });
     } catch (e) {
         console.warn('Failed to load budget data:', e);
         return null;
