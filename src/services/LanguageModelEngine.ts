@@ -268,6 +268,7 @@ export class LanguageModelEngine {
       temperature: params.temperature,
       top_p: params.top_p,
       max_tokens: params.maxTokens,
+      cache_prompt: true,  // ← Enable llama.cpp slot-based KV cache reuse
       ...params.extraParams,
     };
 
