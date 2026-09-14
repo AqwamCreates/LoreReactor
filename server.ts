@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 
 // --- Configuration ---
@@ -275,6 +275,200 @@ function validateAuxPaths(args: string[]): void {
   }
 }
 
+// ─── GPU Monitoring ─────────────────────────────────────────────────
+
+type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'apple' | 'unknown';
+
+interface GpuStatus {
+  vendor: GpuVendor;
+  utilizationPercent: number;
+  memoryUsedMB: number;
+  memoryTotalMB: number;
+  temperatureC: number | null;
+  powerWatts: number | null;
+  name: string;
+  timestamp: number;
+}
+
+/** Detect which GPU monitoring CLI is available on this system */
+function detectGpuVendor(): GpuVendor {
+  const checks: { vendor: GpuVendor; cmd: string }[] = [
+    { vendor: 'nvidia', cmd: 'nvidia-smi --query-gpu=name --format=csv,noheader,nounits' },
+    { vendor: 'amd', cmd: 'rocm-smi --showproductname --json' },
+    { vendor: 'intel', cmd: 'xpu-smi discovery' },
+  ];
+
+  for (const { vendor, cmd } of checks) {
+    try {
+      execSync(cmd, { stdio: 'pipe', timeout: 3000 });
+      return vendor;
+    } catch { /* not available */ }
+  }
+
+  // Apple Silicon detection
+  if (process.platform === 'darwin') {
+    try {
+      execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
+      return 'apple';
+    } catch { /* not available */ }
+  }
+
+  return 'unknown';
+}
+
+let detectedGpuVendor: GpuVendor = 'unknown';
+
+function queryNvidiaGpu(): GpuStatus | null {
+  try {
+    const raw = execSync(
+      'nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits',
+      { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
+    ).trim();
+
+    // Take first GPU if multi-GPU
+    const line = raw.split('\n')[0];
+    const parts = line.split(',').map(s => s.trim());
+    if (parts.length < 4) return null;
+
+    return {
+      vendor: 'nvidia',
+      name: parts[0],
+      utilizationPercent: parseFloat(parts[1]) || 0,
+      memoryUsedMB: parseFloat(parts[2]) || 0,
+      memoryTotalMB: parseFloat(parts[3]) || 0,
+      temperatureC: parts[4] ? parseFloat(parts[4]) : null,
+      powerWatts: parts[5] ? parseFloat(parts[5]) : null,
+      timestamp: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function queryAmdGpu(): GpuStatus | null {
+  try {
+    const raw = execSync('rocm-smi --showuse --showmeminfo vram --json', {
+      stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
+    }).trim();
+
+    const data = JSON.parse(raw);
+    // rocm-smi JSON structure varies; take first card
+    const cardKeys = Object.keys(data).filter(k => k.startsWith('card'));
+    if (cardKeys.length === 0) return null;
+
+    const card = data[cardKeys[0]];
+    const gpuUse = card['GPU use (%)'] ?? card['gpu_use_percent'] ?? 0;
+    const memUsed = card['VRAM Total Used Memory (MB)'] ?? card['vram_used_mb'] ?? 0;
+    const memTotal = card['VRAM Total Memory (MB)'] ?? card['vram_total_mb'] ?? 0;
+    const temp = card['Temperature (Sensor edge) (C)'] ?? card['temp_edge_c'] ?? null;
+
+    return {
+      vendor: 'amd',
+      name: cardKeys[0],
+      utilizationPercent: parseFloat(String(gpuUse)) || 0,
+      memoryUsedMB: parseFloat(String(memUsed)) || 0,
+      memoryTotalMB: parseFloat(String(memTotal)) || 0,
+      temperatureC: temp !== null ? parseFloat(String(temp)) : null,
+      powerWatts: null,
+      timestamp: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function queryIntelGpu(): GpuStatus | null {
+  try {
+    const raw = execSync('xpu-smi discovery', {
+      stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
+    }).trim();
+
+    // xpu-smi discovery outputs JSON array
+    const devices = JSON.parse(raw);
+    if (!Array.isArray(devices) || devices.length === 0) return null;
+
+    const dev = devices[0];
+    return {
+      vendor: 'intel',
+      name: dev.device_name || dev.name || 'Intel GPU',
+      utilizationPercent: dev.utilization ?? 0,
+      memoryUsedMB: dev.memory_used_mb ?? dev.memory_used ?? 0,
+      memoryTotalMB: dev.memory_total_mb ?? dev.memory_total ?? 0,
+      temperatureC: dev.temperature ?? null,
+      powerWatts: dev.power_draw ?? null,
+      timestamp: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function queryAppleGpu(): GpuStatus | null {
+  try {
+    // powermetrics requires sudo; use ioreg for basic info without elevation
+    const raw = execSync(
+      'ioreg -r -c AGXAccelerator -d 1',
+      { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
+    ).trim();
+
+    // Extract GPU name from ioreg output
+    const nameMatch = raw.match(/"IOClass"\s*=\s*"([^"]+)"/);
+    const gpuName = nameMatch ? nameMatch[1] : 'Apple GPU';
+
+    // Try powermetrics for utilization (may fail without sudo)
+    let utilization = 0;
+    let power: number | null = null;
+    try {
+      const pmRaw = execSync(
+        'powermetrics --samplers gpu_power -n 1 -i 500 --format json',
+        { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
+      ).trim();
+      const pmData = JSON.parse(pmRaw);
+      const gpu = pmData.gpu_power?.[0] || pmData.gpu;
+      if (gpu) {
+        utilization = gpu.gpu_busy_pct ?? gpu.utilization ?? 0;
+        power = gpu.gpu_power_mw ? gpu.gpu_power_mw / 1000 : null;
+      }
+    } catch { /* powermetrics unavailable or needs sudo */ }
+
+    // Unified memory: approximate from system memory
+    let memTotal = 0;
+    try {
+      const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' }).trim();
+      const memMatch = sysctlRaw.match(/(\d+)/);
+      if (memMatch) memTotal = Math.round(parseInt(memMatch[1], 10) / (1024 * 1024));
+    } catch { /* ignore */ }
+
+    return {
+      vendor: 'apple',
+      name: gpuName,
+      utilizationPercent: utilization,
+      memoryUsedMB: 0, // Unified memory — can't separate GPU usage without IOKit
+      memoryTotalMB: memTotal,
+      temperatureC: null,
+      powerWatts: power,
+      timestamp: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function queryGpuStatus(): GpuStatus | null {
+  switch (detectedGpuVendor) {
+    case 'nvidia': return queryNvidiaGpu();
+    case 'amd': return queryAmdGpu();
+    case 'intel': return queryIntelGpu();
+    case 'apple': return queryAppleGpu();
+    default: return null;
+  }
+}
+
+// Cache last successful result to avoid hammering CLI on every poll
+let lastGpuStatus: GpuStatus | null = null;
+let lastGpuQueryTime = 0;
+const GPU_QUERY_MIN_INTERVAL_MS = 1000; // Don't query more than once per second
+
 // --- /user_data routes ---
 app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
@@ -498,6 +692,39 @@ app.all('/proxy/:modelId/{*path}', (req, response) => {
     .catch(error => response.status(502).json({ error: 'Proxy error', details: error.message }));
 });
 
+// --- GPU Status Endpoint ---
+
+app.get('/gpu/status', (_req, response) => {
+  const now = Date.now();
+
+  // Rate-limit CLI queries to avoid hammering system tools
+  if (now - lastGpuQueryTime < GPU_QUERY_MIN_INTERVAL_MS && lastGpuStatus) {
+    response.json(lastGpuStatus);
+    return;
+  }
+
+  const status = queryGpuStatus();
+  if (status) {
+    lastGpuStatus = status;
+    lastGpuQueryTime = now;
+    response.json(status);
+  } else if (lastGpuStatus) {
+    // Return stale cache rather than nothing
+    response.json(lastGpuStatus);
+  } else {
+    response.json({
+      vendor: detectedGpuVendor,
+      utilizationPercent: 0,
+      memoryUsedMB: 0,
+      memoryTotalMB: 0,
+      temperatureC: null,
+      powerWatts: null,
+      name: 'No GPU detected',
+      timestamp: now,
+    });
+  }
+});
+
 // --- Web Fetch Proxy (CORS bypass) ---
 app.post('/fetch', async (req, response) => {
   const { url, headers: reqHeaders } = req.body;
@@ -534,6 +761,9 @@ app.post('/fetch', async (req, response) => {
 
 // --- Startup ---
 const startServer = () => {
+  // Detect GPU vendor once at startup
+  detectedGpuVendor = detectGpuVendor();
+
   const border = "────────────────────────────────────────";
   const title = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
   console.clear();
@@ -549,6 +779,7 @@ const startServer = () => {
   console.log(border);
   console.log(`  📡 API Port:  ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
   console.log(`  💾 Data Path: ${Colors.Dim}/user_data/${Colors.Reset}`);
+  console.log(`  🖥️  GPU Monitor: ${Colors.FgGreen}${detectedGpuVendor}${Colors.Reset} ${Colors.Dim}(GET /gpu/status)${Colors.Reset}`);
   console.log(border);
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Multi-Backend Model Control Enabled.`);

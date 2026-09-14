@@ -16,6 +16,12 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         description: 'View, edit, reset, and manage persistent budget runtime data.',
     },
     {
+        id: 'gpu-monitor',
+        icon: '🖥️',
+        label: 'GPU Monitor',
+        description: 'Real-time GPU utilization, memory usage, temperature, and power draw.',
+    },
+    {
         id: 'participant-control',
         icon: '🎛️',
         label: 'Participant Control',
@@ -63,6 +69,7 @@ interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenBudgetControl: () => void;
+    onOpenGpuMonitor: () => void;
     onOpenParticipantControl: () => void;
     onOpenAIRecommendation: () => void;
     onOpenAlternateTimelines: () => void;
@@ -76,6 +83,7 @@ export function SettingsModal({
     isOpen,
     onClose,
     onOpenBudgetControl,
+    onOpenGpuMonitor,
     onOpenParticipantControl,
     onOpenAIRecommendation,
     onOpenAlternateTimelines,
@@ -90,6 +98,9 @@ export function SettingsModal({
         switch (id) {
             case 'budget-control':
                 onOpenBudgetControl();
+                break;
+            case 'gpu-monitor':
+                onOpenGpuMonitor();
                 break;
             case 'participant-control':
                 onOpenParticipantControl();

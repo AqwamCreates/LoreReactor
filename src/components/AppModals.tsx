@@ -13,6 +13,7 @@ import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { BudgetControlModal } from './BudgetControlModal';
+import { GpuMonitorModal } from './GpuMonitorModal';
 import { WorldEditorModal } from './WorldEditorModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
@@ -189,6 +190,9 @@ export function AppModals({
     const [aiAudioTrackSaveRedirect, setAiAudioTrackSaveRedirect] = useState<((t: AudioTrack) => void) | null>(null);
     const [aiPromptBlockSaveRedirect, setAiPromptBlockSaveRedirect] = useState<((b: PromptBlock) => void) | null>(null);
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((p: Profile) => void) | null>(null);
+
+    // GPU Monitor modal state
+    const [gpuMonitorOpen, setGpuMonitorOpen] = useState(false);
 
     // Filter chat shells to only those with defined IDs
     const chatShellsWithIds = useMemo(
@@ -504,14 +508,15 @@ export function AppModals({
                 <SettingsModal
                     isOpen={modals.settings.isOpen}
                     onClose={modals.settings.close}
-                    onOpenImportCharacterCard={modals.cardImport.open}
+                    onOpenBudgetControl={modals.budgetControl.open}
+                    onOpenGpuMonitor={() => { modals.settings.close(); setGpuMonitorOpen(true); }}
+                    onOpenParticipantControl={modals.participantControl.open}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
+                    onOpenAlternateTimelines={modals.alternateTimelines.open}
+                    onOpenImportCharacterCard={modals.cardImport.open}
                     onOpenExportData={modals.exportData.open}
                     onOpenImportData={modals.importData.open}
                     onOpenDataManager={modals.dataManager.open}
-                    onOpenParticipantControl={modals.participantControl.open}
-                    onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenAlternateTimelines={modals.alternateTimelines.open}
                 />
             )}
 
@@ -523,6 +528,12 @@ export function AppModals({
                     activeStrategy={activeStrategy}
                 />
             )}
+
+            {/* GPU Monitor */}
+            <GpuMonitorModal
+                isOpen={gpuMonitorOpen}
+                onClose={() => setGpuMonitorOpen(false)}
+            />
 
             {/* Participant Control */}
             {modals.participantControl.isOpen && (
