@@ -1,7 +1,7 @@
 // src/services/LanguageModelEngine.ts
 import { localAddress } from "../configurations";
-import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, openAiCompatibleLocalBackends } from "../languageModelInformation";
-import type { LanguageModel } from "../types";
+import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, localBackends, openAiCompatibleLocalBackends } from "../languageModelInformation";
+import type { backend, LanguageModel, localBackend } from "../types";
 
 export interface TokenStats {
   fullText: string;
@@ -233,7 +233,7 @@ export class LanguageModelEngine {
 
   private buildCloudRequest(
     apiKey: string,
-    backendName: string,
+    backendName: backend,
     modelPath: string | undefined,
     prompt: string,
     stream: boolean,
@@ -268,9 +268,12 @@ export class LanguageModelEngine {
       temperature: params.temperature,
       top_p: params.top_p,
       max_tokens: params.maxTokens,
-      cache_prompt: true,  // ← Enable llama.cpp slot-based KV cache reuse
       ...params.extraParams,
     };
+
+    if (localBackends.includes(backendName as localBackend)){
+      bodyObj.cache_prompt = true // ← Enable llama.cpp slot-based KV cache reuse. Apparently some APIs hates this...
+    }
 
     if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;

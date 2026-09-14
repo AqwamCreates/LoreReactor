@@ -1,8 +1,10 @@
-export const localBackends = [
+import type { cloudBackend, localBackend } from "./types";
+
+export const localBackends: localBackend[] = [
     'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2', 'TensorRT-LLM', 'Ollama'
 ];
 
-export const cloudBackends = [
+export const cloudBackends: cloudBackend[] = [
     'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Minimax', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
