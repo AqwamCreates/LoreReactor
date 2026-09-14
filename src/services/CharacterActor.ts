@@ -1,7 +1,7 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
-import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData, updatePartialMessageInInteractionData } from '../hooks/chatLogic';
+import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools } from '../hooks/characterLogic';
@@ -188,6 +188,8 @@ export class CharacterActor {
 
                     callbacks?.onDisplayText(displayOut);
 
+                    // Sentiment analysis runs incrementally per-chunk during streaming.
+                    // This is the single source of truth for expression detection.
                     const enableExpression = data.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
@@ -372,14 +374,9 @@ export class CharacterActor {
             const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, data);
 
-            // Final expression analysis
-            const enableExpression = data.Profile?.enableCharacterExpression ?? false;
-            if (enableExpression && sentimentEngine.isReady()) {
-                const sentiment = await sentimentEngine.analyze(rawText);
-                if (sentiment) {
-                    latestExpression = sentiment.topEmotion;
-                }
-            }
+            // No post-stream sentiment analysis here.
+            // The streaming onToken callback already captured latestExpression
+            // incrementally per-chunk. Re-analyzing the full text would be redundant.
 
             let updatedData: InteractionData;
 
@@ -388,7 +385,7 @@ export class CharacterActor {
                 // useChatEngine.onDisplayText already updated the partial message
                 // incrementally during streaming. useChatSession.resumeGeneration
                 // will finalize it (set isPartial: false) after this returns.
-                // We just return the data as-is — no message mutation here.
+                // We return data unchanged — no message mutation here.
                 updatedData = data;
             } else {
                 // Normal mode: finalize the pre-created message and add to history

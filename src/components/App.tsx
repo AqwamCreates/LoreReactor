@@ -842,7 +842,7 @@ function App() {
                         )}
 
                         {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
-                        {viewMode === 'cinematic' && !hasPartialInHistory && (
+                        {viewMode === 'cinematic' && isLoading && !hasPartialInHistory && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}
@@ -904,7 +904,7 @@ function App() {
                         })}
 
                         {/* FIX: Suppress StreamingIndicators when a partial message exists in history */}
-                        {viewMode === 'ladder' && !hasPartialInHistory && (
+                        {viewMode === 'ladder' && isLoading && !hasPartialInHistory && (
                             <StreamingIndicators
                                 formattedStreamingText={formattedStreamingText}
                                 viewMode={viewMode}
