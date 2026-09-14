@@ -1,6 +1,6 @@
 // src/services/LanguageModelEngine.ts
 import { localAddress } from "../configurations";
-import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints } from "../languageModelInformation";
+import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, openAiCompatibleLocalBackends } from "../languageModelInformation";
 import type { LanguageModel } from "../types";
 
 export interface TokenStats {
@@ -251,10 +251,12 @@ export class LanguageModelEngine {
       url = defaultUrl;
     }
 
-    if (backendName === 'Inworld') {
-      (headers as Record<string, string>).Authorization = `Basic ${apiKey}`;
-    } else {
-      (headers as Record<string, string>).Authorization = `Bearer ${apiKey}`;
+    if (apiKey) {
+      if (backendName === 'Inworld') {
+        (headers as Record<string, string>).Authorization = `Basic ${apiKey}`;
+      } else {
+        (headers as Record<string, string>).Authorization = `Bearer ${apiKey}`;
+      }
     }
 
     const payloadModelName = modelPath || 'default-model';
@@ -302,6 +304,45 @@ export class LanguageModelEngine {
     return { url, headers, body };
   }
 
+  /**
+   * Build an OpenAI-compatible request targeting a local backend's /v1/chat/completions endpoint.
+   * Used for local backends that speak OpenAI API format (vLLM, SGLang, ExLlama, Ollama, etc.)
+   * instead of llama.cpp's native /completion endpoint.
+   */
+  private buildLocalOpenAIRequest(
+    port: number | undefined,
+    modelPath: string | undefined,
+    prompt: string,
+    stream: boolean,
+    params: ResolvedParams,
+  ): ResolvedRequest {
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+    const baseUrl = port
+      ? `${localAddress}:${port}`
+      : `${localAddress}:8000`;
+
+    const url = `${baseUrl}/v1/chat/completions`;
+
+    const bodyObj: Record<string, unknown> = {
+      model: modelPath || 'default',
+      messages: [{ role: "user", content: prompt }],
+      stream,
+      temperature: params.temperature,
+      top_p: params.top_p,
+      max_tokens: params.maxTokens,
+      ...params.extraParams,
+    };
+
+    if (params.stop && params.stop.length > 0) {
+      bodyObj.stop = params.stop;
+    }
+
+    const body = JSON.stringify(bodyObj);
+
+    return { url, headers, body };
+  }
+
   private resolveRequest(
     prompt: string,
     stream: boolean,
@@ -316,10 +357,17 @@ export class LanguageModelEngine {
     const backendName = this.model?.backend;
     const modelPath = this.model?.model;
 
+    // Cloud backends always use OpenAI message format with API key auth
     if (apiKey && backendName && cloudBackends.includes(backendName)) {
       return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
     }
 
+    // Local backends that speak OpenAI-compatible API use /v1/chat/completions without auth
+    if (backendName && openAiCompatibleLocalBackends.has(backendName)) {
+      return this.buildLocalOpenAIRequest(this.runtimePort, modelPath, finalPrompt, stream, params);
+    }
+
+    // Llama.cpp native /completion endpoint (default fallback)
     return this.buildLocalRequest(this.runtimePort, finalPrompt, stream, params);
   }
 

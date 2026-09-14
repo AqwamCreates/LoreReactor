@@ -42,6 +42,11 @@ export const cloudTokenizeEndpoints: Record<string, string> = {
     'NovelAI': 'https://text.novelai.net/api/tokenizer',
 };
 
+export const openAiCompatibleLocalBackends = new Set<string>([
+    'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2',
+    'Ollama', 'vLLM', 'SGLang', 'LM Studio', 'LocalAI', 'mistral.rs',
+]);
+
 export const backends = [...localBackends, ...cloudBackends];
 
 // ⚠️ IMPORTANT! Anthropic uses /v1/messages format, NOT OpenAI chat completions.
