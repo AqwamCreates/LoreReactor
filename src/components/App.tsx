@@ -30,7 +30,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
 import { cloudBackends } from '../languageModelInformation';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -293,7 +293,7 @@ function App() {
         if (!selectedModelId || allModels.length === 0) return;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (!selectedModel) { setSelectedModelId(null); return; }
-        const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend);
+        const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend);
         if (isCloudModel) return;
         if (!runningModels[selectedModelId]?.isRunning) setSelectedModelId(null);
     }, [selectedModelId, allModels, runningModels, setSelectedModelId]);

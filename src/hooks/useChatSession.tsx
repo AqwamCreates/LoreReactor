@@ -112,7 +112,7 @@ export function useChatSession() {
                 if (bd) state.setBudgetData(bd);
             } catch (e) { console.warn('Failed to load budget data:', e); }
         })();
-    }, [state.setBudgetData]);
+    }, [state]);
 
     useEffect(() => {
         (async () => {
