@@ -1,11 +1,11 @@
-// src/hooks/useCinematicMode.ts
+// src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
 import { getCharacterImageUrl, getLocationImageUrl } from '../storage/serverStorage';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
-interface UseCinematicModeOptions {
+interface UseViewAssetsOptions {
     viewMode: 'ladder' | 'cinematic' | 'vn';
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
@@ -87,7 +87,7 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
     return null;
 }
 
-export function useCinematicMode(options: UseCinematicModeOptions) {
+export function useViewAssets(options: UseViewAssetsOptions) {
     const {
         viewMode, interactionData, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
@@ -103,11 +103,11 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [interactionData]);
 
-    // Single unified cache: one key per character ID, shared across all views
+    // Single unified portrait cache: one key per character ID
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
 
-        // 1. All participants — always present, always keyed by character:${id}
+        // All participants — always present
         if (interactionData) {
             for (const participant of interactionData.participants) {
                 const url = resolvePortrait(participant.id, participant.images, 'neutral');
@@ -115,22 +115,20 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             }
         }
 
-        // 2. History messages — update cache with expression-specific portraits
-        //    This overwrites the neutral portrait if a message has a specific expression
+        // History messages — update with expression-specific portraits
         for (const msg of chatMessages) {
             const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression);
             cache.set(`character:${msg.character.id}`, url);
-            // Keep message-ID key for Ladder/Cinematic MessageBubble lookups
             cache.set(msg.id, url);
         }
 
-        // 3. Center Avatar — update with neutral expression (most recent known state)
+        // Center Avatar
         if (centerAvatar) {
             const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral');
             cache.set(`character:${centerAvatar.id}`, url);
         }
 
-        // 4. Streaming Character — update with current expression (live, highest priority)
+        // Streaming Character — highest priority, live expression
         if (streamingCharacter) {
             const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression);
             cache.set(`character:${streamingCharacter.id}`, url);
@@ -146,6 +144,7 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
 
     const locationBackgroundUrl = interactionData ? resolveLocationBackgroundUrl(interactionData) : null;
 
+    // Center avatar selection — only active in cinematic mode
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
@@ -201,10 +200,9 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         centerAvatar, setCenterAvatar,
         lastViewedMessageIdRef,
         suppressAutoScrollRef,
-        InteractionMessages: chatMessages,
+        chatMessages,
         portraitUrlCache,
         streamingPortraitUrl,
         locationBackgroundUrl,
-        characterScales: new Map(),
     };
 }

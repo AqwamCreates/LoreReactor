@@ -21,7 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
+import { useDisplayNameCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -37,13 +37,11 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import { useMessageActions } from '../hooks/useMessageActions';
 import { useChatOperations } from '../hooks/useChatOperations';
 import { useEntityToggles } from '../hooks/useEntityToggles';
-import { useCinematicMode } from '../hooks/useCinematicMode';
+import { useViewAssets } from '../hooks/useViewAssets';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useModalVisibility } from '../hooks/useModalVisibility';
 import { useActiveExtensions } from '../hooks/useActiveExtensions';
 import { useSessionStore } from '../hooks/useSessionStore';
-import { MessageBubble } from './MessageBubble';
-import { StreamingIndicators } from './StreamingIndicators';
 import { ActionMenu } from './ActionMenu';
 import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
@@ -53,9 +51,7 @@ import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
-import { ChatScrollButtons } from './ChatScrollButtons';
 
-// Import the View Components
 import { LadderView } from './views/LadderView';
 import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
@@ -102,10 +98,8 @@ function App() {
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { memories: allMemories, deleteMemory } = useMemoryManager();
 
-    // ─── Active Extensions (from store via hook) ─────────────────────
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 
-    // ─── Store-backed UI preferences ─────────────────────────────────
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
@@ -121,7 +115,6 @@ function App() {
         else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
     }, []);
 
-    // ─── Entity Modals ───────────────────────────────────────────────
     const charModal = useEntityModal<Character>(saveCharacter, deleteCharacter, 'Character');
     const contextModal = useEntityModal<Context>(saveContext, deleteContext, 'Context');
     const locationModal = useEntityModal<Location>(saveLocation, deleteLocation, 'Location');
@@ -134,18 +127,13 @@ function App() {
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
 
-    // ─── Chat Inspection State ───────────────────────────────────────
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
     const [isInspectionOpen, setIsInspectionOpen] = useState(false);
 
-    // ─── Extracted Hooks ─────────────────────────────────────────────
     const { modals } = useModalVisibility();
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
-    
-    // RE-ADDED: 'vn' to view mode types
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
-    
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const initialImageProcessedChatIdRef = useRef<string | null>(null);
@@ -215,11 +203,11 @@ function App() {
         loadFullCharacter, addToast,
     });
 
+    // REPLACED: useCinematicMode → useViewAssets
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
-        InteractionMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
-        characterScales, // Extracted for VN mode
-    } = useCinematicMode({
+        chatMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
+    } = useViewAssets({
         viewMode, interactionData, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
     });
@@ -230,16 +218,13 @@ function App() {
         suppressNextClickRef,
     } = useMessageToolbar({ chatHistoryRef });
 
-    // ─── Display Name Cache ──────────────────────────────────────────
     const displayNameCache = useDisplayNameCache(interactionData);
 
-    // ─── Streaming Text Formatting ───────────────────────────────────
     const formattedStreamingText = useMemo(() => {
         if (!streamingText) return null;
         return formatMessageText(streamingText);
     }, [streamingText]);
 
-    // ─── Derived Values ──────────────────────────────────────────────
     const isModelLoading = useMemo(() => {
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
@@ -249,7 +234,8 @@ function App() {
 
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
-    const safeInteractionMessages = InteractionMessages || [];
+    // REPLACED: InteractionMessages → chatMessages
+    const safeInteractionMessages = chatMessages || [];
     const massStartIndex = isMassActive && interactionData ? safeInteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     const maximumNumberOfContextTokens = useMemo(() => {
@@ -259,36 +245,24 @@ function App() {
         return total;
     }, [interactionData]);
 
-    // ─── Budget Strategy Engine Local Model Loader ───────────────────
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existing = runningModels[modelId];
         if (existing?.port) return existing.port;
-
         const targetModel =
             activeStrategy?.localModels.find(m => m.id === modelId) ||
             activeStrategy?.onlineModels.find(m => m.id === modelId) ||
             allModels.find(m => m.id === modelId);
-
         if (!targetModel) return null;
-
         if (targetModel.apiKey && targetModel.backend) return null;
-
         try {
             const modelPath = targetModel.model || '';
             const args = buildModelLoadArguments(targetModel);
-
             const response = await fetch(`${localURL}/models/load`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: targetModel.id,
-                    modelPath,
-                    args,
-                }),
+                body: JSON.stringify({ id: targetModel.id, modelPath, args }),
             });
-
             if (!response.ok) return null;
-
             const responseData = await response.json();
             return responseData.port ?? null;
         } catch (error) {
@@ -307,28 +281,14 @@ function App() {
     useEffect(() => { if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id); else localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT); }, [interactionData?.id]);
     useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
 
-    // Budget strategy activation — re-runs when allModels changes to handle load-order
     useEffect(() => {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
-        if (!strategy) {
-            localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
-            return;
-        }
-        // Re-hydrate model references from current allModels to ensure golden star reflects latest state
+        if (!strategy) { localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY); return; }
         const modelMap = new Map(allModels.map(m => [m.id, m]));
-        const freshOnline = strategy.onlineModels
-            .map(m => modelMap.get(m.id))
-            .filter((m): m is LanguageModel => !!m);
-        const freshLocal = strategy.localModels
-            .map(m => modelMap.get(m.id))
-            .filter((m): m is LanguageModel => !!m);
-        const hydrated: BudgetStrategy = {
-            ...strategy,
-            onlineModels: freshOnline,
-            localModels: freshLocal,
-        };
-        setActiveBudgetStrategy(hydrated);
+        const freshOnline = strategy.onlineModels.map(m => modelMap.get(m.id)).filter((m): m is LanguageModel => !!m);
+        const freshLocal = strategy.localModels.map(m => modelMap.get(m.id)).filter((m): m is LanguageModel => !!m);
+        setActiveBudgetStrategy({ ...strategy, onlineModels: freshOnline, localModels: freshLocal });
     }, [selectedBudgetStrategyId, allBudgetStrategies, allModels, setActiveBudgetStrategy]);
 
     useEffect(() => {
@@ -359,7 +319,6 @@ function App() {
 
     useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
 
-    // Budget strategy sync — safety net for runtime model additions/deletions
     useEffect(() => {
         if (!activeStrategy) return;
         let stratChanged = false;
@@ -376,10 +335,8 @@ function App() {
         if (stratChanged) setActiveBudgetStrategy(updatedStrat);
     }, [activeStrategy, allModels, setActiveBudgetStrategy]);
 
-    // BudgetStrategyEngine singleton sync
     useEffect(() => {
         if (!activeStrategy || !budgetData) return;
-
         try {
             const budgetStrategyEngine = getBudgetStrategyEngine();
             budgetStrategyEngine.setStrategy(activeStrategy);
@@ -387,16 +344,10 @@ function App() {
             budgetStrategyEngine.setRunningModels(runningModels);
             budgetStrategyEngine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
         } catch {
-            initializeBudgetStrategyEngine(
-                activeStrategy,
-                budgetData,
-                runningModels,
-                loadLocalModelForBudgetStrategyEngine,
-            );
+            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine);
         }
     }, [activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine]);
 
-    // Process protagonist image on new/restored chat
     useEffect(() => {
         if (interactionData && currentCharacter && interactionData.id !== initialImageProcessedChatIdRef.current) {
             const chatId = interactionData.id;
@@ -406,7 +357,6 @@ function App() {
         }
     }, [currentCharacter, interactionData, processProtagonistImageSilently]);
 
-    // Loading screen
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
@@ -440,159 +390,83 @@ function App() {
         return () => clearTimeout(hold);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    // Load chat list shells after initialization completes (non-blocking background load)
     useEffect(() => {
-        if (!isInitializing && activeChatRestored) {
-            ensureChatsLoaded();
-        }
+        if (!isInitializing && activeChatRestored) ensureChatsLoaded();
     }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
 
-    // Reset tracking refs when switching chats
     useEffect(() => {
         chatModifiedRef.current = false;
         previousMessageCountRef.current = interactionData?.interactionHistory?.length ?? 0;
     }, [interactionData?.interactionHistory?.length]);
 
-    // Auto-save: mark modified when chat has content, save when message count changes
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
-
         const currentCount = interactionData.interactionHistory?.length ?? 0;
         const protagId = interactionData.protagonist?.id;
         const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
         const hasContent = nonProtagParticipants.length > 0 || currentCount > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile;
-
-        if (!chatModifiedRef.current && hasContent) {
-            chatModifiedRef.current = true;
-        }
-
+        if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
         if (chatModifiedRef.current && currentCount !== previousMessageCountRef.current) {
             previousMessageCountRef.current = currentCount;
             saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
-            if (!rawChatShells.some(c => c.id === interactionData.id)) {
-                refreshChatList();
-            }
+            if (!rawChatShells.some(c => c.id === interactionData.id)) refreshChatList();
         }
     }, [interactionData, rawChatShells, refreshChatList]);
 
-    // Textarea auto-resize
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextareaRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
     useEffect(() => { if (!editTextareaRef.current || !editingId) return; editTextareaRef.current.style.height = 'auto'; editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`; });
 
-    // Max tokens calculation — debounced, incremental
     const tokenCountAbortRef = useRef<AbortController | null>(null);
     const tokenCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastCountedMessageIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
-        if (tokenCountTimerRef.current) {
-            clearTimeout(tokenCountTimerRef.current);
-            tokenCountTimerRef.current = null;
-        }
-        if (tokenCountAbortRef.current) {
-            tokenCountAbortRef.current.abort();
-            tokenCountAbortRef.current = null;
-        }
-
+        if (tokenCountTimerRef.current) { clearTimeout(tokenCountTimerRef.current); tokenCountTimerRef.current = null; }
+        if (tokenCountAbortRef.current) { tokenCountAbortRef.current.abort(); tokenCountAbortRef.current = null; }
         tokenCountTimerRef.current = setTimeout(async () => {
             if (safeInteractionMessages.length === 0 || !interactionData?.participants) {
                 setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
                 lastCountedMessageIdsRef.current.clear();
                 return;
             }
-
             const abort = new AbortController();
             tokenCountAbortRef.current = abort;
-
             try {
                 const participantCounts: Record<string, number> = {};
                 for (const p of interactionData.participants) participantCounts[p.id] = 0;
-                if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) {
-                    participantCounts[interactionData.protagonist.id] = 0;
-                }
-
-                // Resolve tokenizer model: prefer selectedModelId, fall back to activeStrategy's first online model
+                if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) participantCounts[interactionData.protagonist.id] = 0;
                 let tokenizerModel: LanguageModel | undefined;
-                if (selectedModelId) {
-                    tokenizerModel = allModels.find(m => m.id === selectedModelId);
-                }
-                if (!tokenizerModel && activeStrategy && activeStrategy.onlineModels.length > 0) {
-                    tokenizerModel = activeStrategy.onlineModels[0];
-                }
-                if (!tokenizerModel && activeStrategy && activeStrategy.localModels.length > 0) {
-                    tokenizerModel = activeStrategy.localModels[0];
-                }
-
+                if (selectedModelId) tokenizerModel = allModels.find(m => m.id === selectedModelId);
+                if (!tokenizerModel && activeStrategy && activeStrategy.onlineModels.length > 0) tokenizerModel = activeStrategy.onlineModels[0];
+                if (!tokenizerModel && activeStrategy && activeStrategy.localModels.length > 0) tokenizerModel = activeStrategy.localModels[0];
                 const engine = getLanguageModelEngine();
-
-                if (tokenizerModel) {
-                    engine.setRunningModels(runningModels);
-                    engine.setContext(tokenizerModel);
-                } else {
-                    // No model available for tokenization — skip counting this cycle
-                    return;
-                }
-
+                if (tokenizerModel) { engine.setRunningModels(runningModels); engine.setContext(tokenizerModel); } else return;
                 const prevCountedIds = lastCountedMessageIdsRef.current;
                 const currentMessageIds = new Set<string>();
                 let hasNewMessages = false;
-
-                for (const msg of safeInteractionMessages) {
-                    currentMessageIds.add(msg.id);
-                    if (!prevCountedIds.has(msg.id)) {
-                        hasNewMessages = true;
-                    }
-                }
-
-                if (!hasNewMessages && prevCountedIds.size === currentMessageIds.size) {
-                    return;
-                }
-
+                for (const msg of safeInteractionMessages) { currentMessageIds.add(msg.id); if (!prevCountedIds.has(msg.id)) hasNewMessages = true; }
+                if (!hasNewMessages && prevCountedIds.size === currentMessageIds.size) return;
                 for (const msg of safeInteractionMessages) {
                     if (abort.signal.aborted) return;
                     if (prevCountedIds.has(msg.id)) continue;
-
                     if (msg.character && msg.textContent) {
                         const charId = msg.character.id;
                         if (participantCounts[charId] !== undefined || charId === '__ambient_narrator__') {
                             const tokens = await engine.countTokens(msg.textContent);
                             if (abort.signal.aborted) return;
-                            if (participantCounts[charId] !== undefined) {
-                                participantCounts[charId] += tokens;
-                            }
+                            if (participantCounts[charId] !== undefined) participantCounts[charId] += tokens;
                         }
                     }
                 }
-
                 lastCountedMessageIdsRef.current = currentMessageIds;
-
-                if (!abort.signal.aborted) {
-                    setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(
-                        Math.max(...Object.values(participantCounts), 0)
-                    );
-                }
-            } catch (e) {
-                if ((e as Error).name !== 'AbortError') {
-                    console.error('Token counting failed:', e);
-                }
-            }
+                if (!abort.signal.aborted) setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(Math.max(...Object.values(participantCounts), 0));
+            } catch (e) { if ((e as Error).name !== 'AbortError') console.error('Token counting failed:', e); }
         }, 500);
-
-        return () => {
-            if (tokenCountTimerRef.current) {
-                clearTimeout(tokenCountTimerRef.current);
-                tokenCountTimerRef.current = null;
-            }
-            if (tokenCountAbortRef.current) {
-                tokenCountAbortRef.current.abort();
-                tokenCountAbortRef.current = null;
-            }
-        };
+        return () => { if (tokenCountTimerRef.current) { clearTimeout(tokenCountTimerRef.current); tokenCountTimerRef.current = null; } if (tokenCountAbortRef.current) { tokenCountAbortRef.current.abort(); tokenCountAbortRef.current = null; } };
     }, [safeInteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
 
-    // ─── Callbacks ───────────────────────────────────────────────────
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -626,9 +500,7 @@ function App() {
     };
 
     const toggleViewMode = () => {
-        // Cycle: ladder -> cinematic -> vn -> ladder
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
-        
         const container = chatHistoryRef.current;
         let targetIdx = -1;
         if (container && interactionData) {
@@ -644,7 +516,6 @@ function App() {
         if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) targetIdx = safeInteractionMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
         if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = safeInteractionMessages[targetIdx].id;
         suppressAutoScrollRef.current = true;
-        
         setTimeout(() => {
             if (targetIdx >= 0 && interactionData && chatHistoryRef.current) {
                 const el = chatHistoryRef.current.querySelector(`[data-message-id="${safeInteractionMessages[targetIdx].id}"]`) as HTMLElement | null;
@@ -675,19 +546,7 @@ function App() {
 
     const handleInjectCustomMessage = useCallback(async (character: Character, text: string) => {
         if (!interactionData) return;
-        const injectedContext: Context = {
-            id: crypto.randomUUID(),
-            name: `[Injected] ${character.name}`,
-            description: 'User-injected message for LLM context',
-            text: `${character.name}: ${text}`,
-            isAutoGenerated: true,
-            useBase64Encoding: false,
-            insertionDepth: 0,
-            tokenBudget: 512,
-            limitLinksToSubdirectory: false,
-            firstCreatedTimestamp: Date.now(),
-            lastUpdatedTimestamp: Date.now(),
-        };
+        const injectedContext: Context = { id: crypto.randomUUID(), name: `[Injected] ${character.name}`, description: 'User-injected message for LLM context', text: `${character.name}: ${text}`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
         const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
         setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Injected custom message as ${character.name} into LLM context`, 'success');
@@ -695,61 +554,35 @@ function App() {
 
     const handleInjectFirstMessage = useCallback(async (character: Character) => {
         if (!interactionData) return;
-        const injectedContext: Context = {
-            id: crypto.randomUUID(),
-            name: `[Injected First] ${character.name}`,
-            description: 'User-injected first message for LLM context',
-            text: `${character.name}: *${character.name} enters the scene.*`,
-            isAutoGenerated: true,
-            useBase64Encoding: false,
-            insertionDepth: 0,
-            tokenBudget: 512,
-            limitLinksToSubdirectory: false,
-            firstCreatedTimestamp: Date.now(),
-            lastUpdatedTimestamp: Date.now(),
-        };
+        const injectedContext: Context = { id: crypto.randomUUID(), name: `[Injected First] ${character.name}`, description: 'User-injected first message for LLM context', text: `${character.name}: *${character.name} enters the scene.*`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
         const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
         setInteractionData(updated);
         await saveRawInteractionData(updated); addToast(`Injected first message as ${character.name} into LLM context`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
-    // ─── Delete chat wrapper for AppModals ───────────────────────────
     const onDeleteChatForModals = useCallback((id: string) => {
         handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [handleDeleteChat]);
 
-    // ─── Rename chat wrapper for AlternateTimelinesModal ───────────
     const handleRenameChat = useCallback(async (id: string, name: string) => {
         const loaded = await loadRawInteractionData(id, allCharacters);
         if (!loaded) { addToast('Chat not found.', 'error'); return; }
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
         refreshChatList();
-        if (interactionData?.id === id) {
-            setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
-        }
+        if (interactionData?.id === id) setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
         addToast(`Renamed to "${name}"`, 'success');
     }, [allCharacters, interactionData, setInteractionData, refreshChatList, addToast]);
 
-    // ─── Branch source navigation ────────────────────────────────────
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!interactionData?.parentInteractionDataId) return;
         try {
             const source = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
-            if (source) {
-                setInteractionData(source);
-                if (source.protagonist) setCurrentCharacter(source.protagonist);
-                refreshChatList();
-                addToast(`Returned to source: "${source.name}"`, 'info');
-            } else {
-                addToast('Source chat not found.', 'error');
-            }
-        } catch {
-            addToast('Failed to load source chat.', 'error');
-        }
+            if (source) { setInteractionData(source); if (source.protagonist) setCurrentCharacter(source.protagonist); refreshChatList(); addToast(`Returned to source: "${source.name}"`, 'info'); }
+            else addToast('Source chat not found.', 'error');
+        } catch { addToast('Failed to load source chat.', 'error'); }
     }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
 
-    // ─── World loading ───────────────────────────────────────────────
     const handleLoadWorld = useCallback(async (world: World) => {
         if (!interactionData) return;
         const resolvedChars = world.characterIds.map(id => allCharacters.find(c => c.id === id)).filter((c): c is Character => !!c);
@@ -757,25 +590,14 @@ function App() {
         const resolvedLocs = world.locationIds.map(id => allLocations.find(l => l.id === id)).filter(l => l !== undefined);
         const resolvedAudioTracks = (world.audioTrackIds || []).map(id => allAudioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
         const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
-        let updated: InteractionData = {
-            ...interactionData,
-            participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
-            contexts: resolvedCtxs,
-            locations: resolvedLocs,
-            audioTracks: resolvedAudioTracks.length > 0 ? resolvedAudioTracks : [],
-            Profile: resolvedProfile,
-            lastUpdatedTimestamp: Date.now(),
-        };
-        if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) {
-            updated.participants = [updated.protagonist, ...updated.participants];
-        }
+        let updated: InteractionData = { ...interactionData, participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants, contexts: resolvedCtxs, locations: resolvedLocs, audioTracks: resolvedAudioTracks.length > 0 ? resolvedAudioTracks : [], Profile: resolvedProfile, lastUpdatedTimestamp: Date.now() };
+        if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) updated.participants = [updated.protagonist, ...updated.participants];
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
         await saveRawInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
     }, [interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, setInteractionData, addToast]);
 
-    // ─── Chat Inspection ─────────────────────────────────────────────
     const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
         const loaded = await loadRawInteractionData(parentId, allCharacters);
         if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
@@ -784,43 +606,26 @@ function App() {
 
     const handleOpenChatInspection = useCallback(async (chatId: string) => {
         const loaded = await loadRawInteractionData(chatId, allCharacters);
-        if (!loaded) {
-            addToast('Failed to load chat for inspection.', 'error');
-            return;
-        }
+        if (!loaded) { addToast('Failed to load chat for inspection.', 'error'); return; }
         setInspectionStack([loaded]);
         setIsInspectionOpen(true);
     }, [allCharacters, addToast]);
 
     // ─── Render ─────────────────────────────────────────────────────
-    
-    // Determine display order based on mode
-    // FIX: Only inject partial message if it's not already in the history
+
+    // NO REVERSAL — all modes use same top-to-bottom order
     const displayMessages = useMemo(() => {
-        const base = viewMode === 'cinematic' 
-            ? [...safeInteractionMessages].reverse() 
-            : [...safeInteractionMessages];
+        const base = [...safeInteractionMessages];
 
         if (isLoading && streamingText && streamingCharacter) {
             const last = base[base.length - 1];
-            
-            // 1. Is the last message already the partial one?
             const isLastMessagePartial = last && last.isPartial && last.character.id === streamingCharacter.id;
-            
-            // 2. Is the last message a DIFFERENT character (or no message)?
-            // If so, we need a new bubble.
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
             if (isLastMessagePartial) {
-                // Case A: Update the existing partial bubble with new text
-                if (viewMode === 'cinematic') {
-                    (base[0] as any).textContent = streamingText;
-                } else {
-                    (base[base.length - 1] as any).textContent = streamingText;
-                }
+                (base[base.length - 1] as any).textContent = streamingText;
             } else if (isNewTurn) {
-                // Case B: Inject a new partial bubble
-                const partialMsg = {
+                base.push({
                     id: `streaming-${streamingCharacter.id}`,
                     messageType: 'chat' as const,
                     character: streamingCharacter,
@@ -832,23 +637,12 @@ function App() {
                     locationIndex: undefined,
                     characterLockedLocations: {},
                     parentInteractionMessageId: null,
-                };
-                
-                if (viewMode === 'cinematic') {
-                    base.unshift(partialMsg as any);
-                } else {
-                    base.push(partialMsg as any);
-                }
+                } as any);
             }
-            // Case C: Last message is a FINAL message from the SAME character.
-            // This means generation just finished. The streamingText is stale.
-            // DO NOTHING. Do not inject. Do not update.
-            // The real message is already visible in 'base'.
         }
         return base;
-    }, [viewMode, safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
+    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
 
-    // Prepare shared props for View Components
     const viewProps: ViewModeProps = {
         interactionData: interactionData!,
         displayMessages,
@@ -861,7 +655,7 @@ function App() {
         activeToolbarId,
         portraitUrlCache,
         displayNameCache,
-        characterScales,
+        characterScales: new Map(),
         centerAvatar,
         streamingPortraitUrl,
         formattedStreamingText,
@@ -928,7 +722,6 @@ function App() {
 
                 {interactionData && (
                     <>
-                        {/* Header */}
                         <header className="app-header">
                             <div className="header-content">
                                 <div className="header-top">
@@ -965,12 +758,10 @@ function App() {
                             </div>
                         </header>
 
-                        {/* View Mode Dispatcher */}
                         {viewMode === 'ladder' && <LadderView {...viewProps} />}
                         {viewMode === 'cinematic' && <CinematicView {...viewProps} />}
                         {viewMode === 'vn' && <VisualNovelView {...viewProps} />}
 
-                        {/* Context Bar - Hidden in VN mode via CSS (.mode-vn .context-bar { display: none }) */}
                         <ContextBar 
                             viewMode={viewMode} 
                             onOpenChatList={modals.chatList.open} 
@@ -987,7 +778,6 @@ function App() {
                             onOpenProfiles={modals.profileList.open} 
                         />
 
-                        {/* Chat Input - ALWAYS VISIBLE (Fixed for VN Mode) */}
                         <ChatInput 
                             inputText={inputText} 
                             setInputText={setInputText} 

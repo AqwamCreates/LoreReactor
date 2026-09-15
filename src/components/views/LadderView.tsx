@@ -50,7 +50,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                 const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
                 
                 // Unified cache lookup: message ID first, then canonical character key
-                let messagePortraitUrl = portraitUrlCache.get(message.id)
+                const messagePortraitUrl = portraitUrlCache.get(message.id)
                     ?? portraitUrlCache.get(`character:${message.character.id}`)
                     ?? null;
 

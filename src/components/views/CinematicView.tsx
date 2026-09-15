@@ -21,7 +21,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         suppressNextClickRef, setEditDraft, onNavigateToBranchSource,
     } = props;
 
-    // Unified cache lookup for center avatar
     const centerAvatarUrl = centerAvatar
         ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
         : null;
@@ -56,8 +55,8 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
 
                 {displayMessages.map((message, renderIndex) => {
                     if (!message.character) return null;
-                    // Cinematic reverses the display order
-                    const index = displayMessages.length - 1 - renderIndex;
+                    // NO REVERSAL — same order as ladder mode
+                    const index = renderIndex;
                     const dn = resolveDisplayNameFromCache(displayNameCache, index, message.character.id);
                     
                     const stem = (() => {
@@ -73,7 +72,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         : -1;
                     const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
 
-                    // Unified cache lookup: message ID first, then canonical character key
                     const messagePortraitUrl = portraitUrlCache.get(message.id)
                         ?? portraitUrlCache.get(`character:${message.character.id}`)
                         ?? null;
