@@ -1,6 +1,7 @@
 // src/components/views/types.ts
 import type React from 'react';
 import type { Character, InteractionData, ChatMessage } from '../../types';
+import type { DisplayNameCache } from '../../hooks/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;
@@ -13,8 +14,8 @@ export interface ViewModeProps {
     massStartIndex: number;
     activeToolbarId: string | null;
     portraitUrlCache: Map<string, string | null>;
-    displayNameCache: Map<number, string> | null; // FIX: Accept null
-    characterScales: Map<string, number>;
+    displayNameCache: DisplayNameCache | null;
+    characterScales: Map<string, { scale: number; transitionSpeed: string }>;
     centerAvatar: Character | null;
     streamingPortraitUrl: string | null;
     formattedStreamingText: React.ReactNode | null;
@@ -23,10 +24,6 @@ export interface ViewModeProps {
     isEditingTitle: boolean;
     editTitleValue: string;
     parentInteractionMessageId: string | null;
-
-    // Streaming guard props
-    hasPartialInHistory: boolean;
-    streamingText: string;
 
     // Refs
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
@@ -60,4 +57,5 @@ export interface ViewModeProps {
     setEditTitleValue: (v: string) => void;
     closeActionMenu: () => void;
     deactivateToolbar: () => void;
+    onStopGeneration: () => void;
 }

@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import type { ChatMessage, InteractionData } from "../types";
 
-interface DisplayNameCache {
+export interface DisplayNameCache {
     chatMessages: ChatMessage[];
     chatToFullIndex: Map<ChatMessage, number>;
     revealThreshold: Map<string, number>;
@@ -51,10 +51,6 @@ function buildDisplayNameCache(interactionData: InteractionData): DisplayNameCac
     };
 }
 
-/**
- * Precomputes display name data once per interactionData change.
- * Use resolveDisplayNameFromCache for O(1) lookups during render.
- */
 export function useDisplayNameCache(interactionData: InteractionData | null): DisplayNameCache | null {
     return useMemo(() => {
         if (!interactionData) return null;
@@ -62,9 +58,6 @@ export function useDisplayNameCache(interactionData: InteractionData | null): Di
     }, [interactionData]);
 }
 
-/**
- * O(1) display name lookup using precomputed cache.
- */
 export function resolveDisplayNameFromCache(
     cache: DisplayNameCache | null,
     chatMessageIndex: number,
@@ -102,10 +95,6 @@ export function resolveDisplayNameFromCache(
     return idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
 }
 
-/**
- * Standalone function for non-React contexts.
- * Prefer useDisplayNameCache + resolveDisplayNameFromCache in components.
- */
 export function getDelayedDisplayName(interactionData: InteractionData, interactionMessageIndex: number, characterId: string): string {
     const cache = buildDisplayNameCache(interactionData);
     return resolveDisplayNameFromCache(cache, interactionMessageIndex, characterId);

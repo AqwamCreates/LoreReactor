@@ -203,7 +203,6 @@ function App() {
         loadFullCharacter, addToast,
     });
 
-    // REPLACED: useCinematicMode → useViewAssets
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
         chatMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
@@ -234,7 +233,6 @@ function App() {
 
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
-    // REPLACED: InteractionMessages → chatMessages
     const safeInteractionMessages = chatMessages || [];
     const massStartIndex = isMassActive && interactionData ? safeInteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
@@ -491,13 +489,7 @@ function App() {
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
-    const isStemMessage = (mid: string): boolean => {
-        if (!interactionData?.parentInteractionMessageId) return false;
-        const bi = safeInteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId);
-        if (bi === -1) return false;
-        const ci = safeInteractionMessages.findIndex(m => m.id === mid);
-        return ci !== -1 && ci <= bi;
-    };
+    // REMOVED: isStemMessage (unused)
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
@@ -693,6 +685,7 @@ function App() {
         setEditTitleValue,
         closeActionMenu,
         deactivateToolbar,
+        onStopGeneration: stopGeneration,
     };
 
     const containerClass = [

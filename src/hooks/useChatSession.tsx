@@ -262,13 +262,71 @@ export function useChatSession() {
         }
     }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
 
+    // Dedicated action interjection function — matches useActionMenu's expected signature
+    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
+        if (!state.interactionData || !state.currentCharacter) return;
+        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+        if (!state.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+        const ctrl = new AbortController();
+        abortControllerRef.current = ctrl;
+        wasStoppedRef.current = false;
+        resetStream();
+        state.setStreamingState(null, '');
+        state.setStats({ latency: 0, timeToFirstToken: 0 });
+        isAtBottomRef.current = true;
+
+        try {
+            const chatMessage = createChatMessage(state.interactionData, state.currentCharacter, actionText);
+            let td = addMessageToInteractionData(state.interactionData, chatMessage);
+
+            state.setInteractionData(td);
+            await saveRawInteractionData(td);
+
+            const ud = await chatEngine.runTurn(td, ctrl);
+
+            if (pendingPartialRef.current) {
+                const fd = await applyPendingPartial(ud, state.currentCharacter.id);
+                await saveRawInteractionData(fd);
+                state.setInteractionData(fd);
+                return;
+            }
+
+            if (ud.interactionHistory.length > td.interactionHistory.length) {
+                const processed = await chatEngine.processPendingTools(ud);
+                const finalized = finalizeLastAIMessage(processed, state.currentCharacter.id, wasStoppedRef.current);
+                await saveRawInteractionData(finalized);
+                state.setInteractionData(finalized);
+
+                runSummarization({ data: finalized, setData: state.setInteractionData, addToast });
+
+                const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
+                if (lm && lm.messageType === 'chat' && lm.character.id !== state.currentCharacter?.id) {
+                    ui.playVoice(lm.textContent, lm.character);
+                }
+            } else {
+                const ad = await generateAmbientNarration(ud, ctrl.signal);
+                const sd = ad || ud;
+                await saveRawInteractionData(sd);
+                state.setInteractionData(sd);
+            }
+        } catch (e) {
+            if ((e as Error).name !== 'AbortError') {
+                console.error('Action failed:', e);
+                addToast(`Action failed: ${(e as Error).message}`, 'error');
+            }
+        } finally {
+            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            releaseLock();
+        }
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
+
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
 
         const resumeId = resumingMessageIdRef.current;
         const currentData = state.getState().interactionData;
 
-        // Abort first to prevent further stream chunks
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
 
@@ -276,13 +334,7 @@ export function useChatSession() {
             const idx = currentData.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
                 const targetMsg = currentData.interactionHistory[idx] as ChatMessage;
-                
-                // FIX: Use the authoritative text from interactionData, NOT the potentially 
-                // stale streamingTextRef. useChatEngine has already been updating this 
-                // message incrementally. Overwriting it with streamingTextRef causes 
-                // text loss and visual flashing/disappearance.
                 const cleanText = sanitizeStreamedText(targetMsg.textContent);
-                
                 const paragraphs = (cleanText.match(/\n\n/g) || []).length + 1;
                 
                 const withPartial = [...currentData.interactionHistory];
@@ -295,7 +347,6 @@ export function useChatSession() {
                 
                 if (paragraphs > 0) consumeChatStaminaForMessage(withPartial[idx], paragraphs);
 
-                // Atomic update: interaction data + streaming state + isLoading in ONE call.
                 state.setState({
                     interactionData: { ...currentData, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() },
                     streamingCharacter: null,
@@ -321,7 +372,6 @@ export function useChatSession() {
             });
         }
 
-        // Only reset the ref. isLoading: false was already set atomically above.
         isLoadingRef.current = false;
         resetStream();
     }, [resetStream, state, streamingTextRef, isLoadingRef]);
@@ -360,9 +410,6 @@ export function useChatSession() {
 
             const finalized = finalizeMessageById(result, messageId, wasStoppedRef.current);
 
-            // FIX: Atomically update interaction data AND clear streaming state.
-            // This prevents the one-frame double-message flash where isLoading is true
-            // but hasPartialInHistory is false (because isPartial was just set to false).
             state.setState({
                 interactionData: finalized,
                 streamingCharacter: null,
@@ -478,7 +525,7 @@ export function useChatSession() {
         resumeGeneration,
         regenerateFromMessage,
         startNewChat,
-        sendActionAndGetResponse: sendMessage,
+        sendActionAndGetResponse,
         setActiveBudgetStrategy: state.setActiveStrategy,
         setSelectedGlobalModel: state.setSelectedModel,
         updateRunningModels: state.updateRunningModels,
