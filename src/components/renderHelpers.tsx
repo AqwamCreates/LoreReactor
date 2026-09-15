@@ -1,6 +1,6 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData } from '../types';
+import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend } from '../types';
 import { cloudBackends } from '../languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -15,7 +15,7 @@ export function renderModelSubtext(
     selectedModelId: string | null,
 ): React.ReactNode {
     const ms = runningModels[model.id];
-    const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
+    const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend as cloudBackend);
 
     return (
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>

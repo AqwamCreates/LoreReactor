@@ -1,6 +1,6 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
-import type { backend, LanguageModel, StopPattern } from '../types';
+import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types';
 import { vramUseEstimation } from '../hooks/vramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../languageModelInformation';
@@ -224,7 +224,7 @@ export function ModelEditorModal({
         backend: selectedBackend || "",
     });
 
-    const isCloudBackend = cloudBackends.includes(selectedBackend || "");
+    const isCloudBackend = cloudBackends.includes(selectedBackend as cloudBackend);
     const supportsGpuLayers = GPU_LAYERS_BACKENDS.has(selectedBackend);
     const supportsSeparateKV = SEPARATE_KV_BACKENDS.has(selectedBackend);
     const supportsSpecDecoding = SPEC_DECODING_BACKENDS.has(selectedBackend);
