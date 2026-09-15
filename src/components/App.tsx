@@ -987,30 +987,28 @@ function App() {
                             onOpenProfiles={modals.profileList.open} 
                         />
 
-                        {/* Chat Input - Hidden in VN mode */}
-                        {viewMode !== 'vn' && (
-                            <ChatInput 
-                                inputText={inputText} 
-                                setInputText={setInputText} 
-                                pendingFiles={pendingFiles} 
-                                setPendingFiles={setPendingFiles} 
-                                isRecording={isRecording} 
-                                isLoading={isLoading} 
-                                isModelReady={isModelReady} 
-                                isModelLoading={isModelLoading} 
-                                modelStatusMessage={modelStatusMessage} 
-                                currentCharacterName={currentCharacter?.name} 
-                                activeStrategy={activeStrategy ?? undefined} 
-                                selectedModelId={selectedModelId} 
-                                fileInputRef={fileInputRef} 
-                                textareaRef={textareaRef} 
-                                onFileSelected={handleFileSelected} 
-                                onToggleMicrophone={handleToggleMicrophone} 
-                                onSend={handleSend} 
-                                onStopGeneration={stopGeneration} 
-                                onOpenModels={modals.modelList.open} 
-                            />
-                        )}
+                        {/* Chat Input - ALWAYS VISIBLE (Fixed for VN Mode) */}
+                        <ChatInput 
+                            inputText={inputText} 
+                            setInputText={setInputText} 
+                            pendingFiles={pendingFiles} 
+                            setPendingFiles={setPendingFiles} 
+                            isRecording={isRecording} 
+                            isLoading={isLoading} 
+                            isModelReady={isModelReady} 
+                            isModelLoading={isModelLoading} 
+                            modelStatusMessage={modelStatusMessage} 
+                            currentCharacterName={currentCharacter?.name} 
+                            activeStrategy={activeStrategy ?? undefined} 
+                            selectedModelId={selectedModelId} 
+                            fileInputRef={fileInputRef} 
+                            textareaRef={textareaRef} 
+                            onFileSelected={handleFileSelected} 
+                            onToggleMicrophone={handleToggleMicrophone} 
+                            onSend={handleSend} 
+                            onStopGeneration={stopGeneration} 
+                            onOpenModels={modals.modelList.open} 
+                        />
                     </>
                 )}
 

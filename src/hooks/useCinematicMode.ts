@@ -103,34 +103,45 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [interactionData]);
 
+    // Single unified cache: one key per character ID, shared across all views
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
 
-        // 1. History
+        // 1. All participants — always present, always keyed by character:${id}
+        if (interactionData) {
+            for (const participant of interactionData.participants) {
+                const url = resolvePortrait(participant.id, participant.images, 'neutral');
+                cache.set(`character:${participant.id}`, url);
+            }
+        }
+
+        // 2. History messages — update cache with expression-specific portraits
+        //    This overwrites the neutral portrait if a message has a specific expression
         for (const msg of chatMessages) {
-            cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
+            const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression);
+            cache.set(`character:${msg.character.id}`, url);
+            // Keep message-ID key for Ladder/Cinematic MessageBubble lookups
+            cache.set(msg.id, url);
         }
 
-        // 2. Center Avatar (Cinematic)
+        // 3. Center Avatar — update with neutral expression (most recent known state)
         if (centerAvatar) {
-            const key = `cinematic:${centerAvatar.id}`;
-            cache.set(key, resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral'));
+            const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral');
+            cache.set(`character:${centerAvatar.id}`, url);
         }
 
-        // 3. FIX: Streaming Character (Ladder/VN)
+        // 4. Streaming Character — update with current expression (live, highest priority)
         if (streamingCharacter) {
-            const streamKey = `streaming:${streamingCharacter.id}`;
             const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression);
-            cache.set(streamKey, url);
-            cache.set('active-stream', url);
+            cache.set(`character:${streamingCharacter.id}`, url);
         }
 
         return cache;
-    }, [chatMessages, centerAvatar, streamingCharacter, currentCharacterExpression]);
+    }, [chatMessages, centerAvatar, streamingCharacter, currentCharacterExpression, interactionData]);
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
-        return portraitUrlCache.get(`streaming:${streamingCharacter.id}`) || null;
+        return portraitUrlCache.get(`character:${streamingCharacter.id}`) || null;
     }, [streamingCharacter, portraitUrlCache]);
 
     const locationBackgroundUrl = interactionData ? resolveLocationBackgroundUrl(interactionData) : null;
@@ -194,6 +205,6 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         portraitUrlCache,
         streamingPortraitUrl,
         locationBackgroundUrl,
-        characterScales: new Map(), // Placeholder for VN scaling logic
+        characterScales: new Map(),
     };
 }

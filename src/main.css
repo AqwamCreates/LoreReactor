@@ -1510,6 +1510,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    z-index: 1;
 }
 
 .vn-sprites-layer {
@@ -1519,72 +1520,132 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     width: 100%;
     height: 100%;
     pointer-events: none;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
 }
 
 .vn-character-layer {
     position: absolute;
+    bottom: 15%;
     display: flex;
     flex-direction: column;
     align-items: center;
     pointer-events: auto;
-    will-change: transform;
-    max-height: 90vh;
+    will-change: transform, opacity, filter;
+    max-height: 85vh;
+    transition: all 0.5s ease-out;
 }
 
 .vn-sprite {
     height: 80vh;
     width: auto;
     object-fit: contain;
-    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.7));
     image-rendering: -webkit-optimize-contrast;
 }
 
+/* --- DIALOGUE BOX (VN Style) --- */
 .vn-dialogue-layer {
     position: relative;
     z-index: 50;
-    padding: 0 20px 20px 20px;
+    padding: 20px 20px 100px 20px;
     pointer-events: auto;
     width: 100%;
     box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    overflow: visible;
 }
 
 .vn-dialogue-box {
-    background: rgba(10, 10, 20, 0.9);
+    background: rgba(10, 10, 20, 0.95);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.2);
     border-radius: 12px;
-    padding: 16px 24px;
-    max-width: 900px;
-    margin: 0 auto;
+    padding: 20px 24px;
     width: 100%;
     box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
+    position: relative;
+    height: 70%;
+    overflow: visible;
 }
 
-.vn-dialogue-streaming {
-    border-color: var(--accent-border);
-    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-bg);
-}
-
-.vn-dialogue-empty {
-    opacity: 0.6;
-}
-
-.vn-dialogue-speaker {
-    font-size: 0.8rem;
+/* Name Plate (Top Left) */
+.vn-name-plate {
+    position: absolute;
+    top: -15px;
+    left: 20px;
+    background: var(--accent);
+    color: #fff;
+    padding: 4px 16px;
+    border-radius: 6px;
+    font-size: 0.9rem;
     font-weight: bold;
-    color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    z-index: 60;
 }
 
+/* Message Toolbar (Top Right) */
+.vn-message-toolbar {
+    position: absolute;
+    top: -15px;
+    right: 20px;
+    display: flex;
+    gap: 4px;
+    background: rgba(10, 10, 20, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    z-index: 60;
+    pointer-events: auto;
+    flex-wrap: wrap; /* Allow wrapping on very small screens */
+    justify-content: flex-end;
+}
+
+.vn-toolbar-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.vn-toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+/* Color variants for specific actions */
+.vn-toolbar-danger:hover { background: rgba(255, 68, 68, 0.3); color: #ff6b6b; }
+.vn-toolbar-warn:hover { background: rgba(255, 165, 0, 0.3); color: #ffa500; }
+.vn-toolbar-confirm { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.vn-toolbar-confirm:hover { background: rgba(16, 185, 129, 0.4); }
+.vn-toolbar-cancel { background: rgba(255, 255, 255, 0.1); }
+.vn-toolbar-cancel:hover { background: rgba(255, 255, 255, 0.3); }
+
 .vn-dialogue-text {
-    font-size: 0.9rem;
+    font-size: 17px;
     color: #e0e0e0;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    margin-top: 10px;
+    overflow-y: auto;
+    height: 100%;
+    text-align: left;
 }
 
 .vn-dialogue-text .message-text {
@@ -1592,7 +1653,191 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     font-size: inherit;
 }
 
-/* Breathing animation for idle characters */
+.vn-edit-textarea {
+    width: 100%;
+    min-height: 100px;
+    max-height: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--accent-border);
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 17px;
+    line-height: 1.6;
+    padding: 10px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.vn-edit-textarea:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* VN Dialogue Box Internal Layout */
+.vn-dialogue-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0; /* Critical for flex overflow */
+}
+
+/* Scrollable text area takes remaining space */
+.vn-dialogue-text {
+    flex: 1;
+    min-height: 0; /* Critical for overflow scrolling */
+    overflow-y: auto;
+    font-size: 17px;
+    color: #e0e0e0;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 10px;
+    text-align: left;
+}
+
+.vn-dialogue-text .message-text {
+    color: inherit;
+    font-size: inherit;
+}
+
+/* VN Edit Textarea */
+.vn-edit-textarea {
+    width: 100%;
+    min-height: 80px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--accent-border);
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 17px;
+    line-height: 1.6;
+    padding: 10px;
+    font-family: inherit;
+    resize: none; /* Let flex handle sizing */
+    outline: none;
+    box-sizing: border-box;
+}
+
+.vn-edit-textarea:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* VN Edit Preview */
+.vn-edit-preview {
+    padding: 10px;
+    min-height: 60px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--accent-border);
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #e0e0e0;
+    font-size: 17px;
+    line-height: 1.6;
+    transition: background 0.2s;
+}
+
+.vn-edit-preview:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* VN Reformat Panel — FIXED BELOW TEXT, NOT SCROLLABLE */
+.vn-reformat-panel {
+    flex-shrink: 0; /* Never shrink, never scroll */
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--accent-border);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.vn-reformat-empty {
+    font-size: 0.8em;
+    opacity: 0.6;
+    padding: 2px 0;
+    color: #e0e0e0;
+}
+
+.vn-reformat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+}
+
+.vn-reformat-row {
+    display: grid;
+    grid-template-columns: 1fr 16px minmax(0, 1fr);
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+}
+
+.vn-reformat-label {
+    font-size: 0.78em;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    color: #e0e0e0;
+}
+
+.vn-reformat-count {
+    opacity: 0.5;
+    margin-left: 4px;
+}
+
+.vn-reformat-arrow {
+    opacity: 0.5;
+    text-align: center;
+    font-size: 0.78em;
+    color: #e0e0e0;
+}
+
+.vn-reformat-select {
+    width: 100%;
+    min-width: 0;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 0.78em;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* Ambient narrator dialogue box styling */
+.vn-dialogue-box-ambient {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(10, 10, 20, 0.8) !important;
+}
+
+.vn-dialogue-box-ambient .vn-name-plate {
+    background: rgba(255, 255, 255, 0.15);
+    font-style: italic;
+    letter-spacing: 2px;
+}
+
+.vn-dialogue-box-ambient .vn-dialogue-text {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.vn-reformat-select:focus {
+    border-color: var(--accent);
+}
+
+@media (max-width: 768px) {
+    .vn-reformat-grid { grid-template-columns: 1fr; }
+}
+
 @keyframes vn-breathe {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-4px); }
@@ -1602,21 +1847,54 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     animation: vn-breathe 4s ease-in-out infinite;
 }
 
-/* Hide chat history, context bar, etc. in VN mode */
+/* --- VN MODE OVERRIDES --- */
 .mode-vn .chat-history { display: none; }
 .mode-vn .context-bar { display: none; }
+
 .mode-vn .app-header {
     background: transparent !important;
     border-bottom: none !important;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
+.mode-vn .input-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(10, 10, 20, 0.8);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 10px 20px;
+}
+
+.mode-vn .chat-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.mode-vn .send-button {
+    background: var(--accent);
+    color: #fff;
 }
 
 @media (max-width: 768px) {
     .vn-sprite { height: 60vh; }
-    .vn-dialogue-box { padding: 12px 16px; }
-    .vn-dialogue-speaker { font-size: 0.7rem; }
-    .vn-dialogue-text { font-size: 0.8rem; }
+    .vn-dialogue-box { padding: 15px; min-height: 100px; }
+    .vn-name-plate { font-size: 0.8rem; top: -12px; left: 15px; }
+    .vn-message-toolbar { top: -12px; right: 15px; padding: 2px 6px; gap: 2px; }
+    .vn-toolbar-btn { font-size: 0.9rem; padding: 2px 6px; min-width: 28px; min-height: 28px; }
+    .vn-dialogue-text { font-size: 0.95rem; }
+    .vn-dialogue-layer { padding-bottom: 80px; } 
+    .vn-character-layer { bottom: 10%; }
 }
 
 /* =============================================================================

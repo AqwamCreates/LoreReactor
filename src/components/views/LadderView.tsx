@@ -49,10 +49,10 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                     : -1;
                 const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
                 
-                let messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
-                if (!messagePortraitUrl && message.isPartial) {
-                    messagePortraitUrl = portraitUrlCache.get(`streaming:${message.character.id}`) ?? streamingPortraitUrl;
-                }
+                // Unified cache lookup: message ID first, then canonical character key
+                let messagePortraitUrl = portraitUrlCache.get(message.id)
+                    ?? portraitUrlCache.get(`character:${message.character.id}`)
+                    ?? null;
 
                 return (
                     <MessageBubble

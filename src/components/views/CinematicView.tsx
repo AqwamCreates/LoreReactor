@@ -21,17 +21,22 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         suppressNextClickRef, setEditDraft, onNavigateToBranchSource,
     } = props;
 
+    // Unified cache lookup for center avatar
+    const centerAvatarUrl = centerAvatar
+        ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
+        : null;
+
     return (
         <>
             {/* Center Avatar Stage */}
-            {centerAvatar && portraitUrlCache.get(`cinematic:${centerAvatar.id}`) && (
+            {centerAvatar && centerAvatarUrl && (
                 <div
                     className="cinematic-stage active"
                     onClick={e => { e.stopPropagation(); onAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }}
                     title="Click character to interject action"
                 >
                     <img
-                        src={portraitUrlCache.get(`cinematic:${centerAvatar.id}`)!}
+                        src={centerAvatarUrl}
                         alt={centerAvatar.name}
                         className="cinematic-avatar-img"
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -67,7 +72,11 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         ? displayMessages.findIndex(m => m.id === parentInteractionMessageId)
                         : -1;
                     const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
-                    const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
+
+                    // Unified cache lookup: message ID first, then canonical character key
+                    const messagePortraitUrl = portraitUrlCache.get(message.id)
+                        ?? portraitUrlCache.get(`character:${message.character.id}`)
+                        ?? null;
 
                     return (
                         <MessageBubble
