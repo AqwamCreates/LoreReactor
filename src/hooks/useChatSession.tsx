@@ -142,7 +142,7 @@ export function useChatSession() {
             if (!cancelled) state.setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [state.interactionData?.interactionHistory, state.interactionData, state.setNumberOfTokens]);
+    }, [state]);
 
     useEffect(() => {
         const autonomousEnabled = state.interactionData?.Profile?.autonomousMode ?? false;
@@ -158,7 +158,7 @@ export function useChatSession() {
             chatEngine.stopAutonomousMode();
         }
         return () => { chatEngine.stopAutonomousMode(); };
-    }, [state.interactionData?.Profile?.autonomousMode, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
+    }, [state, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
 
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = state.getState().selectedModel;
