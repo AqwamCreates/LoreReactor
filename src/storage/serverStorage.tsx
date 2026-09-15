@@ -174,7 +174,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
     const contentType = response.headers.get("content-type");
     if (!contentType || (!contentType.includes("application/json") && !contentType.includes("text/plain"))) {
-       if (contentType && contentType.includes("text")) {
+       if (contentType?.includes("text")) {
            // Fall through to parse
        } else {
            return null;
@@ -190,9 +190,8 @@ async function fetchJson<T>(url: string): Promise<T | null> {
       console.warn(`Network error for ${url}, falling back to browser storage`);
       resetServerAvailability();
       return browserReadJson<T>(url);
-    } else {
-      console.warn(`Failed to parse JSON from ${url}:`, error);
     }
+    console.warn(`Failed to parse JSON from ${url}:`, error);
     return null; 
   }
 }
@@ -669,7 +668,7 @@ const characterRepo = createRepository<Character, RawCharacter>({
     });
   },
   serialize: async (character) => {
-    const { id, sampler, memories, ...rest } = character;
+    const { sampler, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
@@ -858,7 +857,7 @@ const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
     });
   },
   serialize: (strategy) => {
-    const { id, onlineModels, localModels, ...rest } = strategy;
+    const { onlineModels, localModels, ...rest } = strategy;
     return {
       ...rest,
       onlineModelIds: onlineModels.map(m => m.id),
@@ -940,7 +939,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
     });
   },
   serialize: (profile) => {
-    const { id, summarizationSteps, ...rest } = profile;
+    const { summarizationSteps, ...rest } = profile;
     const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...stepRest }) => stepRest);
     return {
       ...rest,

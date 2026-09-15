@@ -166,7 +166,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = lastMsg?.isPartial === true;
 
-    // FIX: Cast to string since MemoizedMessageText expects string
     const activeStreamingText: string | null = isStreamingInList
         ? lastMsg.textContent
         : (isLoading && formattedStreamingText ? String(formattedStreamingText) : null);
@@ -209,7 +208,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             .map(c => c.id);
     }, [visibleCharacters, protagonistId]);
 
-    const { spriteStates, rollbackToMessage, isInitialLoad } = useVisualNovelSpriteStates({
+    const { spriteStates, rollbackToMessage, isInitialLoad, jumpingCharacterIds } = useVisualNovelSpriteStates({
         chatMessages,
         visibleCharacterIds: spriteCharacterIds,
         protagonistId,
@@ -296,6 +295,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
+            {/* --- SPRITE LAYER --- */}
             <div className="vn-sprites-layer">
                 {spriteCharacterIds.map((characterId) => {
                     const portraitUrl = portraitUrlCache.get(`character:${characterId}`) ?? null;
@@ -308,15 +308,22 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                     if (!character) return null;
 
                     const isSpeaking = activeSpeaker?.id === characterId;
+                    const isJumping = jumpingCharacterIds.has(characterId);
+
+                    const classNames = [
+                        'vn-character-layer',
+                        isInitialLoad ? 'vn-no-transition' : '',
+                        isJumping ? 'vn-jumping' : '',
+                    ].filter(Boolean).join(' ');
 
                     return (
-                        <div key={characterId} className={`vn-character-layer ${isInitialLoad ? 'vn-no-transition' : ''}`} style={{
+                        <div key={characterId} className={classNames} style={{
                             left: `${state.screenX}%`,
-                            bottom: '0',
+                            bottom: `${state.verticalOffset}px`,
                             transform: `translateX(-50%) scale(${state.scale})`,
                             transformOrigin: 'bottom center',
                             zIndex: Math.round((1 - state.depth) * 100),
-                            opacity: isSpeaking ? 1 : 0.7,
+                            opacity: state.facingTargetId === null && !isSpeaking ? 0.5 : (isSpeaking ? 1 : 0.7),
                             filter: isSpeaking ? 'none' : 'brightness(0.8)',
                         }}>
                             <img src={portraitUrl} alt={character.name} className="vn-sprite"
@@ -326,6 +333,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 })}
             </div>
 
+            {/* --- DIALOGUE BOX LAYER --- */}
             <div className="vn-dialogue-layer">
                 <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`} style={{
                     opacity: isWaitingForGeneration ? 0 : 1,
