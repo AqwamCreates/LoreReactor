@@ -263,8 +263,9 @@ export function useChatSession() {
     }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
 
     // Dedicated action interjection function — matches useActionMenu's expected signature
+       // Dedicated action interjection function — sends action AS the target character
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
-        if (!state.interactionData || !state.currentCharacter) return;
+        if (!state.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         if (!state.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
@@ -277,8 +278,9 @@ export function useChatSession() {
         isAtBottomRef.current = true;
 
         try {
-            const chatMessage = createChatMessage(state.interactionData, state.currentCharacter, actionText);
-            let td = addMessageToInteractionData(state.interactionData, chatMessage);
+            // Send the action AS the target character, not the protagonist
+            const chatMessage = createChatMessage(state.interactionData, targetChar, actionText);
+            const td = addMessageToInteractionData(state.interactionData, chatMessage);
 
             state.setInteractionData(td);
             await saveRawInteractionData(td);
@@ -286,7 +288,7 @@ export function useChatSession() {
             const ud = await chatEngine.runTurn(td, ctrl);
 
             if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, state.currentCharacter.id);
+                const fd = await applyPendingPartial(ud, state.interactionData.protagonist?.id ?? '');
                 await saveRawInteractionData(fd);
                 state.setInteractionData(fd);
                 return;
@@ -294,14 +296,14 @@ export function useChatSession() {
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 const processed = await chatEngine.processPendingTools(ud);
-                const finalized = finalizeLastAIMessage(processed, state.currentCharacter.id, wasStoppedRef.current);
+                const finalized = finalizeLastAIMessage(processed, state.interactionData.protagonist?.id ?? '', wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
                 state.setInteractionData(finalized);
 
                 runSummarization({ data: finalized, setData: state.setInteractionData, addToast });
 
                 const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== state.currentCharacter?.id) {
+                if (lm && lm.messageType === 'chat' && lm.character.id !== state.interactionData.protagonist?.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
@@ -319,7 +321,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
