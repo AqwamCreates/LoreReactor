@@ -2,7 +2,7 @@
 import { useState } from 'react';
 
 interface ContextBarProps {
-    viewMode: 'ladder' | 'cinematic';
+    viewMode: 'ladder' | 'cinematic' | 'vn';
     onOpenChatList: () => void;
     onOpenCharacters: () => void;
     onOpenContexts: () => void;
@@ -32,7 +32,7 @@ export function ContextBar({
 }: ContextBarProps) {
     const [expanded, setExpanded] = useState(false);
 
-    if (viewMode === 'cinematic') return null;
+    if (viewMode !== 'ladder') return null;
 
     return (
         <div className="context-bar">
