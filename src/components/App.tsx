@@ -636,7 +636,7 @@ function App() {
     }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
 
     const viewProps: ViewModeProps = {
-        interactionData: interactionData!,
+        interactionData!,
         displayMessages,
         currentCharacterId: currentCharacter?.id,
         editingId,
