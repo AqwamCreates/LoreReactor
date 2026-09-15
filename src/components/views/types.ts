@@ -13,7 +13,7 @@ export interface ViewModeProps {
     massStartIndex: number;
     activeToolbarId: string | null;
     portraitUrlCache: Map<string, string | null>;
-    displayNameCache: Map<number, string>;
+    displayNameCache: Map<number, string> | null; // FIX: Accept null
     characterScales: Map<string, number>;
     centerAvatar: Character | null;
     streamingPortraitUrl: string | null;
@@ -23,6 +23,10 @@ export interface ViewModeProps {
     isEditingTitle: boolean;
     editTitleValue: string;
     parentInteractionMessageId: string | null;
+
+    // Streaming guard props
+    hasPartialInHistory: boolean;
+    streamingText: string;
 
     // Refs
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;

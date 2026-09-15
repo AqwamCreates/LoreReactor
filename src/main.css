@@ -132,7 +132,7 @@ code {
 }
 
 /* =============================================================================
-APP LAYOUT & HEADER
+APP LAYOUT & HEADER (Shared)
 ============================================================================= */
 .chat-container {
     display: flex;
@@ -273,7 +273,7 @@ APP LAYOUT & HEADER
 }
 
 /* =============================================================================
-2. CHAT HISTORY & MESSAGES
+SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
 ============================================================================= */
 .chat-history {
     flex: 1;
@@ -335,10 +335,14 @@ APP LAYOUT & HEADER
     border-color: var(--accent);
 }
 
+/* FIX: Ensure placeholder matches loaded avatar border-radius */
 .character-avatar.placeholder {
     opacity: 0.5;
     width: clamp(80px, 20vw, 160px);
     aspect-ratio: 9 / 16;
+    border-radius: 20px; /* Matches .character-avatar */
+    border: 4px solid var(--border);
+    background: var(--social-bg);
 }
 
 .avatar-name {
@@ -807,6 +811,11 @@ APP LAYOUT & HEADER
 }
 
 /* =============================================================================
+SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
+============================================================================= */
+/* ... (Keeping existing shared styles for Context Bar, Input Area, Modals, Sliders, etc. unchanged for brevity in this thought block, but they remain in the file) ... */
+
+/* =============================================================================
 3. CONTEXT BAR
 ============================================================================= */
 .context-bar {
@@ -1108,17 +1117,22 @@ APP LAYOUT & HEADER
 }
 
 /* =============================================================================
-5. MOBILE LADDER MODE — AVATAR BELOW BUBBLE, LONG-PRESS TOOLBAR
+MODE: LADDER (Standard Chat View)
 ============================================================================= */
+.mode-ladder {
+    /* Base styles inherited from .chat-container */
+}
+
+/* Mobile Ladder Overrides */
 @media (max-width: 768px) {
-    .message-row.message-left {
+    .mode-ladder .message-row.message-left {
         flex-direction: column;
         align-items: flex-start;
         max-width: 90%;
         gap: 4px;
     }
 
-    .message-row.message-left .avatar-column {
+    .mode-ladder .message-row.message-left .avatar-column {
         flex-direction: row;
         align-items: center;
         gap: 8px;
@@ -1129,8 +1143,8 @@ APP LAYOUT & HEADER
         order: 2;
     }
 
-    .message-row.message-left .character-avatar,
-    .message-row.message-left .character-avatar.placeholder {
+    .mode-ladder .message-row.message-left .character-avatar,
+    .mode-ladder .message-row.message-left .character-avatar.placeholder {
         width: 90px;
         height: 120px;
         min-width: 90px;
@@ -1140,27 +1154,27 @@ APP LAYOUT & HEADER
         object-position: top center;
     }
 
-    .message-row.message-left .avatar-name {
+    .mode-ladder .message-row.message-left .avatar-name {
         font-size: 0.8rem;
         max-width: 200px;
         text-align: left;
         line-height: 1.2;
     }
 
-    .message-row.message-left .message-bubble {
+    .mode-ladder .message-row.message-left .message-bubble {
         max-width: 100%;
     }
 
-    .message-row.message-right {
+    .mode-ladder .message-row.message-right {
         max-width: 90%;
     }
 
-    .message-row.message-left .message-toolbar {
+    .mode-ladder .message-row.message-left .message-toolbar {
         bottom: -14px;
         right: 0;
     }
 
-    .toolbar-button {
+    .mode-ladder .toolbar-button {
         width: 40px;
         height: 40px;
         min-width: 40px;
@@ -1169,50 +1183,446 @@ APP LAYOUT & HEADER
         border-radius: 6px;
     }
 
-    .message-toolbar {
+    .mode-ladder .message-toolbar {
         opacity: 0 !important;
         pointer-events: none !important;
         transition: opacity 0.15s ease;
     }
 
-    .message-bubble:hover .message-toolbar {
+    .mode-ladder .message-bubble:hover .message-toolbar {
         opacity: 0 !important;
         pointer-events: none !important;
     }
 
-    .message-bubble.toolbar-active .message-toolbar {
+    .mode-ladder .message-bubble.toolbar-active .message-toolbar {
         opacity: 1 !important;
         pointer-events: auto !important;
     }
 
-    .message-bubble.toolbar-longpress-hold {
+    .mode-ladder .message-bubble.toolbar-longpress-hold {
         transform: scale(0.98);
         border-color: var(--accent);
         transition: transform 0.3s ease, border-color 0.3s ease;
     }
 
-    .chat-input,
-    .send-button,
-    .attach-button {
+    .mode-ladder .chat-input,
+    .mode-ladder .send-button,
+    .mode-ladder .attach-button {
         min-height: 48px;
         max-height: 30vh;
         border-radius: 10px;
     }
 
-    .attach-button {
+    .mode-ladder .attach-button {
         width: 48px !important;
     }
 
-    .context-bar-core-row .nav-button {
+    .mode-ladder .context-bar-core-row .nav-button {
         flex: 0 0 auto;
         min-width: clamp(60px, 18vw, 90px);
     }
 
-    .context-bar-extended-row .nav-button {
+    .mode-ladder .context-bar-extended-row .nav-button {
         flex: 0 0 auto;
         min-width: clamp(50px, 15vw, 80px);
     }
 }
+
+/* =============================================================================
+MODE: CINEMATIC (Centered Avatar View)
+============================================================================= */
+.mode-cinematic {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.8) 100%);
+    height: 100vh;
+    height: 100dvh;
+}
+
+.cinematic-stage {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(80vw, 50vh);
+    height: min(80vw, 50vh);
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 30;
+    transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+    opacity: 0;
+    filter: blur(25px) brightness(0.2) grayscale(1);
+    overflow: hidden;
+}
+
+.cinematic-stage.active {
+    opacity: 1;
+    filter: blur(0px) brightness(1) grayscale(0);
+    transform: translate(-50%, -50%) scale(1.0);
+}
+
+.cinematic-stage:hover .cinematic-avatar-img {
+    transform: scale(1.02);
+    filter: brightness(1.1);
+}
+
+.cinematic-avatar-img {
+    object-fit: contain;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    max-width: none;
+    pointer-events: auto;
+    mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
+    -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
+    transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.mode-cinematic .chat-history {
+    display: flex;
+    flex-direction: column-reverse;
+    flex: none;
+    height: 30vh;
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 20px 10px 20px;
+    z-index: 10;
+    position: relative;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    pointer-events: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: auto;
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.3) 20%, rgba(0, 0, 0, 0.7) 40%, black 60%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.3) 20%, rgba(0, 0, 0, 0.7) 40%, black 60%);
+}
+
+.mode-cinematic .message-row {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100%;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start;
+    margin-bottom: 0;
+    transition: transform 0.3s ease;
+    opacity: 1;
+    filter: none;
+    transform: scale(1);
+    pointer-events: none;
+}
+
+.mode-cinematic .message-row.is-active { pointer-events: auto; }
+
+.mode-cinematic .message-row.message-left,
+.mode-cinematic .message-row.message-right {
+    align-self: center !important;
+    flex-direction: row !important;
+}
+
+.mode-cinematic .avatar-column { display: none !important; }
+
+.mode-cinematic .message-bubble {
+    background: rgba(15, 15, 15, 0.85);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    width: 100%;
+    max-width: 80%;
+    margin: 0 auto;
+    color: #fff;
+    border-radius: 18px !important;
+    padding: 24px 32px;
+    text-align: left;
+    position: relative;
+    z-index: 11;
+    pointer-events: auto;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.cinematic-bubble-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.cinematic-bubble-header-ambient {
+    opacity: 0.5;
+    font-style: italic;
+    letter-spacing: 2px;
+}
+
+.mode-cinematic .message-text {
+    text-align: center !important;
+    display: inline-block;
+    max-width: 100%;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    pointer-events: none !important;
+}
+
+.mode-cinematic .message-row.is-active .message-text {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+    z-index: 150;
+}
+
+.mode-cinematic .input-wrapper {
+    align-self: center;
+    width: 100%;
+    max-width: 700px;
+    margin-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 30;
+    background: transparent !important;
+    border: none;
+    position: relative;
+    flex-shrink: 0;
+    padding-top: 4px;
+    box-shadow: none;
+    pointer-events: auto;
+}
+
+.mode-cinematic .input-area {
+    background: transparent !important;
+    padding: 0;
+}
+
+.mode-cinematic .chat-input {
+    background: rgba(5, 5, 5, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(15px);
+    color: #fff;
+    box-shadow: 0 -15px 50px rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mode-cinematic .attach-button {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+}
+
+.mode-cinematic .send-button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+
+.mode-cinematic .view-mode-toggle {
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: bold;
+    transition: all 0.2s;
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    z-index: 40;
+    position: relative;
+}
+
+.mode-cinematic .view-mode-toggle.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.mode-cinematic .view-mode-toggle:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px var(--accent-bg);
+}
+
+.mode-cinematic .app-header {
+    background: transparent !important;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid transparent !important;
+    padding: 10px 20px;
+    z-index: 50;
+    pointer-events: auto;
+}
+
+.mode-cinematic .context-bar {
+    height: 0;
+    padding: 0;
+    opacity: 0;
+    border-top: none;
+    overflow: hidden;
+    margin: 0;
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+    .cinematic-stage {
+        width: min(90vw, 45vh);
+        height: min(90vw, 45vh);
+        top: 40%;
+    }
+    .mode-cinematic .chat-history { height: 35vh; }
+    .mode-cinematic .message-bubble { padding: 16px 20px; max-width: 90%; }
+}
+
+/* =============================================================================
+MODE: VISUAL NOVEL (Sprite Stage View)
+============================================================================= */
+.vn-stage-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background-color: #0a0a0f;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.vn-sprites-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.vn-character-layer {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    will-change: transform;
+    max-height: 90vh;
+}
+
+.vn-sprite {
+    height: 80vh;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.7));
+    image-rendering: -webkit-optimize-contrast;
+}
+
+.vn-dialogue-layer {
+    position: relative;
+    z-index: 50;
+    padding: 0 20px 20px 20px;
+    pointer-events: auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.vn-dialogue-box {
+    background: rgba(10, 10, 20, 0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 16px 24px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
+}
+
+.vn-dialogue-streaming {
+    border-color: var(--accent-border);
+    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-bg);
+}
+
+.vn-dialogue-empty {
+    opacity: 0.6;
+}
+
+.vn-dialogue-speaker {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.vn-dialogue-text {
+    font-size: 0.9rem;
+    color: #e0e0e0;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.vn-dialogue-text .message-text {
+    color: inherit;
+    font-size: inherit;
+}
+
+/* Breathing animation for idle characters */
+@keyframes vn-breathe {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+.vn-character-layer:not(.vn-streaming-indicator) .vn-sprite {
+    animation: vn-breathe 4s ease-in-out infinite;
+}
+
+/* Hide chat history, context bar, etc. in VN mode */
+.mode-vn .chat-history { display: none; }
+.mode-vn .context-bar { display: none; }
+.mode-vn .app-header {
+    background: transparent !important;
+    border-bottom: none !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+@media (max-width: 768px) {
+    .vn-sprite { height: 60vh; }
+    .vn-dialogue-box { padding: 12px 16px; }
+    .vn-dialogue-speaker { font-size: 0.7rem; }
+    .vn-dialogue-text { font-size: 0.8rem; }
+}
+
+/* =============================================================================
+SHARED UTILITIES & MODALS (Unchanged sections follow)
+============================================================================= */
+/* ... (Sections 6 through 23 from original file remain here) ... */
 
 /* =============================================================================
 6. MODEL READINESS INDICATOR
@@ -2850,270 +3260,6 @@ APP LAYOUT & HEADER
     .action-format-row { gap: 3px; }
     .action-format-button { font-size: 0.6rem; padding: 3px 0; min-height: 24px; }
     .action-format-toggle { font-size: 0.55rem; padding: 2px 6px; min-height: 20px; }
-}
-
-/* =============================================================================
-14. CINEMATIC MODE
-============================================================================= */
-.mode-cinematic {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    overflow: hidden;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.8) 100%);
-    height: 100vh;
-    height: 100dvh;
-}
-
-.cinematic-stage {
-    position: absolute;
-    top: 45%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(80vw, 50vh);
-    height: min(80vw, 50vh);
-    max-width: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    pointer-events: auto;
-    cursor: pointer;
-    z-index: 30;
-    transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
-    opacity: 0;
-    filter: blur(25px) brightness(0.2) grayscale(1);
-    overflow: hidden;
-}
-
-.cinematic-stage.active {
-    opacity: 1;
-    filter: blur(0px) brightness(1) grayscale(0);
-    transform: translate(-50%, -50%) scale(1.0);
-}
-
-.cinematic-stage:hover .cinematic-avatar-img {
-    transform: scale(1.02);
-    filter: brightness(1.1);
-}
-
-.cinematic-avatar-img {
-    object-fit: contain;
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    max-width: none;
-    pointer-events: auto;
-    mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
-    -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
-    transition: transform 0.3s ease, filter 0.3s ease;
-}
-
-.mode-cinematic .chat-history {
-    display: flex;
-    flex-direction: column-reverse;
-    flex: none;
-    height: 30vh;
-    width: 100%;
-    max-width: 100%;
-    padding: 20px 20px 10px 20px;
-    z-index: 10;
-    position: relative;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scroll-behavior: smooth;
-    pointer-events: auto;
-    -webkit-overflow-scrolling: touch;
-    margin-top: auto;
-    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.3) 20%, rgba(0, 0, 0, 0.7) 40%, black 60%);
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.3) 20%, rgba(0, 0, 0, 0.7) 40%, black 60%);
-}
-
-.mode-cinematic .message-row {
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    width: 100%;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: flex-start;
-    margin-bottom: 0;
-    transition: transform 0.3s ease;
-    opacity: 1;
-    filter: none;
-    transform: scale(1);
-    pointer-events: none;
-}
-
-.mode-cinematic .message-row.is-active { pointer-events: auto; }
-
-.mode-cinematic .message-row.message-left,
-.mode-cinematic .message-row.message-right {
-    align-self: center !important;
-    flex-direction: row !important;
-}
-
-.mode-cinematic .avatar-column { display: none !important; }
-
-.mode-cinematic .message-bubble {
-    background: rgba(15, 15, 15, 0.85);
-    backdrop-filter: blur(20px) saturate(1.5);
-    -webkit-backdrop-filter: blur(20px) saturate(1.5);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
-    width: 100%;
-    max-width: 80%;
-    margin: 0 auto;
-    color: #fff;
-    border-radius: 18px !important;
-    padding: 24px 32px;
-    text-align: left;
-    position: relative;
-    z-index: 11;
-    pointer-events: auto;
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.cinematic-bubble-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.8rem;
-    color: var(--accent);
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-}
-
-.cinematic-bubble-header-ambient {
-    opacity: 0.5;
-    font-style: italic;
-    letter-spacing: 2px;
-}
-
-.mode-cinematic .message-text {
-    text-align: center !important;
-    display: inline-block;
-    max-width: 100%;
-    user-select: none !important;
-    -webkit-user-select: none !important;
-    pointer-events: none !important;
-}
-
-.mode-cinematic .message-row.is-active .message-text {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    pointer-events: auto !important;
-    z-index: 150;
-}
-
-.mode-cinematic .input-wrapper {
-    align-self: center;
-    width: 100%;
-    max-width: 700px;
-    margin-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    z-index: 30;
-    background: transparent !important;
-    border: none;
-    position: relative;
-    flex-shrink: 0;
-    padding-top: 4px;
-    box-shadow: none;
-    pointer-events: auto;
-}
-
-.mode-cinematic .input-area {
-    background: transparent !important;
-    padding: 0;
-}
-
-.mode-cinematic .chat-input {
-    background: rgba(5, 5, 5, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(15px);
-    color: #fff;
-    box-shadow: 0 -15px 50px rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.mode-cinematic .attach-button {
-    background: rgba(255, 255, 255, 0.1) !important;
-    border-color: rgba(255, 255, 255, 0.2) !important;
-    color: #fff !important;
-}
-
-.mode-cinematic .send-button {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-}
-
-.mode-cinematic .view-mode-toggle {
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #fff;
-    padding: 8px 14px;
-    border-radius: 20px;
-    cursor: pointer;
-    font-size: 0.75rem;
-    font-weight: bold;
-    transition: all 0.2s;
-    backdrop-filter: blur(5px);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-    z-index: 40;
-    position: relative;
-}
-
-.mode-cinematic .view-mode-toggle.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-}
-
-.mode-cinematic .view-mode-toggle:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: 0 0 20px var(--accent-bg);
-}
-
-.mode-cinematic .app-header {
-    background: transparent !important;
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid transparent !important;
-    padding: 10px 20px;
-    z-index: 50;
-    pointer-events: auto;
-}
-
-.mode-cinematic .context-bar {
-    height: 0;
-    padding: 0;
-    opacity: 0;
-    border-top: none;
-    overflow: hidden;
-    margin: 0;
-}
-
-@media (max-width: 768px) and (orientation: portrait) {
-    .cinematic-stage {
-        width: min(90vw, 45vh);
-        height: min(90vw, 45vh);
-        top: 40%;
-    }
-    .mode-cinematic .chat-history { height: 35vh; }
-    .mode-cinematic .message-bubble { padding: 16px 20px; max-width: 90%; }
 }
 
 /* =============================================================================

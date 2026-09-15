@@ -55,6 +55,12 @@ import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 import { ChatScrollButtons } from './ChatScrollButtons';
 
+// Import the View Components
+import { LadderView } from './views/LadderView';
+import { CinematicView } from './views/CinematicView';
+import { VisualNovelView } from './views/VisualNovelView';
+import type { ViewModeProps } from './views/types';
+
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
@@ -136,7 +142,10 @@ function App() {
     const { modals } = useModalVisibility();
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
-    const [viewMode, setViewMode] = useState<'ladder' | 'cinematic'>('ladder');
+    
+    // RE-ADDED: 'vn' to view mode types
+    const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
+    
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const initialImageProcessedChatIdRef = useRef<string | null>(null);
@@ -209,6 +218,7 @@ function App() {
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
         InteractionMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
+        characterScales, // Extracted for VN mode
     } = useCinematicMode({
         viewMode, interactionData, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
@@ -239,7 +249,8 @@ function App() {
 
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
-    const massStartIndex = isMassActive && interactionData ? InteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
+    const safeInteractionMessages = InteractionMessages || [];
+    const massStartIndex = isMassActive && interactionData ? safeInteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     const maximumNumberOfContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
@@ -247,13 +258,6 @@ function App() {
         for (const ctx of interactionData.contexts) { if (ctx.text) total += Math.ceil(ctx.text.length / 4); }
         return total;
     }, [interactionData]);
-
-    // Suppress StreamingIndicators when a partial message exists in history OR when streamingText is empty.
-    // The streamingText check prevents the one-frame double-message flash on completion where
-    // isLoading is still true but hasPartialInHistory just became false (isPartial was set to false).
-    const hasPartialInHistory = useMemo(() => {
-        return InteractionMessages.some(m => m.isPartial && m.messageType === 'chat');
-    }, [InteractionMessages]);
 
     // ─── Budget Strategy Engine Local Model Loader ───────────────────
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
@@ -293,7 +297,7 @@ function App() {
         }
     }, [runningModels, activeStrategy, allModels]);
 
-    // ─── Effects ─────────────────────────────────────────────────────
+    // ─── Effects ────────────────────────────────────────────────────
     useEffect(() => {
         const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
         if (enabled) sentimentEngine.initialize(); else sentimentEngine.unload();
@@ -311,6 +315,7 @@ function App() {
             localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
             return;
         }
+        // Re-hydrate model references from current allModels to ensure golden star reflects latest state
         const modelMap = new Map(allModels.map(m => [m.id, m]));
         const freshOnline = strategy.onlineModels
             .map(m => modelMap.get(m.id))
@@ -492,7 +497,7 @@ function App() {
         }
 
         tokenCountTimerRef.current = setTimeout(async () => {
-            if (InteractionMessages.length === 0 || !interactionData?.participants) {
+            if (safeInteractionMessages.length === 0 || !interactionData?.participants) {
                 setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
                 lastCountedMessageIdsRef.current.clear();
                 return;
@@ -508,6 +513,7 @@ function App() {
                     participantCounts[interactionData.protagonist.id] = 0;
                 }
 
+                // Resolve tokenizer model: prefer selectedModelId, fall back to activeStrategy's first online model
                 let tokenizerModel: LanguageModel | undefined;
                 if (selectedModelId) {
                     tokenizerModel = allModels.find(m => m.id === selectedModelId);
@@ -525,6 +531,7 @@ function App() {
                     engine.setRunningModels(runningModels);
                     engine.setContext(tokenizerModel);
                 } else {
+                    // No model available for tokenization — skip counting this cycle
                     return;
                 }
 
@@ -532,7 +539,7 @@ function App() {
                 const currentMessageIds = new Set<string>();
                 let hasNewMessages = false;
 
-                for (const msg of InteractionMessages) {
+                for (const msg of safeInteractionMessages) {
                     currentMessageIds.add(msg.id);
                     if (!prevCountedIds.has(msg.id)) {
                         hasNewMessages = true;
@@ -543,7 +550,7 @@ function App() {
                     return;
                 }
 
-                for (const msg of InteractionMessages) {
+                for (const msg of safeInteractionMessages) {
                     if (abort.signal.aborted) return;
                     if (prevCountedIds.has(msg.id)) continue;
 
@@ -583,7 +590,7 @@ function App() {
                 tokenCountAbortRef.current = null;
             }
         };
-    }, [InteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
+    }, [safeInteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
 
     // ─── Callbacks ───────────────────────────────────────────────────
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -612,32 +619,35 @@ function App() {
 
     const isStemMessage = (mid: string): boolean => {
         if (!interactionData?.parentInteractionMessageId) return false;
-        const bi = InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId);
+        const bi = safeInteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId);
         if (bi === -1) return false;
-        const ci = InteractionMessages.findIndex(m => m.id === mid);
+        const ci = safeInteractionMessages.findIndex(m => m.id === mid);
         return ci !== -1 && ci <= bi;
     };
 
     const toggleViewMode = () => {
+        // Cycle: ladder -> cinematic -> vn -> ladder
+        setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
+        
         const container = chatHistoryRef.current;
         let targetIdx = -1;
         if (container && interactionData) {
             const cr = container.getBoundingClientRect();
-            const ids = new Set(InteractionMessages.map(m => m.id));
+            const ids = new Set(safeInteractionMessages.map(m => m.id));
             let bestTop = Number.POSITIVE_INFINITY;
             for (const el of container.querySelectorAll('[data-message-id]')) {
                 const id = el.getAttribute('data-message-id'); if (!id || !ids.has(id)) continue;
                 const r = el.getBoundingClientRect();
-                if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = InteractionMessages.findIndex(m => m.id === id); }
+                if (r.top < cr.bottom && r.bottom > cr.top && r.top < bestTop) { bestTop = r.top; targetIdx = safeInteractionMessages.findIndex(m => m.id === id); }
             }
         }
-        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) targetIdx = InteractionMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
-        if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = InteractionMessages[targetIdx].id;
+        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) targetIdx = safeInteractionMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
+        if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = safeInteractionMessages[targetIdx].id;
         suppressAutoScrollRef.current = true;
-        setViewMode(p => p === 'ladder' ? 'cinematic' : 'ladder');
+        
         setTimeout(() => {
             if (targetIdx >= 0 && interactionData && chatHistoryRef.current) {
-                const el = chatHistoryRef.current.querySelector(`[data-message-id="${InteractionMessages[targetIdx].id}"]`) as HTMLElement | null;
+                const el = chatHistoryRef.current.querySelector(`[data-message-id="${safeInteractionMessages[targetIdx].id}"]`) as HTMLElement | null;
                 if (el) { el.scrollIntoView({ block: 'start' }); setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); return; }
             }
             messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -782,13 +792,132 @@ function App() {
         setIsInspectionOpen(true);
     }, [allCharacters, addToast]);
 
-    // ─── Render ──────────────────────────────────────────────────────
-    const displayMessages = viewMode === 'cinematic' ? [...InteractionMessages].reverse() : InteractionMessages;
+    // ─── Render ─────────────────────────────────────────────────────
+    
+    // Determine display order based on mode
+    // FIX: Only inject partial message if it's not already in the history
+    const displayMessages = useMemo(() => {
+        const base = viewMode === 'cinematic' 
+            ? [...safeInteractionMessages].reverse() 
+            : [...safeInteractionMessages];
+
+        if (isLoading && streamingText && streamingCharacter) {
+            const last = base[base.length - 1];
+            
+            // 1. Is the last message already the partial one?
+            const isLastMessagePartial = last && last.isPartial && last.character.id === streamingCharacter.id;
+            
+            // 2. Is the last message a DIFFERENT character (or no message)?
+            // If so, we need a new bubble.
+            const isNewTurn = !last || last.character.id !== streamingCharacter.id;
+
+            if (isLastMessagePartial) {
+                // Case A: Update the existing partial bubble with new text
+                if (viewMode === 'cinematic') {
+                    (base[0] as any).textContent = streamingText;
+                } else {
+                    (base[base.length - 1] as any).textContent = streamingText;
+                }
+            } else if (isNewTurn) {
+                // Case B: Inject a new partial bubble
+                const partialMsg = {
+                    id: `streaming-${streamingCharacter.id}`,
+                    messageType: 'chat' as const,
+                    character: streamingCharacter,
+                    textContent: streamingText,
+                    isPartial: true,
+                    files: [],
+                    firstCreatedTimestamp: Date.now(),
+                    lastUpdatedTimestamp: Date.now(),
+                    locationIndex: undefined,
+                    characterLockedLocations: {},
+                    parentInteractionMessageId: null,
+                };
+                
+                if (viewMode === 'cinematic') {
+                    base.unshift(partialMsg as any);
+                } else {
+                    base.push(partialMsg as any);
+                }
+            }
+            // Case C: Last message is a FINAL message from the SAME character.
+            // This means generation just finished. The streamingText is stale.
+            // DO NOTHING. Do not inject. Do not update.
+            // The real message is already visible in 'base'.
+        }
+        return base;
+    }, [viewMode, safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
+
+    // Prepare shared props for View Components
+    const viewProps: ViewModeProps = {
+        interactionData: interactionData!,
+        displayMessages,
+        currentCharacterId: currentCharacter?.id,
+        editingId,
+        editDraft,
+        massDeleteId,
+        isMassActive,
+        massStartIndex,
+        activeToolbarId,
+        portraitUrlCache,
+        displayNameCache,
+        characterScales,
+        centerAvatar,
+        streamingPortraitUrl,
+        formattedStreamingText,
+        locationBackgroundUrl,
+        isLoading,
+        isEditingTitle,
+        editTitleValue,
+        parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
+        chatHistoryRef,
+        messageEndRef,
+        editTextareaRef,
+        onAvatarClick: handleAvatarClick,
+        onStartEditing: startEditing,
+        onCancelEditing: cancelEditing,
+        onSaveEdit: handleSaveEdit,
+        onRegenerateFromEdit: handleRegenerateFromEdit,
+        onResumeGeneration: resumeGeneration,
+        onCopyText: handleCopyText,
+        onRegenerateFromMessage: regenerateFromMessage,
+        onBranch: handleBranch,
+        onClone: handleClone,
+        onDelete: handleDelete,
+        onSetMassDelete: setMassDeleteId,
+        onMassDeleteConfirm: handleMassDeleteConfirm,
+        onCancelMassDelete: () => setMassDeleteId(null),
+        onTouchStart: handleBubbleTouchStart,
+        onTouchEnd: handleBubbleTouchEnd,
+        onTouchMove: handleBubbleTouchMove,
+        suppressNextClickRef,
+        setEditDraft,
+        onNavigateToBranchSource: handleNavigateToBranchSource,
+        onStartEditTitle: handleStartEditTitle,
+        onSaveTitle: handleSaveTitle,
+        onCancelEditTitle: cancelEditTitle,
+        setEditTitleValue,
+        closeActionMenu,
+        deactivateToolbar,
+    };
+
+    const containerClass = [
+        'chat-container',
+        viewMode === 'cinematic' ? 'mode-cinematic' : '',
+        viewMode === 'vn' ? 'mode-vn' : '',
+        viewMode === 'ladder' ? 'mode-ladder' : '',
+        locationBackgroundUrl ? 'has-location-bg' : '',
+    ].filter(Boolean).join(' ');
 
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-            <div className={`chat-container ${viewMode === 'cinematic' ? 'mode-cinematic' : 'mode-ladder'} ${locationBackgroundUrl ? 'has-location-bg' : ''}`} style={locationBackgroundUrl ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} onClick={() => { closeActionMenu(); deactivateToolbar(); }}>
+            
+            <div 
+                className={containerClass} 
+                style={locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} 
+                onClick={() => { closeActionMenu(); deactivateToolbar(); }}
+            >
                 {!interactionData && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
@@ -797,131 +926,93 @@ function App() {
                     </div>
                 )}
 
-                {interactionData && <>
-                        {viewMode === 'cinematic' && centerAvatar && portraitUrlCache.get(`cinematic:${centerAvatar.id}`) && (
-                            <div className="cinematic-stage active" onClick={e => { e.stopPropagation(); handleAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }} title="Click character to interject action">
-                                <img src={portraitUrlCache.get(`cinematic:${centerAvatar.id}`)!} alt={centerAvatar.name} className="cinematic-avatar-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                {interactionData && (
+                    <>
+                        {/* Header */}
+                        <header className="app-header">
+                            <div className="header-content">
+                                <div className="header-top">
+                                    {viewMode === 'ladder' && interactionData && safeInteractionMessages.length > 5 && (
+                                        <ChatMinimap
+                                            messages={safeInteractionMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
+                                            containerRef={chatHistoryRef}
+                                            currentCharacterId={currentCharacter?.id}
+                                        />
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                        {isEditingTitle
+                                            ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
+                                            : <><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
+                                    </div>
+                                    <div className="header-controls-group">
+                                        <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
+                                        <button type="button" className="view-mode-toggle" onClick={() => interactionData && modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+                                        <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode !== 'ladder' ? 'active' : ''}`} title="Switch View Mode">
+                                            <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
+                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
+                                        </button>
+                                        <ChatStatisticsBar
+                                            numberOfMessages={numberOfMessages}
+                                            maximumNumberOfTokens={maximumNumberOfTokens}
+                                            maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
+                                            maximumNumberOfContextTokens={maximumNumberOfContextTokens}
+                                            budgetSpent={budgetData?.budgetSpent}
+                                            maximumBudget={activeStrategy?.maximumBudget}
+                                            timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                        )}
+                        </header>
 
-                        <header className="app-header"><div className="header-content"><div className="header-top">
-                        {interactionData && InteractionMessages.length > 5 && (
-                            <ChatMinimap
-                                messages={InteractionMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
-                                containerRef={chatHistoryRef}
-                                currentCharacterId={currentCharacter?.id}
+                        {/* View Mode Dispatcher */}
+                        {viewMode === 'ladder' && <LadderView {...viewProps} />}
+                        {viewMode === 'cinematic' && <CinematicView {...viewProps} />}
+                        {viewMode === 'vn' && <VisualNovelView {...viewProps} />}
+
+                        {/* Context Bar - Hidden in VN mode via CSS (.mode-vn .context-bar { display: none }) */}
+                        <ContextBar 
+                            viewMode={viewMode} 
+                            onOpenChatList={modals.chatList.open} 
+                            onOpenCharacters={modals.charList.open} 
+                            onOpenContexts={modals.contextList.open} 
+                            onOpenLocations={modals.locationList.open} 
+                            onOpenAudioTracks={modals.audioTrackList.open} 
+                            onOpenWorlds={modals.worldManager.open} 
+                            onOpenPromptBlocks={modals.promptBlockList.open} 
+                            onOpenModels={modals.modelList.open} 
+                            onOpenSamplers={modals.samplerList.open} 
+                            onOpenStopPatterns={modals.stopList.open} 
+                            onOpenBudgets={modals.budgetStrategyList.open} 
+                            onOpenProfiles={modals.profileList.open} 
+                        />
+
+                        {/* Chat Input - Hidden in VN mode */}
+                        {viewMode !== 'vn' && (
+                            <ChatInput 
+                                inputText={inputText} 
+                                setInputText={setInputText} 
+                                pendingFiles={pendingFiles} 
+                                setPendingFiles={setPendingFiles} 
+                                isRecording={isRecording} 
+                                isLoading={isLoading} 
+                                isModelReady={isModelReady} 
+                                isModelLoading={isModelLoading} 
+                                modelStatusMessage={modelStatusMessage} 
+                                currentCharacterName={currentCharacter?.name} 
+                                activeStrategy={activeStrategy ?? undefined} 
+                                selectedModelId={selectedModelId} 
+                                fileInputRef={fileInputRef} 
+                                textareaRef={textareaRef} 
+                                onFileSelected={handleFileSelected} 
+                                onToggleMicrophone={handleToggleMicrophone} 
+                                onSend={handleSend} 
+                                onStopGeneration={stopGeneration} 
+                                onOpenModels={modals.modelList.open} 
                             />
                         )}
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                            {isEditingTitle
-                                ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
-                                : <><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
-                        </div>
-                        <div className="header-controls-group">
-                            <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
-                            <button type="button" className="view-mode-toggle" onClick={() => interactionData && modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
-                            <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode === 'cinematic' ? 'active' : ''}`} title="Switch View Mode"><span>{viewMode === 'ladder' ? '🎥' : '📜'}</span><span>{viewMode === 'ladder' ? 'Cinematic' : 'Ladder'}</span></button>
-                            <ChatStatisticsBar
-                                numberOfMessages={numberOfMessages}
-                                maximumNumberOfTokens={maximumNumberOfTokens}
-                                maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
-                                maximumNumberOfContextTokens={maximumNumberOfContextTokens}
-                                budgetSpent={budgetData?.budgetSpent}
-                                maximumBudget={activeStrategy?.maximumBudget}
-                                timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
-                            />
-                        </div>
-                    </div></div></header>
-
-                    <div className="chat-history" ref={chatHistoryRef}>
-                        {interactionData && InteractionMessages.length > 3 && viewMode === 'ladder' && (
-                            <ChatScrollButtons containerRef={chatHistoryRef} />
-                        )}
-
-                        {/* FIX: Added `streamingText` to guard. Prevents the one-frame double-message flash
-                            on completion where isLoading is true but hasPartialInHistory just became false. */}
-                        {viewMode === 'cinematic' && isLoading && !hasPartialInHistory && streamingText && (
-                            <StreamingIndicators
-                                formattedStreamingText={formattedStreamingText}
-                                viewMode={viewMode}
-                                currentCharacterId={currentCharacter?.id}
-                                streamingPortraitUrl={streamingPortraitUrl}
-                                messagesLength={InteractionMessages.length}
-                                onAvatarClick={handleAvatarClick}
-                            />
-                        )}
-
-                        {displayMessages.map((message, renderIndex) => {
-                            const index = viewMode === 'cinematic' ? InteractionMessages.length - 1 - renderIndex : renderIndex;
-                            if (!message.character) return null;
-                            const dn = resolveDisplayNameFromCache(displayNameCache, index, message.character.id);
-                            const stem = isStemMessage(message.id);
-                            const branchOffIndex = interactionData.parentInteractionMessageId ? InteractionMessages.findIndex(m => m.id === interactionData.parentInteractionMessageId) : -1;
-                            const beforeBranch = !!(interactionData.parentInteractionMessageId && index === branchOffIndex);
-                            const messagePortraitUrl = portraitUrlCache.get(message.id) ?? null;
-                            return (
-                                <MessageBubble
-                                    key={message.id}
-                                    message={message}
-                                    index={index}
-                                    viewMode={viewMode}
-                                    currentCharacterId={currentCharacter?.id}
-                                    editingId={editingId}
-                                    editDraft={editDraft}
-                                    massDeleteId={massDeleteId}
-                                    isMassActive={isMassActive}
-                                    massStartIndex={massStartIndex}
-                                    activeToolbarId={activeToolbarId}
-                                    portraitUrl={messagePortraitUrl}
-                                    displayName={dn}
-                                    isStem={stem}
-                                    beforeBranch={beforeBranch}
-                                    onAvatarClick={handleAvatarClick}
-                                    onStartEditing={startEditing}
-                                    onCancelEditing={cancelEditing}
-                                    onSaveEdit={handleSaveEdit}
-                                    onRegenerateFromEdit={handleRegenerateFromEdit}
-                                    onResumeGeneration={resumeGeneration}
-                                    onCopyText={handleCopyText}
-                                    onRegenerateFromMessage={regenerateFromMessage}
-                                    onBranch={handleBranch}
-                                    onClone={handleClone}
-                                    onDelete={handleDelete}
-                                    onSetMassDelete={setMassDeleteId}
-                                    onMassDeleteConfirm={handleMassDeleteConfirm}
-                                    onCancelMassDelete={() => setMassDeleteId(null)}
-                                    onTouchStart={handleBubbleTouchStart}
-                                    onTouchEnd={handleBubbleTouchEnd}
-                                    onTouchMove={handleBubbleTouchMove}
-                                    suppressNextClickRef={suppressNextClickRef}
-                                    editTextareaRef={editTextareaRef}
-                                    setEditDraft={setEditDraft}
-                                    onNavigateToBranchSource={handleNavigateToBranchSource}
-                                />
-                            );
-                        })}
-
-                        {/* FIX: Added `streamingText` to guard. */}
-                        {viewMode === 'ladder' && isLoading && !hasPartialInHistory && streamingText && (
-                            <StreamingIndicators
-                                formattedStreamingText={formattedStreamingText}
-                                viewMode={viewMode}
-                                currentCharacterId={currentCharacter?.id}
-                                streamingPortraitUrl={streamingPortraitUrl}
-                                messagesLength={InteractionMessages.length}
-                                onAvatarClick={handleAvatarClick}
-                            />
-                        )}
-
-                        {InteractionMessages.length === 0 && <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}><p>Add characters to the chat and start chatting.</p></div>}
-                        <div ref={messageEndRef} style={{ height: '1px' }} />
-                    </div>
-
-                    <ContextBar viewMode={viewMode} onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open} onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open} onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open} onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open} onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open} onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open} />
-
-                    <ChatInput inputText={inputText} setInputText={setInputText} pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} currentCharacterName={currentCharacter?.name} activeStrategy={activeStrategy ?? undefined} selectedModelId={selectedModelId} fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected} onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} />
-                </>}
+                    </>
+                )}
 
                 <AppModals
                     modals={modals}
@@ -1008,7 +1099,26 @@ function App() {
                 onInspectingParentInteractionData={handleInspectParentInteractionData}
             />
 
-            <ActionMenu actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} actionWrap={actionWrap} setActionWrap={setActionWrap} actionCase={actionCase} setActionCase={setActionCase} actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} filteredActions={getFilteredActions()} isModelReady={isModelReady} allCharacters={allCharacters} onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} />
+            <ActionMenu 
+                actionMenuTarget={actionMenuTarget} 
+                interactionDataExists={!!interactionData} 
+                menuSearchQuery={menuSearchQuery} 
+                setMenuSearchQuery={setMenuSearchQuery} 
+                showActionFormat={showActionFormat} 
+                setShowActionFormat={setShowActionFormat} 
+                actionWrap={actionWrap} 
+                setActionWrap={setActionWrap} 
+                actionCase={actionCase} 
+                setActionCase={setActionCase} 
+                actionPunctuation={actionPunctuation} 
+                setActionPunctuation={setActionPunctuation} 
+                filteredActions={getFilteredActions()} 
+                isModelReady={isModelReady} 
+                allCharacters={allCharacters} 
+                onAddAction={handleAddAction} 
+                onDeleteAction={handleDeleteAction} 
+                onActionInterject={handleActionInterject} 
+            />
         </>
     );
 }

@@ -6,13 +6,12 @@ import { getCharacterImageUrl, getLocationImageUrl } from '../storage/serverStor
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 interface UseCinematicModeOptions {
-    viewMode: 'ladder' | 'cinematic';
+    viewMode: 'ladder' | 'cinematic' | 'vn';
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
-    /** Only observe these message IDs (from virtualization) */
     renderedMessageIds?: Set<string>;
 }
 
@@ -23,34 +22,21 @@ function resolvePortrait(characterId: string, images: Record<string, string> | u
     return getCharacterImageUrl(characterId, filename);
 }
 
-/**
- * Resolve the background image URL for the current location.
- * Priority:
- * 1. If backgroundImageRegularExpressionActivationTriggers has a match against
- *    the last user/protagonist message, use that specific image index.
- * 2. If backgroundImageWeights has entries, sample by weight.
- * 3. Fall back to images[0].
- */
 function resolveLocationBackgroundUrl(interactionData: InteractionData): string | null {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return null;
-
-    // Find current location from last message with locationIndex
     let currentLocIndex: number | undefined;
     const history = interactionData.interactionHistory;
     for (let i = history.length - 1; i >= 0; i--) {
-        const locationIndex = history[i].locationIndex
+        const locationIndex = history[i].locationIndex;
         if (locationIndex !== undefined && locationIndex >= 0) {
             currentLocIndex = history[i].locationIndex;
             break;
         }
     }
     if (currentLocIndex === undefined) return null;
-
     const loc = locations[currentLocIndex];
     if (!loc?.images || loc.images.length === 0) return null;
-
-    // Find last protagonist/user message text
     const protagonistId = interactionData.protagonist?.id;
     let lastUserText = '';
     if (protagonistId) {
@@ -62,8 +48,6 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
             }
         }
     }
-
-    // 1. Check regex triggers against last user message
     const regexTriggers = loc.backgroundImageRegularExpressionActivationTriggers;
     if (regexTriggers && Object.keys(regexTriggers).length > 0 && lastUserText) {
         for (const [idxStr, pattern] of Object.entries(regexTriggers)) {
@@ -76,13 +60,9 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
                         return getLocationImageUrl(loc.images[idx]);
                     }
                 }
-            } catch {
-                // Invalid regex — skip
-            }
+            } catch {}
         }
     }
-
-    // 2. Sample by weight
     const weights = loc.backgroundImageWeights;
     if (weights && Object.keys(weights).length > 0) {
         const pool: { index: number; weight: number }[] = [];
@@ -98,19 +78,12 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
             let randomValue = Math.random() * totalWeight;
             for (const entry of pool) {
                 randomValue -= entry.weight;
-                if (randomValue <= 0) {
-                    return getLocationImageUrl(loc.images[entry.index]);
-                }
+                if (randomValue <= 0) return getLocationImageUrl(loc.images[entry.index]);
             }
             return getLocationImageUrl(loc.images[pool[pool.length - 1].index]);
         }
     }
-
-    // 3. Fallback to first image
-    if (loc.images[0]) {
-        return getLocationImageUrl(loc.images[0]);
-    }
-
+    if (loc.images[0]) return getLocationImageUrl(loc.images[0]);
     return null;
 }
 
@@ -125,48 +98,49 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
-    // Filter to only chat messages using discriminated union
     const chatMessages = useMemo(() => {
         if (!interactionData) return [];
         return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [interactionData]);
 
-    // Portrait URL cache — memoized so it only rebuilds when chatMessages
-    // or centerAvatar changes. During streaming, interactionData keeps the
-    // same identity so chatMessages stays stable and this is skipped entirely.
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
 
+        // 1. History
         for (const msg of chatMessages) {
             cache.set(msg.id, resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression));
         }
 
+        // 2. Center Avatar (Cinematic)
         if (centerAvatar) {
             const key = `cinematic:${centerAvatar.id}`;
             cache.set(key, resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral'));
         }
 
+        // 3. FIX: Streaming Character (Ladder/VN)
+        if (streamingCharacter) {
+            const streamKey = `streaming:${streamingCharacter.id}`;
+            const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression);
+            cache.set(streamKey, url);
+            cache.set('active-stream', url);
+        }
+
         return cache;
-    }, [chatMessages, centerAvatar]);
+    }, [chatMessages, centerAvatar, streamingCharacter, currentCharacterExpression]);
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
-        const expr = currentCharacterExpression || 'neutral';
-        const filename = streamingCharacter.images?.[expr] || streamingCharacter.images?.neutral;
-        if (!filename) return null;
-        return getCharacterImageUrl(streamingCharacter.id, filename);
-    }, [streamingCharacter, currentCharacterExpression]);
+        return portraitUrlCache.get(`streaming:${streamingCharacter.id}`) || null;
+    }, [streamingCharacter, portraitUrlCache]);
 
     const locationBackgroundUrl = interactionData ? resolveLocationBackgroundUrl(interactionData) : null;
 
-    // IntersectionObserver for cinematic avatar selection
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
             const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
             return () => window.clearTimeout(resetAvatar);
         }
-
         const opts = { root: chatHistoryElement, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
         const obs = new IntersectionObserver(entries => {
             const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
@@ -186,15 +160,11 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
             (best.target as HTMLElement).classList.add('is-active');
             lastViewedMessageIdRef.current = mid;
         }, opts);
-
         const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
         for (const el of elements) {
             const id = el.getAttribute('data-message-id');
-            if (!renderedMessageIds || (id && renderedMessageIds.has(id))) {
-                obs.observe(el);
-            }
+            if (!renderedMessageIds || (id && renderedMessageIds.has(id))) obs.observe(el);
         }
-
         let fallbackTimer: number | undefined;
         if (!centerAvatar) {
             fallbackTimer = window.setTimeout(() => {
@@ -207,11 +177,9 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
                 }
             }, 0);
         }
-
         return () => { obs.disconnect(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer); };
     }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, chatMessages, chatHistoryRef, renderedMessageIds]);
 
-    // Reset scroll on view mode change
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || suppressAutoScrollRef.current) return;
@@ -226,5 +194,6 @@ export function useCinematicMode(options: UseCinematicModeOptions) {
         portraitUrlCache,
         streamingPortraitUrl,
         locationBackgroundUrl,
+        characterScales: new Map(), // Placeholder for VN scaling logic
     };
 }

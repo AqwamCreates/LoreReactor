@@ -111,7 +111,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                     );
                 })}
 
-                {displayMessages.length === 0 && (
+                {displayMessages.length === 0 && !isLoading && (
                     <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}>
                         <p>Add characters to the chat and start chatting.</p>
                     </div>
