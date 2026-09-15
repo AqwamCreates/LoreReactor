@@ -24,6 +24,7 @@ export interface ViewModeProps {
     isEditingTitle: boolean;
     editTitleValue: string;
     parentInteractionMessageId: string | null;
+    streamingCharacter: Character | null;
 
     // Refs
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
@@ -51,7 +52,7 @@ export interface ViewModeProps {
     suppressNextClickRef: React.MutableRefObject<boolean>;
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
-    onStartEditTitle: () => void;
+    onStartEditTitle: (e: React.MouseEvent) => void;
     onSaveTitle: () => void;
     onCancelEditTitle: () => void;
     setEditTitleValue: (v: string) => void;

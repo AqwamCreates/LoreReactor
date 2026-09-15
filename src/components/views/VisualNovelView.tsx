@@ -1,8 +1,9 @@
 // src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { ChatMessage, Character } from '../../types';
+import type { ChatMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
+import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
@@ -137,56 +138,15 @@ function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversi
 }
 
 // =============================================================================
-// MOVEMENT TRIGGERS
-// =============================================================================
-interface MovementTrigger { regex: RegExp; scaleDelta: number; speed: 'instant' | 'fast' | 'normal' | 'slow'; }
-
-const MOVEMENT_TRIGGERS: MovementTrigger[] = [
-    { regex: /\b(rushes|sprints|dashes|charges|lunges|leaps)\b/i, scaleDelta: 0.4, speed: 'fast' },
-    { regex: /\b(runs|jogs|hurries|steps closer|approaches|walks over|moves closer|comes closer)\b/i, scaleDelta: 0.2, speed: 'normal' },
-    { regex: /\b(leans in|steps forward|inch(es)? closer|bends down)\b/i, scaleDelta: 0.1, speed: 'slow' },
-    { regex: /\b(steps back|back(s)? away|retreats|recoils|stumbles back|moves away)\b/i, scaleDelta: -0.2, speed: 'normal' },
-    { regex: /\b(flees|bolts|runs away|scrambles back|retreats quickly)\b/i, scaleDelta: -0.4, speed: 'fast' },
-];
-
-function calculateCharacterScale(characterId: string, messages: ChatMessage[]): { scale: number; transitionSpeed: string } {
-    let currentScale = 1.0;
-    let currentSpeed = '0.5s';
-    const myMessages = messages.filter(m => m.character.id === characterId && m.messageType === 'chat');
-    const scanStart = Math.max(0, myMessages.length - 10);
-    for (let i = scanStart; i < myMessages.length; i++) {
-        const msg = myMessages[i];
-        if (msg.messageType !== 'chat' || !msg.textContent) continue;
-        let moved = false;
-        for (const trigger of MOVEMENT_TRIGGERS) {
-            if (trigger.regex.test(msg.textContent)) {
-                currentScale += trigger.scaleDelta;
-                switch (trigger.speed) {
-                    case 'instant': currentSpeed = '0s'; break;
-                    case 'fast': currentSpeed = '0.2s'; break;
-                    case 'normal': currentSpeed = '0.8s'; break;
-                    case 'slow': currentSpeed = '2s'; break;
-                }
-                moved = true;
-                break;
-            }
-        }
-        if (!moved && currentScale !== 1.0) currentScale += (1.0 - currentScale) * 0.05;
-    }
-    currentScale = Math.max(0.4, Math.min(2.5, currentScale));
-    return { scale: currentScale, transitionSpeed: currentSpeed };
-}
-
-// =============================================================================
 // COMPONENT
 // =============================================================================
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
-        interactionData, displayMessages, currentCharacterId,
+        interactionData, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
-        formattedStreamingText, isLoading, streamingPortraitUrl, streamingCharacter,
+        formattedStreamingText, isLoading, streamingCharacter,
         centerAvatar,
-        chatHistoryRef, messageEndRef, editTextareaRef,
+        messageEndRef, editTextareaRef,
         editingId, editDraft, setEditDraft,
         onSaveEdit, onCancelEditing, onRegenerateFromEdit,
         onCopyText, onRegenerateFromMessage, onBranch,
@@ -206,12 +166,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = lastMsg?.isPartial === true;
 
-    const activeStreamingText = isStreamingInList
+    // FIX: Cast to string since MemoizedMessageText expects string
+    const activeStreamingText: string | null = isStreamingInList
         ? lastMsg.textContent
-        : (isLoading ? formattedStreamingText : null);
+        : (isLoading && formattedStreamingText ? String(formattedStreamingText) : null);
 
-    // FIX #1: visibleCharacters includes ALL participants (for dialogue/toolbar)
-    // but spriteCharacters EXCLUDES protagonist (you are the camera)
     const visibleCharacters = useMemo(() => {
         return interactionData.participants;
     }, [interactionData.participants]);
@@ -220,17 +179,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [displayMessages]);
 
-    const characterScales = useMemo(() => {
-        const scales = new Map<string, { scale: number; transitionSpeed: string }>();
-        for (const character of visibleCharacters) {
-            if (character.id === AMBIENT_NARRATOR_ID) continue;
-            if (character.id === protagonistId) continue; // No scale tracking for protagonist
-            scales.set(character.id, calculateCharacterScale(character.id, chatMessages));
-        }
-        return scales;
-    }, [visibleCharacters, chatMessages, protagonistId]);
-
-    // Find last speaker INCLUDING all characters (protagonist, ambient, everyone)
     const lastSpeaker = useMemo(() => {
         for (let i = chatMessages.length - 1; i >= 0; i--) {
             return chatMessages[i];
@@ -238,7 +186,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return null;
     }, [chatMessages]);
 
-    // Active speaker for dialogue box (can be anyone including protagonist)
     const activeSpeaker = useMemo(() => {
         if (isLoading && streamingCharacter) return streamingCharacter;
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
@@ -253,9 +200,32 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const isEditingLastSpeaker = editingId !== null && lastSpeaker?.id === editingId;
     const isAmbientSpeaker = lastSpeaker?.character.id === AMBIENT_NARRATOR_ID;
 
-    // FIX #2: Toolbar should show for ambient narration even during streaming
-    // Ambient messages are narrated text — user should always be able to copy/edit/regenerate them
     const showToolbar = lastSpeaker && (!isStreamingInList || isAmbientSpeaker);
+
+    // --- Sprite States ---
+    const spriteCharacterIds = useMemo(() => {
+        return visibleCharacters
+            .filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId)
+            .map(c => c.id);
+    }, [visibleCharacters, protagonistId]);
+
+    const { spriteStates, rollbackToMessage, isInitialLoad } = useVisualNovelSpriteStates({
+        chatMessages,
+        visibleCharacterIds: spriteCharacterIds,
+        protagonistId,
+    });
+
+    const handleRegenerateFromMessageWithRollback = useCallback((id: string, type: 'ai' | 'user') => {
+        const msgIndex = chatMessages.findIndex(m => m.id === id);
+        if (msgIndex !== -1) rollbackToMessage(msgIndex);
+        onRegenerateFromMessage(id, type);
+    }, [chatMessages, rollbackToMessage, onRegenerateFromMessage]);
+
+    const handleBranchWithRollback = useCallback((id: string) => {
+        const msgIndex = chatMessages.findIndex(m => m.id === id);
+        if (msgIndex !== -1) rollbackToMessage(msgIndex);
+        onBranch(id);
+    }, [chatMessages, rollbackToMessage, onBranch]);
 
     // --- Reformat Effects ---
     useEffect(() => {
@@ -318,70 +288,36 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onCancelEditing();
     }, [onCancelEditing]);
 
-    // FIX #1: Sprite characters exclude BOTH protagonist AND ambient narrator
-    const spriteCharacters = useMemo(() => {
-        return visibleCharacters.filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId);
-    }, [visibleCharacters, protagonistId]);
-
-    const spritePositions = useMemo(() => {
-        const positions = new Map<string, 'left' | 'center' | 'right'>();
-        // For sprite positioning, use activeSpeaker only if they're not protagonist/ambient
-        const spriteActiveSpeaker = (activeSpeaker && activeSpeaker.id !== protagonistId && activeSpeaker.id !== AMBIENT_NARRATOR_ID)
-            ? activeSpeaker
-            : null;
-        const others = spriteCharacters.filter(c => c.id !== spriteActiveSpeaker?.id);
-        if (spriteActiveSpeaker) {
-            positions.set(spriteActiveSpeaker.id, 'center');
-        }
-        others.forEach((character, idx) => {
-            positions.set(character.id, idx % 2 === 0 ? 'left' : 'right');
-        });
-        return positions;
-    }, [spriteCharacters, activeSpeaker, protagonistId]);
-
     const bgStyle: React.CSSProperties = locationBackgroundUrl
         ? { backgroundImage: `url(${locationBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
         : { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
 
     const isMassDeletingThis = isMassActive && massDeleteId === lastSpeaker?.id;
 
-    // Single canonical key lookup
-    const resolvedPortraits = useMemo(() => {
-        const map = new Map<string, string | null>();
-        for (const character of spriteCharacters) {
-            map.set(character.id, portraitUrlCache.get(`character:${character.id}`) ?? null);
-        }
-        return map;
-    }, [spriteCharacters, portraitUrlCache]);
-
     return (
         <div className="vn-stage-container" style={bgStyle}>
-            {/* --- SPRITE LAYER (no protagonist, no ambient) --- */}
             <div className="vn-sprites-layer">
-                {spriteCharacters.map((character) => {
-                    const portraitUrl = resolvedPortraits.get(character.id);
+                {spriteCharacterIds.map((characterId) => {
+                    const portraitUrl = portraitUrlCache.get(`character:${characterId}`) ?? null;
                     if (!portraitUrl) return null;
 
-                    const scaleData = characterScales.get(character.id) || { scale: 1.0, transitionSpeed: '0.5s' };
-                    const position = spritePositions.get(character.id) || 'center';
-                    const isSpeaking = activeSpeaker?.id === character.id;
+                    const state = spriteStates.get(characterId);
+                    if (!state) return null;
 
-                    let leftPos = '50%';
-                    let zIndex = 10;
-                    let opacity = 1;
+                    const character = visibleCharacters.find(c => c.id === characterId);
+                    if (!character) return null;
 
-                    if (position === 'left') { leftPos = '25%'; zIndex = 5; opacity = isSpeaking ? 1 : 0.6; }
-                    else if (position === 'right') { leftPos = '75%'; zIndex = 5; opacity = isSpeaking ? 1 : 0.6; }
-                    else { zIndex = 20; opacity = 1; }
+                    const isSpeaking = activeSpeaker?.id === characterId;
 
                     return (
-                        <div key={character.id} className="vn-character-layer" style={{
-                            left: leftPos,
-                            transform: `translateX(-50%) scale(${scaleData.scale})`,
+                        <div key={characterId} className={`vn-character-layer ${isInitialLoad ? 'vn-no-transition' : ''}`} style={{
+                            left: `${state.screenX}%`,
+                            bottom: '0',
+                            transform: `translateX(-50%) scale(${state.scale})`,
                             transformOrigin: 'bottom center',
-                            transition: `all ${scaleData.transitionSpeed} ease-out`,
-                            zIndex, opacity,
-                            filter: isSpeaking ? 'none' : 'brightness(0.7)',
+                            zIndex: Math.round((1 - state.depth) * 100),
+                            opacity: isSpeaking ? 1 : 0.7,
+                            filter: isSpeaking ? 'none' : 'brightness(0.8)',
                         }}>
                             <img src={portraitUrl} alt={character.name} className="vn-sprite"
                                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -390,7 +326,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 })}
             </div>
 
-            {/* --- DIALOGUE BOX LAYER --- */}
             <div className="vn-dialogue-layer">
                 <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`} style={{
                     opacity: isWaitingForGeneration ? 0 : 1,
@@ -401,7 +336,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         {isAmbientSpeaker ? '✦ Narration' : (activeSpeaker ? activeSpeaker.name : 'System')}
                     </div>
 
-                    {/* FIX #2: Toolbar shows for ambient narration even during streaming */}
                     <div className="vn-message-toolbar">
                         {isEditingLastSpeaker ? (
                             <>
@@ -421,9 +355,9 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         {lastSpeaker.isPartial ? (
                                             <button className="vn-toolbar-btn" onClick={() => onResumeGeneration(lastSpeaker.id)} title="Resume Generation">▶</button>
                                         ) : (
-                                            <button className="vn-toolbar-btn" onClick={() => onRegenerateFromMessage(lastSpeaker.id, 'ai')} title="Regenerate">↻</button>
+                                            <button className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(lastSpeaker.id, 'ai')} title="Regenerate">↻</button>
                                         )}
-                                        <button className="vn-toolbar-btn" onClick={() => onBranch(lastSpeaker.id)} title="Branch Timeline">🌿</button>
+                                        <button className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(lastSpeaker.id)} title="Branch Timeline">🌿</button>
                                         <button className="vn-toolbar-btn" onClick={() => onClone(lastSpeaker.id)} title="Clone Chat">⑂</button>
                                         <button className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(lastSpeaker.id)} title="Delete Message">🗑</button>
                                         {isMassDeletingThis ? (

@@ -1544,6 +1544,11 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     image-rendering: -webkit-optimize-contrast;
 }
 
+/* Disable transitions during initial session load */
+.vn-no-transition {
+    transition: none !important;
+}
+
 /* --- DIALOGUE BOX (VN Style) --- */
 .vn-dialogue-layer {
     position: relative;

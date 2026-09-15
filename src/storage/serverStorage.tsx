@@ -490,7 +490,6 @@ function createRepository<T extends { id: string }, R>(config: RepositoryConfig<
 const memoryRepo = createRepository<Memory, RawMemory>({
   entityKey: 'memories',
   hydrate: (raw, id) => {
-    const ts = Date.now();
     return hydrateEntity<Memory, RawMemory>(raw, id, {
         name: 'Untitled Memory',
         interactionData: undefined as unknown as InteractionData,
@@ -499,7 +498,7 @@ const memoryRepo = createRepository<Memory, RawMemory>({
     });
   },
   serialize: (memory) => {
-    const { id, interactionData, ...rest } = memory;
+    const { interactionData, ...rest } = memory;
     return {
       ...rest,
       interactionDataId: interactionData?.id ?? '',
@@ -931,7 +930,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         cacheInvalidationReductionLevel: 0,
         doNotInjectDefaultStopTokens: false,
         stripThinkTokens: false,
-        tools: {},
+        tools: {} as Record<tool, number>,
         enableMemoryWriting: 0,
         enableMemoryReading: 0,
         inputStrategy: [...defaultInputStrategy],
@@ -985,7 +984,7 @@ export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
 
 const worldRepo = createRepository<World, World>({
   entityKey: 'worlds',
-  hydrate: (raw, id) => raw, // World is already in final form
+  hydrate: (raw) => raw, // World is already in final form
   serialize: (world) => world,
 });
 
@@ -1310,8 +1309,6 @@ export async function loadRawBudgetData(): Promise<BudgetData | null> {
     try {
         const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
         if (!strategy) return null;
-
-        const now = Date.now();
 
         return hydrateEntity<BudgetData, RawBudgetData>(raw as any, raw.id || 'global-budget-data', {
             name: 'Global Budget Data',

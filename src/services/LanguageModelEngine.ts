@@ -1,7 +1,7 @@
 // src/services/LanguageModelEngine.ts
 import { localAddress } from "../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, localBackends, openAiCompatibleLocalBackends } from "../languageModelInformation";
-import type { backend, LanguageModel, localBackend } from "../types";
+import type { backend, cloudBackend, LanguageModel, localBackend } from "../types";
 
 export interface TokenStats {
   fullText: string;
@@ -362,7 +362,7 @@ export class LanguageModelEngine {
     const modelPath = this.model?.model;
 
     // Cloud backends always use OpenAI message format with API key auth
-    if (apiKey && backendName && cloudBackends.includes(backendName)) {
+    if (apiKey && backendName && cloudBackends.includes(backendName as cloudBackend)) {
       return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
     }
 

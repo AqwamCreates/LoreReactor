@@ -7,7 +7,7 @@ import { resolveDisplayNameFromCache } from '../../hooks/immersionLogic';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
-        interactionData, displayMessages, currentCharacterId,
+        displayMessages, currentCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
@@ -27,7 +27,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
 
     return (
         <>
-            {/* Center Avatar Stage */}
             {centerAvatar && centerAvatarUrl && (
                 <div
                     className="cinematic-stage active"
@@ -55,7 +54,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
 
                 {displayMessages.map((message, renderIndex) => {
                     if (!message.character) return null;
-                    // NO REVERSAL — same order as ladder mode
                     const index = renderIndex;
                     const dn = resolveDisplayNameFromCache(displayNameCache, index, message.character.id);
                     

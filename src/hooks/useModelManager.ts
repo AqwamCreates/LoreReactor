@@ -1,6 +1,6 @@
 // src/hooks/useModelManager.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { LanguageModel } from '../types';
+import type { cloudBackend, LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from '../storage/serverStorage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
@@ -213,7 +213,7 @@ export function useModelManager() {
         const model = models.find(m => m.id === id);
         if (!model) return;
 
-        const isCloudModel = !!model.apiKey && model.backend && cloudBackends.includes(model.backend);
+        const isCloudModel = !!model.apiKey && model.backend && cloudBackends.includes(model.backend as cloudBackend);
 
         if (isCloudModel) {
             if (selectedModelId === id) {
