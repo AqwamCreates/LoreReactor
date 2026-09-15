@@ -1,5 +1,5 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory, cloudBackend } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -387,7 +387,7 @@ export function AppModals({
                         onSpecialAction={(m: LanguageModel) => onToggleModelLoad(m.id)}
                         specialActionTooltip={(m: LanguageModel) => {
                             const ms = runningModels[m.id];
-                            const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend);
+                            const isCloud = !!m.apiKey && !!m.backend && cloudBackends.includes(m.backend as cloudBackend);
                             const inStrategy = strategyModelIds.has(m.id);
                             if (inStrategy && activeStrategy && selectedModelId !== m.id) {
                                 return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
