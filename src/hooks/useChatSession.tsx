@@ -125,7 +125,7 @@ export function useChatSession() {
                 state.updateRunningModels(status);
             } catch (e) { addToast(`Failed to fetch models status: ${e}`); }
         })();
-    }, [state.updateRunningModels, addToast]);
+    }, [state, addToast]);
 
     useEffect(() => {
         if (state.selectedModel) engine.setContext(state.selectedModel);
@@ -166,7 +166,7 @@ export function useChatSession() {
         if (m.apiKey) return true;
         const models = state.getState().runningModels;
         return !!(m.id && models[m.id]?.port);
-    }, [state.getState]);
+    }, [state]);
 
     const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
         const p = pendingPartialRef.current; if (!p) return base;
@@ -260,7 +260,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
 
     // Dedicated action interjection function — matches useActionMenu's expected signature
        // Dedicated action interjection function — sends action AS the target character
@@ -497,7 +497,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character, allPromptBlocks?: PromptBlock[]) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
