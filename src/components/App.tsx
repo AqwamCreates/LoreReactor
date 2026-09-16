@@ -21,7 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
+import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -616,7 +616,7 @@ function App() {
                 // it will occupy once committed. The cache can't resolve this because
                 // the partial message isn't in interactionHistory yet.
                 const streamingIndex = base.length;
-                const resolvedName = resolveDisplayNameFromCache(
+                const resolvedName = resolveDelayedDisplayNameFromCache(
                     displayNameCache,
                     streamingIndex,
                     streamingCharacter.id
