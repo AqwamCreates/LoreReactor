@@ -83,10 +83,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
 
     const handleMassDeleteConfirm = useCallback(async () => {
         if (!interactionData || !massDeleteId) return;
-        const messages = interactionData.interactionHistory.filter(
-            (m): m is typeof m & { textContent: string } => 'textContent' in m && typeof (m as unknown as Record<string, unknown>).textContent === 'string'
-        );
-        const idx = messages.findIndex(m => m.id === massDeleteId);
+        const idx = interactionData.interactionHistory.findIndex(m => m.id === massDeleteId);
         if (idx === -1) return;
         try {
             setInteractionData(await massDeleteMessages(interactionData, idx));
