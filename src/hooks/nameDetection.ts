@@ -1,5 +1,5 @@
 // src/hooks/nameDetection.ts
-import type { Character, HistoryMessage, InteractionData } from '../types';
+import type { Character, ChatMessage, HistoryMessage, InteractionData } from '../types';
 import { getCoLocatedParticipantCount } from './locationLogic';
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
@@ -85,20 +85,12 @@ function isNameMatch(captured: string, characterName: string): boolean {
   return false;
 }
 
-/**
- * THE GATE: Does the character's actual name appear in this text?
- * Every detection path MUST pass through this before returning true.
- */
 function containsCharacterName(text: string, characterName: string): boolean {
   const targetLower = characterName.toLowerCase().trim();
-  const textLower = text.toLowerCase();
-
-  // Check as whole word boundary match
+  if (!targetLower) return false;
   const escaped = targetLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const wordBoundaryRegex = new RegExp(`\\b${escaped}\\b`, 'i');
-  if (wordBoundaryRegex.test(textLower)) return true;
-
-  return false;
+  return wordBoundaryRegex.test(text);
 }
 
 function detectDirectNameReveal(text: string, characterName: string): boolean {
@@ -120,14 +112,11 @@ function detectBareNameDeclaration(text: string, characterName: string): boolean
 }
 
 function detectNameReveal(text: string, characterName: string, nameQuestionRecentlyAsked = false): boolean {
-  // THE GATE: if the character's name doesn't appear in the text at all,
-  // it cannot be a name reveal. Period.
   if (!containsCharacterName(text, characterName)) return false;
 
   if (detectDirectNameReveal(text, characterName)) return true;
 
   if (!isFalsePositive(text)) {
-    // Intent patterns like "let me tell you my name" + name actually present
     const capturedName = extractCapturedName(text, SELF_NAME_REVEAL_PATTERNS);
     if (capturedName && isNameMatch(capturedName, characterName)) return true;
   }
@@ -141,28 +130,35 @@ function detectNameQuestion(text: string): boolean {
   return matchesAnyPattern(text, NAME_REVEAL_QUESTION_PATTERNS);
 }
 
+/**
+ * Get only chat messages from interaction history, excluding pure interaction messages.
+ */
+function getChatMessagesOnly(history: HistoryMessage[]): ChatMessage[] {
+  return history.filter((m): m is ChatMessage => m.messageType === 'chat');
+}
+
 function detectNamePermissionSequence(
   interactionData: InteractionData,
   character: Character,
   text: string
 ): boolean {
-  // THE GATE: permission sequence still requires the name to be present
   if (!containsCharacterName(text, character.name)) return false;
   if (isFalsePositive(text)) return false;
 
   const scanDepth = getCoLocatedParticipantCount(interactionData, character);
-  const recentHistory = interactionData.interactionHistory.slice(-scanDepth);
+  // Only scan chat messages — exclude pure interaction messages
+  const chatHistory = getChatMessagesOnly(interactionData.interactionHistory);
+  const recentChatHistory = chatHistory.slice(-scanDepth);
 
-  let previousMessageBySameCharacter: HistoryMessage | null = null;
-  for (let i = recentHistory.length - 1; i >= 0; i--) {
-    if (recentHistory[i].character.id === character.id) {
-      previousMessageBySameCharacter = recentHistory[i];
+  let previousMessageBySameCharacter: ChatMessage | null = null;
+  for (let i = recentChatHistory.length - 1; i >= 0; i--) {
+    if (recentChatHistory[i].character.id === character.id) {
+      previousMessageBySameCharacter = recentChatHistory[i];
       break;
     }
   }
 
   if (!previousMessageBySameCharacter) return false;
-  if (previousMessageBySameCharacter.messageType !== 'chat') return false;
 
   const wasPermissionAsked = matchesAnyPattern(
     previousMessageBySameCharacter.textContent,
@@ -185,14 +181,14 @@ export function detectName(
   character: Character,
   text: string,
 ) {
-  // THE GATE: no name in text = no reveal possible
   if (!containsCharacterName(text, character.name)) return false;
 
-  const chatOnly = interactionData.interactionHistory.filter(m => m.messageType === 'chat');
   const scanDepth = getCoLocatedParticipantCount(interactionData, character);
-  const recentHistory = chatOnly.slice(-scanDepth);
+  // Only scan chat messages — exclude pure interaction messages
+  const chatHistory = getChatMessagesOnly(interactionData.interactionHistory);
+  const recentChatHistory = chatHistory.slice(-scanDepth);
 
-  const nameQuestionRecentlyAsked = recentHistory.some(msg =>
+  const nameQuestionRecentlyAsked = recentChatHistory.some(msg =>
     detectNameQuestion(msg.textContent)
   );
 
