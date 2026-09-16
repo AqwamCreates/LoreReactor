@@ -192,7 +192,8 @@ export function useChatSession() {
     }, [state.getState]);
 
     const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
-        const p = pendingPartialRef.current; if (!p) return base;
+        const p = pendingPartialRef.current;
+        if (!p) return base;
         pendingPartialRef.current = null;
         const dt = convertIdsToDisplayNames(p.text, base);
         const h = base.interactionHistory;
@@ -200,14 +201,25 @@ export function useChatSession() {
             const lastMsg = h[h.length - 1];
             if (lastMsg.messageType === 'chat') {
                 const cleanText = sanitizeStreamedText(dt);
-                const wasRevealed = lastMsg.isNameRevealed ?? false;
-                const isNameRevealed = wasRevealed || detectName(base, p.character, cleanText);
+                // Don't run detectName during streaming — defer to finalization.
+                // Name reveal is delayed by one message after the trigger via
+                // resolveDisplayNameFromCache's threshold < fullIndex check.
+                // Setting isNameRevealed here would cause the name to flash
+                // on completion when the display cache fallback evaluates it.
                 const ph = [...h];
-                ph[ph.length - 1] = { ...lastMsg, textContent: cleanText, isPartial: true, isNameRevealed };
+                ph[ph.length - 1] = {
+                    ...lastMsg,
+                    textContent: cleanText,
+                    isPartial: true,
+                    // Preserve existing isNameRevealed; don't re-evaluate mid-stream
+                };
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
             }
         }
+        // For new partial messages, create without premature name detection
         const chatMessage = createChatMessage(base, p.character, sanitizeStreamedText(dt), { isPartial: true });
+        // Override: partial messages should never be marked as revealed until finalized
+        chatMessage.isNameRevealed = false;
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 

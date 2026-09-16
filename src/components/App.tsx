@@ -21,7 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { useDisplayNameCache } from '../hooks/immersionLogic';
+import { useDisplayNameCache, resolveDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -612,10 +612,20 @@ function App() {
             if (isLastMessagePartial) {
                 (base[base.length - 1] as any).textContent = streamingText;
             } else if (isNewTurn) {
+                // Resolve display name for the streaming message using the index
+                // it will occupy once committed. The cache can't resolve this because
+                // the partial message isn't in interactionHistory yet.
+                const streamingIndex = base.length;
+                const resolvedName = resolveDisplayNameFromCache(
+                    displayNameCache,
+                    streamingIndex,
+                    streamingCharacter.id
+                );
+
                 base.push({
                     id: `streaming-${streamingCharacter.id}`,
                     messageType: 'chat',
-                    character: streamingCharacter,
+                    character: { ...streamingCharacter, name: resolvedName },
                     textContent: streamingText,
                     isPartial: true,
                     files: [],
@@ -628,7 +638,7 @@ function App() {
             }
         }
         return base;
-    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
+    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter, displayNameCache]);
 
     // massStartIndex must use displayMessages since that's what views iterate over for index props
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
