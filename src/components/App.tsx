@@ -617,7 +617,7 @@ function App() {
             } else if (isNewTurn) {
                 base.push({
                     id: `streaming-${streamingCharacter.id}`,
-                    messageType: 'chat' as const,
+                    messageType: 'chat',
                     character: streamingCharacter,
                     textContent: streamingText,
                     isPartial: true,
@@ -642,7 +642,7 @@ function App() {
     }
 
     const viewProps: ViewModeProps = {
-        interactionData,
+        interactionData: interactionData!,
         displayMessages,
         currentCharacterId: currentCharacter?.id,
         editingId,

@@ -616,6 +616,10 @@ export interface Profile extends ObjectData {
   enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
+  characterSampler?: Sampler;
+  webSummarizationSampler?: Sampler;
+  interactionDataSummarizationSampler?: Sampler;
+  aiRecommendationSampler?: Sampler;
 }
 
 export interface RawProfile extends RawData {
@@ -653,6 +657,10 @@ export interface RawProfile extends RawData {
   enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
+  characterSamplerId?: string;
+  webSummarizationSamplerId?: string;
+  interactionDataSummarizationSamplerId?: string;
+  aiRecommendationSamplerId?: string;
 }
 
 export interface InterjectableAction {

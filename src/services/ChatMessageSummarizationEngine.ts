@@ -1,9 +1,10 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/chatLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../stringList';
+import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 
 const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
 const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
@@ -19,15 +20,17 @@ const LOCATION_VISIT_MEMORY_PROMPT = "You are a reflective character in a rolepl
 export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
+    sampler?: Sampler,
 ): Promise<string | null> {
     const text = message.messageType === 'chat' ? message.textContent : '';
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
-    const requestBody: Record<string, unknown> = {
+
+    const requestBody = buildRequestBody(
         prompt,
-        n_predict: maxTokens,
-        temperature: 1,
-        stop: ['\n\n', '\nMessage from'],
-    };
+        maxTokens,
+        sampler,
+        ['\n\n', '\nMessage from'],
+    );
 
     const bse = getBudgetStrategyEngine();
     const { text: result } = await bse.generateCompletion(requestBody);
@@ -50,12 +53,11 @@ export async function generateMissingSummaries(
     const history = interactionData.interactionHistory;
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
-    // Get universally-filtered flags — skip summarizing messages hidden from all characters
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
         interactionData.contexts || [],
         interactionData.locations || [],
-        [], // prompt blocks not needed for universal filter in this context
+        [],
     );
 
     const cutoff = Math.max(0, history.length - windowSize);
@@ -64,17 +66,18 @@ export async function generateMissingSummaries(
     for (let i = 0; i < cutoff; i++) {
         const msg = history[i];
         if (msg.messageType !== 'chat') continue;
-        // Find this message's index in the chatMessages array for filter lookup
         const chatIdx = chatMessages.indexOf(msg as ChatMessage);
-        if (chatIdx >= 0 && filterFlags[chatIdx]) continue; // Universally excluded
+        if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
         if (hasModelSummary(msg, modelId)) continue;
         toSummarize.push(msg as ChatMessage);
     }
 
     if (toSummarize.length === 0) return results;
 
+    const sampler = interactionData.Profile?.webSummarizationSampler;
+
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens);
+        const summary = await generateMessageSummary(msg, maxTokens, sampler);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -85,17 +88,14 @@ export async function generateMissingSummaries(
 async function compressChunk(
     messages: HistoryMessage[],
     maxTokens = 512,
+    sampler?: Sampler,
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
         `${m.character.name}: ${m.messageType === 'chat' ? m.textContent : ''}`
     ).join('\n\n');
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
-    const requestBody: Record<string, unknown> = {
-        prompt,
-        n_predict: maxTokens,
-        temperature: 1,
-        stop: ['\n\n\n'],
-    };
+
+    const requestBody = buildRequestBody(prompt, maxTokens, sampler, ['\n\n\n']);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -117,6 +117,9 @@ export async function generateCharacterMemory(
     const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
     const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
 
+    // Use characterSampler for character memory generation
+    const sampler = interactionData.Profile?.characterSampler || character.sampler;
+
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
     const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
@@ -129,12 +132,12 @@ export async function generateCharacterMemory(
 
     const prompt = promptLines.join('\n\n');
 
-    const requestBody: Record<string, unknown> = {
+    const requestBody = buildRequestBody(
         prompt,
-        n_predict: maxTokens,
-        temperature: 1,
-        stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
-    };
+        maxTokens,
+        sampler,
+        [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
+    );
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -155,15 +158,6 @@ export async function generateCharacterMemory(
     } as Context;
 }
 
-/**
- * Generates a location-scoped interaction summary for a specific character's
- * visit to a specific location. Unlike generateCharacterMemory which uses the
- * full chat history, this scopes the prompt to only messages within the given
- * history index range [startIdx, endIdx].
- *
- * Returns the summary text directly (not wrapped in a Context) so it can be
- * stored in modelInteractionTextContentSummaries on the last message of the segment.
- */
 export async function generateLocationVisitSummary(
     interactionData: InteractionData,
     character: Character,
@@ -181,7 +175,9 @@ export async function generateLocationVisitSummary(
     const protagonistTag = getParticipantTag(protagonist, participants);
     const protagonistName = protagonist.name;
 
-    // Build a scoped chat history from only the messages in [startIdx, endIdx]
+    // Use characterSampler for location visit summaries
+    const sampler = interactionData.Profile?.characterSampler || character.sampler;
+
     const scopedMessages: string[] = [];
     for (let i = startIdx; i <= endIdx; i++) {
         const msg = history[i];
@@ -191,7 +187,6 @@ export async function generateLocationVisitSummary(
         const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
         const charName = chatMsg.character.name;
 
-        // Use model summary if available, otherwise raw text
         const text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
 
         scopedMessages.push(`${turnStartString}${tag} (${charName}): ${text}${turnEndString}`);
@@ -217,12 +212,12 @@ export async function generateLocationVisitSummary(
     const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    const requestBody: Record<string, unknown> = {
+    const requestBody = buildRequestBody(
         prompt,
-        n_predict: maxTokens,
-        temperature: 1,
-        stop: [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
-    };
+        maxTokens,
+        sampler,
+        [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
+    );
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -239,6 +234,10 @@ export async function generatePeriodicCompression(
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
+
+    // Use interactionDataSummarizationSampler for periodic compression
+    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+
     const compressedRanges = new Set<string>();
     for (const context of existingContexts) {
         if (context.isAutoGenerated && context.description) {
@@ -249,7 +248,6 @@ export async function generatePeriodicCompression(
         }
     }
 
-    // Get universally-filtered messages for global summarization
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
@@ -259,7 +257,6 @@ export async function generatePeriodicCompression(
     );
     const visibleChatMessages = chatMessages.filter((_, i) => !filterFlags[i]);
 
-    // Map visible messages back to their original history indices for range tracking
     const visibleToOriginalIdx = new Map<ChatMessage, number>();
     for (let i = 0; i < chatMessages.length; i++) {
         if (!filterFlags[i]) {
@@ -280,7 +277,7 @@ export async function generatePeriodicCompression(
 
         const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens);
+        const compressed = await compressChunk(chunk, maxTokens, sampler);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -301,17 +298,19 @@ export async function generatePeriodicCompression(
 async function mergeSummaries(
     summaries: string[],
     maxTokens = 512,
+    sampler?: Sampler,
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0];
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
-    const requestBody: Record<string, unknown> = {
+
+    const requestBody = buildRequestBody(
         prompt,
-        n_predict: maxTokens,
-        temperature: 1,
-        stop: ['\n\n\n'],
-    };
+        maxTokens,
+        sampler,
+        ['\n\n\n'],
+    );
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -328,7 +327,9 @@ export async function generateRecursiveSummary(
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    // Get universally-filtered messages for global summarization
+    // Use interactionDataSummarizationSampler for recursive summarization
+    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
@@ -350,7 +351,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
         const chunk = visibleMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens);
+        const compressed = await compressChunk(chunk, maxTokens, sampler);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
@@ -377,7 +378,7 @@ export async function generateRecursiveSummary(
         const nextLayerSummaries: string[] = [];
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, maxTokens);
+            const merged = await mergeSummaries(batch, maxTokens, sampler);
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
@@ -398,7 +399,7 @@ export async function generateRecursiveSummary(
     }
 
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens, sampler);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,

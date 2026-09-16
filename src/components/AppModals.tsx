@@ -884,6 +884,7 @@ export function AppModals({
                     }}
                     existingProfile={profileModal.itemToEdit}
                     allPromptBlocks={allPromptBlocks}
+                    allSamplers={allSamplers}
                 />
             )}
         </>

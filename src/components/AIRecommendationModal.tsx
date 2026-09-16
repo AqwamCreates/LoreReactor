@@ -2,6 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
+import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,6 +31,7 @@ interface AIRecommendationModalProps {
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
+    aiRecommendationSampler?: Sampler;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -42,7 +44,7 @@ interface AIRecommendationModalProps {
 export function AIRecommendationModal({
     isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
-    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
+    allSamplers, aiRecommendationSampler, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -188,7 +190,6 @@ export function AIRecommendationModal({
         if (selectedEntities.length === 0) { setError('Select at least one entity type.'); return; }
         if (!selectedModel) { setError('No model selected.'); return; }
 
-        // Set engine context with full model — runtime port resolved internally
         recommendationEngine.setRunningModels(runningModels);
         recommendationEngine.setContext(selectedModel);
 
@@ -206,8 +207,9 @@ export function AIRecommendationModal({
             const urp = userPrompt.trim() ? `\n\nUser Request: ${userPrompt.trim()}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
             let acc = '';
+            const requestBody = buildRequestBody(fp, maxTokens, aiRecommendationSampler, []);
             const res = await recommendationEngine.generateStream(
-                { prompt: fp, n_predict: maxTokens, temperature: 0.7, top_p: 0.9, stream: true },
+                { ...requestBody, stream: true },
                 ctrl,
                 { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText, allSamplers); if (p) setParsedOutput(p); } },
             );

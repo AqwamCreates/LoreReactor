@@ -28,10 +28,6 @@ const MANIFEST_FILE = 'manifest.json';
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 10;
 
-/**
- * Entity Registry - Single source of truth for all entity metadata.
- * Keys are used as both TypeScript identifiers and directory names.
- */
 const ENTITY_REGISTRY = {
   characters: { dir: 'character_data', hasManifest: true },
   characterImages: { dir: 'character_images', hasManifest: false },
@@ -55,7 +51,6 @@ const ENTITY_REGISTRY = {
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
 
-// Derive PATHS from registry for backward compatibility
 const PATHS = Object.fromEntries(
   Object.entries(ENTITY_REGISTRY).map(([key, config]) => [
     key,
@@ -63,7 +58,6 @@ const PATHS = Object.fromEntries(
   ])
 ) as Record<EntityKey, string>;
 
-// Special singleton paths
 const ACTIONS_PATH = '/user_data/actions.json';
 const BUDGET_DATA_PATH = '/user_data/budget_data.json';
 
@@ -243,7 +237,7 @@ async function deleteResource(url: string): Promise<void> {
 }
 
 // =============================================================================
-// MANIFEST MANAGEMENT (SELF-HEALING)
+// MANIFEST MANAGEMENT
 // =============================================================================
 
 async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
@@ -253,34 +247,7 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
   const currentIds = await fetchJson<string[]>(manifestUrl);
   
   if (currentIds && Array.isArray(currentIds)) {
-    // SELF-HEALING: Verify that files for these IDs actually exist
-    // This prevents 404 spam when loading lists if files were deleted manually
-    const validIds: string[] = [];
-    let hasChanges = false;
-
-    // Check in batches to avoid overwhelming the server
-    for (let i = 0; i < currentIds.length; i += BATCH_SIZE) {
-        const batch = currentIds.slice(i, i + BATCH_SIZE);
-        // We use fetchJson to check existence. If it returns null, the file is gone.
-        // Note: fetchJson returns null for 404s.
-        const checks = await Promise.all(batch.map(id => fetchJson(`${folderPath}/${id}.json`)));
-        
-        batch.forEach((id, index) => {
-            if (checks[index] !== null) {
-                validIds.push(id);
-            } else {
-                console.warn(`[Manifest Repair] Removing missing ID ${id} from ${entityKey} manifest`);
-                hasChanges = true;
-            }
-        });
-    }
-
-    if (hasChanges) {
-        console.log(`[Manifest Repair] Updating ${entityKey} manifest: ${currentIds.length} -> ${validIds.length} items`);
-        await putJson(manifestUrl, validIds);
-    }
-
-    return validIds;
+    return currentIds;
   }
 
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
@@ -389,11 +356,6 @@ function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> 
 // GENERIC HYDRATION UTILITY
 // =============================================================================
 
-/**
- * Hydrates a raw entity into its full type using a key mapping.
- * This reduces boilerplate by automatically copying fields that share the same name
- * and applying defaults for missing fields.
- */
 function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
     raw: R,
     id: string,
@@ -402,7 +364,6 @@ function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
 ): T {
     const now = Date.now();
     
-    // Base object: Defaults < Raw < System Fields
     const base = {
         ...defaults,
         ...raw,
@@ -411,7 +372,6 @@ function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
         lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
     } as unknown as T;
 
-    // Apply transforms for fields that need renaming or computation
     if (transforms) {
         for (const [key, fn] of Object.entries(transforms)) {
             if (fn) (base as any)[key] = fn(raw, id);
@@ -493,7 +453,7 @@ const memoryRepo = createRepository<Memory, RawMemory>({
         name: 'Untitled Memory',
         interactionData: undefined as unknown as InteractionData,
     }, {
-        interactionData: () => undefined as unknown as InteractionData, // Hydrated later
+        interactionData: () => undefined as unknown as InteractionData,
     });
   },
   serialize: (memory) => {
@@ -983,7 +943,7 @@ export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
 
 const worldRepo = createRepository<World, World>({
   entityKey: 'worlds',
-  hydrate: (raw) => raw, // World is already in final form
+  hydrate: (raw) => raw,
   serialize: (world) => world,
 });
 
@@ -994,7 +954,7 @@ export const saveRawWorld = worldRepo.save;
 export const deleteRawWorld = worldRepo.remove;
 
 // =============================================================================
-// CHAT MESSAGE REPOSITORY (Special - no manifest)
+// CHAT MESSAGE REPOSITORY
 // =============================================================================
 
 export async function deleteRawInteractionMessage(id: string): Promise<void> { 
@@ -1002,7 +962,7 @@ export async function deleteRawInteractionMessage(id: string): Promise<void> {
 }
 
 // =============================================================================
-// CHAT DATA REPOSITORY (Complex hydration)
+// CHAT DATA REPOSITORY
 // =============================================================================
 
 export async function loadRawChatManifest(): Promise<string[]> { 
@@ -1289,7 +1249,7 @@ export async function deleteRawInteractionData(id: string): Promise<void> {
 }
 
 // =============================================================================
-// SINGLETON REPOSITORIES (Actions, Budget Data)
+// SINGLETON REPOSITORIES
 // =============================================================================
 
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
@@ -1377,7 +1337,7 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
 }
 
 // =============================================================================
-// IMAGE & VOICE HELPERS (Generic utilities)
+// IMAGE & VOICE HELPERS
 // =============================================================================
 
 function getImageUrl(entityKey: EntityKey, ...pathParts: string[]): string | null {
@@ -1406,7 +1366,7 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
         const response = await fetch(characterImageUrl, { method: 'HEAD' });
         if (response.ok) return characterImageUrl;
     } catch {
-        // File doesn't exist or network error — fall through to neutral
+        // File doesn't exist or network error
     }
 
     const effectiveExpression = characterExpression || "neutral";
