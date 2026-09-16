@@ -1721,7 +1721,7 @@ export function createChatMessage(
 ): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(interactionData.interactionHistory, character.id, character.name, textContent);
+    const isNameRevealed = wasRevealed || detectName(interactionData, character, textContent);
     const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
     const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;

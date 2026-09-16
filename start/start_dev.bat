@@ -155,7 +155,7 @@ npx concurrently ^
     --kill-signal SIGTERM ^
     --names "WEB,API" ^
     --prefix-colors "cyan,magenta" ^
-    "npx serve dist -l 4444 -s" ^
+    "npm run dev" ^
     "npm run server"
 
 goto EOF

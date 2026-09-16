@@ -202,7 +202,7 @@ launch() {
         --kill-signal SIGTERM \
         --names "WEB,API" \
         --prefix-colors "cyan,magenta" \
-        "npm run dev" \
+        "npx serve dist -l 4444 -s" \
         "npm run server"
 }
 

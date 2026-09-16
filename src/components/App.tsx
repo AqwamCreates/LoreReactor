@@ -77,7 +77,7 @@ function App() {
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
         resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
         startNewChat,
-        sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
+        sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData, processProtagonistImageSilently,
     } = session;
 

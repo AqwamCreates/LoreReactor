@@ -26,6 +26,20 @@ export function getCurrentLocation(interactionData: InteractionData, character: 
     return locations[currentLocationIndex];
 }
 
+export function getCoLocatedParticipantCount(interactionData: InteractionData, character: Character): number {
+    const locationIndex = getCurrentLocationIndex(interactionData, character);
+
+    const participants = interactionData.participants;
+
+    let count = 0;
+    for (const P of participants) {
+        const participantLocationIndex = getCurrentLocationIndex(interactionData, P);
+        if (participantLocationIndex === locationIndex) count++;
+    }
+
+    return count;
+}
+
 /**
  * Find a location by matching text against its regex activation trigger.
  * Returns the index in the locations array, or undefined if no match.
