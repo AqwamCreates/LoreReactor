@@ -289,7 +289,7 @@ export function useModelManager() {
         }
     }, [unloadModelInternal]);
 
-    // Single effect: load once on mount, poll every 2 seconds
+    // Single effect: load once on mount, poll every 3 seconds
     useEffect(() => {
         let cancelled = false;
 
