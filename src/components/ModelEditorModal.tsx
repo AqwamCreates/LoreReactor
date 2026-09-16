@@ -1,7 +1,7 @@
 // src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types';
-import { vramUseEstimation } from '../hooks/vramUseEstimation';
+import { useVramUseEstimation } from '../hooks/useVramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../languageModelInformation';
 import '../main.css';
@@ -215,7 +215,7 @@ export function ModelEditorModal({
 
     const isLoadingExistingRef = useRef(false);
 
-    const { estimatedVRAM, isEstimating, error: vramError } = vramUseEstimation({
+    const { estimatedVRAM, isEstimating, error: vramError } = useVramUseEstimation({
         modelName: name || modelPath,
         gpuLayers: settings.gpu_layers,
         keyCacheType: settings.cache_type_k,

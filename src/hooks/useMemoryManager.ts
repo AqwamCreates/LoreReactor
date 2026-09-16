@@ -1,5 +1,5 @@
 // src/hooks/useMemoryManager.ts
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Memory } from '../types';
 import { loadAllRawMemories, saveRawMemory, deleteRawMemory } from '../storage/serverStorage';
 
@@ -41,9 +41,7 @@ export function useMemoryManager() {
         }
     };
 
-    useEffect(() => {
-        loadMemories();
-    }, []);
+    useState(() => { loadMemories() });
 
     return { memories, isLoading, saveMemory, deleteMemory, refresh: loadMemories };
 }

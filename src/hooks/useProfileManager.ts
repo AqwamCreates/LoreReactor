@@ -1,5 +1,5 @@
 // src/hooks/useProfileManager.ts
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Profile } from '../types';
 import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storage/serverStorage';
 import { useToast } from '../context/ToastContext';
@@ -49,9 +49,7 @@ export function useProfileManager() {
         }
     };
 
-    useEffect(() => {
-        loadProfiles();
-    }, []);
+    useState(() => { loadProfiles() });
 
     return {
         profiles,

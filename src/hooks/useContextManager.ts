@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Context } from '../types';
 import { loadAllRawContexts, saveRawContext, deleteRawContext } from '../storage/serverStorage';
 
@@ -40,9 +40,7 @@ export function useContextManager() {
         }
     };
 
-    useEffect(() => {
-        loadContexts();
-    }, []);
+    useState(() => { loadContexts() });
 
     return { contexts, isLoading, saveContext, deleteContext, refresh: loadContexts };
 }

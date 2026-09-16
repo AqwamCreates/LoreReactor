@@ -17,7 +17,6 @@ const POLL_INTERVAL_MS = 1000;
 
 export function useGpuMonitor(enabled: boolean) {
     const [status, setStatus] = useState<GpuStatus | null>(null);
-    const [isPolling, setIsPolling] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -42,14 +41,10 @@ export function useGpuMonitor(enabled: boolean) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
             }
-            setIsPolling(false);
             return;
         }
 
-        setIsPolling(true);
-        // Initial fetch
         fetchStatus();
-        // Poll
         timerRef.current = setInterval(fetchStatus, POLL_INTERVAL_MS);
 
         return () => {
@@ -57,9 +52,8 @@ export function useGpuMonitor(enabled: boolean) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
             }
-            setIsPolling(false);
         };
     }, [enabled, fetchStatus]);
 
-    return { status, isPolling, error, refetch: fetchStatus };
+    return { status, isPolling: enabled, error, refetch: fetchStatus };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Location } from '../types';
 import { loadAllRawLocations, saveRawLocation, deleteRawLocation } from '../storage/serverStorage';
 
@@ -40,9 +40,7 @@ export function useLocationManager() {
         }
     };
 
-    useEffect(() => {
-        loadLocations();
-    }, []);
+    useState(() => { loadLocations() });
 
     return { locations, isLoading, saveLocation, deleteLocation, refresh: loadLocations };
 }

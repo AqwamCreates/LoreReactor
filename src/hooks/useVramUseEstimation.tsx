@@ -16,10 +16,6 @@ interface VRAMEstimationResult {
     error: string | null;
 }
 
-/**
- * Returns the size multiplier for a given KV cache quantization type.
- * Lower multiplier = less VRAM for KV cache.
- */
 function getCacheMultiplier(cacheType: string): number {
     const lower = cacheType.toLowerCase();
     switch (lower) {
@@ -79,9 +75,7 @@ function getCacheMultiplier(cacheType: string): number {
     }
 }
 
-// Estimate VRAM usage for llama.cpp models.
 const calculateVRAM = (modelName: string, gpuLayers: number, keyCacheType: string, valueCacheType: string, contextSize: number): string => {
-    // Extract parameter count using regex - case insensitive.
     const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
     let parameterCount: number;
     
@@ -91,7 +85,6 @@ const calculateVRAM = (modelName: string, gpuLayers: number, keyCacheType: strin
         return 'Unknown';
     }
 
-    // Detect quantization from model name.
     const quantizationPatterns = [
         { pattern: /[_-]?Q4_K[_-]?/i, value: 'Q4_K' },
         { pattern: /[_-]?Q5_K[_-]?/i, value: 'Q5_K' },
@@ -130,7 +123,6 @@ const calculateVRAM = (modelName: string, gpuLayers: number, keyCacheType: strin
         }
     }
     
-    // Quantization size multipliers (relative to FP16).
     const quantizationMultipliers: Record<string, number> = {
         'FP32': 2.0,
         'F32': 2.0,
@@ -163,34 +155,26 @@ const calculateVRAM = (modelName: string, gpuLayers: number, keyCacheType: strin
     };
 
     const quantizationMultiplier = quantizationMultipliers[quantization] || 1.0;
-
-    // Calculate model size in GB based on quantization.
-    // Base: FP16 = 2 bytes per parameter.
     const bytesPerParam = 2 * quantizationMultiplier;
     const modelSizeGB = (parameterCount * 1e9 * bytesPerParam) / (1024 * 1024 * 1024);
     
-    // KV cache size per token: ~0.5 MB per 1k context for 7B model.
-    // Key and Value caches are separate — each gets its own multiplier.
     const kvCachePerTokenBase = 0.0005 * (parameterCount / 7);
     const keyCacheMultiplier = getCacheMultiplier(keyCacheType);
     const valueCacheMultiplier = getCacheMultiplier(valueCacheType);
-    // Average of key and value cache sizes
     const avgCacheMultiplier = (keyCacheMultiplier + valueCacheMultiplier) / 2;
     const kvCacheGB = (kvCachePerTokenBase * avgCacheMultiplier * contextSize) / 1024;
     
-    // Calculate GPU layers memory
-    const totalLayers = Math.ceil(parameterCount * 0.8); // Rough estimate: ~0.8 layers per billion parameters.
+    const totalLayers = Math.ceil(parameterCount * 0.8);
     const gpuLayerRatio = gpuLayers === -1 ? 1 : Math.min(gpuLayers / totalLayers, 1);
     const gpuMemoryGB = modelSizeGB * gpuLayerRatio + kvCacheGB * 0.5;
     
-    // Total VRAM estimate with overhead
-    const overhead = 1.5; // Additional overhead for CUDA, activations, etc.
+    const overhead = 1.5;
     const totalVRAMGB = gpuMemoryGB + overhead;
     
     return totalVRAMGB.toFixed(1);
 };
 
-export function vramUseEstimation({
+export function useVramUseEstimation({
     modelName,
     gpuLayers,
     keyCacheType,
@@ -204,7 +188,6 @@ export function vramUseEstimation({
 
     useEffect(() => {
         const estimateVRAM = async () => {
-            // Only estimate for Llama.cpp backend
             if (backend !== 'Llama.cpp') {
                 setEstimatedVRAM('N/A');
                 setIsEstimating(false);
@@ -212,7 +195,6 @@ export function vramUseEstimation({
                 return;
             }
 
-            // Check if model name has a size pattern.
             const sizeMatch = modelName.match(/(\d+\.?\d*)\s*[Bb]/);
             if (!sizeMatch) {
                 setEstimatedVRAM('Unknown');
@@ -236,8 +218,8 @@ export function vramUseEstimation({
                 );
                 
                 setEstimatedVRAM(result);
-            } catch (error) {
-                setError(error instanceof Error ? error.message : 'Failed to estimate VRAM');
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to estimate VRAM');
                 setEstimatedVRAM('Unknown');
             } finally {
                 setIsEstimating(false);
