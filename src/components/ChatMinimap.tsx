@@ -107,7 +107,7 @@ export const ChatMinimap = React.memo(function ChatMinimap({
                     {messages.map((msg, i) => {
                         const isprotagonist = msg.character.id === currentCharacterId;
                         const firstLine = msg.textContent.split('\n')[0].trim();
-                        const truncated = firstLine.length > 28 ? firstLine.slice(0, 28) + '…' : firstLine;
+                        const truncated = firstLine.length > 28 ? `${firstLine.slice(0, 28)}…` : firstLine;
                         const isHov = hoveredIndex === i;
 
                         return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Character } from '../types';
 import { loadAllCharacterShells, loadRawCharacter, saveRawCharacter, deleteRawCharacter } from '../storage/serverStorage';
 
@@ -52,9 +52,7 @@ export function useCharacterManager() {
     };
 
     // Initial load — shells only, instant on mobile
-    useEffect(() => {
-        loadCharacters();
-    }, []);
+    useState(() => { loadCharacters() });
 
     return { characters, isLoading, saveCharacter, deleteCharacter, loadFullCharacter, refresh: loadCharacters };
 }

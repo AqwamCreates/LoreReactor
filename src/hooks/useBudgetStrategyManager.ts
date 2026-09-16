@@ -40,9 +40,7 @@ export function useBudgetStrategyManager() {
         }
     };
 
-    useEffect(() => {
-        loadStrategies();
-    }, []);
+    useState(() => { loadStrategies() });
 
     return { strategies, isLoading, saveStrategy, deleteStrategy, refresh: loadStrategies };
 }

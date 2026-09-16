@@ -1,5 +1,5 @@
 // src/components/CharacterMemoryEditorModal.tsx
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { Character, Memory } from '../types';
 import '../main.css';
 
@@ -8,40 +8,40 @@ interface CharacterMemoryEditorModalProps {
     onClose: () => void;
     character: Character | null;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
-    /** Pre-resolved map of interactionData ID → display name. Passed from AppModals. */
     chatNameMap?: Map<string, string>;
 }
 
-export function CharacterMemoryEditorModal({
-    isOpen,
-    onClose,
+function CharacterMemoryEditorContent({
     character,
+    onClose,
     onSaveMemories,
     chatNameMap,
-}: CharacterMemoryEditorModalProps) {
+}: {
+    character: Character;
+    onClose: () => void;
+    onSaveMemories: (memories: Record<string, Memory[]>) => void;
+    chatNameMap?: Map<string, string>;
+}) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
-    const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>({});
+    const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>(() => {
+        try {
+            return structuredClone(character.memories ?? {});
+        } catch (e) {
+            console.warn("Failed to clone memories, using reference:", e);
+            return character.memories ?? {};
+        }
+    });
     const [hasChanges, setHasChanges] = useState(false);
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
+    const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+    // Focus textarea when editing starts
     useEffect(() => {
-        if (isOpen && character) {
-            try {
-                setLocalMemories(structuredClone(character.memories ?? {}));
-            } catch (e) {
-                console.warn("Failed to clone memories, using reference:", e);
-                setLocalMemories(character.memories ?? {});
-            }
-
-            setHasChanges(false);
-            setEditingId(null);
-            setEditContent('');
-            setShowMassDeleteConfirm(false);
+        if (editingId && editTextareaRef.current) {
+            editTextareaRef.current.focus();
         }
-    }, [isOpen, character]);
-
-    if (!isOpen) return null;
+    }, [editingId]);
 
     const resolveChatInfo = (mem: Memory): { name: string; id: string } => {
         const id = mem.interactionData?.id
@@ -164,9 +164,7 @@ export function CharacterMemoryEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {!character ? (
-                        <div className="empty-state">No character selected.</div>
-                    ) : entries.length === 0 ? (
+                    {entries.length === 0 ? (
                         <div className="empty-state">No memories stored for this character.</div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -191,11 +189,11 @@ export function CharacterMemoryEditorModal({
                                                     {isEditing ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             <textarea
+                                                                ref={editTextareaRef}
                                                                 value={editContent}
                                                                 onChange={(e) => setEditContent(e.target.value)}
                                                                 className="editor-textarea"
                                                                 rows={4}
-                                                                autoFocus
                                                             />
                                                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                                                                 <button type="button" className="editor-button editor-button-cancel" onClick={handleCancelEdit}>Cancel</button>
@@ -259,5 +257,25 @@ export function CharacterMemoryEditorModal({
                 </div>
             </div>
         </div>
+    );
+}
+
+export function CharacterMemoryEditorModal({
+    isOpen,
+    onClose,
+    character,
+    onSaveMemories,
+    chatNameMap,
+}: CharacterMemoryEditorModalProps) {
+    if (!isOpen || !character) return null;
+
+    return (
+        <CharacterMemoryEditorContent
+            key={character.id}
+            character={character}
+            onClose={onClose}
+            onSaveMemories={onSaveMemories}
+            chatNameMap={chatNameMap}
+        />
     );
 }

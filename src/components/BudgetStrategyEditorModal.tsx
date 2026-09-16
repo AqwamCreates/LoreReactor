@@ -1,5 +1,5 @@
 // src/components/BudgetStrategyEditorModal.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelectList } from './EntitySelectList';
@@ -15,64 +15,33 @@ interface BudgetStrategyEditorModalProps {
     allModels: LanguageModel[];
 }
 
-export function BudgetStrategyEditorModal({
-    isOpen,
-    onClose,
-    onSave,
+function BudgetStrategyEditorContent({
     existingStrategy,
     allModels,
-}: BudgetStrategyEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [onlineModelIds, setOnlineModelIds] = useState<string[]>([]);
-    const [localModelIds, setLocalModelIds] = useState<string[]>([]);
-    const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>({});
-    const [switchProbability, setSwitchProbability] = useState<number>(20);
-    const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(8192);
-    const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(70);
-    const [fallbackOnLocalFailure, setFallbackOnLocalFailure] = useState<boolean>(true);
-    const [fallbackOnQualityThreshold, setFallbackOnQualityThreshold] = useState<number>(30);
-    const [fallbackOnTimeoutInSeconds, setFallbackOnTimeoutInSeconds] = useState<number>(30);
-    const [maximumBudget, setMaximumBudget] = useState<number>(10);
+    onClose,
+    onSave,
+}: {
+    existingStrategy: BudgetStrategy | null;
+    allModels: LanguageModel[];
+    onClose: () => void;
+    onSave: (strategy: BudgetStrategy) => void;
+}) {
+    const [name, setName] = useState(existingStrategy?.name || '');
+    const [description, setDescription] = useState(existingStrategy?.description || '');
+    const [onlineModelIds, setOnlineModelIds] = useState<string[]>(existingStrategy?.onlineModels?.map(m => m.id) || []);
+    const [localModelIds, setLocalModelIds] = useState<string[]>(existingStrategy?.localModels?.map(m => m.id) || []);
+    const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>(existingStrategy?.modelCostTiers ? { ...existingStrategy.modelCostTiers } : {});
+    const [switchProbability, setSwitchProbability] = useState<number>(existingStrategy?.switchProbability ?? 20);
+    const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(existingStrategy?.switchOnContextSize ?? 8192);
+    const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(existingStrategy?.switchOnComplexityScore ?? 70);
+    const [fallbackOnLocalFailure, setFallbackOnLocalFailure] = useState<boolean>(existingStrategy?.fallbackOnLocalFailure ?? true);
+    const [fallbackOnQualityThreshold, setFallbackOnQualityThreshold] = useState<number>(existingStrategy?.fallbackOnQualityThreshold ?? 30);
+    const [fallbackOnTimeoutInSeconds, setFallbackOnTimeoutInSeconds] = useState<number>(existingStrategy?.fallbackOnTimeoutInSeconds ?? 30);
+    const [maximumBudget, setMaximumBudget] = useState<number>(existingStrategy?.maximumBudget ?? 10);
     const [errors, setErrors] = useState<{ name?: string; onlineModels?: string; localModels?: string }>({});
 
     const [onlineSearch, setOnlineSearch] = useState('');
     const [localSearch, setLocalSearch] = useState('');
-
-    useEffect(() => {
-        if (isOpen) {
-            if (existingStrategy) {
-                setName(existingStrategy.name || '');
-                setDescription(existingStrategy.description || '');
-                setOnlineModelIds(existingStrategy.onlineModels?.map(m => m.id) || []);
-                setLocalModelIds(existingStrategy.localModels?.map(m => m.id) || []);
-                setModelCostTiers(existingStrategy.modelCostTiers ? { ...existingStrategy.modelCostTiers } : {});
-                setSwitchProbability(existingStrategy.switchProbability ?? 20);
-                setSwitchOnContextSize(existingStrategy.switchOnContextSize ?? 8192);
-                setSwitchOnComplexityScore(existingStrategy.switchOnComplexityScore ?? 70);
-                setFallbackOnLocalFailure(existingStrategy.fallbackOnLocalFailure ?? true);
-                setFallbackOnQualityThreshold(existingStrategy.fallbackOnQualityThreshold ?? 30);
-                setFallbackOnTimeoutInSeconds(existingStrategy.fallbackOnTimeoutInSeconds ?? 30);
-                setMaximumBudget(existingStrategy.maximumBudget ?? 10);
-            } else {
-                setName('');
-                setDescription('');
-                setOnlineModelIds([]);
-                setLocalModelIds([]);
-                setModelCostTiers({});
-                setSwitchProbability(20);
-                setSwitchOnContextSize(8192);
-                setSwitchOnComplexityScore(70);
-                setFallbackOnLocalFailure(true);
-                setFallbackOnQualityThreshold(30);
-                setFallbackOnTimeoutInSeconds(30);
-                setMaximumBudget(10);
-            }
-            setOnlineSearch('');
-            setLocalSearch('');
-            setErrors({});
-        }
-    }, [isOpen, existingStrategy]);
 
     const toggleOnlineModel = (id: string) => {
         setOnlineModelIds(prev => {
@@ -105,9 +74,9 @@ export function BudgetStrategyEditorModal({
     };
 
     const setTierForModel = (modelId: string, value: string) => {
-        const num = parseFloat(value);
+        const num = Number.parseFloat(value);
         setModelCostTiers(prev => {
-            if (value === '' || isNaN(num)) {
+            if (value === '' || Number.isNaN(num)) {
                 const updated = { ...prev };
                 delete updated[modelId];
                 return updated;
@@ -170,8 +139,6 @@ export function BudgetStrategyEditorModal({
         onSave(strategy);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     const renderTierGrid = (modelIds: string[], label: string) => {
         if (modelIds.length === 0) return null;
@@ -426,5 +393,25 @@ export function BudgetStrategyEditorModal({
                 </div>
             </div>
         </div>
+    );
+}
+
+export function BudgetStrategyEditorModal({
+    isOpen,
+    onClose,
+    onSave,
+    existingStrategy,
+    allModels,
+}: BudgetStrategyEditorModalProps) {
+    if (!isOpen) return null;
+
+    return (
+        <BudgetStrategyEditorContent
+            key={existingStrategy?.id ?? 'new'}
+            existingStrategy={existingStrategy ?? null}
+            allModels={allModels}
+            onClose={onClose}
+            onSave={onSave}
+        />
     );
 }

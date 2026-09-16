@@ -1,5 +1,5 @@
 // src/components/DataManagerModal.tsx
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
 import { useToast } from '../context/ToastContext';
 import '../main.css';
@@ -205,7 +205,6 @@ export function DataManagerModal({
     onDeleteChat,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
-    const [storageBreakdown, setStorageBreakdown] = useState<StorageBreakdown[]>([]);
     const [cleanupItems, setCleanupItems] = useState<CleanupItem[]>([]);
     const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -231,11 +230,11 @@ export function DataManagerModal({
     const [isScanning, setIsScanning] = useState(false);
     const { addToast } = useToast();
 
-    // ─── Storage Breakdown ──────────────────────────────────────────
-    const computeStorage = useCallback(() => {
+    // ─── Storage Breakdown (derived, no effect needed) ─────────────
+    const storageBreakdown = useMemo<StorageBreakdown[]>(() => {
         const estimateKb = (items: unknown[], avgBytesPerItem: number) =>
             Math.round((items.length * avgBytesPerItem) / 1024);
-        setStorageBreakdown([
+        return [
             { label: 'Characters', icon: '🎭', count: allCharacters.length, estimatedSizeKb: estimateKb(allCharacters, 4096) },
             { label: 'Contexts', icon: '📜', count: allContexts.length, estimatedSizeKb: estimateKb(allContexts, 2048) },
             { label: 'Locations', icon: '📍', count: allLocations.length, estimatedSizeKb: estimateKb(allLocations, 2048) },
@@ -249,7 +248,7 @@ export function DataManagerModal({
             { label: 'Profiles', icon: '👤', count: allProfiles.length, estimatedSizeKb: estimateKb(allProfiles, 2048) },
             { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
             { label: 'Chat Sessions', icon: '💬', count: rawChatShells.length, estimatedSizeKb: estimateKb(rawChatShells, 8192) },
-        ]);
+        ];
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
 
     // ─── Cleanup Scan ───────────────────────────────────────────────
@@ -279,7 +278,6 @@ export function DataManagerModal({
         const referencedProfileIds = new Set<string>();
         const referencedMemoryIds = new Set<string>();
 
-        // --- Direct references from Worlds ---
         for (const world of allWorlds) {
             for (const id of world.characterIds) if (charIdSet.has(id)) referencedCharIds.add(id);
             for (const id of world.contextIds) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
@@ -289,7 +287,6 @@ export function DataManagerModal({
             if (world.profileId && profileIdSet.has(world.profileId)) referencedProfileIds.add(world.profileId);
         }
 
-        // --- Direct references from Chat Shells ---
         for (const shell of rawChatShells) {
             for (const id of (shell.participantIds || [])) if (charIdSet.has(id)) referencedCharIds.add(id);
             if (shell.protagonistId && charIdSet.has(shell.protagonistId)) referencedCharIds.add(shell.protagonistId);
@@ -299,12 +296,8 @@ export function DataManagerModal({
             if (shell.ProfileId && profileIdSet.has(shell.ProfileId)) referencedProfileIds.add(shell.ProfileId);
         }
 
-        // --- Transitive: Characters → Samplers → Stop Patterns ---
-        // --- Transitive: Characters → Memories ---
         for (const c of allCharacters) {
-            if (c.sampler?.id && samplerIdSet.has(c.sampler.id)) {
-                referencedSamplerIds.add(c.sampler.id);
-            }
+            if (c.sampler?.id && samplerIdSet.has(c.sampler.id)) referencedSamplerIds.add(c.sampler.id);
             if (c.memories) {
                 for (const memArr of Object.values(c.memories)) {
                     for (const mem of memArr) {
@@ -321,42 +314,34 @@ export function DataManagerModal({
             }
         }
 
-        // --- Transitive: Budget Strategies → Models ---
         for (const bs of allBudgetStrategies) {
             for (const m of (bs.onlineModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
             for (const m of (bs.localModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
         }
 
-        // --- Transitive: Memories → InteractionData (chat binding) ---
         for (const mem of allMemories) {
             const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
-            if (interactionId && chatIdSet.has(interactionId)) {
-                referencedMemoryIds.add(mem.id);
-            }
+            if (interactionId && chatIdSet.has(interactionId)) referencedMemoryIds.add(mem.id);
         }
 
-        // --- Bindings: Contexts → Characters ---
         for (const ctx of allContexts) {
             for (const binding of (ctx.characterBindings || [])) {
                 if (charIdSet.has(binding)) referencedCharIds.add(binding);
             }
         }
 
-        // --- Bindings: Locations → Characters, Locations ---
         for (const loc of allLocations) {
             for (const binding of (loc.characterBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
             for (const binding of (loc.locationBindings || [])) if (locIdSet.has(binding)) referencedLocIds.add(binding);
             for (const binding of (loc.ownerBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
         }
 
-        // --- Bindings: Audio Tracks → Characters, Contexts, Locations ---
         for (const at of allAudioTracks) {
             for (const binding of (at.characterBindings || [])) if (charIdSet.has(binding)) referencedCharIds.add(binding);
             for (const binding of (at.contextBindings || [])) if (ctxIdSet.has(binding)) referencedCtxIds.add(binding);
             for (const binding of (at.locationBindings || [])) if (locIdSet.has(binding)) referencedLocIds.add(binding);
         }
 
-        // --- Bindings: Prompt Blocks → Characters, Contexts, Locations ---
         for (const pb of allPromptBlocks) {
             for (const binding of pb.characterBindings) if (charIdSet.has(binding)) referencedCharIds.add(binding);
             for (const binding of pb.contextBindings) if (ctxIdSet.has(binding)) referencedCtxIds.add(binding);
@@ -469,7 +454,6 @@ export function DataManagerModal({
             for (const m of (bs.onlineModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing online model', refType: 'Language Model', refId: m.id }); }
             for (const m of (bs.localModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing local model', refType: 'Language Model', refId: m.id }); }
         }
-        // Memory → InteractionData integrity
         for (const mem of allMemories) {
             const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
             if (interactionId && !chatIdSet.has(interactionId)) {
@@ -480,16 +464,6 @@ export function DataManagerModal({
         setIntegrityIssues(issues);
         setIsScanning(false);
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
-
-    // ─── Effects ────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!isOpen) return;
-        computeStorage();
-        setConfirmDangerAction(null);
-        setConfirmBulkDelete(false);
-        setSelectedIds(new Set());
-        setSearchQuery('');
-    }, [isOpen, computeStorage]);
 
     // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {

@@ -79,7 +79,7 @@ function detectBareNameDeclaration(text: string, characterName: string): boolean
   return capturedLower.includes(targetLower) || targetLower.includes(capturedLower);
 }
 
-function detectNameReveal(text: string, characterName: string, nameQuestionRecentlyAsked: boolean = false): boolean {
+function detectNameReveal(text: string, characterName: string, nameQuestionRecentlyAsked = false): boolean {
   if (detectDirectNameReveal(text, characterName)) {
     return true;
   }

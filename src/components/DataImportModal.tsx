@@ -197,7 +197,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                         onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 )}
                                 {(parsedData.worlds?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Worlds" items={parsedData.worlds!} selectedIds={selectedWorldIds}
+                                    <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
                                         onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
                                 {parsedData.models.length > 0 && (
@@ -225,7 +225,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                         onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
                                 )}
                                 {(parsedData.memories?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Memories" items={parsedData.memories!} selectedIds={selectedMemoryIds}
+                                    <EntitySelectList label="Memories" items={parsedData.memories} selectedIds={selectedMemoryIds}
                                         onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
                                 )}
 

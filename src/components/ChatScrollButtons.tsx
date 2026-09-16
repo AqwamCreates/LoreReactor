@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useCallback, useLayoutEffect } from 'react';
 
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
@@ -13,14 +13,6 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     const [showTopButton, setShowTopButton] = useState(false);
     const [showBottomButton, setShowBottomButton] = useState(false);
     const [containerRect, setContainerRect] = useState<{ top: number; bottom: number; right: number } | null>(null);
-    const [tick, setTick] = useState(0);
-
-    // Force re-check after mount and after any DOM settling
-    useEffect(() => {
-        const t1 = setTimeout(() => setTick(t => t + 1), 300);
-        const t2 = setTimeout(() => setTick(t => t + 1), 800);
-        return () => { clearTimeout(t1); clearTimeout(t2); };
-    }, []);
 
     useLayoutEffect(() => {
         const container = containerRef.current;
