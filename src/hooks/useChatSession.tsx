@@ -16,6 +16,7 @@ import { useMemoryTrigger } from './useMemoryTrigger';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { detectName } from './nameDetection';
 import type { Character, InteractionData, PromptBlock, ChatMessage } from '../types';
 
 const engine = getLanguageModelEngine();
@@ -40,11 +41,16 @@ function finalizeLastAIMessage(
         lastMsg.character.id !== protagonistId &&
         (lastMsg as ChatMessage).isPartial
     ) {
+        const cleanText = sanitizeStreamedText(lastMsg.textContent);
+        const wasRevealed = lastMsg.isNameRevealed ?? false;
+        const isNameRevealed = wasRevealed || detectName(data, lastMsg.character, cleanText);
+
         const finalizedHistory = [...history];
         finalizedHistory[finalizedHistory.length - 1] = {
             ...lastMsg,
-            textContent: sanitizeStreamedText(lastMsg.textContent),
+            textContent: cleanText,
             isPartial: false,
+            isNameRevealed,
             lastUpdatedTimestamp: Date.now(),
         } as ChatMessage;
         return { ...data, interactionHistory: finalizedHistory, lastUpdatedTimestamp: Date.now() };
@@ -62,10 +68,14 @@ function finalizeMessageById(
 
     const history = data.interactionHistory.map(m => {
         if (m.id === messageId && m.messageType === 'chat') {
+            const cleanText = sanitizeStreamedText(m.textContent);
+            const wasRevealed = m.isNameRevealed ?? false;
+            const isNameRevealed = wasRevealed || detectName(data, m.character, cleanText);
             return {
                 ...m,
-                textContent: sanitizeStreamedText(m.textContent),
+                textContent: cleanText,
                 isPartial: false,
+                isNameRevealed,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage;
         }
@@ -189,8 +199,11 @@ export function useChatSession() {
         if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
             const lastMsg = h[h.length - 1];
             if (lastMsg.messageType === 'chat') {
+                const cleanText = sanitizeStreamedText(dt);
+                const wasRevealed = lastMsg.isNameRevealed ?? false;
+                const isNameRevealed = wasRevealed || detectName(base, p.character, cleanText);
                 const ph = [...h];
-                ph[ph.length - 1] = { ...lastMsg, textContent: sanitizeStreamedText(dt), isPartial: true };
+                ph[ph.length - 1] = { ...lastMsg, textContent: cleanText, isPartial: true, isNameRevealed };
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
             }
         }

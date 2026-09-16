@@ -37,13 +37,6 @@ const NAME_PERMISSION_QUESTION_PATTERNS = [
   /\bi\s+go\s+by\b.*?\?/i,
 ];
 
-const NAME_REVEAL_INTENT_PATTERNS = [
-  /\b(?:i'll|i will|i shall|let me)\s+(?:tell|say|give)\s+(?:you|u|them)\s+(?:my|the)\s+name\b/i,
-  /\b(?:here(?:'s| is)|it is|that is)\s+(?:my|the)\s+name\b/i,
-  /\b(?:never mind|doesn't matter),?\s*(?:my name is|call me)\b/i,
-  /\b(?:by the way|btw),?\s*(?:my name is|call me)\b/i,
-];
-
 const FALSE_POSITIVE_PHRASES = [
   /\bi'?m\s+(?:going|gonna|coming|leaving|heading|running|walking|moving|trying|looking|waiting|hoping|thinking|wondering|afraid|sure|not|just|still|already|almost|really|very|so|too|here|there|done|finished|ready|happy|sad|angry|tired|hungry|thirsty|cold|hot|fine|okay|ok|good|bad|sorry|glad|excited|nervous|scared|worried|confused|lost|stuck|trapped|alone|bored|busy|free|late|early|back|home|away|out|in|up|down|on|off)\b/i,
   /\bi am\s+(?:going|gonna|coming|leaving|heading|running|walking|moving|trying|looking|waiting|hoping|thinking|wondering|afraid|sure|not|just|still|already|almost|really|very|so|too|here|there|done|finished|ready|happy|sad|angry|tired|hungry|thirsty|cold|hot|fine|okay|ok|good|bad|sorry|glad|excited|nervous|scared|worried|confused|lost|stuck|trapped|alone|bored|busy|free|late|early|back|home|away|out|in|up|down|on|off)\b/i,
@@ -92,8 +85,26 @@ function isNameMatch(captured: string, characterName: string): boolean {
   return false;
 }
 
+/**
+ * THE GATE: Does the character's actual name appear in this text?
+ * Every detection path MUST pass through this before returning true.
+ */
+function containsCharacterName(text: string, characterName: string): boolean {
+  const targetLower = characterName.toLowerCase().trim();
+  const textLower = text.toLowerCase();
+
+  // Check as whole word boundary match
+  const escaped = targetLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const wordBoundaryRegex = new RegExp(`\\b${escaped}\\b`, 'i');
+  if (wordBoundaryRegex.test(textLower)) return true;
+
+  return false;
+}
+
 function detectDirectNameReveal(text: string, characterName: string): boolean {
   if (isFalsePositive(text)) return false;
+  if (!containsCharacterName(text, characterName)) return false;
+
   const capturedName = extractCapturedName(text, SELF_NAME_REVEAL_PATTERNS);
   if (!capturedName) return false;
   return isNameMatch(capturedName, characterName);
@@ -101,15 +112,22 @@ function detectDirectNameReveal(text: string, characterName: string): boolean {
 
 function detectBareNameDeclaration(text: string, characterName: string): boolean {
   if (isFalsePositive(text)) return false;
+  if (!containsCharacterName(text, characterName)) return false;
+
   const bareNameMatch = text.match(new RegExp(`^(${NAME_CAPTURE})\\.`, 'm'));
   if (!bareNameMatch?.[1]) return false;
   return isNameMatch(bareNameMatch[1].trim(), characterName);
 }
 
 function detectNameReveal(text: string, characterName: string, nameQuestionRecentlyAsked = false): boolean {
+  // THE GATE: if the character's name doesn't appear in the text at all,
+  // it cannot be a name reveal. Period.
+  if (!containsCharacterName(text, characterName)) return false;
+
   if (detectDirectNameReveal(text, characterName)) return true;
 
-  if (!isFalsePositive(text) && matchesAnyPattern(text, NAME_REVEAL_INTENT_PATTERNS)) {
+  if (!isFalsePositive(text)) {
+    // Intent patterns like "let me tell you my name" + name actually present
     const capturedName = extractCapturedName(text, SELF_NAME_REVEAL_PATTERNS);
     if (capturedName && isNameMatch(capturedName, characterName)) return true;
   }
@@ -124,21 +142,20 @@ function detectNameQuestion(text: string): boolean {
 }
 
 function detectNamePermissionSequence(
-  interactionData: InteractionData, 
+  interactionData: InteractionData,
   character: Character,
   text: string
 ): boolean {
+  // THE GATE: permission sequence still requires the name to be present
+  if (!containsCharacterName(text, character.name)) return false;
   if (isFalsePositive(text)) return false;
-
-  const characterId = character.id
-  const characterName = character.name
 
   const scanDepth = getCoLocatedParticipantCount(interactionData, character);
   const recentHistory = interactionData.interactionHistory.slice(-scanDepth);
 
   let previousMessageBySameCharacter: HistoryMessage | null = null;
   for (let i = recentHistory.length - 1; i >= 0; i--) {
-    if (recentHistory[i].character.id === characterId) {
+    if (recentHistory[i].character.id === character.id) {
       previousMessageBySameCharacter = recentHistory[i];
       break;
     }
@@ -154,11 +171,11 @@ function detectNamePermissionSequence(
 
   if (!wasPermissionAsked) return false;
 
-  if (detectDirectNameReveal(text, characterName)) return true;
+  if (detectDirectNameReveal(text, character.name)) return true;
 
   const trimmed = text.trim();
   const isLikelyJustAName = trimmed.split(/\s+/).length <= 3 && !/[.!?]/.test(trimmed);
-  if (isLikelyJustAName && isNameMatch(trimmed, characterName)) return true;
+  if (isLikelyJustAName && isNameMatch(trimmed, character.name)) return true;
 
   return false;
 }
@@ -168,22 +185,23 @@ export function detectName(
   character: Character,
   text: string,
 ) {
-  
-  const characterName = character.name
+  // THE GATE: no name in text = no reveal possible
+  if (!containsCharacterName(text, character.name)) return false;
 
+  const chatOnly = interactionData.interactionHistory.filter(m => m.messageType === 'chat');
   const scanDepth = getCoLocatedParticipantCount(interactionData, character);
-  const recentHistory = interactionData.interactionHistory.slice(-scanDepth);
+  const recentHistory = chatOnly.slice(-scanDepth);
 
   const nameQuestionRecentlyAsked = recentHistory.some(msg =>
-    msg.messageType === 'chat' && detectNameQuestion(msg.textContent)
+    detectNameQuestion(msg.textContent)
   );
 
-  if (detectNameReveal(text, characterName, nameQuestionRecentlyAsked)) return true;
+  if (detectNameReveal(text, character.name, nameQuestionRecentlyAsked)) return true;
 
   if (nameQuestionRecentlyAsked && !isFalsePositive(text)) {
     const trimmed = text.trim();
     const isLikelyJustAName = trimmed.split(/\s+/).length <= 3 && !/[.!?]/.test(trimmed);
-    if (isLikelyJustAName && isNameMatch(trimmed, characterName)) return true;
+    if (isLikelyJustAName && isNameMatch(trimmed, character.name)) return true;
   }
 
   return detectNamePermissionSequence(interactionData, character, text);
