@@ -397,13 +397,13 @@ function App() {
 
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
-        const currentCount = interactionData.interactionHistory?.length ?? 0;
+        const historyLength = interactionData.interactionHistory?.length ?? 0;
         const protagId = interactionData.protagonist?.id;
         const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
-        const hasContent = nonProtagParticipants.length > 0 || currentCount > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || !!interactionData.Profile;
+        const hasContent = nonProtagParticipants.length > 0 || historyLength > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || (interactionData.audioTracks?.length ?? 0) > 0 || !!interactionData.Profile;
         if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
-        if (chatModifiedRef.current && currentCount !== previousMessageCountRef.current) {
-            previousMessageCountRef.current = currentCount;
+        if (chatModifiedRef.current && historyLength !== previousMessageCountRef.current) {
+            previousMessageCountRef.current = historyLength;
             saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
             if (!rawChatShells.some(c => c.id === interactionData.id)) refreshChatList();
         }
