@@ -3,7 +3,7 @@ import React from 'react';
 import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
-import { resolveDisplayNameFromCache } from '../../hooks/immersionLogic';
+import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
@@ -55,7 +55,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 {displayMessages.map((message, renderIndex) => {
                     if (!message.character) return null;
                     const index = renderIndex;
-                    const dn = resolveDisplayNameFromCache(displayNameCache, index, message.character.id);
+                    const dn = resolveDelayedDisplayNameFromCache(displayNameCache, index, message.character.id);
                     
                     const stem = (() => {
                         if (!parentInteractionMessageId) return false;

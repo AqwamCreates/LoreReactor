@@ -58,7 +58,7 @@ export function useDisplayNameCache(interactionData: InteractionData | null): Di
     }, [interactionData]);
 }
 
-export function resolveDisplayNameFromCache(
+export function resolveDelayedDisplayNameFromCache(
     cache: DisplayNameCache | null,
     chatMessageIndex: number,
     characterId: string
@@ -87,15 +87,11 @@ export function resolveDisplayNameFromCache(
         return cache.participantNameMap.get(characterId) ?? 'Unknown';
     }
 
-    if (targetMessage.isNameRevealed && targetMessage.character.id === characterId) {
-        return targetMessage.character.name;
-    }
-
     const idx = cache.participantIndexMap.get(characterId);
     return idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
 }
 
 export function getDelayedDisplayName(interactionData: InteractionData, interactionMessageIndex: number, characterId: string): string {
     const cache = buildDisplayNameCache(interactionData);
-    return resolveDisplayNameFromCache(cache, interactionMessageIndex, characterId);
+    return resolveDelayedDisplayNameFromCache(cache, interactionMessageIndex, characterId);
 }
