@@ -1,4 +1,3 @@
-
 // src/hooks/useChatSession.tsx
 import { useRef, useCallback, useEffect } from 'react';
 import { useChatState } from './useChatState';
@@ -14,6 +13,7 @@ import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useMemoryTrigger } from './useMemoryTrigger';
+import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import type { Character, InteractionData, PromptBlock, ChatMessage } from '../types';
@@ -79,6 +79,11 @@ export function useChatSession() {
 
     const state = useChatState();
 
+    // Direct Zustand selectors for stable effect dependencies
+    const interactionData = useSessionStore(s => s.interactionData);
+    const selectedModel = useSessionStore(s => s.selectedModel);
+    const autonomousMode = useSessionStore(s => s.interactionData?.Profile?.autonomousMode ?? false);
+
     const abortControllerRef = useRef<AbortController | null>(null);
     const isProcessingSilentlyRef = useRef(false);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
@@ -106,49 +111,55 @@ export function useChatSession() {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(state.setStreamingState, setStreamingText, streamingTextRef);
 
+    // Load budget data once on mount
     useEffect(() => {
+        let cancelled = false;
         (async () => {
             try {
                 const bd = await loadRawBudgetData();
-                if (bd) state.setBudgetData(bd);
+                if (!cancelled && bd) state.setBudgetData(bd);
             } catch (e) { console.warn('Failed to load budget data:', e); }
         })();
+        return () => { cancelled = true; };
     }, [state.setBudgetData]);
 
+    // Fetch model status once on mount
     useEffect(() => {
+        let cancelled = false;
         (async () => {
             try {
                 const response = await fetch(`${localURL}/models/status`);
-                if (!response.ok) return;
+                if (!response.ok || cancelled) return;
                 const data = await response.json();
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
-                state.updateRunningModels(status);
-            } catch (e) { addToast(`Failed to fetch models status: ${e}`); }
+                if (!cancelled) state.updateRunningModels(status);
+            } catch (e) { if (!cancelled) addToast(`Failed to fetch models status: ${e}`); }
         })();
-    }, [state, addToast]);
+        return () => { cancelled = true; };
+    }, [state.updateRunningModels, addToast]);
 
     useEffect(() => {
-        if (state.selectedModel) engine.setContext(state.selectedModel);
-    }, [state.selectedModel]);
+        if (selectedModel) engine.setContext(selectedModel);
+    }, [selectedModel]);
 
+    // Token counting — depends on interactionData changes only
     useEffect(() => {
-        const data = state.interactionData;
-        if (!data) return;
+        if (!interactionData) return;
         let cancelled = false;
         (async () => {
             let total = 0;
-            for (const m of data.interactionHistory) {
+            for (const m of interactionData.interactionHistory) {
                 if (m.messageType === 'chat') total += await engine.countTokens(m.textContent);
             }
             if (!cancelled) state.setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [state]);;
+    }, [interactionData, state.setNumberOfTokens]);
 
+    // Autonomous mode — depends on autonomousMode flag only
     useEffect(() => {
-        const autonomousEnabled = state.interactionData?.Profile?.autonomousMode ?? false;
-        if (autonomousEnabled && state.interactionData) {
+        if (autonomousMode && interactionData) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
             chatEngine.startAutonomousMode(
                 checkCanAct,
@@ -160,7 +171,7 @@ export function useChatSession() {
             chatEngine.stopAutonomousMode();
         }
         return () => { chatEngine.stopAutonomousMode(); };
-    }, [chatEngine, isLoadingRef, resetStream, state]);
+    }, [autonomousMode, interactionData, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
 
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = state.getState().selectedModel;
@@ -168,7 +179,7 @@ export function useChatSession() {
         if (m.apiKey) return true;
         const models = state.getState().runningModels;
         return !!(m.id && models[m.id]?.port);
-    }, [state]);
+    }, [state.getState]);
 
     const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
         const p = pendingPartialRef.current; if (!p) return base;
@@ -264,8 +275,6 @@ export function useChatSession() {
         }
     }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
 
-    // Dedicated action interjection function — matches useActionMenu's expected signature
-        // Dedicated action interjection function — sends action AS the target character
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         if (!state.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -280,7 +289,6 @@ export function useChatSession() {
         isAtBottomRef.current = true;
 
         try {
-            // Send the action AS the target character, not the protagonist
             const chatMessage = createChatMessage(state.interactionData, targetChar, actionText);
             const td = addMessageToInteractionData(state.interactionData, chatMessage);
 

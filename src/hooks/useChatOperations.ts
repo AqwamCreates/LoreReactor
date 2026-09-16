@@ -42,6 +42,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
     }, []);
 
     const handleSwitchChat = useCallback(async (id: string) => {
+        if (interactionData?.id === id) return;
         tokenEngine.clearTokenCache();
         await safeAutoSave(interactionData);
         clearFetchCache();
