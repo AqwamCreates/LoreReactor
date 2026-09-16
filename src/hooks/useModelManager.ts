@@ -36,10 +36,15 @@ export function useModelManager() {
     const API_BASE = localURL;
     const idleNotifiedRef = useRef<Set<string>>(new Set());
     const runningModelsRef = useRef(runningModels);
+    const modelsRef = useRef(models);
+    const addToastRef = useRef(addToast);
+    const selectedModelIdRef = useRef(selectedModelId);
 
-    useEffect(() => {
-        runningModelsRef.current = runningModels;
-    }, [runningModels]);
+    // Sync refs via effects (not during render)
+    useEffect(() => { runningModelsRef.current = runningModels; }, [runningModels]);
+    useEffect(() => { modelsRef.current = models; }, [models]);
+    useEffect(() => { addToastRef.current = addToast; }, [addToast]);
+    useEffect(() => { selectedModelIdRef.current = selectedModelId; }, [selectedModelId]);
 
     // Persist selected model ID to localStorage
     useEffect(() => {
@@ -62,7 +67,8 @@ export function useModelManager() {
         }
     }, [selectedModelId, models]);
 
-    const fetchStatus = useCallback(async () => {
+    // Stable fetchStatus — stored in ref, updated via effect
+    const fetchStatusFn = useCallback(async () => {
         try {
             const response = await fetch(`${API_BASE}/models/status`);
             if (!response.ok) return;
@@ -98,14 +104,14 @@ export function useModelManager() {
                         
                         if (allIdle && !idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.add(m.id);
-                            addToast("Model idle and ready", "success");
+                            addToastRef.current("Model idle and ready", "success");
                         } else if (!allIdle && idleNotifiedRef.current.has(m.id)) {
                             idleNotifiedRef.current.delete(m.id);
                         }
                     } catch (e) {
                         const message = e instanceof Error ? e.message : "Unknown error";
                         console.error(`Failed to fetch status for model ${m.id}:`, e);
-                        addToast(`Failed to fetch status for model ${m.id}: ${message}`, "error");
+                        addToastRef.current(`Failed to fetch status for model ${m.id}: ${message}`, "error");
                     }
                 }
             }
@@ -119,60 +125,50 @@ export function useModelManager() {
         } catch (e) {
             const message = e instanceof Error ? e.message : "Unknown error";
             console.error("Failed to fetch model status", e);
-            addToast(`Failed to fetch model status: ${message}`, "error");
+            addToastRef.current(`Failed to fetch model status: ${message}`, "error");
         }
-    }, [API_BASE, addToast]);
+    }, [API_BASE]);
 
-    const loadModels = useCallback(async () => {
+    const fetchStatusRef = useRef(fetchStatusFn);
+    useEffect(() => { fetchStatusRef.current = fetchStatusFn; }, [fetchStatusFn]);
+
+    // Stable loadModels — stored in ref, updated via effect
+    const loadModelsFn = useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await loadAllRawModels();
             setModels(data);
-            await fetchStatus();
+            await fetchStatusRef.current();
         } catch (e) {
             const message = e instanceof Error ? e.message : "Unknown error";
             console.error("Failed to load models", e);
-            addToast(`Failed to load models list: ${message}`, "error");
+            addToastRef.current(`Failed to load models list: ${message}`, "error");
         } finally {
             setIsLoading(false);
         }
-    }, [addToast, fetchStatus]);
+    }, []);
 
-    const saveModel = async (model: LanguageModel) => {
+    const loadModelsRef = useRef(loadModelsFn);
+    useEffect(() => { loadModelsRef.current = loadModelsFn; }, [loadModelsFn]);
+
+    // Public-facing stable callbacks
+    const loadModels = useCallback(async () => { await loadModelsRef.current(); }, []);
+
+    const saveModel = useCallback(async (model: LanguageModel) => {
         try {
             await saveRawModel(model);
-            await loadModels();
-            addToast(`Model ${model.name} saved`, "success");
+            await loadModelsRef.current();
+            addToastRef.current(`Model ${model.name} saved`, "success");
             return true;
         } catch (e) {
             const message = e instanceof Error ? e.message : "Unknown error";
             console.error("Failed to save model", e);
-            addToast(`Failed to save model: ${message}`, "error");
+            addToastRef.current(`Failed to save model: ${message}`, "error");
             return false;
         }
-    };
+    }, []);
 
-    const deleteModel = async (id: string) => {
-        if (runningModels[id]?.isRunning) {
-            await toggleModelLoad(id, true); 
-        }
-        try {
-            await deleteRawModel(id);
-            await loadModels();
-            if (selectedModelId === id) {
-                setSelectedModelId(null);
-            }
-            addToast("Model deleted", "info");
-            return true;
-        } catch (e) {
-            const message = e instanceof Error ? e.message : "Unknown error";
-            console.error("Failed to delete model", e);
-            addToast(`Failed to delete model: ${message}`, "error");
-            return false;
-        }
-    };
-
-    const unloadModelInternal = async (id: string): Promise<boolean> => {
+    const unloadModelInternal = useCallback(async (id: string): Promise<boolean> => {
         try {
             const response = await fetch(`${API_BASE}/models/unload`, {
                 method: 'POST',
@@ -195,51 +191,51 @@ export function useModelManager() {
             console.error(`Failed to unload model ${id}:`, message);
             return false;
         }
-    };
+    }, [API_BASE]);
 
-    const unloadOtherRunningModels = async (targetId: string) => {
-        const otherRunningIds = Object.entries(runningModels)
-            .filter(([rid, state]) => rid !== targetId && state.isRunning)
+    const unloadOtherRunningModels = useCallback(async (targetId: string) => {
+        const otherRunningIds = Object.entries(runningModelsRef.current)
+            .filter(([rid, st]) => rid !== targetId && st.isRunning)
             .map(([rid]) => rid);
         
         for (const otherId of otherRunningIds) {
-            const otherName = models.find(m => m.id === otherId)?.name || otherId;
-            addToast(`Switching models: Stopping ${otherName} to free resources...`, "info");
+            const otherName = modelsRef.current.find(m => m.id === otherId)?.name || otherId;
+            addToastRef.current(`Switching models: Stopping ${otherName} to free resources...`, "info");
             await unloadModelInternal(otherId);
         }
-    };
+    }, [unloadModelInternal]);
 
-    const toggleModelLoad = async (id: string, forceUnload = false) => {
-        const model = models.find(m => m.id === id);
+    const toggleModelLoad = useCallback(async (id: string, forceUnload = false) => {
+        const model = modelsRef.current.find(m => m.id === id);
         if (!model) return;
 
         const isCloudModel = !!model.apiKey && model.backend && cloudBackends.includes(model.backend as cloudBackend);
 
         if (isCloudModel) {
-            if (selectedModelId === id) {
+            if (selectedModelIdRef.current === id) {
                 setSelectedModelId(null);
-                addToast(`Cloud model ${model.name} deselected`, "info");
+                addToastRef.current(`Cloud model ${model.name} deselected`, "info");
             } else {
                 await unloadOtherRunningModels(id);
                 setSelectedModelId(id);
-                addToast(`Cloud model ${model.name} selected`, "success");
+                addToastRef.current(`Cloud model ${model.name} selected`, "success");
             }
             return;
         }
 
-        const isCurrentlyRunning = runningModels[id]?.isRunning;
+        const isCurrentlyRunning = runningModelsRef.current[id]?.isRunning;
         
         if (isCurrentlyRunning && !forceUnload) {
             try {
-                addToast("Stopping model...", "info");
+                addToastRef.current("Stopping model...", "info");
                 const success = await unloadModelInternal(id);
                 if (success) {
-                    addToast("Model stopped successfully", "success");
-                    if (selectedModelId === id) setSelectedModelId(null);
+                    addToastRef.current("Model stopped successfully", "success");
+                    setSelectedModelId(prev => prev === id ? null : prev);
                 }
             } catch (e: unknown) {
                 const message = e instanceof Error ? e.message : "Unknown error";
-                addToast(`Failed to stop model: ${message}`, "error");
+                addToastRef.current(`Failed to stop model: ${message}`, "error");
             }
         } 
         else if (!isCurrentlyRunning) {
@@ -248,7 +244,7 @@ export function useModelManager() {
             const args = buildModelLoadArguments(model);
             
             try {
-                addToast(`Starting model ${model.name}...`, "info");
+                addToastRef.current(`Starting model ${model.name}...`, "info");
                 const response = await fetch(`${API_BASE}/models/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -257,7 +253,7 @@ export function useModelManager() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    addToast(`Model loaded on port ${data.port}`, "success");
+                    addToastRef.current(`Model loaded on port ${data.port}`, "success");
                     setRunningModels(prev => ({ ...prev, [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false } }));
                     setSelectedModelId(id);
                 } else {
@@ -265,26 +261,61 @@ export function useModelManager() {
                 }
             } catch (e: unknown) {
                 const message = e instanceof Error ? e.message : "Unknown error";
-                addToast(`Failed to start: ${message}`, "error");
+                addToastRef.current(`Failed to start: ${message}`, "error");
             }
         }
-        else if (isCurrentlyRunning && selectedModelId !== id) {
+        else if (isCurrentlyRunning) {
             await unloadOtherRunningModels(id);
             setSelectedModelId(id);
-            addToast(`Model ${model.name} selected`, "success");
+            addToastRef.current(`Model ${model.name} selected`, "success");
         }
-    };
+    }, [API_BASE, unloadModelInternal, unloadOtherRunningModels]);
 
+    const deleteModel = useCallback(async (id: string) => {
+        if (runningModelsRef.current[id]?.isRunning) {
+            await unloadModelInternal(id);
+        }
+        try {
+            await deleteRawModel(id);
+            await loadModelsRef.current();
+            setSelectedModelId(prev => prev === id ? null : prev);
+            addToastRef.current("Model deleted", "info");
+            return true;
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Unknown error";
+            console.error("Failed to delete model", e);
+            addToastRef.current(`Failed to delete model: ${message}`, "error");
+            return false;
+        }
+    }, [unloadModelInternal]);
+
+    // Single effect: load once on mount, poll every 2 seconds
     useEffect(() => {
-        const timeout = setTimeout(() => {
-            void loadModels();
-        }, 0);
-        const interval = setInterval(fetchStatus, 2000);
+        let cancelled = false;
+
+        const initialLoad = async () => {
+            setIsLoading(true);
+            try {
+                const data = await loadAllRawModels();
+                if (!cancelled) setModels(data);
+                await fetchStatusRef.current();
+            } catch (e) {
+                const message = e instanceof Error ? e.message : "Unknown error";
+                console.error("Failed to load models", e);
+                if (!cancelled) addToastRef.current(`Failed to load models list: ${message}`, "error");
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        };
+
+        initialLoad();
+        const interval = setInterval(() => { void fetchStatusRef.current(); }, 3000);
+
         return () => {
-            clearTimeout(timeout);
+            cancelled = true;
             clearInterval(interval);
         };
-    }, [fetchStatus, loadModels]);
+    }, []);
 
     return { 
         models, 
