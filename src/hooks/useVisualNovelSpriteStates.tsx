@@ -181,8 +181,6 @@ function applyMovement(
                 updatedState.verticalOffset = clamp(updatedState.verticalOffset - 30, 0, 60);
                 break;
             case 'jump':
-                // Jump is handled via CSS animation class, state stays same
-                // The view will detect this entry type and apply animation
                 break;
             case 'stretch':
                 updatedState.verticalOffset = clamp(updatedState.verticalOffset - 8, -15, 60);
@@ -391,19 +389,26 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
     const lastParsedIndexRef = useRef<number>(-1);
     const statesRef = useRef<Map<string, VisualNovelSpriteState>>(new Map());
 
-    // Initialize default states for all visible characters
+    // Initialize/reset states when visible characters change (ref-only, no setState)
     useEffect(() => {
         const currentStates = statesRef.current;
+        const existingIds = new Set(currentStates.keys());
+        const newIds = new Set(visibleCharacterIds);
+
         for (const characterId of visibleCharacterIds) {
             if (!currentStates.has(characterId)) {
                 currentStates.set(characterId, getDefaultState());
             }
         }
-        for (const characterId of currentStates.keys()) {
-            if (!visibleCharacterIds.includes(characterId)) {
+
+        for (const characterId of existingIds) {
+            if (!newIds.has(characterId)) {
                 currentStates.delete(characterId);
             }
         }
+
+        lastParsedIndexRef.current = -1;
+        movementHistoryRef.current = [];
     }, [visibleCharacterIds]);
 
     // Parse messages and update states
@@ -413,6 +418,8 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         const isFullReload = lastParsedIndexRef.current >= chatMessages.length || lastParsedIndexRef.current === -1;
 
         if (isFullReload) {
+            setIsInitialLoad(true);
+            setJumpingCharacterIds(new Set());
             statesRef.current = new Map();
             movementHistoryRef.current = [];
             for (const characterId of visibleCharacterIds) {
@@ -470,14 +477,6 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
             setIsInitialLoad(false);
         }
     }, [chatMessages, visibleCharacterIds]);
-
-    // Reset on session change
-    useEffect(() => {
-        setIsInitialLoad(true);
-        lastParsedIndexRef.current = -1;
-        movementHistoryRef.current = [];
-        setJumpingCharacterIds(new Set());
-    }, [visibleCharacterIds]);
 
     const rollbackToMessage = useCallback((messageIndex: number) => {
         const history = movementHistoryRef.current;

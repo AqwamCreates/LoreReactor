@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+// src/hooks/useStopPatternManager.ts
+import { useState } from 'react';
 import type { StopPattern } from '../types';
 import { loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern } from '../storage/serverStorage';
 
@@ -9,40 +10,39 @@ export function useStopPatternManager() {
     const loadStopPatterns = async () => {
         setIsLoading(true);
         try {
-        const data = await loadAllRawStopPatterns();
-        setStopPatterns(data);
+            const data = await loadAllRawStopPatterns();
+            setStopPatterns(data);
         } catch (error) {
-        console.error("Failed to load stop patterns", error);
+            console.error("Failed to load stop patterns", error);
         } finally {
-        setIsLoading(false);
+            setIsLoading(false);
         }
     };
 
+    // Load on mount without useEffect
+    useState(() => { loadStopPatterns(); });
+
     const saveStopPattern = async (pattern: StopPattern) => {
         try {
-        await saveRawStopPattern(pattern);
-        await loadStopPatterns();
-        return true;
+            await saveRawStopPattern(pattern);
+            await loadStopPatterns();
+            return true;
         } catch (error) {
-        console.error("Failed to save stop pattern", error);
-        return false;
+            console.error("Failed to save stop pattern", error);
+            return false;
         }
     };
 
     const deleteStopPattern = async (id: string) => {
         try {
-        await deleteRawStopPattern(id);
-        await loadStopPatterns();
-        return true;
+            await deleteRawStopPattern(id);
+            await loadStopPatterns();
+            return true;
         } catch (error) {
-        console.error("Failed to delete stop pattern", error);
-        return false;
+            console.error("Failed to delete stop pattern", error);
+            return false;
         }
     };
-
-    useEffect(() => {
-        loadStopPatterns();
-    }, []);
 
     return { stopPatterns, isLoading, saveStopPattern, deleteStopPattern, refresh: loadStopPatterns };
 }
