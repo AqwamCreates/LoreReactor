@@ -316,8 +316,6 @@ function App() {
         } else setSelectedGlobalModel(null);
     }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
 
-    useEffect(() => { updateRunningModels(runningModels); }, [runningModels, updateRunningModels]);
-
     useEffect(() => {
         if (!activeStrategy) return;
         let stratChanged = false;

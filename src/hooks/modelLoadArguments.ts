@@ -58,11 +58,11 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     if (tensorSplit) args.push('-ts', tensorSplit);
 
     // Boolean flags
-    if (params.cpu_moe === true) args.push('-cmoe');
-    if (params.no_kv_offload === true) args.push('-nkvo');
-    if (params.no_mmap === true) args.push('--no-mmap');
-    if (params.mlock === true) args.push('--mlock');
-    if (params.numa === true) args.push('--numa');
+    if (params.cpu_moe) args.push('-cmoe');
+    if (params.no_kv_offload) args.push('-nkvo');
+    if (params.no_mmap) args.push('--no-mmap');
+    if (params.mlock) args.push('--mlock');
+    if (params.numa) args.push('--numa');
 
     // Extra flags (always appended last so they can override anything above)
     const extraFlags = params.extra_flags ? String(params.extra_flags).trim() : '';

@@ -6,12 +6,10 @@ import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
-import { localURL } from '../configurations';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
 import { DefaultBudgetData } from '../defaults';
 import { executeTools } from './ToolExecutor';
-import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
 import { StreamingAccumulator } from './StreamingAccumulator';
 
 // ─── Result Types ───────────────────────────────────────────────────
@@ -204,38 +202,13 @@ export class CharacterActor {
 
             if (strat) {
                 // ─── Budget Strategy Path ────────────────────────────
-                const loadLocalModel = async (modelId: string): Promise<number | null> => {
-                    const existing = runningModels[modelId];
-                    if (existing?.port) return existing.port;
-
-                    const targetModel = strat.localModels.find(m => m.id === modelId) || strat.onlineModels.find(m => m.id === modelId);
-                    if (!targetModel) return null;
-                    if (targetModel.apiKey && targetModel.backend) return null;
-
-                    try {
-                        const modelPath = targetModel.model || '';
-                        const args = buildModelLoadArguments(targetModel);
-
-                        const response = await fetch(`${localURL}/models/load`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: targetModel.id, modelPath, args }),
-                        });
-
-                        if (response.ok) {
-                            const responseData = await response.json();
-                            return responseData.port ?? null;
-                        }
-                    } catch (e) {
-                        console.warn(`Auto-load of model ${targetModel.name} failed:`, e);
-                    }
-                    return null;
-                };
+                // loadLocalModel is already injected into BudgetStrategyEngine
+                // by App.tsx via loadLocalModelForBudgetStrategyEngine.
+                // No need to duplicate it here.
 
                 const bse = getBudgetStrategyEngine();
                 bse.setStrategy(strat);
                 bse.setRunningModels(runningModels);
-                bse.setLoadLocalModel(loadLocalModel);
 
                 let bd: BudgetData | null = finalBudgetData;
                 if (!bd) {
