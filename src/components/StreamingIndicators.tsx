@@ -8,7 +8,7 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 interface StreamingIndicatorsProps {
     formattedStreamingText: React.ReactNode;
-    viewMode: 'ladder' | 'cinematic';
+    viewMode: 'ladder' | 'cinematic' | 'vn';
     currentCharacterId: string | undefined;
     streamingPortraitUrl: string | null;
     messagesLength: number;
