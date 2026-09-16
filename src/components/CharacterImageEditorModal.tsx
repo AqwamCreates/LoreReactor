@@ -1,6 +1,6 @@
 // src/components/CharacterImageEditorModal.tsx
 import type React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storage/serverStorage';
 import '../main.css';
 
@@ -23,22 +23,20 @@ interface CharacterImageEditorModalProps {
     onSave: (images: Record<string, string>) => void;
 }
 
-export function CharacterImageEditorModal({
-    isOpen,
-    onClose,
+function CharacterImageEditorContent({
     characterId,
     images,
+    onClose,
     onSave,
-}: CharacterImageEditorModalProps) {
-    const [localImages, setLocalImages] = useState<Record<string, string>>({});
+}: {
+    characterId: string;
+    images: Record<string, string>;
+    onClose: () => void;
+    onSave: (images: Record<string, string>) => void;
+}) {
+    const [localImages, setLocalImages] = useState<Record<string, string>>({ ...images });
     const [uploadingEmotion, setUploadingEmotion] = useState<string | null>(null);
     const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-    useEffect(() => {
-        if (isOpen) {
-            setLocalImages({ ...images });
-        }
-    }, [isOpen, images]);
 
     const handleFileChange = async (emotion: string, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -69,13 +67,10 @@ export function CharacterImageEditorModal({
         onClose();
     };
 
-    // Sort: neutral first, then alphabetical
     const sortedEmotions: EmotionLabel[] = [
         'neutral',
         ...EMOTION_LABELS.filter(e => e !== 'neutral').sort(),
     ];
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -144,5 +139,27 @@ export function CharacterImageEditorModal({
                 </div>
             </div>
         </div>
+    );
+}
+
+export function CharacterImageEditorModal({
+    isOpen,
+    onClose,
+    characterId,
+    images,
+    onSave,
+}: CharacterImageEditorModalProps) {
+    if (!isOpen) return null;
+
+    // Key forces remount when modal opens or character/images change,
+    // so useState initializer runs fresh without needing useEffect
+    return (
+        <CharacterImageEditorContent
+            key={`${characterId}-${JSON.stringify(images)}`}
+            characterId={characterId}
+            images={images}
+            onClose={onClose}
+            onSave={onSave}
+        />
     );
 }

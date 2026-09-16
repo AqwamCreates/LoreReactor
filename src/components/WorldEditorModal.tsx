@@ -1,5 +1,5 @@
 // src/components/WorldEditorModal.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { World, Character, Context, Location, Profile, AudioTrack, PromptBlock } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
@@ -25,56 +25,25 @@ interface WorldEditorModalProps {
     currentProfileId?: string;
 }
 
-export function WorldEditorModal({
-    isOpen, onClose, onSave, onLoadWorld, existingWorld,
+function WorldEditorContent({
+    existingWorld, onClose, onSave, onLoadWorld,
     allCharacters, allContexts, allLocations, allProfiles, allAudioTracks, allPromptBlocks,
     currentCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds, currentPromptBlockIds,
-}: WorldEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [charIds, setCharIds] = useState<string[]>([]);
-    const [ctxIds, setCtxIds] = useState<string[]>([]);
-    const [locIds, setLocIds] = useState<string[]>([]);
-    const [audioTrackIds, setAudioTrackIds] = useState<string[]>([]);
-    const [promptBlockIds, setPromptBlockIds] = useState<string[]>([]);
-    const [profileId, setProfileId] = useState('');
+}: Omit<WorldEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingWorld?.name ?? '');
+    const [description, setDescription] = useState(existingWorld?.description ?? '');
+    const [charIds, setCharIds] = useState<string[]>(existingWorld ? [...existingWorld.characterIds] : []);
+    const [ctxIds, setCtxIds] = useState<string[]>(existingWorld ? [...existingWorld.contextIds] : []);
+    const [locIds, setLocIds] = useState<string[]>(existingWorld ? [...existingWorld.locationIds] : []);
+    const [audioTrackIds, setAudioTrackIds] = useState<string[]>(existingWorld ? [...(existingWorld.audioTrackIds || [])] : []);
+    const [promptBlockIds, setPromptBlockIds] = useState<string[]>(existingWorld ? [...(existingWorld.promptBlockIds || [])] : []);
+    const [profileId, setProfileId] = useState(existingWorld?.profileId ?? '');
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
     const [audioSearch, setAudioSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [isCloned, setIsCloned] = useState(false);
-
-    useEffect(() => {
-        if (!isOpen) return;
-        setIsCloned(false);
-        if (existingWorld) {
-            setName(existingWorld.name);
-            setDescription(existingWorld.description || '');
-            setCharIds([...existingWorld.characterIds]);
-            setCtxIds([...existingWorld.contextIds]);
-            setLocIds([...existingWorld.locationIds]);
-            setAudioTrackIds([...(existingWorld.audioTrackIds || [])]);
-            setPromptBlockIds([...(existingWorld.promptBlockIds || [])]);
-            setProfileId(existingWorld.profileId || '');
-        } else {
-            setName('');
-            setDescription('');
-            setCharIds([]);
-            setCtxIds([]);
-            setLocIds([]);
-            setAudioTrackIds([]);
-            setPromptBlockIds([]);
-            setProfileId('');
-        }
-        setCharSearch('');
-        setCtxSearch('');
-        setLocSearch('');
-        setAudioSearch('');
-        setPromptBlockSearch('');
-    }, [isOpen, existingWorld]);
-
-    if (!isOpen) return null;
 
     const toggleInList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -263,5 +232,16 @@ export function WorldEditorModal({
                 </div>
             </div>
         </div>
+    );
+}
+
+export function WorldEditorModal(props: WorldEditorModalProps) {
+    if (!props.isOpen) return null;
+
+    return (
+        <WorldEditorContent
+            key={`${props.existingWorld?.id ?? 'new'}-${props.isOpen}`}
+            {...props}
+        />
     );
 }

@@ -24,7 +24,7 @@ interface EntitySelectListProps<T extends EntitySelectListItem> {
 function getEntityDescription(item: EntitySelectListItem): string {
     const raw = item.description || item.text || '';
     if (!raw) return '';
-    return raw.length > 80 ? raw.substring(0, 80) + '...' : raw;
+    return raw.length > 80 ? `${raw.substring(0, 80)}...` : raw;
 }
 
 /**

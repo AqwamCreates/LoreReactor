@@ -83,7 +83,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     const formatNumber = (num: number) => num.toLocaleString();
 
     const hasBudget = budgetSpent !== undefined && maximumBudget !== undefined && maximumBudget > 0;
-    const budgetPercent = hasBudget ? Math.min(100, Math.round((budgetSpent! / maximumBudget!) * 100)) : 0;
+    const budgetPercent = hasBudget ? Math.min(100, Math.round((budgetSpent / maximumBudget) * 100)) : 0;
     const budgetColor = budgetPercent > 95 ? '#ff4444' : budgetPercent > 80 ? '#ffaa00' : '';
 
     const formatResetTime = (ms: number): string => {
@@ -101,23 +101,21 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
         return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
     };
 
-    // Compute base session duration from store
-    const sessionDurationMs = sessionStartTimestamp ? Date.now() - sessionStartTimestamp : 0;
-
-    // Live ticking duration while details panel is open
-    const [liveDuration, setLiveDuration] = useState(sessionDurationMs);
+    // Session duration: computed via Date.now() inside interval callback only
+    const [liveDuration, setLiveDuration] = useState(0);
 
     useEffect(() => {
-        if (!showDetails || !sessionStartTimestamp) {
-            setLiveDuration(sessionDurationMs);
-            return;
-        }
-        // Tick every second while details are visible
-        const interval = setInterval(() => {
+        if (!showDetails || !sessionStartTimestamp) return;
+
+        const tick = () => {
             setLiveDuration(Date.now() - sessionStartTimestamp);
-        }, 1000);
+        };
+
+        tick();
+        const interval = setInterval(tick, 1000);
+
         return () => clearInterval(interval);
-    }, [showDetails, sessionStartTimestamp, sessionDurationMs]);
+    }, [showDetails, sessionStartTimestamp]);
 
     return (
         <div
@@ -151,7 +149,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </div>
                 )}
 
-                {/* Token Usage (no bar, colored percentage) */}
+                {/* Token Usage */}
                 <div className="chat-stat-item" title={`${numberOfTokens} / ${maximumNumberOfTokens} token(s) (${percentage}%)`}>
                     <span className="chat-stat-label">📊</span>
                     <span className="chat-stat-value" style={{ color: tokenColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
@@ -159,9 +157,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                     </span>
                 </div>
 
-                {/* Budget Usage (no bar, colored percentage) */}
+                {/* Budget Usage */}
                 {hasBudget && (
-                    <div className="chat-stat-item" title={`Budget: $${formatCost(budgetSpent!)} / $${formatCost(maximumBudget!)} (${budgetPercent}%)`}>
+                    <div className="chat-stat-item" title={`Budget: $${formatCost(budgetSpent)} / $${formatCost(maximumBudget)} (${budgetPercent}%)`}>
                         <span className="chat-stat-label">💰</span>
                         <span className="chat-stat-value" style={{ color: budgetColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
                             {budgetPercent}%

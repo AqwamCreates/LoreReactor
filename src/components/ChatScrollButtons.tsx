@@ -54,7 +54,7 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
             container.removeEventListener('scroll', onScroll);
             window.removeEventListener('resize', updateRect);
         };
-    }, [containerRef, tick]);
+    }, [containerRef]);
 
     const scrollToTop = useCallback(() => {
         containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });

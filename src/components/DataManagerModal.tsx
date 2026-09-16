@@ -170,7 +170,7 @@ function formatDate(ts: number): string {
 }
 
 function daysAgo(ts: number): number {
-    if (!ts) return Infinity;
+    if (!ts) return Number.POSITIVE_INFINITY;
     return Math.floor((Date.now() - ts) / 86400000);
 }
 
@@ -266,7 +266,7 @@ export function DataManagerModal({
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
-        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id!));
+        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
 
         const referencedCharIds = new Set<string>();
         const referencedCtxIds = new Set<string>();
@@ -408,7 +408,7 @@ export function DataManagerModal({
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
-        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id!));
+        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
 
         for (const ctx of allContexts) {
             for (const binding of (ctx.characterBindings || [])) {
@@ -494,7 +494,7 @@ export function DataManagerModal({
     // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase().trim();
-        let filtered = cleanupItems.filter(item => {
+        const filtered = cleanupItems.filter(item => {
             const matchesOrphan = showOrphans && item.isOrphan;
             const matchesHollow = showHollows && item.isHollow;
             const matchesStale = showStale && item.isStale;
