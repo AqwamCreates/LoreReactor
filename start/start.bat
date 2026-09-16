@@ -145,7 +145,7 @@ echo.
 echo     Web UI    : http://localhost:4444
 echo     API Server: http://localhost:8448
 echo.
-echo     Press Ctrl+C to stop all servers.
+echo     Press Ctrl + C to stop all servers.
 echo     Closing this window also stops everything.
 echo   ========================================
 echo.
@@ -496,7 +496,7 @@ echo   [..] Setting up Python environment and installing dependencies ...
 cd /d "!EXL2_DEST!\tabbyAPI"
 
 if exist "start.bat" (
-    echo   [..] Running TabbyAPI start.bat ^(let deps install, then Ctrl+C to stop^) ...
+    echo   [..] Running TabbyAPI start.bat ^(let deps install, then Ctrl + C to stop^) ...
     call start.bat
 ) else (
     python -m venv venv
@@ -560,7 +560,7 @@ if exist "!EXL3_DEST!\tabbyAPI" (
 echo   [..] Installing dependencies ...
 cd /d "!EXL3_DEST!\tabbyAPI"
 if exist "start.bat" (
-    echo   Let deps install, then Ctrl+C to stop the server.
+    echo   Let deps install, then Ctrl + C to stop the server.
     call start.bat
 ) else (
     python -m venv venv
@@ -623,7 +623,7 @@ if exist "!EXL3HF_DEST!\tabbyAPI" (
 echo   [..] Installing dependencies ...
 cd /d "!EXL3HF_DEST!\tabbyAPI"
 if exist "start.bat" (
-    echo   Let deps install, then Ctrl+C to stop the server.
+    echo   Let deps install, then Ctrl + C to stop the server.
     call start.bat
 ) else (
     python -m venv venv

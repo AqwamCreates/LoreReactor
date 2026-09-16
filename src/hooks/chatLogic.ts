@@ -631,8 +631,8 @@ export function detectUnsummarizedLocationDepartures(
                 locationIndex: prevLoc,
                 startIdx: charMessages[segStart].historyIdx,
                 endIdx: charMessages[segEnd].historyIdx,
-                lastMsgId: lastMsg.id,
-            } as LocationVisitSegment);
+                lastMessageId: lastMsg.id,
+            });
         }
 
         if (i < charMessages.length && (prevLoc !== currLoc || prevLoc === undefined)) {

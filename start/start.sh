@@ -183,7 +183,7 @@ launch() {
     echo "    Web UI    : http://localhost:4444"
     echo "    API Server: http://localhost:8448"
     echo ""
-    echo "    Press Ctrl+C to stop all servers."
+    echo "    Press Ctrl + C to stop all servers."
     echo "  ========================================"
     echo ""
 
@@ -473,7 +473,7 @@ install_exllamav2() {
     echo "  [..] Setting up Python environment ..."
     cd "$dest/tabbyAPI"
     if [ -f "start.sh" ]; then
-        echo "  [..] Running TabbyAPI start.sh (let deps install, then Ctrl+C) ..."
+        echo "  [..] Running TabbyAPI start.sh (let deps install, then Ctrl + C) ..."
         bash start.sh || true
     else
         python3 -m venv venv

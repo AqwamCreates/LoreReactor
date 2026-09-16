@@ -13,7 +13,7 @@ const engine = getLanguageModelEngine();
 const AMBIENT_SYSTEM_PROMPT = "You are an ambient narration engine for a roleplay chat. Your ONLY job is to write a single short sentence (1-2 sentences max) describing the environment, atmosphere, or sensory details of the current moment. You must NOT write dialogue, character actions, thoughts, or advance the plot. You describe only the physical space, sounds, light, temperature, weather, and mood of the setting. Write in third person, present tense. Output ONLY the narration text with no preamble, no quotes, no markdown.";
 
 export function useAmbientNarration(
-    setStreamingCharacter: (c: Character | null) => void,
+    setStreamingState: (c: Character | null, text: string) => void,
     setStreamingText: (t: string) => void,
     streamingTextRef: React.MutableRefObject<string>,
 ) {
@@ -83,8 +83,7 @@ export function useAmbientNarration(
         }
 
         // Stream the result character by character
-        setStreamingCharacter(AMBIENT_NARRATOR);
-        setStreamingText('');
+        setStreamingState(AMBIENT_NARRATOR, '');
         streamingTextRef.current = '';
 
         for (let i = 0; i < selected.length; i++) {
@@ -96,7 +95,7 @@ export function useAmbientNarration(
         }
 
         return addMessageToInteractionData(data, createChatMessage(data, AMBIENT_NARRATOR, selected));
-    }, [setStreamingCharacter, setStreamingText, streamingTextRef]);
+    }, [setStreamingState, setStreamingText, streamingTextRef]);
 
     return { generateAmbientNarration, AMBIENT_NARRATOR };
 }

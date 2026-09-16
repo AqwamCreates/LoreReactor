@@ -1,3 +1,4 @@
+
 // src/hooks/useChatSession.tsx
 import { useRef, useCallback, useEffect } from 'react';
 import { useChatState } from './useChatState';
@@ -112,7 +113,7 @@ export function useChatSession() {
                 if (bd) state.setBudgetData(bd);
             } catch (e) { console.warn('Failed to load budget data:', e); }
         })();
-    }, [state]);
+    }, [state.setBudgetData]);
 
     useEffect(() => {
         (async () => {
@@ -125,24 +126,25 @@ export function useChatSession() {
                 state.updateRunningModels(status);
             } catch (e) { addToast(`Failed to fetch models status: ${e}`); }
         })();
-    }, [state, addToast]);
+    }, [state.updateRunningModels, addToast]);
 
     useEffect(() => {
         if (state.selectedModel) engine.setContext(state.selectedModel);
     }, [state.selectedModel]);
 
     useEffect(() => {
-        if (!state.interactionData) return;
+        const data = state.interactionData;
+        if (!data) return;
         let cancelled = false;
         (async () => {
             let total = 0;
-            for (const m of state.interactionData.interactionHistory) {
+            for (const m of data.interactionHistory) {
                 if (m.messageType === 'chat') total += await engine.countTokens(m.textContent);
             }
             if (!cancelled) state.setNumberOfTokens(total);
         })();
         return () => { cancelled = true; };
-    }, [state]);
+    }, [state]);;
 
     useEffect(() => {
         const autonomousEnabled = state.interactionData?.Profile?.autonomousMode ?? false;
@@ -158,7 +160,7 @@ export function useChatSession() {
             chatEngine.stopAutonomousMode();
         }
         return () => { chatEngine.stopAutonomousMode(); };
-    }, [state, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
+    }, [state.interactionData?.Profile?.autonomousMode, chatEngine, isLoadingRef, resetStream, state.getState, state.setState]);
 
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = state.getState().selectedModel;
@@ -166,7 +168,7 @@ export function useChatSession() {
         if (m.apiKey) return true;
         const models = state.getState().runningModels;
         return !!(m.id && models[m.id]?.port);
-    }, [state]);
+    }, [state.getState]);
 
     const applyPendingPartial = useCallback(async (base: InteractionData, protagonistId: string): Promise<InteractionData> => {
         const p = pendingPartialRef.current; if (!p) return base;
@@ -260,10 +262,10 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
 
     // Dedicated action interjection function — matches useActionMenu's expected signature
-       // Dedicated action interjection function — sends action AS the target character
+        // Dedicated action interjection function — sends action AS the target character
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         if (!state.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -321,8 +323,8 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
-
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
+    
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
 
@@ -497,7 +499,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
+    }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, isAtBottomRef]);
 
     const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character, allPromptBlocks?: PromptBlock[]) => {
         if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;

@@ -71,14 +71,15 @@ type BudgetStrategyWithRawModelIds = BudgetStrategy & {
 
 function App() {
     // ─── Session Hook ────────────────────────────────────────────────
+    const session = useChatSession();
     const {
         interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
         resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-        numberOfMessages, maximumNumberOfTokens, startNewChat,
+        startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel, updateRunningModels,
         activeStrategy, budgetData, processProtagonistImageSilently,
-    } = useChatSession();
+    } = session;
 
     const { addToast } = useToast();
 
@@ -154,7 +155,7 @@ function App() {
         if (activeStrategy) return true;
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
-        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend)) return true;
+        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return true;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true;
     }, [selectedModelId, allModels, runningModels, activeStrategy]);
 
@@ -227,7 +228,7 @@ function App() {
     const isModelLoading = useMemo(() => {
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
-        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend)) return false;
+        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return false;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
     }, [selectedModelId, allModels, runningModels]);
 
@@ -489,8 +490,6 @@ function App() {
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
-    // REMOVED: isStemMessage (unused)
-
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
         const container = chatHistoryRef.current;
@@ -605,7 +604,6 @@ function App() {
 
     // ─── Render ─────────────────────────────────────────────────────
 
-    // NO REVERSAL — all modes use same top-to-bottom order
     const displayMessages = useMemo(() => {
         const base = [...safeInteractionMessages];
 
@@ -636,7 +634,7 @@ function App() {
     }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
 
     const viewProps: ViewModeProps = {
-        interactionData!,
+        interactionData: interactionData!,
         displayMessages,
         currentCharacterId: currentCharacter?.id,
         editingId,
@@ -656,6 +654,7 @@ function App() {
         isEditingTitle,
         editTitleValue,
         parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
+        streamingCharacter,
         chatHistoryRef,
         messageEndRef,
         editTextareaRef,
@@ -738,8 +737,8 @@ function App() {
                                             <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
                                         </button>
                                         <ChatStatisticsBar
-                                            numberOfMessages={numberOfMessages}
-                                            maximumNumberOfTokens={maximumNumberOfTokens}
+                                            numberOfMessages={interactionData?.numberOfMessages ?? safeInteractionMessages.length}
+                                            maximumNumberOfTokens={session.numberOfTokens}
                                             maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
                                             maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}

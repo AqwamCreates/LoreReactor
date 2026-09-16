@@ -179,10 +179,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [displayMessages]);
 
     const lastSpeaker = useMemo(() => {
-        for (let i = chatMessages.length - 1; i >= 0; i--) {
-            return chatMessages[i];
-        }
-        return null;
+        return chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
     }, [chatMessages]);
 
     const activeSpeaker = useMemo(() => {

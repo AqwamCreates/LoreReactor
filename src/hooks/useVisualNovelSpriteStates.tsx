@@ -56,7 +56,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // =============================================================================
-// MOVEMENT PARSING
+// MOVEMENT PARSING (stem-based)
 // =============================================================================
 function parseMovementFromText(text: string, speakerId: string, participantIds: string[]): ParsedMovement[] {
     const movements: ParsedMovement[] = [];
@@ -65,78 +65,78 @@ function parseMovementFromText(text: string, speakerId: string, participantIds: 
     const mentionedChars = participantIds.filter(id => id !== speakerId && id !== AMBIENT_NARRATOR_ID);
     const firstMentioned = mentionedChars.length > 0 ? mentionedChars[0] : undefined;
 
-    // --- VERTICAL ACTIONS ---
-    if (/\b(crouches?|kneels?|bows?|ducks?|lowers?\s+(herself|himself|themselves|down)|bends?\s+(her|his|their)\s+knees?)\b/i.test(lowerText)) {
+    // --- VERTICAL ACTIONS (stem-based) ---
+    if (/\bcrouch|kneel|bow|duck|lower\s+(herself|himself|themselves|down)|bend\s+(her|his|their)\s+knee/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'crouch' });
-    } else if (/\b(stands?\s+up|rises?|straightens?|gets?\s+up|pushes?\s+(herself|himself|themselves)\s+up|unfolds?)\b/i.test(lowerText)) {
+    } else if (/\bstand\s+up|rise|straighten|get\s+up|push\s+(herself|himself|themselves)\s+up|unfold/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'stand' });
-    } else if (/\b(jumps?|leaps?|hops?|bounces?|vaults?)\b/i.test(lowerText)) {
+    } else if (/\bjump|leap|hop|bounce|vault/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'jump' });
-    } else if (/\b(stretches?|reaches?\s+up|raises?\s+(her|his|their)\s+arms?|extends?\s+upward|stretches?\s+(her|his|their)\s+body)\b/i.test(lowerText)) {
+    } else if (/\bstretch|reach\s+up|raise\s+(her|his|their)\s+arm|extend\s+upward/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'stretch' });
-    } else if (/\b(sits?\s*(down)?|takes?\s+a\s+seat|settles?\s+down|perches?|plops?\s+down)\b/i.test(lowerText)) {
+    } else if (/\bsit|take\s+a\s+seat|settle\s+down|perch|plop\s+down/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'sit' });
-    } else if (/\b(lies?\s+down|collapses?|falls?\s*(down|to\s+the\s+(ground|floor))?|slumps?|drops?\s+to\s+the\s+(ground|floor)|crumples?)\b/i.test(lowerText)) {
+    } else if (/\blie\s+down|collaps|fall|slump|drop\s+to\s+the\s+(ground|floor)|crumple/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lie' });
     }
 
-    // --- DEPTH/SCALE ACTIONS ---
-    if (/\b(leans?\s+(forward|in)|tilts?\s+forward)\b/i.test(lowerText)) {
+    // --- DEPTH/SCALE ACTIONS (stem-based) ---
+    if (/\blean\s+(forward|in)|tilt\s+forward/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lean_forward' });
-    } else if (/\b(leans?\s+back|recoils?|flinches?\s+back|shrinks?\s+back)\b/i.test(lowerText)) {
+    } else if (/\blean\s+back|recoil|flinch\s+back|shrink\s+back/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lean_back' });
-    } else if (/\b(towers?\s+over|looms?|stands?\s+tall|draws?\s+(herself|himself|themselves)\s+up)\b/i.test(lowerText)) {
+    } else if (/\btower|loom|stand\s+tall|draw\s+(herself|himself|themselves)\s+up/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'tower' });
-    } else if (/\b(shrinks?|cowers?|hunches?|makes?\s+(herself|himself|themselves)\s+small|curls?\s+up)\b/i.test(lowerText)) {
+    } else if (/\bshrink|cower|hunch|make\s+(herself|himself|themselves)\s+small|curl\s+up/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'shrink' });
     }
 
-    // --- HORIZONTAL FINE-TUNING ---
-    if (/\b(sidesteps?|shuffles?|edges?|slides?\s+sideways)\b/i.test(lowerText)) {
-        const dir = /\b(left)\b/i.test(lowerText) ? 'sidestep_left' : 'sidestep_right';
+    // --- HORIZONTAL FINE-TUNING (stem-based) ---
+    if (/\bsidestep|shuffle|edge|slide\s+sideway/i.test(lowerText)) {
+        const dir = /\bleft/i.test(lowerText) ? 'sidestep_left' : 'sidestep_right';
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: dir });
-    } else if (/\b(steps?\s+into\s+(the\s+)?center|takes?\s+center\s+stage|moves?\s+to\s+(the\s+)?middle)\b/i.test(lowerText)) {
+    } else if (/\bstep\s+into\s+(the\s+)?center|take\s+center\s+stage|move\s+to\s+(the\s+)?middle/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'center' });
-    } else if (/\b(turns?\s+away|looks?\s+away|faces?\s+away|turns?\s+(her|his|their)\s+back)\b/i.test(lowerText)) {
+    } else if (/\bturn\s+away|look\s+away|face\s+away|turn\s+(her|his|their)\s+back/i.test(lowerText)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'turn_away' });
     }
 
-    // --- RELATIVE MOVEMENT TOWARD/AWAY FROM TARGET ---
+    // --- RELATIVE MOVEMENT TOWARD/AWAY FROM TARGET (stem-based) ---
     if (firstMentioned) {
-        if (/\b(moves?|steps?|walks?|goes?|approaches?|moves?)\s+(closer\s+to|toward|towards|next\s+to|beside)\b/i.test(lowerText)) {
+        if (/\b(move|step|walk|go|approach)\s+(closer\s+to|toward|towards|next\s+to|beside)/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'closer', targetCharacterId: firstMentioned });
-        } else if (/\b(moves?|steps?|backs?|retreats?|moves?)\s+(away\s+from|back\s+from|from)\b/i.test(lowerText)) {
+        } else if (/\b(move|step|back|retreat)\s+(away\s+from|back\s+from|from)/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'away', targetCharacterId: firstMentioned });
-        } else if (/\b(hides?\s+behind|ducks?\s+behind|takes?\s+cover\s+behind)\b/i.test(lowerText)) {
+        } else if (/\bhide\s+behind|duck\s+behind|take\s+cover\s+behind/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'hide_behind', targetCharacterId: firstMentioned });
         }
 
-        // --- MULTI-CHARACTER INTERACTIONS ---
-        if (/\b(pushes?|shoves?|nudges?|bumps?\s+into)\b/i.test(lowerText)) {
+        // --- MULTI-CHARACTER INTERACTIONS (stem-based) ---
+        if (/\bpush|shove|nudge|bump\s+into/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'push', targetCharacterId: firstMentioned });
-        } else if (/\b(pulls?|drags?|grabs?\s+and\s+pulls?|tugs?)\b/i.test(lowerText)) {
+        } else if (/\bpull|drag|grab\s+and\s+pull|tug/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'pull', targetCharacterId: firstMentioned });
-        } else if (/\b(blocks?|stands?\s+between|intercepts?|steps?\s+in\s+front\s+of)\b/i.test(lowerText)) {
+        } else if (/\bblock|stand\s+between|intercept|step\s+in\s+front\s+of/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'block', targetCharacterId: firstMentioned });
-        } else if (/\b(gathers?|groups?\s+up|huddles?|clusters?\s+together)\b/i.test(lowerText)) {
+        } else if (/\bgather|group\s+up|huddle|cluster\s+together/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'gather', targetCharacterId: firstMentioned });
         }
 
-        // --- FACING ---
-        if (/\b(faces?|looks?\s+at|turns?\s+toward|turns?\s+to|stares?\s+at|glances?\s+at|watches?|eyes?)\b/i.test(lowerText)) {
+        // --- FACING (stem-based) ---
+        if (/\bface|look\s+at|turn\s+toward|turn\s+to|stare\s+at|glance\s+at|watch|eye/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'face', targetCharacterId: firstMentioned });
         }
     }
 
-    // --- ABSOLUTE LEFT/RIGHT (fallback if no other movement detected) ---
+    // --- ABSOLUTE LEFT/RIGHT (fallback, stem-based) ---
     if (movements.length === 0 || movements.every(m => m.type === 'face')) {
-        if (/\b(moves?|steps?|walks?|goes?|shifts?|slides?|drifts?)\s+(to\s+the\s+)?right\b/i.test(lowerText)) {
+        if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?right/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'right' });
-        } else if (/\b(moves?|steps?|walks?|goes?|shifts?|slides?|drifts?)\s+(to\s+the\s+)?left\b/i.test(lowerText)) {
+        } else if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?left/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'left' });
-        } else if (/\b(steps?\s+forward|advances?|moves?\s+forward|closes?\s+the\s+distance)\b/i.test(lowerText)) {
+        } else if (/\bstep\s+forward|advance|move\s+forward|close\s+the\s+distance/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'forward' });
-        } else if (/\b(steps?\s+back|retreats?|backs?\s+away|creates?\s+distance)\b/i.test(lowerText)) {
+        } else if (/\bstep\s+back|retreat|back\s+away|create\s+distance/i.test(lowerText)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'backward' });
         }
     }
@@ -277,7 +277,6 @@ function applyMovement(
                 break;
             }
             case 'gather': {
-                // Move both characters toward their average position
                 const avgDepth = (updatedState.depth + targetState.depth) / 2;
                 const avgScreenX = (updatedState.screenX + targetState.screenX) / 2;
                 updatedState.depth = updatedState.depth + (avgDepth - updatedState.depth) * 0.5;
@@ -446,7 +445,6 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
                         newJumpingIds.add(entry.characterId);
                     }
                 }
-                // Check if the movement itself was a jump
                 if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
                     newJumpingIds.add(movement.characterId);
                 }
@@ -459,7 +457,6 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
         if (newJumpingIds.size > 0 && !isFullReload) {
             setJumpingCharacterIds(newJumpingIds);
-            // Clear jump animation flag after animation completes
             setTimeout(() => {
                 setJumpingCharacterIds(new Set());
             }, 600);
