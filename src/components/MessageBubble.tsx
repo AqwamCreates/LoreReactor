@@ -208,7 +208,6 @@ function wrapCoreText(core: string, target: TargetFormat): string {
             return `(${core})`;
         case 'brackets':
             return `[${core}]`;
-        case 'plain':
         default:
             return core;
     }
@@ -347,11 +346,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
-    // FIX: Removed isResumingThisMessage guard entirely.
-    // The bubble must always render so it stays visible during resume generation.
-    // Deduplication with StreamingIndicators is handled in App.tsx via
-    // the hasPartialInHistory check instead.
-
     React.useEffect(() => {
         if (isEditing) {
             const segments = detectFormatSegments(editDraft);
@@ -360,6 +354,13 @@ export const MessageBubble = React.memo(function MessageBubble({
             rawDraftRef.current = editDraft;
         }
     }, [isEditing, editDraft]);
+
+    // Focus textarea when entering raw edit mode
+    React.useEffect(() => {
+        if (isRawEditing && editTextareaRef.current) {
+            editTextareaRef.current.focus();
+        }
+    }, [isRawEditing, editTextareaRef]);
 
     // Debounced token count during editing
     React.useEffect(() => {
@@ -397,8 +398,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const handleEnterRawEdit = React.useCallback(() => {
         rawDraftRef.current = editDraft;
         setIsRawEditing(true);
-        setTimeout(() => editTextareaRef.current?.focus(), 0);
-    }, [editDraft, editTextareaRef]);
+    }, [editDraft]);
 
     const handleExitRawEdit = React.useCallback(() => {
         const converted = applyConversions(rawDraftRef.current, conversionMap);
@@ -458,7 +458,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         alt={displayName}
                                         className="character-avatar"
                                         onClick={e => onAvatarClick(e, message.id, message.character)}
-                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        onError={e => { e.currentTarget.style.display = 'none'; }}
                                         style={{ cursor: 'pointer' }}
                                     />
                                 )
@@ -508,7 +508,6 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         }
                                     }}
                                     className="edit-textarea"
-                                    autoFocus
                                 />
                             ) : (
                                 <div

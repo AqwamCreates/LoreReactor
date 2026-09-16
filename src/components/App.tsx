@@ -642,7 +642,7 @@ function App() {
     }
 
     const viewProps: ViewModeProps = {
-        interactionData: interactionData!,
+        interactionData,
         displayMessages,
         currentCharacterId: currentCharacter?.id,
         editingId,

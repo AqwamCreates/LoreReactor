@@ -39,25 +39,21 @@ function extractTextContent(node: React.ReactNode): string {
     return '';
 }
 
-export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
-    title, items, isOpen, onClose, onSelect, onDelete, onCreateNew,
+function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
+    title, items, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
     specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
     secondaryActiveIds,
-}: ManagerModalProps<T>) {
+}: Omit<ManagerModalProps<T>, 'isOpen'>) {
     const [searchQuery, setSearchQuery] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Reset search and delete confirmation when modal opens/closes, focus search input
+    // Focus search input on mount — no setState needed since state initializes fresh
     useEffect(() => {
-        if (isOpen) {
-            setSearchQuery('');
-            setConfirmDeleteId(null);
-            searchInputRef.current?.focus();
-        }
-    }, [isOpen]);
+        searchInputRef.current?.focus();
+    }, []);
 
     const activeConfirmDeleteId = confirmDeleteId && items.some(item => item.id === confirmDeleteId)
         ? confirmDeleteId
@@ -121,8 +117,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         e.stopPropagation();
         setConfirmDeleteId(null);
     }, []);
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onKeyDown={handleKeyDown}>
@@ -214,4 +208,10 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             </div>
         </div>
     );
+}
+
+export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>(props: ManagerModalProps<T>) {
+    if (!props.isOpen) return null;
+
+    return <ManagerModalContent {...props} />;
 }
