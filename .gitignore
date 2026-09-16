@@ -68,23 +68,4 @@ user_data/
 # We ignore the whole user_data folder by default to protect privacy
 user_data/
 
-# === EXCEPTIONS: SHARE THESE DEFAULT CONFIGS ===
-# The '!' symbol tells Git to track these specific folders despite the rule above
-!user_data/sampler_data/
-!user_data/stop_patterns_data/
-!user_data/budget_strategy_data/
-
-# === KEEP THESE PRIVATE (NO EXCEPTIONS) ===
-# These contain personal chats, custom characters, images, and cache files
-# They will remain ignored because of the 'user_data/' rule at the top
-# user_data/interaction_data/
-# user_data/interaction_messages/
-# user_data/character_data/
-# user_data/character_images/
-# user_data/character_voices/
-# user_data/context_data/
-# user_data/location_data/
-# user_data/kv_caches/
-# user_data/extensions/
-
 local_backends/
