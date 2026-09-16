@@ -1,5 +1,5 @@
 // src/components/ManagerModal.tsx
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import '../main.css';
 
 interface ManagerModalProps<T> {
@@ -20,7 +20,6 @@ interface ManagerModalProps<T> {
     onSpecialAction?: (item: T) => void;
     specialActionTooltip?: (item: T) => string;
     activeSpecialActionId?: string;
-    /** Additional IDs that should show a secondary indicator (e.g., models in active strategy) */
     secondaryActiveIds?: Set<string>;
 }
 
@@ -49,12 +48,14 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 }: ManagerModalProps<T>) {
     const [searchQuery, setSearchQuery] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Reset search and delete confirmation when modal opens/closes
+    // Reset search and delete confirmation when modal opens/closes, focus search input
     useEffect(() => {
         if (isOpen) {
             setSearchQuery('');
             setConfirmDeleteId(null);
+            searchInputRef.current?.focus();
         }
     }, [isOpen]);
 
@@ -138,13 +139,13 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
                 <div className="modal-search-container">
                     <input
+                        ref={searchInputRef}
                         type="text"
                         className="modal-search-input"
                         placeholder={`Search ${title.toLowerCase()}.`}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         onClick={e => e.stopPropagation()}
-                        autoFocus
                     />
                 </div>
 

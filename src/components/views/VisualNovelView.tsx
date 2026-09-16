@@ -254,11 +254,17 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         }
     }, [isRawEditing, conversionMap, isEditingLastSpeaker, setEditDraft]);
 
+    // Focus textarea when entering raw edit mode
+    useEffect(() => {
+        if (isRawEditing && editTextareaRef.current) {
+            editTextareaRef.current.focus();
+        }
+    }, [isRawEditing, editTextareaRef]);
+
     const handleEnterRawEdit = useCallback(() => {
         rawDraftRef.current = editDraft;
         setIsRawEditing(true);
-        setTimeout(() => editTextareaRef.current?.focus(), 0);
-    }, [editDraft, editTextareaRef]);
+    }, [editDraft]);
 
     const handleExitRawEdit = useCallback(() => {
         const converted = applyConversions(rawDraftRef.current, conversionMap);
@@ -289,6 +295,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         : { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
 
     const isMassDeletingThis = isMassActive && massDeleteId === lastSpeaker?.id;
+
+    const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+        e.currentTarget.style.display = 'none';
+    }, []);
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
@@ -324,7 +334,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             filter: isSpeaking ? 'none' : 'brightness(0.8)',
                         }}>
                             <img src={portraitUrl} alt={character.name} className="vn-sprite"
-                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                onError={handleImageError} />
                         </div>
                     );
                 })}
@@ -344,34 +354,34 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                     <div className="vn-message-toolbar">
                         {isEditingLastSpeaker ? (
                             <>
-                                <button className="vn-toolbar-btn vn-toolbar-cancel" onClick={handleCancelEditing} title="Cancel Edit">✕</button>
-                                <button className="vn-toolbar-btn vn-toolbar-confirm" onClick={onSaveEdit} title="Save Edit">💾</button>
-                                <button className="vn-toolbar-btn vn-toolbar-warn" onClick={onRegenerateFromEdit} title="Save & Regenerate">↻</button>
+                                <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={handleCancelEditing} title="Cancel Edit">✕</button>
+                                <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onSaveEdit} title="Save Edit">💾</button>
+                                <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={onRegenerateFromEdit} title="Save & Regenerate">↻</button>
                             </>
                         ) : (
                             <>
                                 {isLoading && !isAmbientSpeaker && (
-                                    <button className="vn-toolbar-btn vn-toolbar-danger" onClick={onStopGeneration} title="Stop Generation">⏹</button>
+                                    <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={onStopGeneration} title="Stop Generation">⏹</button>
                                 )}
                                 {showToolbar && (
                                     <>
-                                        <button className="vn-toolbar-btn" onClick={() => onCopyText(lastSpeaker.textContent)} title="Copy Text">📋</button>
-                                        <button className="vn-toolbar-btn" onClick={() => onStartEditing(lastSpeaker.id, lastSpeaker.textContent)} title="Edit Message">✎</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(lastSpeaker.textContent)} title="Copy Text">📋</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(lastSpeaker.id, lastSpeaker.textContent)} title="Edit Message">✎</button>
                                         {lastSpeaker.isPartial ? (
-                                            <button className="vn-toolbar-btn" onClick={() => onResumeGeneration(lastSpeaker.id)} title="Resume Generation">▶</button>
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(lastSpeaker.id)} title="Resume Generation">▶</button>
                                         ) : (
-                                            <button className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(lastSpeaker.id, 'ai')} title="Regenerate">↻</button>
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(lastSpeaker.id, 'ai')} title="Regenerate">↻</button>
                                         )}
-                                        <button className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(lastSpeaker.id)} title="Branch Timeline">🌿</button>
-                                        <button className="vn-toolbar-btn" onClick={() => onClone(lastSpeaker.id)} title="Clone Chat">⑂</button>
-                                        <button className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(lastSpeaker.id)} title="Delete Message">🗑</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(lastSpeaker.id)} title="Branch Timeline">🌿</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onClone(lastSpeaker.id)} title="Clone Chat">⑂</button>
+                                        <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(lastSpeaker.id)} title="Delete Message">🗑</button>
                                         {isMassDeletingThis ? (
                                             <>
-                                                <button className="vn-toolbar-btn vn-toolbar-confirm" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
-                                                <button className="vn-toolbar-btn vn-toolbar-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
+                                                <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
+                                                <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
                                             </>
                                         ) : (
-                                            <button className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(lastSpeaker.id)} title="Mass Delete From Here">🗑️↓</button>
+                                            <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(lastSpeaker.id)} title="Mass Delete From Here">🗑️↓</button>
                                         )}
                                     </>
                                 )}
@@ -386,7 +396,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     <textarea ref={editTextareaRef} value={rawDraftRef.current} onChange={handleRawChange}
                                         onBlur={handleExitRawEdit}
                                         onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
-                                        className="vn-edit-textarea" autoFocus />
+                                        className="vn-edit-textarea" />
                                 ) : (
                                     <div className="vn-edit-preview" onClick={handleEnterRawEdit} title="Click to edit raw text">
                                         <MemoizedMessageText text={displayEditText} />

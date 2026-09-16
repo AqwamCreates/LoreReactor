@@ -234,7 +234,7 @@ function App() {
 
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
-    const safeInteractionMessages = chatMessages || [];
+    const safeInteractionMessages = useMemo(() => chatMessages || [], [chatMessages]);
     const massStartIndex = isMassActive && interactionData ? safeInteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     const maximumNumberOfContextTokens = useMemo(() => {
@@ -609,7 +609,7 @@ function App() {
 
         if (isLoading && streamingText && streamingCharacter) {
             const last = base[base.length - 1];
-            const isLastMessagePartial = last && last.isPartial && last.character.id === streamingCharacter.id;
+            const isLastMessagePartial = last?.isPartial && last.character.id === streamingCharacter.id;
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
             if (isLastMessagePartial) {
@@ -622,8 +622,8 @@ function App() {
                     textContent: streamingText,
                     isPartial: true,
                     files: [],
-                    firstCreatedTimestamp: Date.now(),
-                    lastUpdatedTimestamp: Date.now(),
+                    firstCreatedTimestamp: 0,
+                    lastUpdatedTimestamp: 0,
                     locationIndex: undefined,
                     characterLockedLocations: {},
                     parentInteractionMessageId: null,
@@ -632,6 +632,14 @@ function App() {
         }
         return base;
     }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
+
+    // Compute timeUntilReset via ref to avoid impure Date.now() in render
+    const timeUntilResetRef = useRef<number | undefined>(undefined);
+    if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
+        timeUntilResetRef.current = Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
+    } else {
+        timeUntilResetRef.current = undefined;
+    }
 
     const viewProps: ViewModeProps = {
         interactionData: interactionData!,
@@ -726,7 +734,7 @@ function App() {
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                         {isEditingTitle
-                                            ? <input type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} autoFocus style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
+                                            ? <input ref={el => el?.focus()} type="text" value={editTitleValue} onChange={e => setEditTitleValue(e.target.value)} onBlur={handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') cancelEditTitle(); }} style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
                                             : <><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
                                     </div>
                                     <div className="header-controls-group">
@@ -743,7 +751,7 @@ function App() {
                                             maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}
                                             maximumBudget={activeStrategy?.maximumBudget}
-                                            timeUntilReset={budgetData && activeStrategy && budgetData.resetDuration > 0 ? Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)) : undefined}
+                                            timeUntilReset={timeUntilResetRef.current}
                                         />
                                     </div>
                                 </div>

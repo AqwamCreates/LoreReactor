@@ -1,5 +1,5 @@
 // src/components/AlternateTimelinesModal.tsx
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import type { RawInteractionData } from '../types';
 import {
     ReactFlow,
@@ -96,6 +96,14 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
     const bgColor = data.isCurrent ? 'rgba(74, 222, 128, 0.12)' : data.isAncestor ? 'rgba(96, 165, 250, 0.08)' : 'rgba(245, 158, 11, 0.06)';
     const textColor = data.isCurrent ? '#4ade80' : data.isAncestor ? '#93c5fd' : '#fbbf24';
 
+    const renameInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (data.isRenaming && renameInputRef.current) {
+            renameInputRef.current.focus();
+        }
+    }, [data.isRenaming]);
+
     return (
         <div
             style={{
@@ -119,6 +127,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
             {data.isRenaming ? (
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     <input
+                        ref={renameInputRef}
                         type="text"
                         value={data.renameValue}
                         onChange={e => data.onRenameChange(e.target.value)}
@@ -126,7 +135,6 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                             if (e.key === 'Enter') data.onRenameSubmit();
                             if (e.key === 'Escape') data.onRenameCancel();
                         }}
-                        autoFocus
                         style={{
                             flex: 1,
                             background: 'var(--social-bg)',
@@ -140,6 +148,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                         }}
                     />
                     <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); data.onRenameSubmit(); }}
                         style={{
                             fontSize: '0.75rem',
@@ -155,6 +164,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                         ✓
                     </button>
                     <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); data.onRenameCancel(); }}
                         style={{
                             fontSize: '0.75rem',
@@ -189,6 +199,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                         {data.label}
                     </div>
                     <button
+                        type="button"
                         onClick={e => {
                             e.stopPropagation();
                             data.onStartRename();
@@ -231,6 +242,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: '4px', marginTop: 'auto', position: 'relative', zIndex: 10 }}>
                 <button
+                    type="button"
                     onClick={e => {
                         e.stopPropagation();
                         data.onInspect();
@@ -251,6 +263,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                 </button>
 
                 <button
+                    type="button"
                     onClick={e => {
                         e.stopPropagation();
                         data.onOpen();
@@ -271,6 +284,7 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                 </button>
 
                 <button
+                    type="button"
                     onClick={e => {
                         e.stopPropagation();
                         if (data.canDelete) data.onDelete();
@@ -438,7 +452,6 @@ export function AlternateTimelinesModal({
             const hasChildren = children.length > 0;
             const descendants = getDescendantIds(childMap, id);
 
-            // Can delete any leaf node (no children), regardless of whether it's the active chat
             const canDelete = !hasChildren;
 
             const deleteTooltip = hasChildren

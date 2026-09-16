@@ -359,7 +359,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             setIsRawEditing(false);
             rawDraftRef.current = editDraft;
         }
-    }, [isEditing, message.id]);
+    }, [isEditing, editDraft]);
 
     // Debounced token count during editing
     React.useEffect(() => {
