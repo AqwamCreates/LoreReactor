@@ -235,7 +235,6 @@ function App() {
     const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
     const isMassActive = massDeleteId !== null;
     const safeInteractionMessages = useMemo(() => chatMessages || [], [chatMessages]);
-    const massStartIndex = isMassActive && interactionData ? safeInteractionMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     const maximumNumberOfContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
@@ -600,7 +599,7 @@ function App() {
         setIsInspectionOpen(true);
     }, [allCharacters, addToast]);
 
-    // ─── Render ─────────────────────────────────────────────────────
+    // ─── Render ────────────────────────────────────────────────────
 
     const displayMessages = useMemo(() => {
         const base = [...safeInteractionMessages];
@@ -630,6 +629,9 @@ function App() {
         }
         return base;
     }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter]);
+
+    // massStartIndex must use displayMessages since that's what views iterate over for index props
+    const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     // Compute timeUntilReset via ref to avoid impure Date.now() in render
     const timeUntilResetRef = useRef<number | undefined>(undefined);
