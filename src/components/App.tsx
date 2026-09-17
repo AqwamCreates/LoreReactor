@@ -619,11 +619,17 @@ function App() {
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
             if (isLastMessagePartial) {
-                (base[base.length - 1] as any).textContent = streamingText;
+                // Re-resolve display name in case reveal threshold was crossed
+                // since this partial message was originally created
+                const lastIndex = base.length - 1;
+                const resolvedName = resolveDelayedDisplayNameFromCache(
+                    displayNameCache,
+                    lastIndex,
+                    streamingCharacter.id
+                );
+                (base[lastIndex] as any).textContent = streamingText;
+                (base[lastIndex] as any).character = { ...last!.character, name: resolvedName };
             } else if (isNewTurn) {
-                // Resolve display name for the streaming message using the index
-                // it will occupy once committed. The cache can't resolve this because
-                // the partial message isn't in interactionHistory yet.
                 const streamingIndex = base.length;
                 const resolvedName = resolveDelayedDisplayNameFromCache(
                     displayNameCache,
