@@ -244,6 +244,10 @@ export class CharacterActor {
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     rawText = await bse.generateStream(body, { signal } as AbortController, cb);
 
+                    // Capture cache miss and request count from budget engine
+                    statsDelta.numberOfRequests++;
+                    if (bse.getLastCacheMiss()) statsDelta.numberOfCacheInvalidations++;
+
                     finalBudgetData = bse.getBudgetData();
                     if (!finalBudgetData) {
                         return { error: { message: 'Failed to get budget data', type: 'budget' } };
@@ -251,7 +255,6 @@ export class CharacterActor {
                     await saveRawBudgetData(finalBudgetData);
 
                     const requestCost = finalBudgetData.budgetSpent - bd.budgetSpent;
-                    if (requestCost > 0) statsDelta.numberOfRequests++;
                     statsDelta.totalCost += requestCost;
 
                     const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);

@@ -125,6 +125,7 @@ export class BudgetStrategyEngine {
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private engine = getLanguageModelEngine();
     private _lastSelectedModelId: string | null = null;
+    private _lastCacheMiss: boolean = false;
 
     constructor(
         strategy: BudgetStrategy,
@@ -173,6 +174,10 @@ export class BudgetStrategyEngine {
 
     getLastSelectedModelId(): string | null {
         return this._lastSelectedModelId;
+    }
+
+    getLastCacheMiss(): boolean {
+        return this._lastCacheMiss;
     }
 
     // ─── Model Selection (solves model mismatch) ────────────────────
@@ -245,6 +250,8 @@ export class BudgetStrategyEngine {
         abortController: AbortController,
         callbacks?: StreamCallbacks,
     ): Promise<string> {
+        this._lastCacheMiss = false;
+
         const failedOnlineIds = new Set<string>();
         const failedLocalIds = new Set<string>();
 
@@ -279,6 +286,12 @@ export class BudgetStrategyEngine {
                 accumulatedPartialText = stats.fullText;
                 if (callbacks?.onToken) {
                     await callbacks.onToken(stats);
+                }
+            },
+            onFinish: (rs) => {
+                this._lastCacheMiss = rs.cacheMiss ?? false;
+                if (callbacks?.onFinish) {
+                    callbacks.onFinish(rs);
                 }
             },
         };
@@ -347,7 +360,7 @@ export class BudgetStrategyEngine {
 
                 const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                 const completionTokens = await this.engine.countTokens(result.text);
-                const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+                const cost = calculateRequestCost(promptTokens, completionTokens, this._lastCacheMiss, pricing);
 
                 this.recordSuccess(selectedModel.id, cost.totalCost);
 
@@ -449,7 +462,7 @@ export class BudgetStrategyEngine {
 
                     const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
-                    const cost = calculateRequestCost(promptTokens, completionTokens, false, fallbackPricing);
+                    const cost = calculateRequestCost(promptTokens, completionTokens, this._lastCacheMiss, fallbackPricing);
 
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
