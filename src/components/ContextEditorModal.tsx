@@ -28,32 +28,58 @@ export function ContextEditorModal({
     existingContext,
     allCharacters = [],
 }: ContextEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [text, setText] = useState('');
+    if (!isOpen) return null;
+
+    const modalKey = `ctx-${existingContext?.id ?? 'new'}`;
+
+    return (
+        <ContextEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingContext={existingContext}
+            allCharacters={allCharacters}
+        />
+    );
+}
+
+function ContextEditorModalInner({
+    onClose,
+    onSave,
+    existingContext,
+    allCharacters = [],
+}: Omit<ContextEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingContext?.name || '');
+    const [description, setDescription] = useState(existingContext?.description || '');
+    const [text, setText] = useState(existingContext?.text || '');
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+        if (existingContext?.images && existingContext.images.length > 0) {
+            return existingContext.images.map(img => `/user_data/context_data/${img}`);
+        }
+        return [];
+    });
     const [isUploading, setIsUploading] = useState(false);
 
-    const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
+    const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(existingContext?.useBase64Encoding ?? false);
 
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
-    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
-    const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
-    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
-    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
-    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingContext?.regularExpressionActivationTrigger || '');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingContext?.regularExpressionDeactivationTrigger || '');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState(existingContext?.regularExpressionExclusionActivationTrigger || '');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState(existingContext?.regularExpressionExclusionDeactivationTrigger || '');
+    const [regexContext, setRegexContext] = useState<regularExpressionContext>(existingContext?.regularExpressionContext || 'global');
+    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>(existingContext?.regularExpressionTarget || 'everyone');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>(existingContext?.regularExpressionExclusionContext || 'global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>(existingContext?.regularExpressionExclusionTarget || 'everyone');
 
-    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
-    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
-    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState('');
-    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState('');
-    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
-    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
-    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>('global');
-    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>('everyone');
+    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState(existingContext?.messageFilterRegularExpressionActivationTrigger || '');
+    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState(existingContext?.messageFilterRegularExpressionDeactivationTrigger || '');
+    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState(existingContext?.messageFilterRegularExpressionExclusionActivationTrigger || '');
+    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState(existingContext?.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
+    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>(existingContext?.messageFilterRegularExpressionContext || 'global');
+    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>(existingContext?.messageFilterRegularExpressionTarget || 'everyone');
+    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>(existingContext?.messageFilterRegularExpressionExclusionContext || 'global');
+    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>(existingContext?.messageFilterRegularExpressionExclusionTarget || 'everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -86,38 +112,52 @@ export function ContextEditorModal({
     const [textnumberOfTokens, setTextnumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const [tokenBudget, setTokenBudget] = useState<number>(0);
-    const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(5);
-    const [insertionDepth, setInsertionDepth] = useState<number>(0);
-    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
+    const [tokenBudget, setTokenBudget] = useState<number>(existingContext?.tokenBudget ?? 0);
+    const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(existingContext?.maximumRecursionDepth ?? 5);
+    const [insertionDepth, setInsertionDepth] = useState<number>(existingContext?.insertionDepth ?? 0);
+    const [characterBindings, setCharacterBindings] = useState<string[]>(existingContext?.characterBindings ?? []);
 
-    const [urls, setUrls] = useState<string[]>([]);
+    const [urls, setUrls] = useState<string[]>(existingContext?.urls ?? []);
     const [newUrlInput, setNewUrlInput] = useState('');
-    const [linkMaxDepth, setLinkMaxDepth] = useState<number>(3);
-    const [linkFetchMode, setLinkFetchMode] = useState<linkFetchMode>('full');
-    const [fetchCacheTimeToLiveMs, setFetchCacheTimeToLiveMs] = useState<number>(300000);
+    const [linkMaxDepth, setLinkMaxDepth] = useState<number>(existingContext?.maximumLinkDepth ?? 3);
+    const [linkFetchMode, setLinkFetchMode] = useState<linkFetchMode>(existingContext?.linkFetchMode || 'full');
+    const [fetchCacheTimeToLiveMs, setFetchCacheTimeToLiveMs] = useState<number>(existingContext?.fetchCacheTimeToLiveMs ?? 300000);
 
-    const [searchTerms, setSearchTerms] = useState<string[]>([]);
+    const [searchTerms, setSearchTerms] = useState<string[]>(existingContext?.searchTerms ?? []);
     const [newSearchTermInput, setNewSearchTermInput] = useState('');
-    const [searchEngine, setSearchEngine] = useState<searchEngine>('Google');
+    const [searchEngine, setSearchEngine] = useState<searchEngine>(existingContext?.searchEngine || 'Google');
 
-    const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(false);
-    const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(false);
+    const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(existingContext?.includeLinkImages ?? false);
+    const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(existingContext?.limitLinksToSubdirectory ?? false);
 
+    // Set engine context on mount and compute initial token count.
+    // Uses requestAnimationFrame to defer setState out of the synchronous effect body.
     useEffect(() => {
-        if (!isOpen) return;
         const selectedModel = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
         if (selectedModel) {
             tokenEngine.setRunningModels(runningModels);
             tokenEngine.setContext(selectedModel);
         }
-    }, [isOpen]);
 
+        const initialText = existingContext?.text || '';
+        if (!initialText.trim()) return;
+
+        const rafId = requestAnimationFrame(() => {
+            tokenEngine.countTokens(initialText).then(count => {
+                setTextnumberOfTokens(count);
+            });
+        });
+
+        return () => cancelAnimationFrame(rafId);
+    }, [existingContext]);
+
+    // Token counting on text changes (debounced)
     useEffect(() => {
         let cancelled = false;
+        const debounceRef = tokenDebounceRef.current;
+        if (debounceRef) clearTimeout(debounceRef);
 
-        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextnumberOfTokens(count);
@@ -125,124 +165,10 @@ export function ContextEditorModal({
 
         return () => {
             cancelled = true;
-            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+            const ref = tokenDebounceRef.current;
+            if (ref) clearTimeout(ref);
         };
     }, [text]);
-
-    useEffect(() => {
-        if (isOpen) {
-            if (existingContext) {
-                setName(existingContext.name || '');
-                setDescription(existingContext.description || '');
-                setText(existingContext.text || '');
-
-                if (existingContext.images && existingContext.images.length > 0) {
-                    const previews = existingContext.images.map(img => `/user_data/context_data/${img}`);
-                    setImagePreviews(previews);
-                } else {
-                    setImagePreviews([]);
-                }
-
-                setImageFiles([]);
-                setRegexActivationTrigger(existingContext.regularExpressionActivationTrigger || '');
-                setRegexDeactivationTrigger(existingContext.regularExpressionDeactivationTrigger || '');
-                setRegexExclusionActivationTrigger(existingContext.regularExpressionExclusionActivationTrigger || '');
-                setRegexExclusionDeactivationTrigger(existingContext.regularExpressionExclusionDeactivationTrigger || '');
-                setRegexContext(existingContext.regularExpressionContext || 'global');
-                setRegexTarget(existingContext.regularExpressionTarget || 'everyone');
-                setRegexExclusionContext(existingContext.regularExpressionExclusionContext || 'global');
-                setRegexExclusionTarget(existingContext.regularExpressionExclusionTarget || 'everyone');
-
-                setMessageFilterActivationTrigger(existingContext.messageFilterRegularExpressionActivationTrigger || '');
-                setMessageFilterDeactivationTrigger(existingContext.messageFilterRegularExpressionDeactivationTrigger || '');
-                setMessageFilterExclusionActivationTrigger(existingContext.messageFilterRegularExpressionExclusionActivationTrigger || '');
-                setMessageFilterExclusionDeactivationTrigger(existingContext.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
-                setMessageFilterContext(existingContext.messageFilterRegularExpressionContext || 'global');
-                setMessageFilterTarget(existingContext.messageFilterRegularExpressionTarget || 'everyone');
-                setMessageFilterExclusionContext(existingContext.messageFilterRegularExpressionExclusionContext || 'global');
-                setMessageFilterExclusionTarget(existingContext.messageFilterRegularExpressionExclusionTarget || 'everyone');
-
-                setUseBase64Encoding(existingContext.useBase64Encoding ?? false);
-
-                setTokenBudget(existingContext.tokenBudget ?? 0);
-                setMaximumRecursionDepth(existingContext.maximumRecursionDepth ?? 5);
-                setInsertionDepth(existingContext.insertionDepth ?? 0);
-                setCharacterBindings(existingContext.characterBindings ?? []);
-
-                setUrls(existingContext.urls ?? []);
-                setNewUrlInput('');
-                setLinkMaxDepth(existingContext.maximumLinkDepth ?? 0);
-                setLinkFetchMode(existingContext.linkFetchMode || 'full');
-                setFetchCacheTimeToLiveMs(existingContext.fetchCacheTimeToLiveMs ?? 300000);
-
-                setSearchTerms(existingContext.searchTerms ?? []);
-                setNewSearchTermInput('');
-                setSearchEngine(existingContext.searchEngine || 'Google');
-
-                setIncludeLinkImages(existingContext.includeLinkImages ?? false);
-                setLimitLinksToSubdirectory(existingContext.limitLinksToSubdirectory ?? false);
-            } else {
-                setName('');
-                setDescription('');
-                setText('');
-                setImageFiles([]);
-                setImagePreviews([]);
-                setUseBase64Encoding(false);
-                setRegexActivationTrigger('');
-                setRegexDeactivationTrigger('');
-                setRegexExclusionActivationTrigger('');
-                setRegexExclusionDeactivationTrigger('');
-                setRegexContext('global');
-                setRegexTarget('everyone');
-                setRegexExclusionContext('global');
-                setRegexExclusionTarget('everyone');
-
-                setMessageFilterActivationTrigger('');
-                setMessageFilterDeactivationTrigger('');
-                setMessageFilterExclusionActivationTrigger('');
-                setMessageFilterExclusionDeactivationTrigger('');
-                setMessageFilterContext('global');
-                setMessageFilterTarget('everyone');
-                setMessageFilterExclusionContext('global');
-                setMessageFilterExclusionTarget('everyone');
-
-                setTokenBudget(0);
-                setMaximumRecursionDepth(5);
-                setInsertionDepth(0);
-                setCharacterBindings([]);
-
-                setUrls([]);
-                setNewUrlInput('');
-                setLinkMaxDepth(0);
-                setLinkFetchMode('full');
-                setFetchCacheTimeToLiveMs(300000);
-
-                setSearchTerms([]);
-                setNewSearchTermInput('');
-                setSearchEngine('Google');
-
-                setIncludeLinkImages(false);
-                setLimitLinksToSubdirectory(false);
-            }
-            setErrors({});
-            setActivationTestText('');
-            setActivationTestResult(null);
-            setDeactivationTestText('');
-            setDeactivationTestResult(null);
-            setExclusionActivationTestText('');
-            setExclusionActivationTestResult(null);
-            setExclusionDeactivationTestText('');
-            setExclusionDeactivationTestResult(null);
-            setMessageFilterActivationTestText('');
-            setMessageFilterActivationTestResult(null);
-            setMessageFilterDeactivationTestText('');
-            setMessageFilterDeactivationTestResult(null);
-            setMessageFilterExclusionActivationTestText('');
-            setMessageFilterExclusionActivationTestResult(null);
-            setMessageFilterExclusionDeactivationTestText('');
-            setMessageFilterExclusionDeactivationTestResult(null);
-        }
-    }, [isOpen, existingContext]);
 
     const validate = (): boolean => {
         const newErrors: typeof errors = {};
@@ -563,8 +489,6 @@ export function ContextEditorModal({
         onSave(clonedContext);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     const hasText = text.trim().length > 0;
     const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;

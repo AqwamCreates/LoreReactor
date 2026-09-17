@@ -29,30 +29,60 @@ export function PromptBlockEditorModal({
     allContexts = [],
     allLocations = [],
 }: PromptBlockEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [textContent, setTextContent] = useState('');
+    if (!isOpen) return null;
+
+    const modalKey = `pb-${existingBlock?.id ?? 'new'}`;
+
+    return (
+        <PromptBlockEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingBlock={existingBlock}
+            allCharacters={allCharacters}
+            allContexts={allContexts}
+            allLocations={allLocations}
+        />
+    );
+}
+
+function PromptBlockEditorModalInner({
+    onClose,
+    onSave,
+    existingBlock,
+    allCharacters = [],
+    allContexts = [],
+    allLocations = [],
+}: Omit<PromptBlockEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingBlock?.name || '');
+    const [description, setDescription] = useState(existingBlock?.description || '');
+    const [textContent, setTextContent] = useState(existingBlock?.textContent ?? '');
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+        if (existingBlock?.images && existingBlock.images.length > 0) {
+            return existingBlock.images.map(img => `/user_data/prompt_block_data/${img}`);
+        }
+        return [];
+    });
     const [isUploading, setIsUploading] = useState(false);
 
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
-    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
-    const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
-    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
-    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
-    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingBlock?.regularExpressionActivationTrigger || '');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingBlock?.regularExpressionDeactivationTrigger || '');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState(existingBlock?.regularExpressionExclusionActivationTrigger || '');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState(existingBlock?.regularExpressionExclusionDeactivationTrigger || '');
+    const [regexContext, setRegexContext] = useState<regularExpressionContext>(existingBlock?.regularExpressionContext || 'global');
+    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>(existingBlock?.regularExpressionTarget || 'everyone');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>(existingBlock?.regularExpressionExclusionContext || 'global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>(existingBlock?.regularExpressionExclusionTarget || 'everyone');
 
-    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
-    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
-    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState('');
-    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState('');
-    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
-    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
-    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>('global');
-    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>('everyone');
+    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState(existingBlock?.messageFilterRegularExpressionActivationTrigger || '');
+    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState(existingBlock?.messageFilterRegularExpressionDeactivationTrigger || '');
+    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState(existingBlock?.messageFilterRegularExpressionExclusionActivationTrigger || '');
+    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState(existingBlock?.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
+    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>(existingBlock?.messageFilterRegularExpressionContext || 'global');
+    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>(existingBlock?.messageFilterRegularExpressionTarget || 'everyone');
+    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>(existingBlock?.messageFilterRegularExpressionExclusionContext || 'global');
+    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>(existingBlock?.messageFilterRegularExpressionExclusionTarget || 'everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -78,9 +108,9 @@ export function PromptBlockEditorModal({
     const [messageFilterExclusionDeactivationTestText, setMessageFilterExclusionDeactivationTestText] = useState('');
     const [messageFilterExclusionDeactivationTestResult, setMessageFilterExclusionDeactivationTestResult] = useState<boolean | null>(null);
 
-    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
-    const [contextBindings, setContextBindings] = useState<string[]>([]);
-    const [locationBindings, setLocationBindings] = useState<string[]>([]);
+    const [characterBindings, setCharacterBindings] = useState<string[]>(existingBlock?.characterBindings ?? []);
+    const [contextBindings, setContextBindings] = useState<string[]>(existingBlock?.contextBindings ?? []);
+    const [locationBindings, setLocationBindings] = useState<string[]>(existingBlock?.locationBindings ?? []);
 
     const [errors, setErrors] = useState<{ name?: string; textContent?: string; regex?: string; deactivationRegex?: string; exclusionRegex?: string; exclusionDeactivationRegex?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; messageFilterExclusionRegex?: string; messageFilterExclusionDeactivationRegex?: string; images?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,109 +118,45 @@ export function PromptBlockEditorModal({
     const [textTokenCount, setTextTokenCount] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Set engine context on mount and compute initial token count.
+    // Uses requestAnimationFrame to defer setState out of the synchronous effect body.
     useEffect(() => {
-        if (!isOpen) return;
         const selectedModel = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
         if (selectedModel) {
             tokenEngine.setRunningModels(runningModels);
             tokenEngine.setContext(selectedModel);
         }
-    }, [isOpen]);
 
+        const initialText = existingBlock?.textContent ?? '';
+        if (!initialText.trim()) return;
+
+        const rafId = requestAnimationFrame(() => {
+            tokenEngine.countTokens(initialText).then(count => {
+                setTextTokenCount(count);
+            });
+        });
+
+        return () => cancelAnimationFrame(rafId);
+    }, [existingBlock]);
+
+    // Token counting on text changes (debounced)
     useEffect(() => {
         let cancelled = false;
-        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+        const debounceRef = tokenDebounceRef.current;
+        if (debounceRef) clearTimeout(debounceRef);
+
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(textContent);
             if (!cancelled) setTextTokenCount(count);
         }, 400);
+
         return () => {
             cancelled = true;
-            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+            const ref = tokenDebounceRef.current;
+            if (ref) clearTimeout(ref);
         };
     }, [textContent]);
-
-    useEffect(() => {
-        if (!isOpen) return;
-
-        if (existingBlock) {
-            setName(existingBlock.name || '');
-            setDescription(existingBlock.description || '');
-            setTextContent(existingBlock.textContent ?? '');
-
-            if (existingBlock.images && existingBlock.images.length > 0) {
-                const previews = existingBlock.images.map(img => `/user_data/prompt_block_data/${img}`);
-                setImagePreviews(previews);
-            } else {
-                setImagePreviews([]);
-            }
-
-            setImageFiles([]);
-            setRegexActivationTrigger(existingBlock.regularExpressionActivationTrigger || '');
-            setRegexDeactivationTrigger(existingBlock.regularExpressionDeactivationTrigger || '');
-            setRegexExclusionActivationTrigger(existingBlock.regularExpressionExclusionActivationTrigger || '');
-            setRegexExclusionDeactivationTrigger(existingBlock.regularExpressionExclusionDeactivationTrigger || '');
-            setRegexContext(existingBlock.regularExpressionContext || 'global');
-            setRegexTarget(existingBlock.regularExpressionTarget || 'everyone');
-            setRegexExclusionContext(existingBlock.regularExpressionExclusionContext || 'global');
-            setRegexExclusionTarget(existingBlock.regularExpressionExclusionTarget || 'everyone');
-            setMessageFilterActivationTrigger(existingBlock.messageFilterRegularExpressionActivationTrigger || '');
-            setMessageFilterDeactivationTrigger(existingBlock.messageFilterRegularExpressionDeactivationTrigger || '');
-            setMessageFilterExclusionActivationTrigger(existingBlock.messageFilterRegularExpressionExclusionActivationTrigger || '');
-            setMessageFilterExclusionDeactivationTrigger(existingBlock.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
-            setMessageFilterContext(existingBlock.messageFilterRegularExpressionContext || 'global');
-            setMessageFilterTarget(existingBlock.messageFilterRegularExpressionTarget || 'everyone');
-            setMessageFilterExclusionContext(existingBlock.messageFilterRegularExpressionExclusionContext || 'global');
-            setMessageFilterExclusionTarget(existingBlock.messageFilterRegularExpressionExclusionTarget || 'everyone');
-            setCharacterBindings(existingBlock.characterBindings ?? []);
-            setContextBindings(existingBlock.contextBindings ?? []);
-            setLocationBindings(existingBlock.locationBindings ?? []);
-        } else {
-            setName('');
-            setDescription('');
-            setTextContent('');
-            setImageFiles([]);
-            setImagePreviews([]);
-            setRegexActivationTrigger('');
-            setRegexDeactivationTrigger('');
-            setRegexExclusionActivationTrigger('');
-            setRegexExclusionDeactivationTrigger('');
-            setRegexContext('global');
-            setRegexTarget('everyone');
-            setRegexExclusionContext('global');
-            setRegexExclusionTarget('everyone');
-            setMessageFilterActivationTrigger('');
-            setMessageFilterDeactivationTrigger('');
-            setMessageFilterExclusionActivationTrigger('');
-            setMessageFilterExclusionDeactivationTrigger('');
-            setMessageFilterContext('global');
-            setMessageFilterTarget('everyone');
-            setMessageFilterExclusionContext('global');
-            setMessageFilterExclusionTarget('everyone');
-            setCharacterBindings([]);
-            setContextBindings([]);
-            setLocationBindings([]);
-        }
-
-        setErrors({});
-        setActivationTestText('');
-        setActivationTestResult(null);
-        setDeactivationTestText('');
-        setDeactivationTestResult(null);
-        setExclusionTestText('');
-        setExclusionTestResult(null);
-        setExclusionDeactivationTestText('');
-        setExclusionDeactivationTestResult(null);
-        setMessageFilterActivationTestText('');
-        setMessageFilterActivationTestResult(null);
-        setMessageFilterDeactivationTestText('');
-        setMessageFilterDeactivationTestResult(null);
-        setMessageFilterExclusionTestText('');
-        setMessageFilterExclusionTestResult(null);
-        setMessageFilterExclusionDeactivationTestText('');
-        setMessageFilterExclusionDeactivationTestResult(null);
-    }, [isOpen, existingBlock]);
 
     const validate = (): boolean => {
         const newErrors: typeof errors = {};
@@ -392,8 +358,6 @@ export function PromptBlockEditorModal({
         onSave(cloned);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     const hasText = textContent.trim().length > 0;
     const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;

@@ -799,13 +799,6 @@ export class BudgetStrategyEngine {
         return this.strategy.modelCostTiers?.[model.id] ?? 0;
     }
 
-    private isInQuotaCooldown(modelId: string): boolean {
-        // Disabled: quota cooldown blocks models across generations unnecessarily.
-        // Models are retried immediately on next generation attempt.
-        // Quota errors are still recorded for stats tracking.
-        return false;
-    }
-
     private getModelSpeed(modelId: string): number {
         return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY;
     }
@@ -880,7 +873,6 @@ export class BudgetStrategyEngine {
 
         for (const model of pool) {
             if (failedIds.has(model.id)) continue;
-            if (this.isInQuotaCooldown(model.id)) continue;
 
             const tier = this.getTier(model);
             if (maxTier !== undefined && tier > maxTier) continue;

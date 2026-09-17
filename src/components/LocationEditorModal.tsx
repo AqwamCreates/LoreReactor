@@ -29,40 +29,70 @@ export function LocationEditorModal({
     allLocations = [],
     allAudioTracks = [],
 }: LocationEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [text, setText] = useState('');
+    if (!isOpen) return null;
+
+    const modalKey = `loc-${existingLocation?.id ?? 'new'}`;
+
+    return (
+        <LocationEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingLocation={existingLocation}
+            allCharacters={allCharacters}
+            allLocations={allLocations}
+            allAudioTracks={allAudioTracks}
+        />
+    );
+}
+
+function LocationEditorModalInner({
+    onClose,
+    onSave,
+    existingLocation,
+    allCharacters = [],
+    allLocations = [],
+    allAudioTracks = [],
+}: Omit<LocationEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingLocation?.name || '');
+    const [description, setDescription] = useState(existingLocation?.description || '');
+    const [text, setText] = useState(existingLocation?.text || '');
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+        if (existingLocation?.images && existingLocation.images.length > 0) {
+            return existingLocation.images.map(img => `/user_data/location_data/${img}`);
+        }
+        return [];
+    });
     const [isUploading, setIsUploading] = useState(false);
 
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
-    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
-    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
-    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
-    const [locationBindings, setLocationBindings] = useState<string[]>([]);
-    const [locationBindingRegexTriggers, setLocationBindingRegexTriggers] = useState<Record<string, string>>({});
-    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
-    const [ownerBindings, setOwnerBindings] = useState<string[]>([]);
-    const [globalWeight, setGlobalWeight] = useState<number>(1);
-    const [characterWeights, setCharacterWeights] = useState<Record<string, number>>({});
-    const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(false);
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingLocation?.regularExpressionActivationTrigger || '');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState(existingLocation?.regularExpressionExclusionActivationTrigger || '');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState(existingLocation?.regularExpressionExclusionDeactivationTrigger || '');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>(existingLocation?.regularExpressionExclusionContext || 'global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>(existingLocation?.regularExpressionExclusionTarget || 'everyone');
+    const [locationBindings, setLocationBindings] = useState<string[]>(existingLocation?.locationBindings ?? []);
+    const [locationBindingRegexTriggers, setLocationBindingRegexTriggers] = useState<Record<string, string>>(existingLocation?.locationBindingRegularExpressionTriggers ?? {});
+    const [characterBindings, setCharacterBindings] = useState<string[]>(existingLocation?.characterBindings ?? []);
+    const [ownerBindings, setOwnerBindings] = useState<string[]>(existingLocation?.ownerBindings ?? []);
+    const [globalWeight, setGlobalWeight] = useState<number>(existingLocation?.globalWeight ?? 1);
+    const [characterWeights, setCharacterWeights] = useState<Record<string, number>>(existingLocation?.characterWeights ?? {});
+    const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(existingLocation?.useBase64Encoding ?? false);
 
-    const [bgImageRegexTriggers, setBgImageRegexTriggers] = useState<Record<number, string>>({});
-    const [bgImageWeights, setBgImageWeights] = useState<Record<number, number>>({});
+    const [bgImageRegexTriggers, setBgImageRegexTriggers] = useState<Record<number, string>>(existingLocation?.backgroundImageRegularExpressionActivationTriggers ?? {});
+    const [bgImageWeights, setBgImageWeights] = useState<Record<number, number>>(existingLocation?.backgroundImageWeights ?? {});
 
-    const [playAudioTrackOnEnterWeights, setPlayAudioTrackOnEnterWeights] = useState<Record<string, number>>({});
+    const [playAudioTrackOnEnterWeights, setPlayAudioTrackOnEnterWeights] = useState<Record<string, number>>(existingLocation?.playAudioTrackOnEnterWeights ?? {});
 
-    const [messageFilterNonCoLocatedParticipants, setMessageFilterNonCoLocatedParticipants] = useState<boolean>(false);
-    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState('');
-    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState('');
-    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState('');
-    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState('');
-    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>('global');
-    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>('everyone');
-    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>('global');
-    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>('everyone');
+    const [messageFilterNonCoLocatedParticipants, setMessageFilterNonCoLocatedParticipants] = useState<boolean>(existingLocation?.messageFilterNonCoLocatedParticipants ?? false);
+    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState(existingLocation?.messageFilterRegularExpressionActivationTrigger || '');
+    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState(existingLocation?.messageFilterRegularExpressionDeactivationTrigger || '');
+    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState(existingLocation?.messageFilterRegularExpressionExclusionActivationTrigger || '');
+    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState(existingLocation?.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
+    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>(existingLocation?.messageFilterRegularExpressionContext || 'global');
+    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>(existingLocation?.messageFilterRegularExpressionTarget || 'everyone');
+    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>(existingLocation?.messageFilterRegularExpressionExclusionContext || 'global');
+    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>(existingLocation?.messageFilterRegularExpressionExclusionTarget || 'everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -85,8 +115,8 @@ export function LocationEditorModal({
     const [messageFilterExclusionDeactivationTestText, setMessageFilterExclusionDeactivationTestText] = useState('');
     const [messageFilterExclusionDeactivationTestResult, setMessageFilterExclusionDeactivationTestResult] = useState<boolean | null>(null);
 
-    const [latitude, setLatitude] = useState<string>('');
-    const [longitude, setLongitude] = useState<string>('');
+    const [latitude, setLatitude] = useState<string>(existingLocation?.latitude != null ? String(existingLocation.latitude) : '');
+    const [longitude, setLongitude] = useState<string>(existingLocation?.longitude != null ? String(existingLocation.longitude) : '');
 
     const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; exclusionActivationRegex?: string; exclusionDeactivationRegex?: string; images?: string; bindingRegex?: Record<string, string>; bgImageRegex?: Record<number, string>; latitude?: string; longitude?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; messageFilterExclusionActivationRegex?: string; messageFilterExclusionDeactivationRegex?: string }>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,20 +124,34 @@ export function LocationEditorModal({
     const [textNumberOfTokens, setTextNumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Set engine context on mount and compute initial token count.
+    // Uses requestAnimationFrame to defer setState out of the synchronous effect body.
     useEffect(() => {
-        if (!isOpen) return;
         const selectedModel = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
         if (selectedModel) {
             tokenEngine.setRunningModels(runningModels);
             tokenEngine.setContext(selectedModel);
         }
-    }, [isOpen]);
 
+        const initialText = existingLocation?.text || '';
+        if (!initialText.trim()) return;
+
+        const rafId = requestAnimationFrame(() => {
+            tokenEngine.countTokens(initialText).then(count => {
+                setTextNumberOfTokens(count);
+            });
+        });
+
+        return () => cancelAnimationFrame(rafId);
+    }, [existingLocation]);
+
+    // Token counting on text changes (debounced)
     useEffect(() => {
         let cancelled = false;
+        const debounceRef = tokenDebounceRef.current;
+        if (debounceRef) clearTimeout(debounceRef);
 
-        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextNumberOfTokens(count);
@@ -115,103 +159,10 @@ export function LocationEditorModal({
 
         return () => {
             cancelled = true;
-            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
+            const ref = tokenDebounceRef.current;
+            if (ref) clearTimeout(ref);
         };
     }, [text]);
-
-    useEffect(() => {
-        if (isOpen) {
-            if (existingLocation) {
-                setName(existingLocation.name || '');
-                setDescription(existingLocation.description || '');
-                setText(existingLocation.text || '');
-
-                if (existingLocation.images && existingLocation.images.length > 0) {
-                    const previews = existingLocation.images.map(img => `/user_data/location_data/${img}`);
-                    setImagePreviews(previews);
-                } else {
-                    setImagePreviews([]);
-                }
-
-                setImageFiles([]);
-                setRegexActivationTrigger(existingLocation.regularExpressionActivationTrigger || '');
-                setRegexExclusionActivationTrigger(existingLocation.regularExpressionExclusionActivationTrigger || '');
-                setRegexExclusionDeactivationTrigger(existingLocation.regularExpressionExclusionDeactivationTrigger || '');
-                setRegexExclusionContext(existingLocation.regularExpressionExclusionContext || 'global');
-                setRegexExclusionTarget(existingLocation.regularExpressionExclusionTarget || 'everyone');
-                setLocationBindings(existingLocation.locationBindings ?? []);
-                setLocationBindingRegexTriggers(existingLocation.locationBindingRegularExpressionTriggers ?? {});
-                setCharacterBindings(existingLocation.characterBindings ?? []);
-                setOwnerBindings(existingLocation.ownerBindings ?? []);
-                setGlobalWeight(existingLocation.globalWeight ?? 1);
-                setCharacterWeights(existingLocation.characterWeights ?? {});
-                setUseBase64Encoding(existingLocation.useBase64Encoding ?? false);
-                setBgImageRegexTriggers(existingLocation.backgroundImageRegularExpressionActivationTriggers ?? {});
-                setBgImageWeights(existingLocation.backgroundImageWeights ?? {});
-                setPlayAudioTrackOnEnterWeights(existingLocation.playAudioTrackOnEnterWeights ?? {});
-                setMessageFilterNonCoLocatedParticipants(existingLocation.messageFilterNonCoLocatedParticipants ?? false);
-                setMessageFilterActivationTrigger(existingLocation.messageFilterRegularExpressionActivationTrigger || '');
-                setMessageFilterDeactivationTrigger(existingLocation.messageFilterRegularExpressionDeactivationTrigger || '');
-                setMessageFilterExclusionActivationTrigger(existingLocation.messageFilterRegularExpressionExclusionActivationTrigger || '');
-                setMessageFilterExclusionDeactivationTrigger(existingLocation.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
-                setMessageFilterContext(existingLocation.messageFilterRegularExpressionContext || 'global');
-                setMessageFilterTarget(existingLocation.messageFilterRegularExpressionTarget || 'everyone');
-                setMessageFilterExclusionContext(existingLocation.messageFilterRegularExpressionExclusionContext || 'global');
-                setMessageFilterExclusionTarget(existingLocation.messageFilterRegularExpressionExclusionTarget || 'everyone');
-                setLatitude(existingLocation.latitude != null ? String(existingLocation.latitude) : '');
-                setLongitude(existingLocation.longitude != null ? String(existingLocation.longitude) : '');
-            } else {
-                setName('');
-                setDescription('');
-                setText('');
-                setImageFiles([]);
-                setImagePreviews([]);
-                setRegexActivationTrigger('');
-                setRegexExclusionActivationTrigger('');
-                setRegexExclusionDeactivationTrigger('');
-                setRegexExclusionContext('global');
-                setRegexExclusionTarget('everyone');
-                setLocationBindings([]);
-                setLocationBindingRegexTriggers({});
-                setCharacterBindings([]);
-                setOwnerBindings([]);
-                setGlobalWeight(1);
-                setCharacterWeights({});
-                setUseBase64Encoding(false);
-                setBgImageRegexTriggers({});
-                setBgImageWeights({});
-                setPlayAudioTrackOnEnterWeights({});
-                setMessageFilterNonCoLocatedParticipants(false);
-                setMessageFilterActivationTrigger('');
-                setMessageFilterDeactivationTrigger('');
-                setMessageFilterExclusionActivationTrigger('');
-                setMessageFilterExclusionDeactivationTrigger('');
-                setMessageFilterContext('global');
-                setMessageFilterTarget('everyone');
-                setMessageFilterExclusionContext('global');
-                setMessageFilterExclusionTarget('everyone');
-                setLatitude('');
-                setLongitude('');
-            }
-            setErrors({});
-            setActivationTestText('');
-            setActivationTestResult(null);
-            setExclusionActivationTestText('');
-            setExclusionActivationTestResult(null);
-            setExclusionDeactivationTestText('');
-            setExclusionDeactivationTestResult(null);
-            setBgImageTestTexts({});
-            setBgImageTestResults({});
-            setMessageFilterActivationTestText('');
-            setMessageFilterActivationTestResult(null);
-            setMessageFilterDeactivationTestText('');
-            setMessageFilterDeactivationTestResult(null);
-            setMessageFilterExclusionActivationTestText('');
-            setMessageFilterExclusionActivationTestResult(null);
-            setMessageFilterExclusionDeactivationTestText('');
-            setMessageFilterExclusionDeactivationTestResult(null);
-        }
-    }, [isOpen, existingLocation]);
 
     const validate = (): boolean => {
         const newErrors: typeof errors = {};
@@ -497,8 +448,6 @@ export function LocationEditorModal({
         onSave(clonedLocation);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     const hasText = text.trim().length > 0;
     const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;

@@ -1,8 +1,6 @@
 // src/utilities/textReformat.ts
 
 export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
-export type TargetFormat = FormatCategory;
-
 export interface DetectedSegment {
     start: number;
     end: number;
@@ -14,7 +12,7 @@ export interface DetectedSegment {
 export interface CategoryConversion {
     detected: FormatCategory;
     label: string;
-    target: TargetFormat;
+    target: FormatCategory;
     count: number;
 }
 
@@ -28,7 +26,7 @@ export const CATEGORY_LABELS: Record<FormatCategory, string> = {
     brackets: 'Square Brackets',
 };
 
-export const TARGET_OPTIONS: { value: TargetFormat; label: string }[] = [
+export const TARGET_OPTIONS: { value: FormatCategory; label: string }[] = [
     { value: 'plain', label: 'Plain Text' },
     { value: 'italics', label: 'Italics' },
     { value: 'parentheses', label: 'Parentheses' },
@@ -38,7 +36,7 @@ export const TARGET_OPTIONS: { value: TargetFormat; label: string }[] = [
     { value: 'strikethrough', label: 'Strikethrough' },
 ];
 
-export const DEFAULT_CONVERSIONS: Record<FormatCategory, TargetFormat> = {
+export const DEFAULT_CONVERSIONS: Record<FormatCategory, FormatCategory> = {
     plain: 'plain',
     italics: 'italics',
     parentheses: 'parentheses',
@@ -149,7 +147,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     return segments;
 }
 
-export function wrapCoreText(core: string, target: TargetFormat): string {
+export function wrapCoreText(core: string, target: FormatCategory): string {
     switch (target) {
         case 'italics':
             return `*${core}*`;
@@ -168,7 +166,7 @@ export function wrapCoreText(core: string, target: TargetFormat): string {
     }
 }
 
-export function convertPlainSegmentPreservingSpacing(raw: string, target: TargetFormat): string {
+export function convertPlainSegmentPreservingSpacing(raw: string, target: FormatCategory): string {
     if (target === 'plain') return raw;
 
     const parts = raw.split(/(\r?\n)/);
@@ -190,7 +188,7 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: Target
     }).join('');
 }
 
-export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: TargetFormat): string {
+export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: FormatCategory): string {
     if (target === seg.category) return seg.rawMatch;
 
     if (target === 'plain') {
@@ -202,7 +200,7 @@ export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, t
 
 export function applyConversions(
     text: string,
-    conversions: Record<FormatCategory, TargetFormat>,
+    conversions: Record<FormatCategory, FormatCategory>,
 ): string {
     const segments = detectFormatSegments(text);
     if (segments.length === 0) return text;

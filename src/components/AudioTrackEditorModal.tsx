@@ -30,26 +30,51 @@ export function AudioTrackEditorModal({
     allContexts = [],
     allLocations = [],
 }: AudioTrackEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState(''); 
-    const [filename, setFilename] = useState('');
-    const [loop, setLoop] = useState(true);
-    const [volume, setVolume] = useState(1);
-    const [startFadeDurationMs, setStartFadeDurationMs] = useState(1000);
-    const [endFadeDurationMs, setEndFadeDurationMs] = useState(1000);
-    const [audioCategory, setAudioCategory] = useState<audioCategory>('ambient');
-    const [priority, setPriority] = useState(0);
-    const [playableByParticipant, setPlayableByParticipant] = useState(false);
+    if (!isOpen) return null;
 
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState('');
-    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState('');
-    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>('global');
-    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>('everyone');
-    const [locationBindings, setLocationBindings] = useState<string[]>([]);
-    const [contextBindings, setContextBindings] = useState<string[]>([]);
-    const [characterBindings, setCharacterBindings] = useState<string[]>([]);
+    const modalKey = `at-${existingTrack?.id ?? 'new'}`;
+
+    return (
+        <AudioTrackEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingTrack={existingTrack}
+            allCharacters={allCharacters}
+            allContexts={allContexts}
+            allLocations={allLocations}
+        />
+    );
+}
+
+function AudioTrackEditorModalInner({
+    onClose,
+    onSave,
+    existingTrack,
+    allCharacters = [],
+    allContexts = [],
+    allLocations = [],
+}: Omit<AudioTrackEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingTrack?.name || '');
+    const [description, setDescription] = useState(existingTrack?.description || '');
+    const [filename, setFilename] = useState(existingTrack?.filename || '');
+    const [loop, setLoop] = useState(existingTrack?.loop ?? true);
+    const [volume, setVolume] = useState(existingTrack?.volume ?? 1);
+    const [startFadeDurationMs, setStartFadeDurationMs] = useState(existingTrack?.startFadeDurationMs ?? 1000);
+    const [endFadeDurationMs, setEndFadeDurationMs] = useState(existingTrack?.endFadeDurationMs ?? 1000);
+    const [audioCategory, setAudioCategory] = useState<audioCategory>(existingTrack?.audioCategory ?? 'ambient');
+    const [priority, setPriority] = useState(existingTrack?.priority ?? 0);
+    const [playableByParticipant, setPlayableByParticipant] = useState(existingTrack?.playableByParticipant ?? false);
+
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingTrack?.regularExpressionActivationTrigger || '');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingTrack?.regularExpressionDeactivationTrigger || '');
+    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState(existingTrack?.regularExpressionExclusionActivationTrigger || '');
+    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState(existingTrack?.regularExpressionExclusionDeactivationTrigger || '');
+    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>(existingTrack?.regularExpressionExclusionContext || 'global');
+    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>(existingTrack?.regularExpressionExclusionTarget || 'everyone');
+    const [locationBindings, setLocationBindings] = useState<string[]>(existingTrack?.locationBindings ?? []);
+    const [contextBindings, setContextBindings] = useState<string[]>(existingTrack?.contextBindings ?? []);
+    const [characterBindings, setCharacterBindings] = useState<string[]>(existingTrack?.characterBindings ?? []);
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -63,78 +88,31 @@ export function AudioTrackEditorModal({
     const [errors, setErrors] = useState<{ name?: string; filename?: string; regex?: string; deactivationRegex?: string; exclusionActivationRegex?: string; exclusionDeactivationRegex?: string }>({});
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(() => {
+        if (existingTrack?.filename) return getAudioTrackUrl(existingTrack.filename);
+        return null;
+    });
     const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
     const audioInputRef = useRef<HTMLInputElement>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
+    // Stop preview audio when component unmounts
     useEffect(() => {
-        if (isOpen) {
-            if (existingTrack) {
-                setName(existingTrack.name || '');
-                setDescription(existingTrack.description || '');
-                setFilename(existingTrack.filename || '');
-                setLoop(existingTrack.loop ?? true);
-                setVolume(existingTrack.volume ?? 1);
-                setStartFadeDurationMs(existingTrack.startFadeDurationMs ?? 1000);
-                setEndFadeDurationMs(existingTrack.endFadeDurationMs ?? 1000);
-                setAudioCategory(existingTrack.audioCategory ?? 'ambient');
-                setPriority(existingTrack.priority ?? 0);
-                setPlayableByParticipant(existingTrack.playableByParticipant ?? false);
-                setRegexActivationTrigger(existingTrack.regularExpressionActivationTrigger || '');
-                setRegexDeactivationTrigger(existingTrack.regularExpressionDeactivationTrigger || '');
-                setRegexExclusionActivationTrigger(existingTrack.regularExpressionExclusionActivationTrigger || '');
-                setRegexExclusionDeactivationTrigger(existingTrack.regularExpressionExclusionDeactivationTrigger || '');
-                setRegexExclusionContext(existingTrack.regularExpressionExclusionContext || 'global');
-                setRegexExclusionTarget(existingTrack.regularExpressionExclusionTarget || 'everyone');
-                setLocationBindings(existingTrack.locationBindings ?? []);
-                setContextBindings(existingTrack.contextBindings ?? []);
-                setCharacterBindings(existingTrack.characterBindings ?? []);
-                setPreviewUrl(getAudioTrackUrl(existingTrack.filename));
-            } else {
-                setName('');
-                setDescription('');
-                setFilename('');
-                setLoop(true);
-                setVolume(1);
-                setStartFadeDurationMs(1000);
-                setEndFadeDurationMs(1000);
-                setAudioCategory('ambient');
-                setPriority(0);
-                setPlayableByParticipant(false);
-                setRegexActivationTrigger('');
-                setRegexDeactivationTrigger('');
-                setRegexExclusionActivationTrigger('');
-                setRegexExclusionDeactivationTrigger('');
-                setRegexExclusionContext('global');
-                setRegexExclusionTarget('everyone');
-                setLocationBindings([]);
-                setContextBindings([]);
-                setCharacterBindings([]);
-                setPreviewUrl(null);
-            }
-            setErrors({});
-            setActivationTestText('');
-            setActivationTestResult(null);
-            setExclusionActivationTestText('');
-            setExclusionActivationTestResult(null);
-            setExclusionDeactivationTestText('');
-            setExclusionDeactivationTestResult(null);
-            setAudioFile(null);
-            setIsUploading(false);
-            setIsPreviewPlaying(false);
-        }
-    }, [isOpen, existingTrack]);
-
-    useEffect(() => {
-        if (!isOpen) {
+        return () => {
             if (previewAudioRef.current) {
                 previewAudioRef.current.pause();
                 previewAudioRef.current = null;
             }
-            setIsPreviewPlaying(false);
+        };
+    }, []);
+
+    // Sync preview audio volume/loop when settings change
+    useEffect(() => {
+        if (previewAudioRef.current && isPreviewPlaying) {
+            previewAudioRef.current.volume = volume;
+            previewAudioRef.current.loop = loop;
         }
-    }, [isOpen]);
+    }, [volume, loop, isPreviewPlaying]);
 
     const validate = (): boolean => {
         const newErrors: typeof errors = {};
@@ -223,13 +201,6 @@ export function AudioTrackEditorModal({
         });
     };
 
-    useEffect(() => {
-        if (previewAudioRef.current && isPreviewPlaying) {
-            previewAudioRef.current.volume = volume;
-            previewAudioRef.current.loop = loop;
-        }
-    }, [volume, loop, isPreviewPlaying]);
-
     const buildTrackFromForm = async (isNewClone: boolean): Promise<AudioTrack | null> => {
         if (!validate()) return null;
 
@@ -295,8 +266,6 @@ export function AudioTrackEditorModal({
         onSave(cloned);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
     const getContextById = (id: string) => allContexts.find(c => c.id === id);

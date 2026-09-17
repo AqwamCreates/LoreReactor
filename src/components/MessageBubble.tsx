@@ -11,7 +11,6 @@ import {
     TARGET_OPTIONS,
     type CategoryConversion,
     type FormatCategory,
-    type TargetFormat,
 } from '../utilities/textReformatter';
 
 interface MessageBubbleProps {
@@ -82,6 +81,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const [editTokenCount, setEditTokenCount] = React.useState(0);
     const rawDraftRef = React.useRef<string>('');
     const editTokenDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prevIsEditingRef = React.useRef(false);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
@@ -89,8 +89,13 @@ export const MessageBubble = React.memo(function MessageBubble({
     const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
+    // Only initialize editing state when isEditing first becomes true,
+    // not on every editDraft change (which would kill raw editing mode)
     React.useEffect(() => {
-        if (isEditing) {
+        const justStartedEditing = isEditing && !prevIsEditingRef.current;
+        prevIsEditingRef.current = isEditing;
+
+        if (justStartedEditing) {
             const segments = detectFormatSegments(editDraft);
             setConversions(buildCategoryConversions(segments));
             setIsRawEditing(false);
@@ -121,7 +126,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     }, [isEditing, editingId, message.id, editDraft]);
 
     const conversionMap = React.useMemo(() => {
-        const map: Record<FormatCategory, TargetFormat> = {};
+        const map: Record<FormatCategory, FormatCategory> = {} as Record<FormatCategory, FormatCategory>;
         for (const c of conversions) map[c.detected] = c.target;
         return map;
     }, [conversions]);
@@ -158,7 +163,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         setEditDraft(e.target.value);
     }, [setEditDraft]);
 
-    const updateConversionTarget = React.useCallback((category: FormatCategory, target: TargetFormat) => {
+    const updateConversionTarget = React.useCallback((category: FormatCategory, target: FormatCategory) => {
         setConversions(prev => prev.map(c =>
             c.detected === category ? { ...c, target } : c
         ));
@@ -295,7 +300,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                                 <select
                                                     className="message-reformat-select"
                                                     value={conversion.target}
-                                                    onChange={e => updateConversionTarget(conversion.detected, e.target.value as TargetFormat)}
+                                                    onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}
                                                 >
                                                     {TARGET_OPTIONS.map(option => (
                                                         <option key={option.value} value={option.value}>

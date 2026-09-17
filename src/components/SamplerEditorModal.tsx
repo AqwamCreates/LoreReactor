@@ -1,6 +1,6 @@
 // src/components/SamplerEditorModal.tsx
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Sampler, StopPattern } from '../types';
 import { SliderInput } from './SliderInput';
 import { v4 as uuidv4 } from 'uuid';
@@ -131,6 +131,48 @@ const getParamValue = (params: Record<string, unknown> | undefined, key: string,
     return defaultValue;
 };
 
+function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefined): string[] {
+    if (!existingSampler) {
+        return Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled);
+    }
+
+    const storedOrder = existingSampler.parameters?._parameterOrder as string[] | undefined;
+    if (Array.isArray(storedOrder) && storedOrder.length > 0) {
+        const validKeys = Object.keys(PARAMETER_CONFIGS);
+        const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
+        const missingEnabled = validKeys.filter(k => {
+            const wasEnabled = existingSampler.parameters?.[`_enabled_${k}`];
+            return wasEnabled === true && !safeOrder.includes(k);
+        });
+        return [...safeOrder, ...missingEnabled];
+    }
+
+    const enabledKeys: string[] = [];
+    for (const key of Object.keys(PARAMETER_CONFIGS)) {
+        const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
+        if (wasEnabled === true) enabledKeys.push(key);
+    }
+    if (enabledKeys.length === 0) {
+        return Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled);
+    }
+    return enabledKeys;
+}
+
+function computeInitialParameters(existingSampler: Sampler | null | undefined): SamplerParameters {
+    const loadedParams = {} as SamplerParameters;
+    for (const key of Object.keys(DEFAULT_PARAMETERS)) {
+        const defaultValue = DEFAULT_PARAMETERS[key];
+        if (
+            typeof defaultValue === 'number' ||
+            typeof defaultValue === 'string' ||
+            typeof defaultValue === 'boolean'
+        ) {
+            loadedParams[key] = getParamValue(existingSampler?.parameters, key, defaultValue);
+        }
+    }
+    return loadedParams;
+}
+
 export function SamplerEditorModal({
     isOpen,
     onClose,
@@ -138,95 +180,48 @@ export function SamplerEditorModal({
     existingSampler,
     allStopPatterns,
 }: SamplerEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [parameters, setParameters] = useState<SamplerParameters>({ ...DEFAULT_PARAMETERS });
-    const [activeParamKeys, setActiveParamKeys] = useState<string[]>([]);
-    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
-    const [maxTokens, setMaxTokens] = useState<number>(512);
+    if (!isOpen) return null;
+
+    const modalKey = `samp-${existingSampler?.id ?? 'new'}`;
+
+    return (
+        <SamplerEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingSampler={existingSampler}
+            allStopPatterns={allStopPatterns}
+        />
+    );
+}
+
+function SamplerEditorModalInner({
+    onClose,
+    onSave,
+    existingSampler,
+    allStopPatterns,
+}: Omit<SamplerEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingSampler?.name || '');
+    const [description, setDescription] = useState(existingSampler?.description || '');
+    const [parameters, setParameters] = useState<SamplerParameters>(() => computeInitialParameters(existingSampler));
+    const [activeParamKeys, setActiveParamKeys] = useState<string[]>(() => computeInitialActiveParamKeys(existingSampler));
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingSampler?.stopPatterns.map(sp => sp.id) ?? []);
+    const [maxTokens, setMaxTokens] = useState<number>(existingSampler?.maximumNumberOfTokens || 512);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
     // Drag state for reordering active params
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-    useEffect(() => {
-        if (isOpen) {
-            if (existingSampler) {
-                setName(existingSampler.name || '');
-                setDescription(existingSampler.description || '');
-
-                // Restore parameter values
-                const loadedParams = {} as SamplerParameters;
-                for (const key of Object.keys(DEFAULT_PARAMETERS)) {
-                    const defaultValue = DEFAULT_PARAMETERS[key];
-                    if (
-                        typeof defaultValue === 'number' ||
-                        typeof defaultValue === 'string' ||
-                        typeof defaultValue === 'boolean'
-                    ) {
-                        loadedParams[key] = getParamValue(existingSampler.parameters, key, defaultValue);
-                    }
-                }
-                setParameters(loadedParams);
-
-                // ✅ RESTORE ACTIVE PARAMETER ORDER FROM SAVED DATA
-                const storedOrder = existingSampler.parameters?._parameterOrder as string[] | undefined;
-                if (Array.isArray(storedOrder) && storedOrder.length > 0) {
-                    const validKeys = Object.keys(PARAMETER_CONFIGS);
-                    const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
-                    // Include any keys that were enabled but missing from order
-                    const missingEnabled = validKeys.filter(k => {
-                        const wasEnabled = existingSampler.parameters?.[`_enabled_${k}`];
-                        return wasEnabled === true && !safeOrder.includes(k);
-                    });
-                    setActiveParamKeys([...safeOrder, ...missingEnabled]);
-                } else {
-                    // Fallback: reconstruct from _enabled_ flags
-                    const enabledKeys: string[] = [];
-                    for (const key of Object.keys(PARAMETER_CONFIGS)) {
-                        const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
-                        if (wasEnabled === true) enabledKeys.push(key);
-                    }
-                    // If nothing was explicitly enabled, use defaults
-                    if (enabledKeys.length === 0) {
-                        setActiveParamKeys(
-                            Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled)
-                        );
-                    } else {
-                        setActiveParamKeys(enabledKeys);
-                    }
-                }
-
-                setSelectedStopPatternIds(existingSampler.stopPatterns.map(sp => sp.id));
-                setMaxTokens(existingSampler.maximumNumberOfTokens || 512);
-            } else {
-                // New sampler defaults
-                setName('');
-                setDescription('');
-                setParameters({ ...DEFAULT_PARAMETERS });
-                setActiveParamKeys(
-                    Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled)
-                );
-                setSelectedStopPatternIds([]);
-                setMaxTokens(512);
-            }
-            setErrors({});
-            setDraggedIndex(null);
-        }
-    }, [isOpen, existingSampler]);
-
     const handleParameterChange = (key: string, value: number | string | boolean) => {
         setParameters(prev => ({ ...prev, [key]: value }));
     };
 
-    // ✅ ADD a parameter to the active list
     const handleAddParam = (key: string) => {
         if (!activeParamKeys.includes(key)) {
             setActiveParamKeys(prev => [...prev, key]);
         }
     };
 
-    // ✅ REMOVE a parameter from the active list
     const handleRemoveParam = (key: string) => {
         setActiveParamKeys(prev => prev.filter(k => k !== key));
     };
@@ -246,10 +241,8 @@ export function SamplerEditorModal({
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
         const paramsWithEnabled: Record<string, unknown> = { ...parameters };
 
-        // ✅ Persist the active parameter order
         paramsWithEnabled._parameterOrder = [...activeParamKeys];
 
-        // ✅ Mark active params as enabled (backwards compatibility)
         for (const key of Object.keys(PARAMETER_CONFIGS)) {
             paramsWithEnabled[`_enabled_${key}`] = activeParamKeys.includes(key);
         }
@@ -310,8 +303,6 @@ export function SamplerEditorModal({
         setDraggedIndex(null);
     };
 
-    if (!isOpen) return null;
-
     // Available params = all configs minus currently active ones
     const availableParamKeys = Object.keys(PARAMETER_CONFIGS).filter(k => !activeParamKeys.includes(k));
 
@@ -370,7 +361,7 @@ export function SamplerEditorModal({
                         />
                     </div>
 
-                    {/* ✅ ACTIVE SAMPLING PARAMETERS — Add/Delete List Pattern */}
+                    {/* Active Sampling Parameters */}
                     <div className="editor-section">
                         <div className="sampler-section-header editor-section-title">
                             <span>Active Parameters ({activeParamKeys.length})</span>
@@ -400,7 +391,6 @@ export function SamplerEditorModal({
                                     >
                                         <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
                                         <div className="sampler-param-content">
-                                            {/* ✅ SLIDER: Let SliderInput render its own label+number header */}
                                             {!config.isBoolean && !config.isString ? (
                                                 <>
                                                     <div className="slider-slider-header-with-remove">
@@ -427,7 +417,6 @@ export function SamplerEditorModal({
                                                     )}
                                                 </>
                                             ) : (
-                                                /* ✅ BOOLEAN / STRING: Keep manual label row */
                                                 <>
                                                     <div className="sampler-param-label-row" style={{ justifyContent: 'space-between' }}>
                                                         <span className="sampler-param-name sampler-param-name-enabled">
@@ -472,7 +461,7 @@ export function SamplerEditorModal({
                             })}
                         </div>
 
-                        {/* ✅ Add parameter dropdown */}
+                        {/* Add parameter dropdown */}
                         <div style={{ marginTop: '8px' }}>
                             <select
                                 onChange={(e) => {

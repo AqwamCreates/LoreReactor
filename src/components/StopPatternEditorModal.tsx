@@ -1,5 +1,5 @@
 // src/components/StopPatternEditorModal.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { regularExpressionContext, regularExpressionTarget, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -18,13 +18,32 @@ export function StopPatternEditorModal({
     onSave,
     existingStopPattern,
 }: StopPatternEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [pattern, setPattern] = useState('');
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState('');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState('');
-    const [regexContext, setRegexContext] = useState<regularExpressionContext>('global');
-    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>('everyone');
+    if (!isOpen) return null;
+
+    const modalKey = `sp-${existingStopPattern?.id ?? 'new'}`;
+
+    return (
+        <StopPatternEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingStopPattern={existingStopPattern}
+        />
+    );
+}
+
+function StopPatternEditorModalInner({
+    onClose,
+    onSave,
+    existingStopPattern,
+}: Omit<StopPatternEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingStopPattern?.name || '');
+    const [description, setDescription] = useState(existingStopPattern?.description || '');
+    const [pattern, setPattern] = useState(existingStopPattern?.pattern || '');
+    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingStopPattern?.regularExpressionActivationTrigger || '');
+    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingStopPattern?.regularExpressionDeactivationTrigger || '');
+    const [regexContext, setRegexContext] = useState<regularExpressionContext>(existingStopPattern?.regularExpressionContext || 'global');
+    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>(existingStopPattern?.regularExpressionTarget || 'everyone');
 
     const [activationTestText, setActivationTestText] = useState('');
     const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
@@ -33,36 +52,6 @@ export function StopPatternEditorModal({
     const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
 
     const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string; deactivationRegex?: string }>({});
-
-    useEffect(() => {
-        if (isOpen) {
-            if (existingStopPattern) {
-                setName(existingStopPattern.name || '');
-                setDescription(existingStopPattern.description || '');
-                setPattern(existingStopPattern.pattern || '');
-                setRegexActivationTrigger(existingStopPattern.regularExpressionActivationTrigger || '');
-                setRegexDeactivationTrigger(existingStopPattern.regularExpressionDeactivationTrigger || '');
-                setRegexContext(existingStopPattern.regularExpressionContext || 'global');
-                setRegexTarget(existingStopPattern.regularExpressionTarget || 'everyone');
-            } else {
-                setName('');
-                setDescription('');
-                setPattern('');
-                setRegexActivationTrigger('');
-                setRegexDeactivationTrigger('');
-                setRegexContext('global');
-                setRegexTarget('everyone');
-            }
-
-            setErrors({});
-
-            setActivationTestText('');
-            setActivationTestResult(null);
-
-            setDeactivationTestText('');
-            setDeactivationTestResult(null);
-        }
-    }, [isOpen, existingStopPattern]);
 
     const validate = (): boolean => {
         const newErrors: { name?: string; pattern?: string; regex?: string; deactivationRegex?: string } = {};
@@ -73,7 +62,7 @@ export function StopPatternEditorModal({
         if (regexActivationTrigger.trim()) {
             try {
                 new RegExp(regexActivationTrigger);
-            } catch (e) {
+            } catch {
                 newErrors.regex = 'Invalid activation regular expression.';
             }
         }
@@ -81,7 +70,7 @@ export function StopPatternEditorModal({
         if (regexDeactivationTrigger.trim()) {
             try {
                 new RegExp(regexDeactivationTrigger);
-            } catch (e) {
+            } catch {
                 newErrors.deactivationRegex = 'Invalid deactivation regular expression.';
             }
         }
@@ -99,7 +88,7 @@ export function StopPatternEditorModal({
         try {
             const regex = new RegExp(regexActivationTrigger);
             setActivationTestResult(regex.test(activationTestText));
-        } catch (e) {
+        } catch {
             setActivationTestResult(null);
             setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
         }
@@ -114,7 +103,7 @@ export function StopPatternEditorModal({
         try {
             const regex = new RegExp(regexDeactivationTrigger);
             setDeactivationTestResult(regex.test(deactivationTestText));
-        } catch (e) {
+        } catch {
             setDeactivationTestResult(null);
             setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
         }
@@ -151,8 +140,6 @@ export function StopPatternEditorModal({
         onSave(clonedStopPattern);
         onClose();
     };
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
