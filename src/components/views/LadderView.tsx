@@ -28,7 +28,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     return (
         <div className="chat-history" ref={chatHistoryRef}>
             {interactionData.interactionHistory.length > 3 && (
-                <ChatScrollButtons containerRef={chatHistoryRef} />
+                <ChatScrollButtons containerRef={chatHistoryRef} messageCount={displayMessages.length} />
             )}
 
             {displayMessages.map((message, renderIndex) => {

@@ -1,7 +1,9 @@
+// src/components/ChatScrollButtons.tsx
 import React, { useState, useCallback, useLayoutEffect } from 'react';
 
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
+    messageCount: number;
 }
 
 const BUTTON_GAP = 16;
@@ -9,44 +11,67 @@ const VERTICAL_GAP = 5;
 
 export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     containerRef,
+    messageCount,
 }: ChatScrollButtonsProps) {
     const [showTopButton, setShowTopButton] = useState(false);
     const [showBottomButton, setShowBottomButton] = useState(false);
     const [containerRect, setContainerRect] = useState<{ top: number; bottom: number; right: number } | null>(null);
 
+    const checkScroll = useCallback(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        setShowTopButton(scrollTop > 200);
+        setShowBottomButton(scrollHeight - scrollTop - clientHeight > 200);
+    }, [containerRef]);
+
+    const updateRect = useCallback(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        setContainerRect({
+            top: rect.top,
+            bottom: rect.bottom,
+            right: rect.right,
+        });
+    }, [containerRef]);
+
     useLayoutEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        const updateRect = () => {
-            const rect = container.getBoundingClientRect();
-            setContainerRect({
-                top: rect.top,
-                bottom: rect.bottom,
-                right: rect.right,
-            });
-        };
-
         const onScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            setShowTopButton(scrollTop > 200);
-            setShowBottomButton(scrollHeight - scrollTop - clientHeight > 200);
+            updateRect();
+            checkScroll();
         };
 
         updateRect();
-        onScroll();
+        checkScroll();
 
-        const resizeObserver = new ResizeObserver(updateRect);
+        const resizeObserver = new ResizeObserver(() => {
+            updateRect();
+            checkScroll();
+        });
         resizeObserver.observe(container);
         container.addEventListener('scroll', onScroll, { passive: true });
-        window.addEventListener('resize', updateRect);
+        window.addEventListener('resize', onScroll);
 
         return () => {
             resizeObserver.disconnect();
             container.removeEventListener('scroll', onScroll);
-            window.removeEventListener('resize', updateRect);
+            window.removeEventListener('resize', onScroll);
         };
-    }, [containerRef]);
+    }, [containerRef, checkScroll, updateRect]);
+
+    // Re-check scroll state when message count changes (session restore, new messages)
+    useLayoutEffect(() => {
+        // Defer to next frame to ensure browser has completed layout
+        const frameId = requestAnimationFrame(() => {
+            checkScroll();
+            updateRect();
+        });
+        return () => cancelAnimationFrame(frameId);
+    }, [messageCount, checkScroll, updateRect]);
 
     const scrollToTop = useCallback(() => {
         containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
