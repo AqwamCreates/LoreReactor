@@ -1541,9 +1541,11 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .vn-sprite {
     height: 50vh;
-    width: auto;
-    max-height: 100%; /* Never exceed the sprite container */
-    object-fit: contain;
+    width: calc(50vh * 9 / 16);
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: cover;
+    object-position: top center;
     image-rendering: -webkit-optimize-contrast;
 }
 
@@ -1569,13 +1571,15 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 /* --- DIALOGUE BOX (VN Style) --- */
 .vn-dialogue-layer {
-    position: relative;
+    position: absolute;
+    bottom: 80px;
+    left: 0;
+    right: 0;
     z-index: 50;
     padding: 0 12px 12px 12px;
     pointer-events: auto;
     width: 100%;
     box-sizing: border-box;
-    flex-shrink: 0;
 }
 
 .vn-dialogue-box {
@@ -1817,7 +1821,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 /* VN Navigation Arrows */
 .vn-nav-arrows {
     position: absolute;
-    top: 50%;
+    top: 30%;
     left: 0;
     right: 0;
     transform: translateY(-50%);
@@ -1930,13 +1934,19 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 .mode-vn .input-wrapper {
-    position: relative;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
     background: rgba(10, 10, 20, 0.8);
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px;
-    flex-shrink: 0;
+    max-width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
 }
 
 .mode-vn .chat-input {
@@ -1951,22 +1961,23 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 @media (max-width: 768px) {
-    .vn-sprite { height: 45vh; }
+    .vn-sprite { height: 45vh; width: calc(45vh * 9 / 16); }
     .vn-sprites-layer { height: 60%; }
     .vn-dialogue-box { padding: 16px 14px; max-height: 35vh; }
     .vn-name-plate { font-size: 0.75rem; top: -12px; left: 12px; padding: 3px 12px; }
     .vn-message-toolbar { top: -12px; right: 12px; padding: 2px 4px; gap: 2px; max-width: calc(100% - 24px); }
     .vn-toolbar-btn { font-size: 0.85rem; padding: 2px 4px; min-width: 28px; min-height: 28px; }
     .vn-dialogue-text { font-size: 0.9rem; }
-    .vn-dialogue-layer { padding: 0 8px 8px 8px; }
+    .vn-dialogue-layer { bottom: 70px; padding: 0 8px 8px 8px; }
     .vn-character-layer { bottom: 10%; }
+    .vn-nav-arrows { top: 25%; }
     .vn-nav-arrow { width: 36px; height: 36px; font-size: 1rem; }
     .vn-reformat-grid { grid-template-columns: 1fr; }
     .vn-branch-button { font-size: 0.65rem; padding: 4px 12px; }
 }
 
 @media (max-width: 480px) {
-    .vn-sprite { height: 35vh; }
+    .vn-sprite { height: 35vh; width: calc(35vh * 9 / 16); }
     .vn-sprites-layer { height: 55%; }
     .vn-dialogue-box { padding: 12px 10px; max-height: 30vh; }
     .vn-dialogue-text { font-size: 0.85rem; }
