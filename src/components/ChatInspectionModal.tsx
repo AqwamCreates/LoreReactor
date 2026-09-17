@@ -104,7 +104,7 @@ function LocationNode({ data }: NodeProps<Node<LocationNodeData>>) {
                             borderRadius: '4px',
                             color: hasParticipants ? '#fde68a' : 'rgba(255,255,255,0.7)',
                         }}>
-                            {pp.name} ({pp.index + 1})
+                            {pp.name} [{pp.index + 1}]
                         </span>
                     ))}
                 </div>
@@ -501,7 +501,7 @@ export function ChatInspectionModal({
                                                 {p.name}
                                             </div>
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
-                                                (Character {i + 1})
+                                                [Character {i + 1}]
                                             </div>
                                             {pLoc && (
                                                 <div style={{
@@ -557,7 +557,7 @@ export function ChatInspectionModal({
                                                         <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', borderRadius: '2px', aspectRatio: '9 / 16' }} />
                                                     )}
                                                     <span style={{ fontSize: '0.65rem' }}>
-                                                        {pp.name} ({pp.index + 1})
+                                                        {pp.name} [{pp.index + 1}]
                                                     </span>
                                                 </div>
                                             ))}
