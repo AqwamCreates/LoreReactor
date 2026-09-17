@@ -154,14 +154,32 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
         massDeleteId, isMassActive,
         onStopGeneration,
+        onNavigateToBranchSource,
     } = props;
 
     const protagonistId = interactionData.protagonist?.id;
+
+    // --- Rewind/Forward State ---
+    const [viewIndex, setViewIndex] = useState<number | null>(null); // null = live (latest)
 
     // --- Reformat State ---
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = useState(false);
     const rawDraftRef = useRef<string>('');
+
+    const chatMessages = useMemo(() => {
+        return displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat');
+    }, [displayMessages]);
+
+    // Reset viewIndex when new messages arrive (stay live)
+    const prevChatLengthRef = useRef(chatMessages.length);
+    useEffect(() => {
+        if (chatMessages.length > prevChatLengthRef.current && viewIndex !== null) {
+            // New message arrived while rewound — snap back to live
+            setViewIndex(null);
+        }
+        prevChatLengthRef.current = chatMessages.length;
+    }, [chatMessages.length, viewIndex]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = lastMsg?.isPartial === true;
@@ -174,29 +192,65 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return interactionData.participants;
     }, [interactionData.participants]);
 
-    const chatMessages = useMemo(() => {
-        return displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat');
-    }, [displayMessages]);
-
     const lastSpeaker = useMemo(() => {
         return chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
     }, [chatMessages]);
 
+    // The message currently being displayed (either rewound or live)
+    const displayedMessage = useMemo(() => {
+        if (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length) {
+            return chatMessages[viewIndex];
+        }
+        return lastSpeaker;
+    }, [viewIndex, chatMessages, lastSpeaker]);
+
     const activeSpeaker = useMemo(() => {
+        if (viewIndex !== null && displayedMessage) return displayedMessage.character;
         if (isLoading && streamingCharacter) return streamingCharacter;
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
-        if (lastSpeaker?.character) return lastSpeaker.character;
+        if (displayedMessage?.character) return displayedMessage.character;
         if (centerAvatar) return centerAvatar;
         return visibleCharacters.find(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId)
             || visibleCharacters[0]
             || null;
-    }, [isLoading, streamingCharacter, isStreamingInList, lastMsg, lastSpeaker, centerAvatar, visibleCharacters, protagonistId]);
+    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, protagonistId]);
 
-    const isWaitingForGeneration = isLoading && !activeStreamingText;
-    const isEditingLastSpeaker = editingId !== null && lastSpeaker?.id === editingId;
-    const isAmbientSpeaker = lastSpeaker?.character.id === AMBIENT_NARRATOR_ID;
+    const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null;
+    const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
+    const isAmbientSpeaker = displayedMessage?.character.id === AMBIENT_NARRATOR_ID;
+    const isLive = viewIndex === null;
 
-    const showToolbar = lastSpeaker && (!isStreamingInList || isAmbientSpeaker);
+    const showToolbar = displayedMessage && (isLive || isAmbientSpeaker || !isStreamingInList);
+
+    // Check if this message is a branch point
+    const isBranchPoint = displayedMessage?.parentInteractionMessageId !== null && displayedMessage?.parentInteractionMessageId !== undefined;
+    const hasParentBranch = !!interactionData.parentInteractionDataId;
+
+    // --- Navigation ---
+    const canGoBack = chatMessages.length > 1 && (viewIndex === null ? true : viewIndex > 0);
+    const canGoForward = viewIndex !== null && viewIndex < chatMessages.length - 1;
+
+    const handleGoBack = useCallback(() => {
+        if (viewIndex === null) {
+            setViewIndex(chatMessages.length - 2);
+        } else if (viewIndex > 0) {
+            setViewIndex(viewIndex - 1);
+        }
+    }, [viewIndex, chatMessages.length]);
+
+    const handleGoForward = useCallback(() => {
+        if (viewIndex !== null) {
+            if (viewIndex < chatMessages.length - 1) {
+                setViewIndex(viewIndex + 1);
+            } else {
+                setViewIndex(null); // Back to live
+            }
+        }
+    }, [viewIndex, chatMessages.length]);
+
+    const handleGoToLive = useCallback(() => {
+        setViewIndex(null);
+    }, []);
 
     // --- Sprite States ---
     const spriteCharacterIds = useMemo(() => {
@@ -214,23 +268,29 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const handleRegenerateFromMessageWithRollback = useCallback((id: string, type: 'ai' | 'user') => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
+        setViewIndex(null);
         onRegenerateFromMessage(id, type);
     }, [chatMessages, rollbackToMessage, onRegenerateFromMessage]);
 
     const handleBranchWithRollback = useCallback((id: string) => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
+        setViewIndex(null);
         onBranch(id);
     }, [chatMessages, rollbackToMessage, onBranch]);
 
     // --- Reformat Effects ---
+    const prevIsEditingRef = useRef(false);
     useEffect(() => {
-        if (isEditingLastSpeaker) {
+        const justStarted = isEditingLastSpeaker && !prevIsEditingRef.current;
+        prevIsEditingRef.current = isEditingLastSpeaker;
+
+        if (justStarted) {
             const segments = detectFormatSegments(editDraft);
             setConversions(buildCategoryConversions(segments));
             setIsRawEditing(false);
             rawDraftRef.current = editDraft;
-        } else {
+        } else if (!isEditingLastSpeaker) {
             setConversions([]);
             setIsRawEditing(false);
         }
@@ -254,7 +314,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         }
     }, [isRawEditing, conversionMap, isEditingLastSpeaker, setEditDraft]);
 
-    // Focus textarea when entering raw edit mode
     useEffect(() => {
         if (isRawEditing && editTextareaRef.current) {
             editTextareaRef.current.focus();
@@ -294,11 +353,22 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         ? { backgroundImage: `url(${locationBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
         : { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
 
-    const isMassDeletingThis = isMassActive && massDeleteId === lastSpeaker?.id;
+    const isMassDeletingThis = isMassActive && massDeleteId === displayedMessage?.id;
 
     const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
         e.currentTarget.style.display = 'none';
     }, []);
+
+    // Determine what text to show
+    const displayText = useMemo(() => {
+        if (isEditingLastSpeaker) return null; // Handled by edit UI
+        if (!isLive && displayedMessage) return displayedMessage.textContent;
+        if (activeStreamingText) return activeStreamingText;
+        if (displayedMessage) return displayedMessage.textContent;
+        return null;
+    }, [isEditingLastSpeaker, isLive, displayedMessage, activeStreamingText]);
+
+    const currentIndex = viewIndex !== null ? viewIndex : chatMessages.length - 1;
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
@@ -340,6 +410,39 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 })}
             </div>
 
+            {/* --- BRANCH INDICATOR --- */}
+            {hasParentBranch && onNavigateToBranchSource && (
+                <div className="vn-branch-indicator">
+                    <button type="button" className="vn-branch-button" onClick={onNavigateToBranchSource}>
+                        🌿 Return to Source
+                    </button>
+                </div>
+            )}
+
+            {/* --- NAVIGATION ARROWS --- */}
+            {chatMessages.length > 1 && (
+                <div className="vn-nav-arrows">
+                    <button
+                        type="button"
+                        className="vn-nav-arrow"
+                        onClick={handleGoBack}
+                        disabled={!canGoBack}
+                        title="Previous message"
+                    >
+                        ◀
+                    </button>
+                    <button
+                        type="button"
+                        className="vn-nav-arrow"
+                        onClick={handleGoForward}
+                        disabled={!canGoForward && isLive}
+                        title={isLive ? 'Already at latest' : 'Next message'}
+                    >
+                        ▶
+                    </button>
+                </div>
+            )}
+
             {/* --- DIALOGUE BOX LAYER --- */}
             <div className="vn-dialogue-layer">
                 <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`} style={{
@@ -349,6 +452,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 }}>
                     <div className="vn-name-plate">
                         {isAmbientSpeaker ? '✦ Narration' : (activeSpeaker ? activeSpeaker.name : 'System')}
+                        {!isLive && <span style={{ opacity: 0.6, fontSize: '0.7em', marginLeft: '8px' }}>[Rewound]</span>}
                     </div>
 
                     <div className="vn-message-toolbar">
@@ -360,28 +464,34 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             </>
                         ) : (
                             <>
-                                {isLoading && !isAmbientSpeaker && (
+                                {isLoading && !isAmbientSpeaker && isLive && (
                                     <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={onStopGeneration} title="Stop Generation">⏹</button>
                                 )}
-                                {showToolbar && (
+                                {showToolbar && displayedMessage && (
                                     <>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(lastSpeaker.textContent)} title="Copy Text">📋</button>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(lastSpeaker.id, lastSpeaker.textContent)} title="Edit Message">✎</button>
-                                        {lastSpeaker.isPartial ? (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(lastSpeaker.id)} title="Resume Generation">▶</button>
-                                        ) : (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(lastSpeaker.id, 'ai')} title="Regenerate">↻</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedMessage.textContent)} title="Copy Text">📋</button>
+                                        {isLive && (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)} title="Edit Message">✎</button>
                                         )}
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(lastSpeaker.id)} title="Branch Timeline">🌿</button>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onClone(lastSpeaker.id)} title="Clone Chat">⑂</button>
-                                        <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(lastSpeaker.id)} title="Delete Message">🗑</button>
-                                        {isMassDeletingThis ? (
+                                        {isLive && displayedMessage.isPartial ? (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Resume Generation">▶</button>
+                                        ) : isLive ? (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, displayedMessage.character.id === protagonistId ? 'user' : 'ai')} title="Regenerate">↻</button>
+                                        ) : null}
+                                        {isLive && (
                                             <>
-                                                <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
-                                                <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
+                                                <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(displayedMessage.id)} title="Branch Timeline">🌿</button>
+                                                <button type="button" className="vn-toolbar-btn" onClick={() => onClone(displayedMessage.id)} title="Clone Chat">⑂</button>
+                                                <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(displayedMessage.id)} title="Delete Message">🗑</button>
+                                                {isMassDeletingThis ? (
+                                                    <>
+                                                        <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
+                                                        <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
+                                                    </>
+                                                ) : (
+                                                    <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(displayedMessage.id)} title="Mass Delete From Here">🗑️↓</button>
+                                                )}
                                             </>
-                                        ) : (
-                                            <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(lastSpeaker.id)} title="Mass Delete From Here">🗑️↓</button>
                                         )}
                                     </>
                                 )}
@@ -402,10 +512,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         <MemoizedMessageText text={displayEditText} />
                                     </div>
                                 )
-                            ) : activeStreamingText ? (
-                                <MemoizedMessageText text={activeStreamingText} />
-                            ) : lastSpeaker ? (
-                                <MemoizedMessageText text={lastSpeaker.textContent} />
+                            ) : displayText ? (
+                                <MemoizedMessageText text={displayText} />
                             ) : (
                                 <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for interaction...</span>
                             )}
@@ -435,6 +543,12 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 )}
                             </div>
                         )}
+                    </div>
+
+                    {/* Message counter */}
+                    <div className="vn-message-counter">
+                        {currentIndex + 1} / {chatMessages.length}
+                        {!isLive && <span onClick={handleGoToLive} style={{ cursor: 'pointer', marginLeft: '8px', opacity: 0.7 }}>● LIVE</span>}
                     </div>
                 </div>
             </div>
