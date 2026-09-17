@@ -1,7 +1,5 @@
 // src/components/views/types.ts
-import type React from 'react';
 import type { Character, InteractionData, ChatMessage } from '../../types';
-import type { DisplayNameCache } from '../../hooks/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;
@@ -11,28 +9,26 @@ export interface ViewModeProps {
     editDraft: string;
     massDeleteId: string | null;
     isMassActive: boolean;
-    massStartIndex: number;
+    massStartIndex: number | null;
     activeToolbarId: string | null;
-    portraitUrlCache: Map<string, string | null>;
-    displayNameCache: DisplayNameCache | null;
-    characterScales: Map<string, { scale: number; transitionSpeed: string }>;
-    centerAvatar: Character | null;
-    streamingPortraitUrl: string | null;
-    formattedStreamingText: React.ReactNode | null;
-    locationBackgroundUrl: string | null;
+    portraitUrlCache: Map<string, string>;
+    displayNameCache: Map<string, string>;
+    formattedStreamingText: string | null;
     isLoading: boolean;
-    isEditingTitle: boolean;
-    editTitleValue: string;
-    parentInteractionMessageId: string | null;
+    streamingPortraitUrl: string | null;
     streamingCharacter: Character | null;
-
-    // Refs
-    chatHistoryRef: React.RefObject<HTMLDivElement | null>;
-    messageEndRef: React.RefObject<HTMLDivElement | null>;
-    editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
-
-    // Callbacks
-    onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
+    centerAvatar: Character | null;
+    chatHistoryRef: React.RefObject<HTMLDivElement>;
+    messageEndRef: React.RefObject<HTMLDivElement>;
+    editTextareaRef: React.RefObject<HTMLTextAreaElement>;
+    parentInteractionMessageId: string | null;
+    locationBackgroundUrl: string | null;
+    
+    // NEW: Shared focused message state
+    focusedMessageId: string | null;
+    setFocusedMessageId: (id: string | null) => void;
+    
+    onAvatarClick: (e: React.MouseEvent, id: string, character?: Character) => void;
     onStartEditing: (id: string, text: string) => void;
     onCancelEditing: () => void;
     onSaveEdit: () => void;
@@ -46,17 +42,10 @@ export interface ViewModeProps {
     onSetMassDelete: (id: string) => void;
     onMassDeleteConfirm: () => void;
     onCancelMassDelete: () => void;
-    onTouchStart: (e: React.TouchEvent, id: string) => void;
+    onTouchStart: (e: React.TouchEvent) => void;
     onTouchEnd: (e: React.TouchEvent) => void;
-    onTouchMove: () => void;
+    onTouchMove: (e: React.TouchEvent) => void;
     suppressNextClickRef: React.MutableRefObject<boolean>;
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
-    onStartEditTitle: (e: React.MouseEvent) => void;
-    onSaveTitle: () => void;
-    onCancelEditTitle: () => void;
-    setEditTitleValue: (v: string) => void;
-    closeActionMenu: () => void;
-    deactivateToolbar: () => void;
-    onStopGeneration: () => void;
 }

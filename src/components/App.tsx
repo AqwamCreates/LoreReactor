@@ -138,6 +138,9 @@ function App() {
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
+    // ─── Cross-View Message Sync State ───────────────────────────────
+    const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
         allCharacters, rawChatShells, loadFullCharacter,
@@ -619,8 +622,6 @@ function App() {
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
             if (isLastMessagePartial) {
-                // Re-resolve display name in case reveal threshold was crossed
-                // since this partial message was originally created
                 const lastIndex = base.length - 1;
                 const resolvedName = resolveDelayedDisplayNameFromCache(
                     displayNameCache,
@@ -655,10 +656,8 @@ function App() {
         return base;
     }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter, displayNameCache]);
 
-    // massStartIndex must use displayMessages since that's what views iterate over for index props
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
-    // Compute timeUntilReset via ref to avoid impure Date.now() in render
     const timeUntilResetRef = useRef<number | undefined>(undefined);
     if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
         timeUntilResetRef.current = Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
@@ -691,6 +690,8 @@ function App() {
         chatHistoryRef,
         messageEndRef,
         editTextareaRef,
+        focusedMessageId,
+        setFocusedMessageId,
         onAvatarClick: handleAvatarClick,
         onStartEditing: startEditing,
         onCancelEditing: cancelEditing,

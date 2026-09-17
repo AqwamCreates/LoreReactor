@@ -1,5 +1,5 @@
 // src/components/views/LadderView.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
@@ -14,6 +14,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         formattedStreamingText, isLoading, streamingPortraitUrl,
         chatHistoryRef, messageEndRef, editTextareaRef,
         parentInteractionMessageId,
+        focusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
         onRegenerateFromMessage, onBranch, onClone, onDelete,
@@ -24,6 +25,16 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
 
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = lastMsg?.isPartial === true;
+
+    // Scroll to focused message when it changes
+    useEffect(() => {
+        if (focusedMessageId && chatHistoryRef.current) {
+            const msgElement = document.getElementById(`message-${focusedMessageId}`);
+            if (msgElement) {
+                msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }, [focusedMessageId, chatHistoryRef]);
 
     return (
         <div className="chat-history" ref={chatHistoryRef}>
@@ -49,50 +60,50 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                     : -1;
                 const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
                 
-                // Unified cache lookup: message ID first, then canonical character key
                 const messagePortraitUrl = portraitUrlCache.get(message.id)
                     ?? portraitUrlCache.get(`character:${message.character.id}`)
                     ?? null;
 
                 return (
-                    <MessageBubble
-                        key={message.id}
-                        message={message}
-                        index={index}
-                        viewMode="ladder"
-                        currentCharacterId={currentCharacterId}
-                        editingId={editingId}
-                        editDraft={editDraft}
-                        massDeleteId={massDeleteId}
-                        isMassActive={isMassActive}
-                        massStartIndex={massStartIndex}
-                        activeToolbarId={activeToolbarId}
-                        portraitUrl={messagePortraitUrl}
-                        displayName={dn}
-                        isStem={stem}
-                        beforeBranch={beforeBranch}
-                        onAvatarClick={onAvatarClick}
-                        onStartEditing={onStartEditing}
-                        onCancelEditing={onCancelEditing}
-                        onSaveEdit={onSaveEdit}
-                        onRegenerateFromEdit={onRegenerateFromEdit}
-                        onResumeGeneration={onResumeGeneration}
-                        onCopyText={onCopyText}
-                        onRegenerateFromMessage={onRegenerateFromMessage}
-                        onBranch={onBranch}
-                        onClone={onClone}
-                        onDelete={onDelete}
-                        onSetMassDelete={onSetMassDelete}
-                        onMassDeleteConfirm={onMassDeleteConfirm}
-                        onCancelMassDelete={onCancelMassDelete}
-                        onTouchStart={onTouchStart}
-                        onTouchEnd={onTouchEnd}
-                        onTouchMove={onTouchMove}
-                        suppressNextClickRef={suppressNextClickRef}
-                        editTextareaRef={editTextareaRef}
-                        setEditDraft={setEditDraft}
-                        onNavigateToBranchSource={onNavigateToBranchSource}
-                    />
+                    <div key={message.id} id={`message-${message.id}`}>
+                        <MessageBubble
+                            message={message}
+                            index={index}
+                            viewMode="ladder"
+                            currentCharacterId={currentCharacterId}
+                            editingId={editingId}
+                            editDraft={editDraft}
+                            massDeleteId={massDeleteId}
+                            isMassActive={isMassActive}
+                            massStartIndex={massStartIndex}
+                            activeToolbarId={activeToolbarId}
+                            portraitUrl={messagePortraitUrl}
+                            displayName={dn}
+                            isStem={stem}
+                            beforeBranch={beforeBranch}
+                            onAvatarClick={onAvatarClick}
+                            onStartEditing={onStartEditing}
+                            onCancelEditing={onCancelEditing}
+                            onSaveEdit={onSaveEdit}
+                            onRegenerateFromEdit={onRegenerateFromEdit}
+                            onResumeGeneration={onResumeGeneration}
+                            onCopyText={onCopyText}
+                            onRegenerateFromMessage={onRegenerateFromMessage}
+                            onBranch={onBranch}
+                            onClone={onClone}
+                            onDelete={onDelete}
+                            onSetMassDelete={onSetMassDelete}
+                            onMassDeleteConfirm={onMassDeleteConfirm}
+                            onCancelMassDelete={onCancelMassDelete}
+                            onTouchStart={onTouchStart}
+                            onTouchEnd={onTouchEnd}
+                            onTouchMove={onTouchMove}
+                            suppressNextClickRef={suppressNextClickRef}
+                            editTextareaRef={editTextareaRef}
+                            setEditDraft={setEditDraft}
+                            onNavigateToBranchSource={onNavigateToBranchSource}
+                        />
+                    </div>
                 );
             })}
 

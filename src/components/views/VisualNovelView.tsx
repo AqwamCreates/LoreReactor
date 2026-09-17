@@ -9,7 +9,7 @@ import type { FormatCategory } from '../../utilities/textReformatter';
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 // =============================================================================
-// TEXT REFORMAT SYSTEM
+// TEXT REFORMAT SYSTEM (unchanged - keep your existing functions)
 // =============================================================================
 
 interface DetectedSegment { start: number; end: number; category: FormatCategory; innerText: string; rawMatch: string; }
@@ -154,12 +154,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         massDeleteId, isMassActive,
         onStopGeneration,
         onNavigateToBranchSource,
+        focusedMessageId,
+        setFocusedMessageId,
     } = props;
 
     const protagonistId = interactionData.protagonist?.id;
-
-    // --- Rewind/Forward State ---
-    const [viewIndex, setViewIndex] = useState<number | null>(null); // null = live (latest)
 
     // --- Reformat State ---
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
@@ -177,14 +176,21 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         });
     }, [displayMessages]);
 
+    // Convert focusedMessageId to viewIndex
+    const viewIndex = useMemo(() => {
+        if (!focusedMessageId) return null;
+        const idx = chatMessages.findIndex(m => m.id === focusedMessageId);
+        return idx !== -1 ? idx : null;
+    }, [focusedMessageId, chatMessages]);
+
     // Reset viewIndex when new messages arrive (stay live)
     const prevChatLengthRef = useRef(chatMessages.length);
     useEffect(() => {
-        if (chatMessages.length > prevChatLengthRef.current && viewIndex !== null) {
-            setViewIndex(null);
+        if (chatMessages.length > prevChatLengthRef.current && focusedMessageId) {
+            setFocusedMessageId(null);
         }
         prevChatLengthRef.current = chatMessages.length;
-    }, [chatMessages.length, viewIndex]);
+    }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = lastMsg?.isPartial === true;
@@ -222,7 +228,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null;
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
     const isAmbientSpeaker = displayedMessage?.character.id === AMBIENT_NARRATOR_ID;
-    const isLive = viewIndex === null;
 
     const hasParentBranch = !!interactionData.parentInteractionDataId;
 
@@ -232,31 +237,33 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleGoBack = useCallback(() => {
         if (viewIndex === null) {
-            setViewIndex(chatMessages.length - 2);
+            if (chatMessages.length >= 2) {
+                setFocusedMessageId(chatMessages[chatMessages.length - 2].id);
+            }
         } else if (viewIndex > 0) {
-            setViewIndex(viewIndex - 1);
+            setFocusedMessageId(chatMessages[viewIndex - 1].id);
         }
-    }, [viewIndex, chatMessages.length]);
+    }, [viewIndex, chatMessages, setFocusedMessageId]);
 
     const handleGoForward = useCallback(() => {
         if (viewIndex !== null) {
-            if (viewIndex < chatMessages.length - 1) {
-                setViewIndex(viewIndex + 1);
+            if (viewIndex < chatMessages.length - 2) {
+                setFocusedMessageId(chatMessages[viewIndex + 1].id);
             } else {
-                setViewIndex(null);
+                setFocusedMessageId(null);
             }
         }
-    }, [viewIndex, chatMessages.length]);
+    }, [viewIndex, chatMessages, setFocusedMessageId]);
 
     const handleSkipToFirst = useCallback(() => {
         if (chatMessages.length > 0) {
-            setViewIndex(0);
+            setFocusedMessageId(chatMessages[0].id);
         }
-    }, [chatMessages.length]);
+    }, [chatMessages, setFocusedMessageId]);
 
     const handleSkipToLatest = useCallback(() => {
-        setViewIndex(null);
-    }, []);
+        setFocusedMessageId(null);
+    }, [setFocusedMessageId]);
 
     // --- Sprite States ---
     const spriteCharacterIds = useMemo(() => {
@@ -274,16 +281,16 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const handleRegenerateFromMessageWithRollback = useCallback((id: string, type: 'ai' | 'user') => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
-        setViewIndex(null);
+        setFocusedMessageId(null);
         onRegenerateFromMessage(id, type);
-    }, [chatMessages, rollbackToMessage, onRegenerateFromMessage]);
+    }, [chatMessages, rollbackToMessage, onRegenerateFromMessage, setFocusedMessageId]);
 
     const handleBranchWithRollback = useCallback((id: string) => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
-        setViewIndex(null);
+        setFocusedMessageId(null);
         onBranch(id);
-    }, [chatMessages, rollbackToMessage, onBranch]);
+    }, [chatMessages, rollbackToMessage, onBranch, setFocusedMessageId]);
 
     // --- Reformat Effects ---
     const prevIsEditingRef = useRef(false);
@@ -367,11 +374,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const displayText = useMemo(() => {
         if (isEditingLastSpeaker) return null;
-        if (!isLive && displayedMessage) return displayedMessage.textContent;
+        if (viewIndex !== null && displayedMessage) return displayedMessage.textContent;
         if (activeStreamingText) return activeStreamingText;
         if (displayedMessage) return displayedMessage.textContent;
         return null;
-    }, [isEditingLastSpeaker, isLive, displayedMessage, activeStreamingText]);
+    }, [isEditingLastSpeaker, viewIndex, displayedMessage, activeStreamingText]);
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
@@ -450,8 +457,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             type="button"
                             className="vn-nav-arrow"
                             onClick={handleGoForward}
-                            disabled={!canGoForward && isLive}
-                            title={isLive ? 'Already at latest' : 'Next message'}
+                            disabled={!canGoForward}
+                            title={!canGoForward ? 'Already at latest' : 'Next message'}
                         >
                             <span>▶</span>
                         </button>
@@ -459,8 +466,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             type="button"
                             className="vn-nav-arrow"
                             onClick={handleSkipToLatest}
-                            disabled={isLive}
-                            title="Skip to latest message"
+                            disabled={!canGoForward}
+                            title={!canGoForward ? 'Already at latest' : 'Skip to latest message'}
                         >
                             <span>⏭</span>
                         </button>
@@ -488,7 +495,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             </>
                         ) : (
                             <>
-                                {isLoading && !isAmbientSpeaker && isLive && (
+                                {isLoading && !isAmbientSpeaker && viewIndex === null && (
                                     <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={onStopGeneration} title="Stop Generation">⏹</button>
                                 )}
                                 {displayedMessage && (

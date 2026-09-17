@@ -1,5 +1,5 @@
 // src/components/views/CinematicView.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
@@ -13,6 +13,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
         isLoading, chatHistoryRef, messageEndRef, editTextareaRef,
         parentInteractionMessageId,
+        focusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
         onRegenerateFromMessage, onBranch, onClone, onDelete,
@@ -24,6 +25,16 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const centerAvatarUrl = centerAvatar
         ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
         : null;
+
+    // Scroll to focused message when it changes
+    useEffect(() => {
+        if (focusedMessageId && chatHistoryRef.current) {
+            const msgElement = document.getElementById(`message-${focusedMessageId}`);
+            if (msgElement) {
+                msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }, [focusedMessageId, chatHistoryRef]);
 
     return (
         <>
@@ -75,44 +86,45 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         ?? null;
 
                     return (
-                        <MessageBubble
-                            key={message.id}
-                            message={message}
-                            index={index}
-                            viewMode="cinematic"
-                            currentCharacterId={currentCharacterId}
-                            editingId={editingId}
-                            editDraft={editDraft}
-                            massDeleteId={massDeleteId}
-                            isMassActive={isMassActive}
-                            massStartIndex={massStartIndex}
-                            activeToolbarId={activeToolbarId}
-                            portraitUrl={messagePortraitUrl}
-                            displayName={dn}
-                            isStem={stem}
-                            beforeBranch={beforeBranch}
-                            onAvatarClick={onAvatarClick}
-                            onStartEditing={onStartEditing}
-                            onCancelEditing={onCancelEditing}
-                            onSaveEdit={onSaveEdit}
-                            onRegenerateFromEdit={onRegenerateFromEdit}
-                            onResumeGeneration={onResumeGeneration}
-                            onCopyText={onCopyText}
-                            onRegenerateFromMessage={onRegenerateFromMessage}
-                            onBranch={onBranch}
-                            onClone={onClone}
-                            onDelete={onDelete}
-                            onSetMassDelete={onSetMassDelete}
-                            onMassDeleteConfirm={onMassDeleteConfirm}
-                            onCancelMassDelete={onCancelMassDelete}
-                            onTouchStart={onTouchStart}
-                            onTouchEnd={onTouchEnd}
-                            onTouchMove={onTouchMove}
-                            suppressNextClickRef={suppressNextClickRef}
-                            editTextareaRef={editTextareaRef}
-                            setEditDraft={setEditDraft}
-                            onNavigateToBranchSource={onNavigateToBranchSource}
-                        />
+                        <div key={message.id} id={`message-${message.id}`}>
+                            <MessageBubble
+                                message={message}
+                                index={index}
+                                viewMode="cinematic"
+                                currentCharacterId={currentCharacterId}
+                                editingId={editingId}
+                                editDraft={editDraft}
+                                massDeleteId={massDeleteId}
+                                isMassActive={isMassActive}
+                                massStartIndex={massStartIndex}
+                                activeToolbarId={activeToolbarId}
+                                portraitUrl={messagePortraitUrl}
+                                displayName={dn}
+                                isStem={stem}
+                                beforeBranch={beforeBranch}
+                                onAvatarClick={onAvatarClick}
+                                onStartEditing={onStartEditing}
+                                onCancelEditing={onCancelEditing}
+                                onSaveEdit={onSaveEdit}
+                                onRegenerateFromEdit={onRegenerateFromEdit}
+                                onResumeGeneration={onResumeGeneration}
+                                onCopyText={onCopyText}
+                                onRegenerateFromMessage={onRegenerateFromMessage}
+                                onBranch={onBranch}
+                                onClone={onClone}
+                                onDelete={onDelete}
+                                onSetMassDelete={onSetMassDelete}
+                                onMassDeleteConfirm={onMassDeleteConfirm}
+                                onCancelMassDelete={onCancelMassDelete}
+                                onTouchStart={onTouchStart}
+                                onTouchEnd={onTouchEnd}
+                                onTouchMove={onTouchMove}
+                                suppressNextClickRef={suppressNextClickRef}
+                                editTextareaRef={editTextareaRef}
+                                setEditDraft={setEditDraft}
+                                onNavigateToBranchSource={onNavigateToBranchSource}
+                            />
+                        </div>
                     );
                 })}
 
