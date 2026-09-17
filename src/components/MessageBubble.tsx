@@ -16,19 +16,19 @@ import {
 interface MessageBubbleProps {
     message: ChatMessage;
     index: number;
-    viewMode: 'ladder' | 'cinematic';
+    viewMode: 'ladder' | 'cinematic' | 'vn';
     currentCharacterId: string | undefined;
     editingId: string | null;
     editDraft: string;
     massDeleteId: string | null;
     isMassActive: boolean;
-    massStartIndex: number;
+    massStartIndex: number | null;
     activeToolbarId: string | null;
     portraitUrl: string | null;
     displayName: string;
     isStem: boolean;
     beforeBranch: boolean;
-    onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
+    onAvatarClick: (e: React.MouseEvent, id: string, character: Character) => void;
     onStartEditing: (id: string, text: string) => void;
     onCancelEditing: () => void;
     onSaveEdit: () => void;
@@ -44,11 +44,11 @@ interface MessageBubbleProps {
     onCancelMassDelete: () => void;
     onTouchStart: (e: React.TouchEvent, id: string) => void;
     onTouchEnd: (e: React.TouchEvent) => void;
-    onTouchMove: () => void;
+    onTouchMove: (e: React.TouchEvent) => void;
     suppressNextClickRef: React.MutableRefObject<boolean>;
-    editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+        editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     setEditDraft: (text: string) => void;
-    onNavigateToBranchSource?: () => void;
+    onNavigateToBranchSource: () => void;
 }
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -86,7 +86,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
     const isEditing = editingId === message.id;
-    const inDelRange = isMassActive && massStartIndex !== -1 && index >= massStartIndex;
+        const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
     // Only initialize editing state when isEditing first becomes true,

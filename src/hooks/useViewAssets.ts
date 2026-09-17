@@ -12,7 +12,6 @@ interface UseViewAssetsOptions {
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
-    renderedMessageIds?: Set<string>;
 }
 
 function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string): string | null {
@@ -91,12 +90,15 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     const {
         viewMode, interactionData, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
-        renderedMessageIds,
     } = options;
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
+    const centerAvatarRef = useRef<Character | null>(null);
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
+
+    // Keep ref in sync without triggering effect re-runs
+    useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
 
     const chatMessages = useMemo(() => {
         if (!interactionData) return [];
@@ -148,36 +150,55 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
-            const resetAvatar = window.setTimeout(() => setCenterAvatar(null), 0);
-            return () => window.clearTimeout(resetAvatar);
+            setCenterAvatar(null);
+            return;
         }
-        const opts = { root: chatHistoryElement, threshold: [0.5, 0.8, 1.0], rootMargin: '-10% 0px -60% 0px' };
-        const obs = new IntersectionObserver(entries => {
-            const best = entries.reduce((p, c) => p.intersectionRatio > c.intersectionRatio ? p : c);
-            if (best.intersectionRatio <= 0.5) return;
-            const mid = best.target.getAttribute('data-message-id');
-            if (!mid) return;
-            const msg = chatMessages.find(m => m.id === mid);
-            if (!msg?.character || msg.character.id === AMBIENT_NARRATOR_ID) return;
-            let avatar: Character | null = msg.character;
-            if (msg.character.id === currentCharacter?.id) {
-                const ci = chatMessages.indexOf(msg);
-                const prev = ci > 0 ? chatMessages[ci - 1] : null;
-                avatar = prev?.character && prev.character.id !== currentCharacter?.id && prev.character.id !== AMBIENT_NARRATOR_ID ? prev.character : null;
+
+        const updateAvatarFromScroll = () => {
+            const containerRect = chatHistoryElement.getBoundingClientRect();
+            const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
+
+            let bestId: string | null = null;
+            let bestOverlap = -Infinity;
+
+            for (const el of elements) {
+                const rect = el.getBoundingClientRect();
+                // Calculate how much of this bubble overlaps the visible container area
+                const overlapTop = Math.max(rect.top, containerRect.top);
+                const overlapBottom = Math.min(rect.bottom, containerRect.bottom);
+                const overlap = overlapBottom - overlapTop;
+
+                if (overlap > bestOverlap) {
+                    bestOverlap = overlap;
+                    bestId = el.getAttribute('data-message-id');
+                }
             }
-            setCenterAvatar(avatar);
+
+            if (!bestId || bestOverlap <= 0) return;
+
+            const msg = chatMessages.find(m => m.id === bestId);
+            if (!msg?.character) return;
+
+            // Update active class
             for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
-            (best.target as HTMLElement).classList.add('is-active');
-            lastViewedMessageIdRef.current = mid;
-        }, opts);
-        const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
-        for (const el of elements) {
-            const id = el.getAttribute('data-message-id');
-            if (!renderedMessageIds || (id && renderedMessageIds.has(id))) obs.observe(el);
-        }
-        let fallbackTimer: number | undefined;
-        if (!centerAvatar) {
-            fallbackTimer = window.setTimeout(() => {
+            const activeEl = chatHistoryElement.querySelector(`[data-message-id="${bestId}"]`);
+            if (activeEl) activeEl.classList.add('is-active');
+            lastViewedMessageIdRef.current = bestId;
+
+            // Protagonist and ambient narrator: hide portrait
+            if (msg.character.id === currentCharacter?.id || msg.character.id === AMBIENT_NARRATOR_ID) {
+                setCenterAvatar(null);
+            } else {
+                setCenterAvatar(msg.character);
+            }
+        };
+
+        // Initial calculation after DOM is ready
+        const rafId = requestAnimationFrame(() => {
+            updateAvatarFromScroll();
+
+            // Fallback if nothing was found
+            if (!centerAvatarRef.current) {
                 for (let i = chatMessages.length - 1; i >= 0; i--) {
                     const m = chatMessages[i];
                     if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
@@ -185,10 +206,16 @@ export function useViewAssets(options: UseViewAssetsOptions) {
                         break;
                     }
                 }
-            }, 0);
-        }
-        return () => { obs.disconnect(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer); };
-    }, [viewMode, currentCharacter?.id, centerAvatar, interactionData, chatMessages, chatHistoryRef, renderedMessageIds]);
+            }
+        });
+
+        chatHistoryElement.addEventListener('scroll', updateAvatarFromScroll, { passive: true });
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            chatHistoryElement.removeEventListener('scroll', updateAvatarFromScroll);
+        };
+    }, [viewMode, currentCharacter?.id, interactionData, chatMessages, chatHistoryRef]);
 
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;

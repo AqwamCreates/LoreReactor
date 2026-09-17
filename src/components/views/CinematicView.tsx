@@ -1,5 +1,5 @@
 // src/components/views/CinematicView.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
@@ -13,7 +13,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
         isLoading, chatHistoryRef, messageEndRef, editTextareaRef,
         parentInteractionMessageId,
-        focusedMessageId,
+        focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
         onRegenerateFromMessage, onBranch, onClone, onDelete,
@@ -26,15 +26,64 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
         : null;
 
-    // Scroll to focused message when it changes
+    const isScrollingRef = useRef(false);
+    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Scroll to focused message when it changes externally
     useEffect(() => {
-        if (focusedMessageId && chatHistoryRef.current) {
-            const msgElement = document.getElementById(`message-${focusedMessageId}`);
+        if (focusedMessageId && chatHistoryRef.current && !isScrollingRef.current) {
+            const msgElement = chatHistoryRef.current.querySelector(`[data-message-id="${focusedMessageId}"]`);
             if (msgElement) {
+                isScrollingRef.current = true;
                 msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => { isScrollingRef.current = false; }, 500);
             }
         }
     }, [focusedMessageId, chatHistoryRef]);
+
+    // Track which message is most visible and update focusedMessageId
+    const updateFocusedFromScroll = useCallback(() => {
+        if (!chatHistoryRef.current || isScrollingRef.current) return;
+
+        const container = chatHistoryRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const elements = container.querySelectorAll('[data-message-id]');
+
+        let bestId: string | null = null;
+        let bestOverlap = -Infinity;
+
+        for (const el of elements) {
+            const rect = el.getBoundingClientRect();
+            const overlapTop = Math.max(rect.top, containerRect.top);
+            const overlapBottom = Math.min(rect.bottom, containerRect.bottom);
+            const overlap = overlapBottom - overlapTop;
+
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestId = el.getAttribute('data-message-id');
+            }
+        }
+
+        if (bestId && bestOverlap > 0 && bestId !== focusedMessageId) {
+            setFocusedMessageId(bestId);
+        }
+    }, [chatHistoryRef, focusedMessageId, setFocusedMessageId]);
+
+    useEffect(() => {
+        const container = chatHistoryRef.current;
+        if (!container) return;
+
+        const handleScroll = () => {
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+            scrollTimeoutRef.current = setTimeout(updateFocusedFromScroll, 100);
+        };
+
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        };
+    }, [chatHistoryRef, updateFocusedFromScroll]);
 
     return (
         <>
@@ -66,7 +115,9 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 {displayMessages.map((message, renderIndex) => {
                     if (!message.character) return null;
                     const index = renderIndex;
-                    const dn = resolveDelayedDisplayNameFromCache(displayNameCache, index, message.character.id);
+                    const dn = displayNameCache
+                        ? resolveDelayedDisplayNameFromCache(displayNameCache, index, message.character.id)
+                        : message.character.name;
                     
                     const stem = (() => {
                         if (!parentInteractionMessageId) return false;
@@ -86,45 +137,44 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         ?? null;
 
                     return (
-                        <div key={message.id} id={`message-${message.id}`}>
-                            <MessageBubble
-                                message={message}
-                                index={index}
-                                viewMode="cinematic"
-                                currentCharacterId={currentCharacterId}
-                                editingId={editingId}
-                                editDraft={editDraft}
-                                massDeleteId={massDeleteId}
-                                isMassActive={isMassActive}
-                                massStartIndex={massStartIndex}
-                                activeToolbarId={activeToolbarId}
-                                portraitUrl={messagePortraitUrl}
-                                displayName={dn}
-                                isStem={stem}
-                                beforeBranch={beforeBranch}
-                                onAvatarClick={onAvatarClick}
-                                onStartEditing={onStartEditing}
-                                onCancelEditing={onCancelEditing}
-                                onSaveEdit={onSaveEdit}
-                                onRegenerateFromEdit={onRegenerateFromEdit}
-                                onResumeGeneration={onResumeGeneration}
-                                onCopyText={onCopyText}
-                                onRegenerateFromMessage={onRegenerateFromMessage}
-                                onBranch={onBranch}
-                                onClone={onClone}
-                                onDelete={onDelete}
-                                onSetMassDelete={onSetMassDelete}
-                                onMassDeleteConfirm={onMassDeleteConfirm}
-                                onCancelMassDelete={onCancelMassDelete}
-                                onTouchStart={onTouchStart}
-                                onTouchEnd={onTouchEnd}
-                                onTouchMove={onTouchMove}
-                                suppressNextClickRef={suppressNextClickRef}
-                                editTextareaRef={editTextareaRef}
-                                setEditDraft={setEditDraft}
-                                onNavigateToBranchSource={onNavigateToBranchSource}
-                            />
-                        </div>
+                        <MessageBubble
+                            key={message.id}
+                            message={message}
+                            index={index}
+                            viewMode="cinematic"
+                            currentCharacterId={currentCharacterId}
+                            editingId={editingId}
+                            editDraft={editDraft}
+                            massDeleteId={massDeleteId}
+                            isMassActive={isMassActive}
+                            massStartIndex={massStartIndex}
+                            activeToolbarId={activeToolbarId}
+                            portraitUrl={messagePortraitUrl}
+                            displayName={dn}
+                            isStem={stem}
+                            beforeBranch={beforeBranch}
+                            onAvatarClick={onAvatarClick}
+                            onStartEditing={onStartEditing}
+                            onCancelEditing={onCancelEditing}
+                            onSaveEdit={onSaveEdit}
+                            onRegenerateFromEdit={onRegenerateFromEdit}
+                            onResumeGeneration={onResumeGeneration}
+                            onCopyText={onCopyText}
+                            onRegenerateFromMessage={onRegenerateFromMessage}
+                            onBranch={onBranch}
+                            onClone={onClone}
+                            onDelete={onDelete}
+                            onSetMassDelete={onSetMassDelete}
+                            onMassDeleteConfirm={onMassDeleteConfirm}
+                            onCancelMassDelete={onCancelMassDelete}
+                            onTouchStart={onTouchStart}
+                            onTouchEnd={onTouchEnd}
+                            onTouchMove={onTouchMove}
+                            suppressNextClickRef={suppressNextClickRef}
+                            editTextareaRef={editTextareaRef}
+                            setEditDraft={setEditDraft}
+                            onNavigateToBranchSource={onNavigateToBranchSource}
+                        />
                     );
                 })}
 
