@@ -144,6 +144,21 @@ APP LAYOUT & HEADER (Shared)
     font-family: monospace;
     overflow: hidden;
     transition: all 0.5s ease;
+    position: relative;
+}
+
+.chat-container.mode-vn {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    margin: 0;
+    border: none;
+    z-index: 9998;
+    transition: none;
+    transform-origin: center center;
 }
 
 .app-header {
@@ -1288,7 +1303,7 @@ MODE: CINEMATIC (Centered Avatar View)
 
 .mode-cinematic .chat-history {
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column;
     flex: none;
     height: 30vh;
     width: 100%;
@@ -1517,14 +1532,15 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     position: absolute;
     top: 0;
     left: 0;
+    right: 0;
     width: 100%;
-    height: 75%; /* Only occupy top 75% of viewport, leave bottom for dialogue */
+    height: 75%;
     pointer-events: none;
     display: flex;
     align-items: flex-end;
     justify-content: center;
     z-index: 10;
-    overflow: hidden; /* Clip sprites that would bleed into dialogue area */
+    overflow: hidden;
 }
 
 .vn-character-layer {
@@ -1549,7 +1565,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     image-rendering: -webkit-optimize-contrast;
 }
 
-/* Jump animation — temporary upward arc then return */
 @keyframes vn-jump-arc {
     0% { transform: translateX(-50%) scale(var(--vn-jump-scale, 1)); }
     30% { transform: translateX(-50%) scale(var(--vn-jump-scale, 1)) translateY(-40px); }
@@ -1563,13 +1578,12 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     animation: vn-jump-arc 0.6s ease-in-out forwards;
 }
 
-/* Disable transitions during initial session load */
 .vn-no-transition {
     transition: none !important;
     animation: none !important;
 }
 
-/* --- DIALOGUE BOX (VN Style) --- */
+/* --- DIALOGUE BOX --- */
 .vn-dialogue-layer {
     position: absolute;
     bottom: 80px;
@@ -1597,7 +1611,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     box-sizing: border-box;
 }
 
-/* Name Plate (Top Left) */
 .vn-name-plate {
     position: absolute;
     top: -15px;
@@ -1614,7 +1627,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     z-index: 60;
 }
 
-/* Message Toolbar (Top Right) */
 .vn-message-toolbar {
     position: absolute;
     top: -15px;
@@ -1661,7 +1673,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 .vn-toolbar-cancel { background: rgba(255, 255, 255, 0.1); }
 .vn-toolbar-cancel:hover { background: rgba(255, 255, 255, 0.3); }
 
-/* VN Dialogue Box Internal Layout */
 .vn-dialogue-content {
     display: flex;
     flex-direction: column;
@@ -1729,7 +1740,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     background: rgba(255, 255, 255, 0.08);
 }
 
-/* VN Reformat Panel */
 .vn-reformat-panel {
     flex-shrink: 0;
     margin-top: 8px;
@@ -1801,7 +1811,6 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     border-color: var(--accent);
 }
 
-/* Ambient narrator dialogue box styling */
 .vn-dialogue-box-ambient {
     border-color: rgba(255, 255, 255, 0.1) !important;
     background: rgba(10, 10, 20, 0.8) !important;
@@ -1818,18 +1827,32 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     opacity: 0.85;
 }
 
-/* VN Navigation Arrows */
+/* --- NAVIGATION ARROWS --- */
 .vn-nav-arrows {
     position: absolute;
-    top: 30%;
+    top: 0;
     left: 0;
     right: 0;
-    transform: translateY(-50%);
-    display: flex;
-    justify-content: space-between;
-    padding: 0 8px;
+    bottom: 0;
     pointer-events: none;
     z-index: 55;
+}
+
+.vn-nav-group {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.vn-nav-group:first-child {
+    left: 16px;
+}
+
+.vn-nav-group:last-child {
+    right: 16px;
 }
 
 .vn-nav-arrow {
@@ -1849,6 +1872,9 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     justify-content: center;
     transition: all 0.2s;
     opacity: 0.6;
+    padding: 0;
+    line-height: 1;
+    font-family: inherit;
 }
 
 .vn-nav-arrow:hover:not(:disabled) {
@@ -1863,7 +1889,15 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     cursor: not-allowed;
 }
 
-/* VN Branch Indicator */
+.vn-nav-arrow span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- BRANCH INDICATOR --- */
 .vn-branch-indicator {
     position: absolute;
     top: 50px;
@@ -1896,7 +1930,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* VN Message Counter */
+/* --- MESSAGE COUNTER --- */
 .vn-message-counter {
     position: absolute;
     bottom: 8px;
@@ -1918,6 +1952,23 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 /* --- VN MODE OVERRIDES --- */
+.chat-container.mode-vn,
+.mode-vn {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: none !important;
+    z-index: 9998;
+    background: #0a0a0f;
+    transform-origin: center center !important;
+    transition: none !important;
+}
+
 .mode-vn .chat-history { display: none; }
 .mode-vn .context-bar { display: none; }
 
@@ -1960,6 +2011,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     color: #fff;
 }
 
+/* --- RESPONSIVE --- */
 @media (max-width: 768px) {
     .vn-sprite { height: 45vh; width: calc(45vh * 9 / 16); }
     .vn-sprites-layer { height: 60%; }
@@ -1970,8 +2022,9 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     .vn-dialogue-text { font-size: 0.9rem; }
     .vn-dialogue-layer { bottom: 70px; padding: 0 8px 8px 8px; }
     .vn-character-layer { bottom: 10%; }
-    .vn-nav-arrows { top: 25%; }
     .vn-nav-arrow { width: 36px; height: 36px; font-size: 1rem; }
+    .vn-nav-group:first-child { left: 8px; }
+    .vn-nav-group:last-child { right: 8px; }
     .vn-reformat-grid { grid-template-columns: 1fr; }
     .vn-branch-button { font-size: 0.65rem; padding: 4px 12px; }
 }
