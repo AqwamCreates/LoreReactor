@@ -17,6 +17,7 @@ interface SessionState {
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
+    lastSelectedModelId: string | null;
 
     // Budget state
     budgetData: BudgetData | null;
@@ -47,6 +48,7 @@ export const useSessionStore = create<SessionState>()(() => ({
     selectedModel: null,
     runningModels: {},
     activeStrategy: null,
+    lastSelectedModelId: null,
     budgetData: null,
     latency: 0,
     timeToFirstToken: 0,

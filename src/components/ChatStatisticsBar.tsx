@@ -30,7 +30,7 @@ function formatSessionDuration(ms: number): string {
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
-    maximumNumberOfTokens = 65536,
+    maximumNumberOfTokens = 1048576,
     maximumNumberOfContextTokens = 0,
     maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens = 0,
     numberOfMessages = 0,
@@ -150,7 +150,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 )}
 
                 {/* Token Usage */}
-                <div className="chat-stat-item" title={`${numberOfTokens} / ${maximumNumberOfTokens} token(s) (${percentage}%)`}>
+                <div className="chat-stat-item" title={`${formatNumber(numberOfTokens)} / ${formatNumber(maximumNumberOfTokens)} token(s) (${percentage}%)`}>
                     <span className="chat-stat-label">📊</span>
                     <span className="chat-stat-value" style={{ color: tokenColor, fontSize: '0.7em', minWidth: '30px', textAlign: 'center' }}>
                         {percentage}%

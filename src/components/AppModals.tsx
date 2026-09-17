@@ -181,7 +181,15 @@ export function AppModals({
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
     const selectedModelId = useSessionStore(s => s.selectedModel?.id ?? null);
+    const lastSelectedModelId = useSessionStore(s => s.lastSelectedModelId);
     const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
+
+    // Resolve effective tokenizer model: explicit selection > last budget engine pick > null
+    const effectiveTokenizerModel = useMemo(() => {
+        if (selectedModelId) return allModels.find(m => m.id === selectedModelId) ?? null;
+        if (lastSelectedModelId) return allModels.find(m => m.id === lastSelectedModelId) ?? null;
+        return null;
+    }, [selectedModelId, lastSelectedModelId, allModels]);
 
     // Save redirect callbacks for AI recommendation refinement flow
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((c: Character) => void) | null>(null);
@@ -591,7 +599,7 @@ export function AppModals({
                     allLocations={allLocations}
                     allAudioTracks={allAudioTracks}
                     allPromptBlocks={allPromptBlocks}
-                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+                    selectedModel={effectiveTokenizerModel}
                     runningModels={runningModels}
                 />
             )}
@@ -705,7 +713,7 @@ export function AppModals({
                     }}
                     existingCharacter={charModal.itemToEdit}
                     allSamplers={allSamplers}
-                    selectedModel={allModels.find(m => m.id === selectedModelId) || null}
+                    selectedModel={effectiveTokenizerModel}
                     runningModels={runningModels}
                     chatNameMap={chatNameMap}
                 />

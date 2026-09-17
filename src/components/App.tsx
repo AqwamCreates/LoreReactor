@@ -78,7 +78,7 @@ function App() {
         resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
         startNewChat,
         sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
-        activeStrategy, budgetData, processProtagonistImageSilently,
+        activeStrategy, budgetData,
     } = session;
 
     const { addToast } = useToast();
@@ -137,7 +137,6 @@ function App() {
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-    const initialImageProcessedChatIdRef = useRef<string | null>(null);
 
     const { activeChatRestored } = useChatRestoration({
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
@@ -243,6 +242,25 @@ function App() {
         return total;
     }, [interactionData]);
 
+    // Maximum context length across all models in the active strategy or selected model
+    const maxContextLength = useMemo(() => {
+        if (activeStrategy) {
+            let max = 0;
+            for (const m of activeStrategy.onlineModels) {
+                if (m.contextLength > max) max = m.contextLength;
+            }
+            for (const m of activeStrategy.localModels) {
+                if (m.contextLength > max) max = m.contextLength;
+            }
+            return max || 1048576;
+        }
+        if (selectedModelId) {
+            const m = allModels.find(x => x.id === selectedModelId);
+            return m?.contextLength || 1048576;
+        }
+        return 1048576;
+    }, [activeStrategy, selectedModelId, allModels]);
+
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existing = runningModels[modelId];
         if (existing?.port) return existing.port;
@@ -343,15 +361,6 @@ function App() {
             initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine);
         }
     }, [activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine]);
-
-    useEffect(() => {
-        if (interactionData && currentCharacter && interactionData.id !== initialImageProcessedChatIdRef.current) {
-            const chatId = interactionData.id;
-            processProtagonistImageSilently(interactionData, currentCharacter).then(() => {
-                initialImageProcessedChatIdRef.current = chatId;
-            });
-        }
-    }, [currentCharacter, interactionData, processProtagonistImageSilently]);
 
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
@@ -756,7 +765,7 @@ function App() {
                                         </button>
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeInteractionMessages.length}
-                                            maximumNumberOfTokens={session.numberOfTokens}
+                                            maximumNumberOfTokens={maxContextLength}
                                             maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
                                             maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}

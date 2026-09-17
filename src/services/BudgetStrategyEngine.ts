@@ -124,6 +124,7 @@ export class BudgetStrategyEngine {
     private runningModels: Record<string, RunningModelState>;
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private engine = getLanguageModelEngine();
+    private _lastSelectedModelId: string | null = null;
 
     constructor(
         strategy: BudgetStrategy,
@@ -170,6 +171,10 @@ export class BudgetStrategyEngine {
         return this.budgetData;
     }
 
+    getLastSelectedModelId(): string | null {
+        return this._lastSelectedModelId;
+    }
+
     // ─── Model Selection (solves model mismatch) ────────────────────
 
     async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
@@ -202,6 +207,7 @@ export class BudgetStrategyEngine {
             const loaded = await this.ensureModelLoaded(primary);
             if (loaded) {
                 this.engine.setContext(primary);
+                this._lastSelectedModelId = primary.id;
                 return { model: primary, modelId: primary.id };
             }
         }
@@ -212,6 +218,7 @@ export class BudgetStrategyEngine {
                 const loaded = await this.ensureModelLoaded(fallback);
                 if (loaded) {
                     this.engine.setContext(fallback);
+                    this._lastSelectedModelId = fallback.id;
                     return { model: fallback, modelId: fallback.id };
                 }
             }
@@ -223,6 +230,7 @@ export class BudgetStrategyEngine {
             const loaded = await this.ensureModelLoaded(freeModel);
             if (loaded) {
                 this.engine.setContext(freeModel);
+                this._lastSelectedModelId = freeModel.id;
                 return { model: freeModel, modelId: freeModel.id };
             }
         }
@@ -295,6 +303,7 @@ export class BudgetStrategyEngine {
             }
 
             this.engine.setContext(selectedModel);
+            this._lastSelectedModelId = selectedModel.id;
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
@@ -396,6 +405,7 @@ export class BudgetStrategyEngine {
                 }
 
                 this.engine.setContext(selectedModel);
+                this._lastSelectedModelId = selectedModel.id;
                 const fallbackPricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
@@ -494,6 +504,7 @@ export class BudgetStrategyEngine {
                 }
 
                 this.engine.setContext(freeModel);
+                this._lastSelectedModelId = freeModel.id;
                 const sessionStart = Date.now();
 
                 try {
@@ -616,6 +627,7 @@ export class BudgetStrategyEngine {
             }
 
             this.engine.setContext(selectedModel);
+            this._lastSelectedModelId = selectedModel.id;
             const pricing = buildPricing(selectedModel);
             const sessionStart = Date.now();
 
@@ -681,6 +693,7 @@ export class BudgetStrategyEngine {
                 }
 
                 this.engine.setContext(selectedModel);
+                this._lastSelectedModelId = selectedModel.id;
                 const pricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
 
@@ -742,6 +755,7 @@ export class BudgetStrategyEngine {
             }
 
             this.engine.setContext(freeModel);
+            this._lastSelectedModelId = freeModel.id;
             const sessionStart = Date.now();
 
             try {
@@ -786,7 +800,6 @@ export class BudgetStrategyEngine {
     }
 
     private isInQuotaCooldown(modelId: string): boolean {
-        console.log(modelId)
         // Disabled: quota cooldown blocks models across generations unnecessarily.
         // Models are retried immediately on next generation attempt.
         // Quota errors are still recorded for stats tracking.

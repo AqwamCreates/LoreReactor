@@ -48,7 +48,6 @@ interface CharacterEditorModalProps {
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
-    /** Pre-resolved map of interactionData ID → display name. Passed from AppModals. */
     chatNameMap?: Map<string, string>;
 }
 
@@ -58,59 +57,93 @@ export function CharacterEditorModal({
     selectedModel, runningModels,
     chatNameMap,
 }: CharacterEditorModalProps) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [systemPrompt, setSystemPrompt] = useState('');
-    const [thinkPrompt, setThinkPrompt] = useState('');
-    const [appearancePrompt, setAppearancePrompt] = useState('');
-    const [dialoguePrompt, setDialoguePrompt] = useState('');
-    const [starterPrompt, setStarterPrompt] = useState('');
+    if (!isOpen) return null;
+
+    const modalKey = `char-${existingCharacter?.id ?? 'new'}`;
+
+    return (
+        <CharacterEditorModalInner
+            key={modalKey}
+            onClose={onClose}
+            onSave={onSave}
+            existingCharacter={existingCharacter}
+            allSamplers={allSamplers}
+            isLoadingSamplers={isLoadingSamplers}
+            selectedModel={selectedModel}
+            runningModels={runningModels}
+            chatNameMap={chatNameMap}
+        />
+    );
+}
+
+function CharacterEditorModalInner({
+    onClose, onSave, existingCharacter,
+    allSamplers, isLoadingSamplers = false,
+    selectedModel, runningModels,
+    chatNameMap,
+}: Omit<CharacterEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingCharacter?.name || '');
+    const [description, setDescription] = useState(existingCharacter?.description || '');
+    const [systemPrompt, setSystemPrompt] = useState(existingCharacter?.systemPrompt || '');
+    const [thinkPrompt, setThinkPrompt] = useState(existingCharacter?.thinkPrompt || '');
+    const [appearancePrompt, setAppearancePrompt] = useState(existingCharacter?.appearancePrompt || '');
+    const [dialoguePrompt, setDialoguePrompt] = useState(existingCharacter?.dialoguePrompt || '');
+    const [starterPrompt, setStarterPrompt] = useState(existingCharacter?.starterPrompt || '');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [selectedSamplerId, setSelectedSamplerId] = useState<string>('');
-    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+    const [imagePreview, setImagePreview] = useState<string | null>(() => {
+        if (existingCharacter) {
+            const imgs = existingCharacter.images ?? {};
+            const neutralFilename = imgs.neutral;
+            return neutralFilename ? getCharacterImageUrl(existingCharacter.id, neutralFilename) : null;
+        }
+        return null;
+    });
+    const [selectedSamplerId, setSelectedSamplerId] = useState<string>(existingCharacter?.sampler?.id || (allSamplers[0]?.id || ''));
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.sampler?.stopPatterns.map(sp => sp.id) || []);
     const [isUploading, setIsUploading] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
-    const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>('-1');
-    const [chatProbabilityStr, setChatProbabilityStr] = useState<string>('-1');
-    const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>('-1');
-    const [nameSensitivityStr, setNameSensitivityStr] = useState<string>('-1');
-    const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>('-1');
-    const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>('-1');
-    const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>('-1');
-    const [contextSensitivityStr, setContextSensitivityStr] = useState<string>('-1');
-    const [maximumActionStaminaStr, setMaximumActionStaminaStr] = useState<string>('-1');
+    const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>(String(existingCharacter?.initiativeWeight ?? -1));
+    const [chatProbabilityStr, setChatProbabilityStr] = useState<string>(String(existingCharacter?.chatProbability ?? -1));
+    const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>(String(existingCharacter?.maximumChatStamina ?? -1));
+    const [nameSensitivityStr, setNameSensitivityStr] = useState<string>(String(existingCharacter?.nameSensitivity ?? -1));
+    const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>(String(existingCharacter?.chatImpatienceSensitivity ?? -1));
+    const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>(String(existingCharacter?.skipProbability ?? -1));
+    const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>(String(existingCharacter?.memoryRetentionWeight ?? -1));
+    const [contextSensitivityStr, setContextSensitivityStr] = useState<string>(String(existingCharacter?.contextSensitivity ?? -1));
+    const [maximumActionStaminaStr, setMaximumActionStaminaStr] = useState<string>(String(existingCharacter?.maximumActionStamina ?? -1));
 
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
-    const [voiceName, setVoiceName] = useState<string>('');
-    const [existingVoiceName, setExistingVoiceName] = useState<string>('');
+    const [voiceName, setVoiceName] = useState<string>(existingCharacter?.voice || '');
+    const [existingVoiceName, setExistingVoiceName] = useState<string>(existingCharacter?.voice || '');
 
-    const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(false);
+    const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
 
-    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(DEFAULT_DISABLE_THINK_PROMPT));
-    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(DEFAULT_DISABLE_META_THINK));
-    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(DEFAULT_DISABLE_STARTER_PROMPT));
+    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
+    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
+    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
+    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
 
-    const [tools, setTools] = useState<Record<tool, boolean>>({ ...defaultCharacterTools });
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(false);
-    const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(false);
+    const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
+    const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(existingCharacter?.enableMemoryWriting ?? false);
+    const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(existingCharacter?.enableMemoryReading ?? false);
 
-    const [memories, setMemories] = useState<Record<string, Memory[]>>({});
+    const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
-    const [emotionImages, setEmotionImages] = useState<Record<string, string>>({});
+    const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
 
-    const [pendingCharacterId, setPendingCharacterId] = useState<string | null>(null);
+    const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
 
     const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
         iw: null, cp: null, ms: null,
     });
 
+    // Token counts start as null (unknown). They get populated by user edits
+    // or by the initial computation triggered after engine context is set.
     const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
         systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null, starterPrompt: null,
     });
@@ -121,25 +154,15 @@ export function CharacterEditorModal({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    const previousOpenRef = useRef(false);
-    const previousCharacterIdRef = useRef<string | null>(null);
-
     const handleToolToggle = useCallback((toolName: tool) => {
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
     }, []);
 
-    // Set engine context when selected model changes so countTokens uses correct tokenizer
-    useEffect(() => {
-        if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels ?? {});
-            tokenEngine.setContext(selectedModel);
-        }
-    }, [selectedModel, runningModels]);
-
     const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
         if (!text.trim()) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
-        if (tokenCountTimeoutsRef.current[field]) clearTimeout(tokenCountTimeoutsRef.current[field]);
-        tokenCountTimeoutsRef.current[field] = setTimeout(async () => {
+        const timeouts = tokenCountTimeoutsRef.current;
+        if (timeouts[field]) clearTimeout(timeouts[field]);
+        timeouts[field] = setTimeout(async () => {
             setCountingField(field);
             const count = await tokenEngine.countTokens(text);
             setTokenCounts(prev => ({ ...prev, [field]: count }));
@@ -147,94 +170,47 @@ export function CharacterEditorModal({
         }, 500);
     }, []);
 
-    useEffect(() => { return () => { Object.values(tokenCountTimeoutsRef.current).forEach(clearTimeout); }; }, []);
-
+    // Cleanup timeouts on unmount. Capture ref value locally to satisfy compiler.
     useEffect(() => {
-        if (!isOpen) {
-            previousOpenRef.current = false;
-            return;
+        const timeouts = tokenCountTimeoutsRef.current;
+        return () => {
+            Object.values(timeouts).forEach(clearTimeout);
+        };
+    }, []);
+
+    // Set engine context on mount and trigger initial token counts.
+    // Uses requestAnimationFrame to defer token counting out of the
+    // synchronous effect body, avoiding the cascading render warning.
+    useEffect(() => {
+        if (selectedModel) {
+            tokenEngine.setRunningModels(runningModels ?? {});
+            tokenEngine.setContext(selectedModel);
         }
 
-        const currentCharId = existingCharacter?.id ?? null;
-        const isFreshOpen = !previousOpenRef.current || previousCharacterIdRef.current !== currentCharId;
-        previousOpenRef.current = true;
-        previousCharacterIdRef.current = currentCharId;
+        // Defer initial token counts to next frame so they execute
+        // outside the synchronous effect body.
+        const rafId = requestAnimationFrame(() => {
+            const fields: Array<{ key: keyof TokenCounts; text: string }> = [
+                { key: 'systemPrompt', text: existingCharacter?.systemPrompt || '' },
+                { key: 'thinkPrompt', text: existingCharacter?.thinkPrompt || '' },
+                { key: 'appearancePrompt', text: existingCharacter?.appearancePrompt || '' },
+                { key: 'dialoguePrompt', text: existingCharacter?.dialoguePrompt || '' },
+                { key: 'starterPrompt', text: existingCharacter?.starterPrompt || '' },
+            ];
 
-        if (!isFreshOpen) return;
+            for (const { key, text } of fields) {
+                if (text.trim()) {
+                    tokenEngine.countTokens(text).then(count => {
+                        setTokenCounts(prev => ({ ...prev, [key]: count }));
+                    });
+                } else {
+                    setTokenCounts(prev => ({ ...prev, [key]: 0 }));
+                }
+            }
+        });
 
-        setSubmitError(null);
-        setAutoDetected({ iw: null, cp: null, ms: null });
-        setShowAdvancedSettings(false);
-        setShowMemoryManager(false);
-        setShowImageEditor(false);
-
-        if (existingCharacter) {
-            setName(existingCharacter.name || '');
-            setDescription(existingCharacter.description || '');
-            setSystemPrompt(existingCharacter.systemPrompt || '');
-            setThinkPrompt(existingCharacter.thinkPrompt || '');
-            setAppearancePrompt(existingCharacter.appearancePrompt || '');
-            setDialoguePrompt(existingCharacter.dialoguePrompt || '');
-            setStarterPrompt(existingCharacter.starterPrompt || '');
-            setFirstMessage('');
-
-            const imgs = existingCharacter.images ?? {};
-            setEmotionImages(imgs);
-            const neutralFilename = imgs.neutral;
-            setImagePreview(neutralFilename ? getCharacterImageUrl(existingCharacter.id, neutralFilename) : null);
-            setImageFile(null);
-            setPendingCharacterId(null);
-
-            setSelectedSamplerId(existingCharacter.sampler?.id || (allSamplers[0]?.id || ''));
-            setSelectedStopPatternIds(existingCharacter.sampler?.stopPatterns.map(sp => sp.id) || []);
-            setInitiativeWeightStr(String(existingCharacter.initiativeWeight ?? -1));
-            setChatProbabilityStr(String(existingCharacter.chatProbability ?? -1));
-            setMaximumChatStaminaStr(String(existingCharacter.maximumChatStamina ?? -1));
-            setNameSensitivityStr(String(existingCharacter.nameSensitivity ?? -1));
-            setChatImpatienceSensitivityStr(String(existingCharacter.chatImpatienceSensitivity ?? -1));
-            setSkipProbabilityStr(String(existingCharacter.skipProbability ?? -1));
-            setMemoryRetentionWeightStr(String(existingCharacter.memoryRetentionWeight ?? -1));
-            setContextSensitivityStr(String(existingCharacter.contextSensitivity ?? -1));
-            setMaximumActionStaminaStr(String(existingCharacter.maximumActionStamina ?? -1));
-            setExistingVoiceName(existingCharacter.voice || '');
-            setVoiceName(existingCharacter.voice || '');
-            setVoiceFile(null);
-            setDoNotInjectCharacterImage(existingCharacter.doNotInjectCharacterImage ?? false);
-            setNumberOfMessagesToDisableThinkPromptStr(String(existingCharacter.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
-            setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(existingCharacter.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
-            setNumberOfMessagesToDisableDialoguePromptStr(String(existingCharacter.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
-            setNumberOfMessagesToDisableStarterPromptStr(String(existingCharacter.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
-            setTools(existingCharacter.tools ?? { ...defaultCharacterTools });
-            setEnableMemoryWriting(existingCharacter.enableMemoryWriting ?? false);
-            setEnableMemoryReading(existingCharacter.enableMemoryReading ?? false);
-            setMemories(existingCharacter.memories ?? {});
-            countFieldTokens('systemPrompt', existingCharacter.systemPrompt || '');
-            countFieldTokens('thinkPrompt', existingCharacter.thinkPrompt || '');
-            countFieldTokens('appearancePrompt', existingCharacter.appearancePrompt || '');
-            countFieldTokens('dialoguePrompt', existingCharacter.dialoguePrompt || '');
-            countFieldTokens('starterPrompt', existingCharacter.starterPrompt || '');
-        } else {
-            setName(''); setDescription(''); setSystemPrompt(''); setThinkPrompt(''); setAppearancePrompt(''); setDialoguePrompt(''); setStarterPrompt(''); setFirstMessage('');
-            setImageFile(null); setImagePreview(null);
-            setEmotionImages({});
-            setPendingCharacterId(uuidv4());
-            setSelectedSamplerId(allSamplers[0]?.id || ''); setSelectedStopPatternIds([]);
-            setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
-            setNameSensitivityStr('-1');
-            setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
-            setMaximumActionStaminaStr('-1');
-            setExistingVoiceName(''); setVoiceName(''); setVoiceFile(null);
-            setDoNotInjectCharacterImage(false);
-            setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
-            setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
-            setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-            setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
-            setTools({ ...defaultCharacterTools });
-            setEnableMemoryWriting(false); setEnableMemoryReading(false);
-            setMemories({});
-            setTokenCounts({ systemPrompt: 0, thinkPrompt: 0, appearancePrompt: 0, dialoguePrompt: 0, starterPrompt: 0 });
-        }
-    }, [isOpen, existingCharacter, allSamplers, countFieldTokens]);
+        return () => cancelAnimationFrame(rafId);
+    }, [selectedModel, runningModels, existingCharacter]);
 
     const handleSystemPromptBlur = () => {
         const currentIW = Number.parseFloat(initiativeWeightStr);
@@ -463,8 +439,6 @@ export function CharacterEditorModal({
 
     const handleSubmit = async () => { const c = await buildCharacterFromForm(false); if (!c) return; onSave(c); onClose(); };
     const handleClone = async () => { const c = await buildCharacterFromForm(true); if (!c) return; onSave(c); onClose(); };
-
-    if (!isOpen) return null;
 
     const renderTokenCount = (field: keyof TokenCounts) => {
         const count = tokenCounts[field];

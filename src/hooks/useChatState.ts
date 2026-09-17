@@ -14,6 +14,7 @@ export function useChatState() {
     const selectedModel = useSessionStore(s => s.selectedModel);
     const runningModels = useSessionStore(s => s.runningModels);
     const budgetData = useSessionStore(s => s.budgetData);
+    const lastSelectedModelId = useSessionStore(s => s.lastSelectedModelId);
     
     // Streaming State
     const streamingText = useSessionStore(s => s.streamingText);
@@ -65,6 +66,10 @@ export function useChatState() {
         useSessionStore.setState({ budgetData: data });
     }, []);
 
+    const setLastSelectedModelId = useCallback((id: string | null) => {
+        useSessionStore.setState({ lastSelectedModelId: id });
+    }, []);
+
     const setStats = useCallback((newStats: any) => {
         useSessionStore.setState(prev => {
             const current = {
@@ -96,6 +101,7 @@ export function useChatState() {
         selectedModel,
         runningModels,
         budgetData,
+        lastSelectedModelId,
         streamingText,
         streamingCharacter,
         isLoading,
@@ -116,6 +122,7 @@ export function useChatState() {
         setActiveStrategy,
         setSelectedModel,
         setBudgetData,
+        setLastSelectedModelId,
         setStats,
         setNumberOfTokens,
         setCurrentCharacterExpression,

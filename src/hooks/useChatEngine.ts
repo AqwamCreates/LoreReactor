@@ -4,6 +4,7 @@ import type { Character, InteractionData, PromptBlock, BudgetStrategy, ChatMessa
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
+import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { findPreviousMessage, updatePartialMessageInInteractionData } from './chatLogic';
 import { getCurrentLocationIndex } from './locationLogic';
@@ -20,6 +21,7 @@ interface EngineDependencies {
     setBudgetData: (d: BudgetData) => void;
     setStats: (l: any) => void;
     setCurrentCharacterExpression: (e: string) => void;
+    setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     processMemoryTrigger: (rawText: string, character: Character, data: InteractionData) => Promise<void>;
 }
@@ -27,8 +29,8 @@ interface EngineDependencies {
 export function useChatEngine(deps: EngineDependencies) {
     const { 
         getState, setInteractionData, setStreamingState, 
-        setBudgetData, setStats, setCurrentCharacterExpression, addToast,
-        processMemoryTrigger,
+        setBudgetData, setStats, setCurrentCharacterExpression,
+        setLastSelectedModelId, addToast, processMemoryTrigger,
     } = deps;
 
     const processPendingTools = useCallback(async (data: InteractionData): Promise<InteractionData> => {
@@ -139,8 +141,6 @@ export function useChatEngine(deps: EngineDependencies) {
                 setStreamingState(character, text);
                 onToken?.(text);
 
-                // During resume, update the partial message in interaction history incrementally.
-                // This is the authoritative source of truth for the message text during streaming.
                 if (isResuming) {
                     const currentState = getState();
                     const currentData = currentState.interactionData;
@@ -176,6 +176,16 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const { result } = outcome;
         if (result.budgetData) setBudgetData(result.budgetData);
+
+        // Surface last selected model from budget engine to store
+        if (activeStrategy) {
+            try {
+                const bse = getBudgetStrategyEngine();
+                const lastId = bse.getLastSelectedModelId();
+                if (lastId) setLastSelectedModelId(lastId);
+            } catch { /* engine not initialized yet */ }
+        }
+
         setStats((prev: any) => ({
             ...prev,
             numberOfCacheInvalidations: prev.numberOfCacheInvalidations + result.statsDelta.numberOfCacheInvalidations,
@@ -184,22 +194,16 @@ export function useChatEngine(deps: EngineDependencies) {
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
 
-        // FIX: During resume, CharacterActor returns the ORIGINAL data unchanged
-        // (because message lifecycle is owned by the session layer). But onDisplayText
-        // has been incrementally updating interactionData in the store throughout streaming.
-        // We MUST read the CURRENT store state to get the latest text, not use
-        // result.updatedData which is the stale pre-stream snapshot.
         const effectiveData = isResuming
             ? (getState().interactionData ?? result.updatedData)
             : result.updatedData;
 
-        // Memory trigger runs post-generation with full raw text
         if (result.rawText) {
             await processMemoryTrigger(result.rawText, character, effectiveData);
         }
         
         return effectiveData;
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setInteractionData, addToast, processMemoryTrigger]);
+    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, processMemoryTrigger]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,

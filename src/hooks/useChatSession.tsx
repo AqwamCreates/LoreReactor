@@ -113,6 +113,7 @@ export function useChatSession() {
         setBudgetData: state.setBudgetData,
         setStats: state.setStats,
         setCurrentCharacterExpression: state.setCurrentCharacterExpression,
+        setLastSelectedModelId: state.setLastSelectedModelId,
         addToast,
         processMemoryTrigger,
     });
@@ -534,17 +535,6 @@ export function useChatSession() {
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
     }, [state, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration]);
 
-    const processProtagonistImageSilently = useCallback(async (data: InteractionData, char: Character, allPromptBlocks?: PromptBlock[]) => {
-        if (!data?.Profile?.forceNoCharacterImageInjection && Object.keys(char.images || {}).length === 0) return;
-        if (!isModelReadyForGeneration() || isLoadingRef.current || isProcessingSilentlyRef.current) return;
-        isProcessingSilentlyRef.current = true;
-        const s = char.sampler;
-        const silent: Character = { ...char, sampler: { ...s, id: s?.id || 'silent-uuid', name: s?.name || 'silent', maximumNumberOfTokens: 0, parameters: { ...s?.parameters, n_predict: 0 }, stopPatterns: [], firstCreatedTimestamp: s?.firstCreatedTimestamp || Date.now(), lastUpdatedTimestamp: Date.now() } };
-        try { await chatEngine.handleServerResponse(data, silent, new AbortController().signal, undefined, undefined, '', allPromptBlocks); }
-        catch (e) { console.warn('Silent image processing failed:', e); }
-        finally { isProcessingSilentlyRef.current = false; }
-    }, [chatEngine, isLoadingRef, isModelReadyForGeneration]);
-
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);
         c.name = 'Untitled Chat';
@@ -566,6 +556,5 @@ export function useChatSession() {
         setActiveBudgetStrategy: state.setActiveStrategy,
         setSelectedGlobalModel: state.setSelectedModel,
         updateRunningModels: state.updateRunningModels,
-        processProtagonistImageSilently,
     };
 }
