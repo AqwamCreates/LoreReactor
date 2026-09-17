@@ -58,7 +58,7 @@ function mergeToolsWithDefaults(saved: Partial<Record<tool, number>> | undefined
     const merged = { ...defaultProfileTools };
     if (saved) {
         for (const key of Object.keys(defaultProfileTools) as tool[]) {
-            if (key in saved && typeof saved[key] === 'number') merged[key] = saved[key]!;
+            if (key in saved && typeof saved[key] === 'number') merged[key] = saved[key];
         }
     }
     return merged;
