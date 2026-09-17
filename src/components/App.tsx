@@ -243,7 +243,7 @@ function App() {
     }, [interactionData]);
 
     // Maximum context length across all models in the active strategy or selected model
-    const maxContextLength = useMemo(() => {
+    const maximumContextLength = useMemo(() => {
         if (activeStrategy) {
             let max = 0;
             for (const m of activeStrategy.onlineModels) {
@@ -765,7 +765,7 @@ function App() {
                                         </button>
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeInteractionMessages.length}
-                                            maximumNumberOfTokens={maxContextLength}
+                                            maximumNumberOfTokens={maximumContextLength}
                                             maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
                                             maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}
