@@ -4576,3 +4576,221 @@ select {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* =============================================================================
+REGEX TRIGGER EDITOR
+============================================================================= */
+.regex-trigger-section {
+    margin-bottom: 12px;
+}
+
+.regex-trigger-section-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.regex-trigger-section-title {
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: var(--text-h);
+    opacity: 0.8;
+    text-align: center;
+}
+
+.regex-trigger-section-desc {
+    font-size: 0.55rem;
+    opacity: 0.5;
+    color: var(--text-h);
+    text-align: center;
+}
+
+.regex-trigger-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.regex-trigger-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto;
+    gap: 4px;
+    align-items: center;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--social-bg);
+    transition: border-color 0.15s;
+}
+
+.regex-trigger-row:focus-within {
+    border-color: var(--accent-border);
+}
+
+.regex-trigger-row.error {
+    border-color: #ff4444;
+}
+
+.regex-trigger-input {
+    font-family: var(--mono) !important;
+    font-size: 0.75rem !important;
+    padding: 4px 8px !important;
+    min-height: 28px !important;
+    border: none !important;
+    background: transparent !important;
+    outline: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+.regex-trigger-select {
+    font-size: 0.65rem !important;
+    padding: 2px 20px 2px 6px !important;
+    min-height: 28px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 4px !important;
+    background: var(--bg) !important;
+    min-width: 0 !important;
+    max-width: 90px;
+}
+
+.regex-trigger-test-btn {
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px !important;
+    max-height: 28px !important;
+    padding: 0 !important;
+    font-size: 0.7rem !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.regex-trigger-test-btn:hover:not(:disabled) {
+    background: var(--accent-bg);
+    border-color: var(--accent-border);
+}
+
+.regex-trigger-test-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.regex-trigger-remove-btn {
+    min-width: 24px !important;
+    min-height: 24px !important;
+    max-width: 24px !important;
+    max-height: 24px !important;
+    padding: 0 !important;
+    font-size: 0.8rem !important;
+    border: none !important;
+    background: transparent !important;
+    color: var(--text-h);
+    opacity: 0.4;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+
+.regex-trigger-remove-btn:hover {
+    opacity: 1;
+    color: #ff4444;
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.regex-trigger-test-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px;
+    align-items: center;
+    padding: 0 6px 4px 6px;
+    margin-top: -2px;
+}
+
+.regex-trigger-test-input {
+    font-size: 0.7rem !important;
+    padding: 3px 8px !important;
+    min-height: 24px !important;
+    border: 1px dashed var(--border) !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+}
+
+.regex-trigger-result {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.regex-trigger-result.match {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.regex-trigger-result.no-match {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.regex-trigger-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 3px 10px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-h);
+    opacity: 0.6;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin: 4px auto 0 auto;
+    min-height: 26px;
+}
+
+.regex-trigger-add-btn:hover {
+    opacity: 1;
+    border-color: var(--accent-border);
+    color: var(--accent);
+    background: var(--accent-bg);
+}
+
+.regex-trigger-error {
+    font-size: 0.65rem;
+    color: #ff4444;
+    margin-top: 2px;
+    text-align: center;
+}
+
+.regex-trigger-empty {
+    font-size: 0.6rem;
+    opacity: 0.4;
+    font-style: italic;
+    padding: 4px 0;
+    text-align: center;
+}
+
+@media (max-width: 480px) {
+    .regex-trigger-row {
+        grid-template-columns: 1fr auto auto;
+    }
+    .regex-trigger-select {
+        max-width: 70px;
+        font-size: 0.6rem !important;
+    }
+}

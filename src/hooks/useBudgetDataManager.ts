@@ -30,7 +30,7 @@ function applyResetIfDue(data: BudgetData): BudgetData {
     };
 }
 
-function createDefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAULT_RESET_DURATION_MS): BudgetData {
+function createdefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAULT_RESET_DURATION_MS): BudgetData {
     const now = Date.now();
 
     return {
@@ -116,7 +116,7 @@ export function useBudgetDataManager() {
         resetDuration = DEFAULT_RESET_DURATION_MS,
     ): Promise<boolean> => {
         try {
-            const created = createDefaultBudgetData(strategy, resetDuration);
+            const created = createdefaultBudgetData(strategy, resetDuration);
             await saveRawBudgetData(created);
             setBudgetData(created);
             emitBudgetDataUpdated(created);

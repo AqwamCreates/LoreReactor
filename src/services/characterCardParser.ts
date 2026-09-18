@@ -2,7 +2,7 @@
 // Parses TavernAI / SillyTavern character cards (PNG with embedded JSON)
 // Supports V1, V2, and V3 specs including lorebooks, assets, and extensions
 
-import type { ParsedCharacterCard, Context } from "../types";
+import type { ParsedCharacterCard, Context, RegularExpressionTrigger } from "../types";
 
 /** Extended parsed result that includes lorebook contexts and emotion images */
 export interface ParsedCharacterCardExtended extends ParsedCharacterCard {
@@ -270,7 +270,7 @@ interface CharacterBook {
 
 /**
  * Converts character_book entries into partial Context objects.
- * Maps lorebook keys → regex activation triggers, content → text,
+ * Maps lorebook keys → RegularExpressionTrigger arrays, content → text,
  * insertion_order → insertionDepth, constant → always-active context.
  */
 function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
@@ -288,22 +288,28 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
         const keys = entry.keys || [];
         const secondaryKeys = entry.selective ? (entry.secondary_keys || []) : [];
 
-        // Build regex from keys
-        let regexTrigger: string | undefined;
+        // Build regex trigger from keys
+        let activationTriggers: RegularExpressionTrigger[] | undefined;
         if (keys.length > 0) {
             const escaped = keys.map(k => escapeRegex(k));
+            let regexPattern: string;
             if (entry.selective && secondaryKeys.length > 0) {
                 // Selective: need match from BOTH key sets
                 const primaryGroup = escaped.join('|');
                 const secondaryGroup = secondaryKeys.map(k => escapeRegex(k)).join('|');
-                regexTrigger = `(?=.*(?:${primaryGroup}))(?=.*(?:${secondaryGroup}))`;
+                regexPattern = `(?=.*(?:${primaryGroup}))(?=.*(?:${secondaryGroup}))`;
             } else {
-                regexTrigger = escaped.join('|');
+                regexPattern = escaped.join('|');
             }
             // Respect case sensitivity
             if (!entry.case_sensitive) {
-                regexTrigger = `(?i)${regexTrigger}`;
+                regexPattern = `(?i)${regexPattern}`;
             }
+            activationTriggers = [{
+                trigger: regexPattern,
+                context: 'global',
+                target: 'everyone',
+            }];
         }
 
         // Constant entries have no trigger — always active
@@ -312,7 +318,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
         const context: Partial<Context> = {
             name: entry.name || entry.comment || "Lorebook Entry",
             text: entry.content,
-            regularExpressionActivationTrigger: isConstant ? undefined : regexTrigger,
+            regularExpressionActivationTriggers: isConstant ? undefined : activationTriggers,
             insertionDepth: entry.insertion_order ?? 0,
             tokenBudget: book.token_budget ? Math.min(book.token_budget, 512) : undefined,
             firstCreatedTimestamp: now,

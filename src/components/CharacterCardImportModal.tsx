@@ -143,7 +143,7 @@ export function CharacterCardImportModal({
                 lastUpdatedTimestamp: now,
             };
 
-            // Build finalized lorebook contexts
+            // Build finalized lorebook contexts using new RegularExpressionTrigger[] format
             const lorebookContexts: Context[] = (extended.lorebookContexts || []).map(entry => ({
                 id: uuidv4(),
                 name: entry.name || 'Lorebook Entry',
@@ -158,22 +158,14 @@ export function CharacterCardImportModal({
                 linkFetchMode: 'summary' as const,
                 limitLinksToSubdirectory: false,
                 fetchCacheTimeToLiveMs: undefined,
-                regularExpressionActivationTrigger: entry.regularExpressionActivationTrigger,
-                regularExpressionDeactivationTrigger: undefined,
-                regularExpressionExclusionActivationTrigger: undefined,
-                regularExpressionExclusionDeactivationTrigger: undefined,
-                regularExpressionContext: 'global' as const,
-                regularExpressionTarget: 'everyone' as const,
-                regularExpressionExclusionContext: 'global' as const,
-                regularExpressionExclusionTarget: 'everyone' as const,
-                messageFilterRegularExpressionActivationTrigger: undefined,
-                messageFilterRegularExpressionDeactivationTrigger: undefined,
-                messageFilterRegularExpressionExclusionActivationTrigger: undefined,
-                messageFilterRegularExpressionExclusionDeactivationTrigger: undefined,
-                messageFilterRegularExpressionContext: 'global' as const,
-                messageFilterRegularExpressionTarget: 'everyone' as const,
-                messageFilterRegularExpressionExclusionContext: 'global' as const,
-                messageFilterRegularExpressionExclusionTarget: 'everyone' as const,
+                regularExpressionActivationTriggers: entry.regularExpressionActivationTriggers,
+                regularExpressionDeactivationTriggers: undefined,
+                regularExpressionExclusionActivationTriggers: undefined,
+                regularExpressionExclusionDeactivationTriggers: undefined,
+                messageFilterRegularExpressionActivationTriggers: undefined,
+                messageFilterRegularExpressionDeactivationTriggers: undefined,
+                messageFilterRegularExpressionExclusionActivationTriggers: undefined,
+                messageFilterRegularExpressionExclusionDeactivationTriggers: undefined,
                 tokenBudget: entry.tokenBudget,
                 maximumRecursionDepth: 1,
                 insertionDepth: entry.insertionDepth ?? 0,
@@ -320,19 +312,22 @@ export function CharacterCardImportModal({
                                     </div>
                                     {includeLorebook && (
                                         <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px' }}>
-                                            {preview.lorebookContexts.map((context, i) => (
-                                                <div key={context.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                                                    <strong>{context.name}</strong>
-                                                    {context.regularExpressionActivationTrigger && (
-                                                        <span style={{ opacity: 0.5, marginLeft: '6px', fontFamily: 'monospace', fontSize: '0.6rem' }}>
-                                                            /{context.regularExpressionActivationTrigger}/
-                                                        </span>
-                                                    )}
-                                                    <div style={{ opacity: 0.6, fontSize: '0.6rem', marginTop: '2px' }}>
-                                                        {context.text?.substring(0, 100) || '(no content)'}{context.text && context.text.length > 100 ? '...' : ''}
+                                            {preview.lorebookContexts.map((context, i) => {
+                                                const firstTrigger = context.regularExpressionActivationTriggers?.[0]?.trigger;
+                                                return (
+                                                    <div key={context.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                                        <strong>{context.name}</strong>
+                                                        {firstTrigger && (
+                                                            <span style={{ opacity: 0.5, marginLeft: '6px', fontFamily: 'monospace', fontSize: '0.6rem' }}>
+                                                                /{firstTrigger}/
+                                                            </span>
+                                                        )}
+                                                        <div style={{ opacity: 0.6, fontSize: '0.6rem', marginTop: '2px' }}>
+                                                            {context.text?.substring(0, 100) || '(no content)'}{context.text && context.text.length > 100 ? '...' : ''}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

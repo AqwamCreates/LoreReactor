@@ -1,7 +1,8 @@
 // src/components/StopPatternEditorModal.tsx
 import { useState } from 'react';
-import type { regularExpressionContext, regularExpressionTarget, StopPattern } from '../types';
+import type { StopPattern, RegularExpressionTrigger } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';
 
 interface StopPatternEditorModalProps {
@@ -40,88 +41,54 @@ function StopPatternEditorModalInner({
     const [name, setName] = useState(existingStopPattern?.name || '');
     const [description, setDescription] = useState(existingStopPattern?.description || '');
     const [pattern, setPattern] = useState(existingStopPattern?.pattern || '');
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingStopPattern?.regularExpressionActivationTrigger || '');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingStopPattern?.regularExpressionDeactivationTrigger || '');
-    const [regexContext, setRegexContext] = useState<regularExpressionContext>(existingStopPattern?.regularExpressionContext || 'global');
-    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>(existingStopPattern?.regularExpressionTarget || 'everyone');
 
-    const [activationTestText, setActivationTestText] = useState('');
-    const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
+    const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingStopPattern?.regularExpressionActivationTriggers ?? []);
+    const [regexDeactivationTriggers, setRegexDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingStopPattern?.regularExpressionDeactivationTriggers ?? []);
 
-    const [deactivationTestText, setDeactivationTestText] = useState('');
-    const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
-
-    const [errors, setErrors] = useState<{ name?: string; pattern?: string; regex?: string; deactivationRegex?: string }>({});
+    const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; pattern?: string; regex?: string; deactivationRegex?: string } = {};
+        const newErrors: Record<string, string | undefined> = {};
 
         if (!name.trim()) newErrors.name = 'Name is required.';
         if (!pattern.trim()) newErrors.pattern = 'Stop pattern is required.';
 
-        if (regexActivationTrigger.trim()) {
-            try {
-                new RegExp(regexActivationTrigger);
-            } catch {
-                newErrors.regex = 'Invalid activation regular expression.';
+        let valid = true;
+        const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
+            for (let i = 0; i < trs.length; i++) {
+                if (trs[i].trigger.trim()) {
+                    try { new RegExp(trs[i].trigger); } catch {
+                        newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
+                        valid = false;
+                        break;
+                    }
+                }
             }
-        }
-
-        if (regexDeactivationTrigger.trim()) {
-            try {
-                new RegExp(regexDeactivationTrigger);
-            } catch {
-                newErrors.deactivationRegex = 'Invalid deactivation regular expression.';
-            }
-        }
+        };
+        validateTriggers(regexActivationTriggers, 'regex');
+        validateTriggers(regexDeactivationTriggers, 'deactivationRegex');
 
         setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const handleTestActivationRegex = () => {
-        if (!regexActivationTrigger.trim() || !activationTestText.trim()) {
-            setActivationTestResult(null);
-            return;
-        }
-
-        try {
-            const regex = new RegExp(regexActivationTrigger);
-            setActivationTestResult(regex.test(activationTestText));
-        } catch {
-            setActivationTestResult(null);
-            setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
-        }
-    };
-
-    const handleTestDeactivationRegex = () => {
-        if (!regexDeactivationTrigger.trim() || !deactivationTestText.trim()) {
-            setDeactivationTestResult(null);
-            return;
-        }
-
-        try {
-            const regex = new RegExp(regexDeactivationTrigger);
-            setDeactivationTestResult(regex.test(deactivationTestText));
-        } catch {
-            setDeactivationTestResult(null);
-            setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
-        }
+        return Object.keys(newErrors).length === 0 && valid;
     };
 
     const buildStopPatternFromForm = (isNewClone: boolean): StopPattern | null => {
         if (!validate()) return null;
 
         const now = Date.now();
+
+        const filterTriggers = (trs: RegularExpressionTrigger[]) => {
+            const filtered = trs.filter(t => t.trigger.trim());
+            return filtered.length > 0 ? filtered : undefined;
+        };
+
         return {
             id: isNewClone ? uuidv4() : (existingStopPattern?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             pattern: pattern.trim(),
-            regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
-            regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
-            regularExpressionContext: regexContext,
-            regularExpressionTarget: regexTarget,
+            regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
+            regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
             firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -205,162 +172,25 @@ function StopPatternEditorModalInner({
                         </div>
                     </div>
 
-                    {/* Regular Expression Section */}
+                    {/* Regular Expression Triggers */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Regular Expression</span>
-
-                        {/* Activation Trigger */}
-                        <div className="editor-row-full">
-                            <div>
-                                <label className="editor-label editor-label-small">Activation Trigger</label>
-                                <input
-                                    type="text"
-                                    value={regexActivationTrigger}
-                                    onChange={(e) => {
-                                        setRegexActivationTrigger(e.target.value);
-                                        if (errors.regex) setErrors({ ...errors, regex: undefined });
-                                        setActivationTestResult(null);
-                                    }}
-                                    className={`editor-input ${errors.regex ? 'error' : ''}`}
-                                    style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                    placeholder="/battle|combat|fight/i"
-                                />
-                                {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
-                            </div>
-                        </div>
-
-                        {/* Activation Regex Tester */}
-                        {regexActivationTrigger.trim() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
-                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
-                                    <input
-                                        type="text"
-                                        value={activationTestText}
-                                        onChange={(e) => {
-                                            setActivationTestText(e.target.value);
-                                            setActivationTestResult(null);
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleTestActivationRegex();
-                                            }
-                                        }}
-                                        className="editor-input"
-                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                        placeholder="Enter text to test against the activation regex"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleTestActivationRegex}
-                                        className="editor-button editor-button-save"
-                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
-                                        disabled={!activationTestText.trim()}
-                                    >
-                                        Test
-                                    </button>
-                                </div>
-                                {activationTestResult !== null && (
-                                    <div className={activationTestResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
-                                        {activationTestResult ? '✅ Activation matches!' : '❌ Activation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Deactivation Trigger */}
-                        <div className="editor-row-full" style={{ marginTop: '12px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Deactivation Trigger</label>
-                                <input
-                                    type="text"
-                                    value={regexDeactivationTrigger}
-                                    onChange={(e) => {
-                                        setRegexDeactivationTrigger(e.target.value);
-                                        if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined });
-                                        setDeactivationTestResult(null);
-                                    }}
-                                    className={`editor-input ${errors.deactivationRegex ? 'error' : ''}`}
-                                    style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                    placeholder="/peace|calm|aftermath/i"
-                                />
-                                {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Optional. Deactivates this stop pattern when matched.
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Deactivation Regex Tester */}
-                        {regexDeactivationTrigger.trim() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <label className="editor-label editor-label-small">Test Deactivation Pattern</label>
-                                <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
-                                    <input
-                                        type="text"
-                                        value={deactivationTestText}
-                                        onChange={(e) => {
-                                            setDeactivationTestText(e.target.value);
-                                            setDeactivationTestResult(null);
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleTestDeactivationRegex();
-                                            }
-                                        }}
-                                        className="editor-input"
-                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                        placeholder="Enter text to test against the deactivation regex"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleTestDeactivationRegex}
-                                        className="editor-button editor-button-save"
-                                        style={{ padding: '0 12px', fontSize: '0.75rem', minHeight: '36px', flexShrink: 0 }}
-                                        disabled={!deactivationTestText.trim()}
-                                    >
-                                        Test
-                                    </button>
-                                </div>
-                                {deactivationTestResult !== null && (
-                                    <div className={deactivationTestResult ? 'editor-success-message' : 'editor-error-message'} style={{ marginTop: '4px' }}>
-                                        {deactivationTestResult ? '✅ Deactivation matches!' : '❌ Deactivation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Regex Context & Target */}
-                        <div className="editor-row" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Context</label>
-                                <select
-                                    value={regexContext}
-                                    onChange={(e) => setRegexContext(e.target.value as regularExpressionContext)}
-                                    className="editor-select"
-                                    disabled={!regexActivationTrigger.trim()}
-                                >
-                                    <option value="global">Global</option>
-                                    <option value="local">Local</option>
-                                    <option value="previous">Previous</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Target</label>
-                                <select
-                                    value={regexTarget}
-                                    onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)}
-                                    className="editor-select"
-                                    disabled={!regexActivationTrigger.trim()}
-                                >
-                                    <option value="everyone">Everyone</option>
-                                    <option value="listener">Listener</option>
-                                    <option value="self">Self</option>
-                                </select>
-                            </div>
-                        </div>
+                        <span className="editor-section-title">Regular Expression Triggers</span>
+                        <RegularExpressionTriggerEditor
+                            label="Activation"
+                            description="Stop pattern activates when any trigger matches."
+                            triggers={regexActivationTriggers}
+                            onChange={setRegexActivationTriggers}
+                            error={errors.regex}
+                            placeholder="/battle|combat|fight/i"
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Deactivation"
+                            description="Deactivates stop pattern when any trigger matches."
+                            triggers={regexDeactivationTriggers}
+                            onChange={setRegexDeactivationTriggers}
+                            error={errors.deactivationRegex}
+                            placeholder="/peace|calm|aftermath/i"
+                        />
                     </div>
                 </div>
             </div>

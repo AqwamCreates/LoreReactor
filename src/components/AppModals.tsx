@@ -323,7 +323,7 @@ export function AppModals({
                     onSelect={(t: AudioTrack) => audioTrackModal.open(t)}
                     onDelete={onDeleteAudioTrack}
                     onCreateNew={() => audioTrackModal.open()}
-                    renderSubtext={(t: AudioTrack) => `${t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'} ${t.loop ? '🔁' : '▶️'} Vol: ${Math.round(t.volume * 100)}%${t.locationBindings.length > 0 ? ` • 📍${t.locationBindings.length}` : ''}${t.contextBindings.length > 0 ? ` • 📜${t.contextBindings.length}` : ''}`}
+                    renderSubtext={(t: AudioTrack) => `${t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'} ${t.loop ? '🔁' : '▶️'} Vol: ${Math.round(t.volume * 100)}%${t.priority > 0 ? ` • ⬆${t.priority}` : ''}${t.locationBindings.length > 0 ? ` • 📍${t.locationBindings.length}` : ''}${t.contextBindings.length > 0 ? ` • 📜${t.contextBindings.length}` : ''}${t.characterBindings.length > 0 ? ` • 🎭${t.characterBindings.length}` : ''}`}
                     emptyMessage="No audio tracks found."
                     actionLabel="Delete"
                     orderedListMode={true}
@@ -343,7 +343,7 @@ export function AppModals({
                     onDelete={onDeleteWorld}
                     onCreateNew={() => worldModal.open()}
                     renderSubtext={(w: World) =>
-                        `${w.characterIds.length} char • ${w.contextIds.length} context • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds!.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds!.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
+                        `${w.characterIds.length} char • ${w.contextIds.length} context • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`
                     }
                     emptyMessage="No worlds saved yet."
                     actionLabel="Delete"
@@ -438,11 +438,14 @@ export function AppModals({
                     onSelect={(s: StopPattern) => stopModal.open(s)}
                     onDelete={onDeleteStopPattern}
                     onCreateNew={() => stopModal.open()}
-                    renderSubtext={(s: StopPattern) => (
-                        <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>
-                            {s.regularExpressionActivationTrigger ? '⚡' : '📌'} Pattern: {s.pattern}
-                        </span>
-                    )}
+                    renderSubtext={(s: StopPattern) => {
+                        const hasActivationTriggers = (s.regularExpressionActivationTriggers?.length ?? 0) > 0;
+                        return (
+                            <span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>
+                                {hasActivationTriggers ? '⚡' : '📌'} Pattern: {s.pattern}
+                            </span>
+                        );
+                    }}
                     emptyMessage="No stop patterns found."
                     actionLabel="Delete"
                     orderedListMode={false}

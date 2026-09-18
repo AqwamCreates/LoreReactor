@@ -1,12 +1,13 @@
 // src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import type { Context, Character, searchEngine, regularExpressionContext, regularExpressionTarget, linkFetchMode } from '../types';
+import type { Context, Character, searchEngine, linkFetchMode, RegularExpressionTrigger } from '../types';
 import { uploadContextImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { useSessionStore } from '../hooks/useSessionStore';
+import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -60,52 +61,18 @@ function ContextEditorModalInner({
         return [];
     });
     const [isUploading, setIsUploading] = useState(false);
-
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(existingContext?.useBase64Encoding ?? false);
 
-    const [regexActivationTrigger, setRegexActivationTrigger] = useState(existingContext?.regularExpressionActivationTrigger || '');
-    const [regexDeactivationTrigger, setRegexDeactivationTrigger] = useState(existingContext?.regularExpressionDeactivationTrigger || '');
-    const [regexExclusionActivationTrigger, setRegexExclusionActivationTrigger] = useState(existingContext?.regularExpressionExclusionActivationTrigger || '');
-    const [regexExclusionDeactivationTrigger, setRegexExclusionDeactivationTrigger] = useState(existingContext?.regularExpressionExclusionDeactivationTrigger || '');
-    const [regexContext, setRegexContext] = useState<regularExpressionContext>(existingContext?.regularExpressionContext || 'global');
-    const [regexTarget, setRegexTarget] = useState<regularExpressionTarget>(existingContext?.regularExpressionTarget || 'everyone');
-    const [regexExclusionContext, setRegexExclusionContext] = useState<regularExpressionContext>(existingContext?.regularExpressionExclusionContext || 'global');
-    const [regexExclusionTarget, setRegexExclusionTarget] = useState<regularExpressionTarget>(existingContext?.regularExpressionExclusionTarget || 'everyone');
+    const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.regularExpressionActivationTriggers ?? []);
+    const [regexDeactivationTriggers, setRegexDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.regularExpressionDeactivationTriggers ?? []);
+    const [regexExclusionActivationTriggers, setRegexExclusionActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.regularExpressionExclusionActivationTriggers ?? []);
+    const [regexExclusionDeactivationTriggers, setRegexExclusionDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.regularExpressionExclusionDeactivationTriggers ?? []);
+    const [messageFilterActivationTriggers, setMessageFilterActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionActivationTriggers ?? []);
+    const [messageFilterDeactivationTriggers, setMessageFilterDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionDeactivationTriggers ?? []);
+    const [messageFilterExclusionActivationTriggers, setMessageFilterExclusionActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionExclusionActivationTriggers ?? []);
+    const [messageFilterExclusionDeactivationTriggers, setMessageFilterExclusionDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionExclusionDeactivationTriggers ?? []);
 
-    const [messageFilterActivationTrigger, setMessageFilterActivationTrigger] = useState(existingContext?.messageFilterRegularExpressionActivationTrigger || '');
-    const [messageFilterDeactivationTrigger, setMessageFilterDeactivationTrigger] = useState(existingContext?.messageFilterRegularExpressionDeactivationTrigger || '');
-    const [messageFilterExclusionActivationTrigger, setMessageFilterExclusionActivationTrigger] = useState(existingContext?.messageFilterRegularExpressionExclusionActivationTrigger || '');
-    const [messageFilterExclusionDeactivationTrigger, setMessageFilterExclusionDeactivationTrigger] = useState(existingContext?.messageFilterRegularExpressionExclusionDeactivationTrigger || '');
-    const [messageFilterContext, setMessageFilterContext] = useState<regularExpressionContext>(existingContext?.messageFilterRegularExpressionContext || 'global');
-    const [messageFilterTarget, setMessageFilterTarget] = useState<regularExpressionTarget>(existingContext?.messageFilterRegularExpressionTarget || 'everyone');
-    const [messageFilterExclusionContext, setMessageFilterExclusionContext] = useState<regularExpressionContext>(existingContext?.messageFilterRegularExpressionExclusionContext || 'global');
-    const [messageFilterExclusionTarget, setMessageFilterExclusionTarget] = useState<regularExpressionTarget>(existingContext?.messageFilterRegularExpressionExclusionTarget || 'everyone');
-
-    const [activationTestText, setActivationTestText] = useState('');
-    const [activationTestResult, setActivationTestResult] = useState<boolean | null>(null);
-
-    const [deactivationTestText, setDeactivationTestText] = useState('');
-    const [deactivationTestResult, setDeactivationTestResult] = useState<boolean | null>(null);
-
-    const [exclusionActivationTestText, setExclusionActivationTestText] = useState('');
-    const [exclusionActivationTestResult, setExclusionActivationTestResult] = useState<boolean | null>(null);
-
-    const [exclusionDeactivationTestText, setExclusionDeactivationTestText] = useState('');
-    const [exclusionDeactivationTestResult, setExclusionDeactivationTestResult] = useState<boolean | null>(null);
-
-    const [messageFilterActivationTestText, setMessageFilterActivationTestText] = useState('');
-    const [messageFilterActivationTestResult, setMessageFilterActivationTestResult] = useState<boolean | null>(null);
-
-    const [messageFilterDeactivationTestText, setMessageFilterDeactivationTestText] = useState('');
-    const [messageFilterDeactivationTestResult, setMessageFilterDeactivationTestResult] = useState<boolean | null>(null);
-
-    const [messageFilterExclusionActivationTestText, setMessageFilterExclusionActivationTestText] = useState('');
-    const [messageFilterExclusionActivationTestResult, setMessageFilterExclusionActivationTestResult] = useState<boolean | null>(null);
-
-    const [messageFilterExclusionDeactivationTestText, setMessageFilterExclusionDeactivationTestText] = useState('');
-    const [messageFilterExclusionDeactivationTestResult, setMessageFilterExclusionDeactivationTestResult] = useState<boolean | null>(null);
-
-    const [errors, setErrors] = useState<{ name?: string; text?: string; regex?: string; deactivationRegex?: string; exclusionActivationRegex?: string; exclusionDeactivationRegex?: string; messageFilterRegex?: string; messageFilterDeactivationRegex?: string; messageFilterExclusionActivationRegex?: string; messageFilterExclusionDeactivationRegex?: string; images?: string; urls?: string }>({});
+    const [errors, setErrors] = useState<Record<string, string | undefined>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cardImportRef = useRef<HTMLInputElement>(null);
 
@@ -130,8 +97,6 @@ function ContextEditorModalInner({
     const [includeLinkImages, setIncludeLinkImages] = useState<boolean>(existingContext?.includeLinkImages ?? false);
     const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(existingContext?.limitLinksToSubdirectory ?? false);
 
-    // Set engine context on mount and compute initial token count.
-    // Uses requestAnimationFrame to defer setState out of the synchronous effect body.
     useEffect(() => {
         const selectedModel = useSessionStore.getState().selectedModel;
         const runningModels = useSessionStore.getState().runningModels;
@@ -139,39 +104,27 @@ function ContextEditorModalInner({
             tokenEngine.setRunningModels(runningModels);
             tokenEngine.setContext(selectedModel);
         }
-
         const initialText = existingContext?.text || '';
         if (!initialText.trim()) return;
-
         const rafId = requestAnimationFrame(() => {
-            tokenEngine.countTokens(initialText).then(count => {
-                setTextnumberOfTokens(count);
-            });
+            tokenEngine.countTokens(initialText).then(count => setTextnumberOfTokens(count));
         });
-
         return () => cancelAnimationFrame(rafId);
     }, [existingContext]);
 
-    // Token counting on text changes (debounced)
     useEffect(() => {
         let cancelled = false;
         const debounceRef = tokenDebounceRef.current;
         if (debounceRef) clearTimeout(debounceRef);
-
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextnumberOfTokens(count);
         }, 400);
-
-        return () => {
-            cancelled = true;
-            const ref = tokenDebounceRef.current;
-            if (ref) clearTimeout(ref);
-        };
+        return () => { cancelled = true; const ref = tokenDebounceRef.current; if (ref) clearTimeout(ref); };
     }, [text]);
 
     const validate = (): boolean => {
-        const newErrors: typeof errors = {};
+        const newErrors: Record<string, string | undefined> = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasUrls = urls.length > 0;
@@ -184,184 +137,71 @@ function ContextEditorModalInner({
             newErrors.images = 'Either text, images, URLs, or search terms are required.';
         }
 
-        if (regexActivationTrigger.trim()) {
-            try { new RegExp(regexActivationTrigger); } catch { newErrors.regex = 'Invalid activation regular expression.'; }
-        }
-
-        if (regexDeactivationTrigger.trim()) {
-            try { new RegExp(regexDeactivationTrigger); } catch { newErrors.deactivationRegex = 'Invalid deactivation regular expression.'; }
-        }
-
-        if (regexExclusionActivationTrigger.trim()) {
-            try { new RegExp(regexExclusionActivationTrigger); } catch { newErrors.exclusionActivationRegex = 'Invalid exclusion activation regular expression.'; }
-        }
-
-        if (regexExclusionDeactivationTrigger.trim()) {
-            try { new RegExp(regexExclusionDeactivationTrigger); } catch { newErrors.exclusionDeactivationRegex = 'Invalid exclusion deactivation regular expression.'; }
-        }
-
-        if (messageFilterActivationTrigger.trim()) {
-            try { new RegExp(messageFilterActivationTrigger); } catch { newErrors.messageFilterRegex = 'Invalid message filter activation regular expression.'; }
-        }
-
-        if (messageFilterDeactivationTrigger.trim()) {
-            try { new RegExp(messageFilterDeactivationTrigger); } catch { newErrors.messageFilterDeactivationRegex = 'Invalid message filter deactivation regular expression.'; }
-        }
-
-        if (messageFilterExclusionActivationTrigger.trim()) {
-            try { new RegExp(messageFilterExclusionActivationTrigger); } catch { newErrors.messageFilterExclusionActivationRegex = 'Invalid message filter exclusion activation regular expression.'; }
-        }
-
-        if (messageFilterExclusionDeactivationTrigger.trim()) {
-            try { new RegExp(messageFilterExclusionDeactivationTrigger); } catch { newErrors.messageFilterExclusionDeactivationRegex = 'Invalid message filter exclusion deactivation regular expression.'; }
-        }
+        let valid = true;
+        const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
+            for (let i = 0; i < trs.length; i++) {
+                if (trs[i].trigger.trim()) {
+                    try { new RegExp(trs[i].trigger); } catch {
+                        newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+        };
+        validateTriggers(regexActivationTriggers, 'regex');
+        validateTriggers(regexDeactivationTriggers, 'deactivationRegex');
+        validateTriggers(regexExclusionActivationTriggers, 'exclusionActivationRegex');
+        validateTriggers(regexExclusionDeactivationTriggers, 'exclusionDeactivationRegex');
+        validateTriggers(messageFilterActivationTriggers, 'messageFilterRegex');
+        validateTriggers(messageFilterDeactivationTriggers, 'messageFilterDeactivationRegex');
+        validateTriggers(messageFilterExclusionActivationTriggers, 'messageFilterExclusionActivationRegex');
+        validateTriggers(messageFilterExclusionDeactivationTriggers, 'messageFilterExclusionDeactivationRegex');
 
         for (const url of urls) {
             if (!/^https?:\/\//i.test(url)) continue;
-
             try {
                 const parsed = new URL(url);
-                if (!['http:', 'https:'].includes(parsed.protocol)) {
-                    newErrors.urls = `URL "${url}" must use http:// or https:// protocol.`;
-                    break;
-                }
-            } catch {
-                newErrors.urls = `URL "${url}" is not a valid URL.`;
-                break;
-            }
+                if (!['http:', 'https:'].includes(parsed.protocol)) { newErrors.urls = `URL "${url}" must use http:// or https:// protocol.`; break; }
+            } catch { newErrors.urls = `URL "${url}" is not a valid URL.`; break; }
         }
 
         setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
+        return Object.keys(newErrors).length === 0 && valid;
     };
 
     const handleAddUrl = () => {
         const trimmed = newUrlInput.trim();
-        if (!trimmed) return;
-        if (urls.includes(trimmed)) return;
+        if (!trimmed || urls.includes(trimmed)) return;
         setUrls(prev => [...prev, trimmed]);
         setNewUrlInput('');
         if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined }));
     };
 
-    const handleRemoveUrl = (index: number) => {
-        setUrls(prev => prev.filter((_, i) => i !== index));
-    };
+    const handleRemoveUrl = (index: number) => setUrls(prev => prev.filter((_, i) => i !== index));
 
     const handleUrlInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddUrl();
-        }
+        if (e.key === 'Enter') { e.preventDefault(); handleAddUrl(); }
     };
 
     const handleAddSearchTerm = () => {
         const trimmed = newSearchTermInput.trim();
-        if (!trimmed) return;
-        if (searchTerms.includes(trimmed)) return;
+        if (!trimmed || searchTerms.includes(trimmed)) return;
         setSearchTerms(prev => [...prev, trimmed]);
         setNewSearchTermInput('');
     };
 
-    const handleRemoveSearchTerm = (index: number) => {
-        setSearchTerms(prev => prev.filter((_, i) => i !== index));
-    };
+    const handleRemoveSearchTerm = (index: number) => setSearchTerms(prev => prev.filter((_, i) => i !== index));
 
     const handleSearchTermInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddSearchTerm();
-        }
-    };
-
-    const handleTestActivationRegex = () => {
-        if (!regexActivationTrigger.trim() || !activationTestText.trim()) { setActivationTestResult(null); return; }
-        try {
-            const regex = new RegExp(regexActivationTrigger);
-            setActivationTestResult(regex.test(activationTestText));
-        } catch {
-            setActivationTestResult(null);
-            setErrors(prev => ({ ...prev, regex: 'Invalid activation regular expression.' }));
-        }
-    };
-
-    const handleTestDeactivationRegex = () => {
-        if (!regexDeactivationTrigger.trim() || !deactivationTestText.trim()) { setDeactivationTestResult(null); return; }
-        try {
-            const regex = new RegExp(regexDeactivationTrigger);
-            setDeactivationTestResult(regex.test(deactivationTestText));
-        } catch {
-            setDeactivationTestResult(null);
-            setErrors(prev => ({ ...prev, deactivationRegex: 'Invalid deactivation regular expression.' }));
-        }
-    };
-
-    const handleTestExclusionActivationRegex = () => {
-        if (!regexExclusionActivationTrigger.trim() || !exclusionActivationTestText.trim()) { setExclusionActivationTestResult(null); return; }
-        try {
-            setExclusionActivationTestResult(new RegExp(regexExclusionActivationTrigger).test(exclusionActivationTestText));
-        } catch {
-            setExclusionActivationTestResult(null);
-            setErrors(prev => ({ ...prev, exclusionActivationRegex: 'Invalid exclusion activation regular expression.' }));
-        }
-    };
-
-    const handleTestExclusionDeactivationRegex = () => {
-        if (!regexExclusionDeactivationTrigger.trim() || !exclusionDeactivationTestText.trim()) { setExclusionDeactivationTestResult(null); return; }
-        try {
-            setExclusionDeactivationTestResult(new RegExp(regexExclusionDeactivationTrigger).test(exclusionDeactivationTestText));
-        } catch {
-            setExclusionDeactivationTestResult(null);
-            setErrors(prev => ({ ...prev, exclusionDeactivationRegex: 'Invalid exclusion deactivation regular expression.' }));
-        }
-    };
-
-    const handleTestMessageFilterActivationRegex = () => {
-        if (!messageFilterActivationTrigger.trim() || !messageFilterActivationTestText.trim()) { setMessageFilterActivationTestResult(null); return; }
-        try {
-            setMessageFilterActivationTestResult(new RegExp(messageFilterActivationTrigger).test(messageFilterActivationTestText));
-        } catch {
-            setMessageFilterActivationTestResult(null);
-            setErrors(prev => ({ ...prev, messageFilterRegex: 'Invalid message filter activation regular expression.' }));
-        }
-    };
-
-    const handleTestMessageFilterDeactivationRegex = () => {
-        if (!messageFilterDeactivationTrigger.trim() || !messageFilterDeactivationTestText.trim()) { setMessageFilterDeactivationTestResult(null); return; }
-        try {
-            setMessageFilterDeactivationTestResult(new RegExp(messageFilterDeactivationTrigger).test(messageFilterDeactivationTestText));
-        } catch {
-            setMessageFilterDeactivationTestResult(null);
-            setErrors(prev => ({ ...prev, messageFilterDeactivationRegex: 'Invalid message filter deactivation regular expression.' }));
-        }
-    };
-
-    const handleTestMessageFilterExclusionActivationRegex = () => {
-        if (!messageFilterExclusionActivationTrigger.trim() || !messageFilterExclusionActivationTestText.trim()) { setMessageFilterExclusionActivationTestResult(null); return; }
-        try {
-            setMessageFilterExclusionActivationTestResult(new RegExp(messageFilterExclusionActivationTrigger).test(messageFilterExclusionActivationTestText));
-        } catch {
-            setMessageFilterExclusionActivationTestResult(null);
-            setErrors(prev => ({ ...prev, messageFilterExclusionActivationRegex: 'Invalid message filter exclusion activation regular expression.' }));
-        }
-    };
-
-    const handleTestMessageFilterExclusionDeactivationRegex = () => {
-        if (!messageFilterExclusionDeactivationTrigger.trim() || !messageFilterExclusionDeactivationTestText.trim()) { setMessageFilterExclusionDeactivationTestResult(null); return; }
-        try {
-            setMessageFilterExclusionDeactivationTestResult(new RegExp(messageFilterExclusionDeactivationTrigger).test(messageFilterExclusionDeactivationTestText));
-        } catch {
-            setMessageFilterExclusionDeactivationTestResult(null);
-            setErrors(prev => ({ ...prev, messageFilterExclusionDeactivationRegex: 'Invalid message filter exclusion deactivation regular expression.' }));
-        }
+        if (e.key === 'Enter') { e.preventDefault(); handleAddSearchTerm(); }
     };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const files = Array.from(e.target.files);
             setImageFiles(prev => [...prev, ...files]);
-            const newPreviews = files.map(file => URL.createObjectURL(file));
-            setImagePreviews(prev => [...prev, ...newPreviews]);
+            setImagePreviews(prev => [...prev, ...files.map(file => URL.createObjectURL(file))]);
             if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
         }
         e.target.value = '';
@@ -369,9 +209,7 @@ function ContextEditorModalInner({
 
     const handleRemoveImage = (index: number) => {
         setImageFiles(prev => prev.filter((_, i) => i !== index));
-        if (!imagePreviews[index].startsWith('data:image')) {
-            URL.revokeObjectURL(imagePreviews[index]);
-        }
+        if (!imagePreviews[index].startsWith('data:image')) URL.revokeObjectURL(imagePreviews[index]);
         setImagePreviews(prev => prev.filter((_, i) => i !== index));
     };
 
@@ -379,32 +217,18 @@ function ContextEditorModalInner({
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
-
         const card = await parseCharacterCard(file);
-        if (!card) {
-            setErrors(prev => ({ ...prev, text: 'Not a valid character card PNG.' }));
-            return;
-        }
-
+        if (!card) { setErrors(prev => ({ ...prev, text: 'Not a valid character card PNG.' })); return; }
         const extended = card as ParsedCharacterCardExtended;
-        if (!extended.lorebookContexts || extended.lorebookContexts.length === 0) {
-            setErrors(prev => ({ ...prev, text: 'No lorebook entries found in this character card.' }));
-            return;
-        }
-
+        if (!extended.lorebookContexts || extended.lorebookContexts.length === 0) { setErrors(prev => ({ ...prev, text: 'No lorebook entries found in this character card.' })); return; }
         const firstEntry = extended.lorebookContexts[0];
         if (firstEntry.name && !name) setName(firstEntry.name);
         if (firstEntry.text && !text) setText(firstEntry.text);
-        if (firstEntry.regularExpressionActivationTrigger && !regexActivationTrigger) {
-            setRegexActivationTrigger(firstEntry.regularExpressionActivationTrigger);
+        if (firstEntry.regularExpressionActivationTriggers && firstEntry.regularExpressionActivationTriggers.length > 0 && regexActivationTriggers.length === 0) {
+            setRegexActivationTriggers(firstEntry.regularExpressionActivationTriggers);
         }
-        if (firstEntry.insertionDepth !== undefined && insertionDepth === 0) {
-            setInsertionDepth(firstEntry.insertionDepth);
-        }
-        if (firstEntry.tokenBudget !== undefined && tokenBudget === 0) {
-            setTokenBudget(firstEntry.tokenBudget);
-        }
-
+        if (firstEntry.insertionDepth !== undefined && insertionDepth === 0) setInsertionDepth(firstEntry.insertionDepth);
+        if (firstEntry.tokenBudget !== undefined && tokenBudget === 0) setTokenBudget(firstEntry.tokenBudget);
         setErrors({});
     };
 
@@ -412,12 +236,10 @@ function ContextEditorModalInner({
         if (!validate()) return null;
 
         let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingContext?.images || []);
-
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
-                const uploadPromises = imageFiles.map(file => uploadContextImage(file));
-                const uploadedFilenames = await Promise.all(uploadPromises);
+                const uploadedFilenames = await Promise.all(imageFiles.map(file => uploadContextImage(file)));
                 finalImageFilenames = [...(isNewClone ? [] : (existingContext?.images || [])), ...uploadedFilenames];
             } catch (error) {
                 console.error("Failed to upload images:", error);
@@ -433,44 +255,38 @@ function ContextEditorModalInner({
         const hasSearchTerms = searchTerms.length > 0;
         const hasWebContent = hasUrls || hasSearchTerms;
 
+        const filterTriggers = (trs: RegularExpressionTrigger[]) => {
+            const filtered = trs.filter(t => t.trigger.trim());
+            return filtered.length > 0 ? filtered : undefined;
+        };
+
         return {
             id: isNewClone ? uuidv4() : (existingContext?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,
             images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
-            regularExpressionActivationTrigger: regexActivationTrigger.trim() || undefined,
-            regularExpressionDeactivationTrigger: regexDeactivationTrigger.trim() || undefined,
-            regularExpressionExclusionActivationTrigger: regexExclusionActivationTrigger.trim() || undefined,
-            regularExpressionExclusionDeactivationTrigger: regexExclusionDeactivationTrigger.trim() || undefined,
-            regularExpressionContext: regexContext,
-            regularExpressionTarget: regexTarget,
-            regularExpressionExclusionContext: regexExclusionContext,
-            regularExpressionExclusionTarget: regexExclusionTarget,
-            messageFilterRegularExpressionActivationTrigger: messageFilterActivationTrigger.trim() || undefined,
-            messageFilterRegularExpressionDeactivationTrigger: messageFilterDeactivationTrigger.trim() || undefined,
-            messageFilterRegularExpressionExclusionActivationTrigger: messageFilterExclusionActivationTrigger.trim() || undefined,
-            messageFilterRegularExpressionExclusionDeactivationTrigger: messageFilterExclusionDeactivationTrigger.trim() || undefined,
-            messageFilterRegularExpressionContext: messageFilterContext,
-            messageFilterRegularExpressionTarget: messageFilterTarget,
-            messageFilterRegularExpressionExclusionContext: messageFilterExclusionContext,
-            messageFilterRegularExpressionExclusionTarget: messageFilterExclusionTarget,
-            useBase64Encoding: useBase64Encoding,
+            regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
+            regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
+            regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
+            regularExpressionExclusionDeactivationTriggers: filterTriggers(regexExclusionDeactivationTriggers),
+            messageFilterRegularExpressionActivationTriggers: filterTriggers(messageFilterActivationTriggers),
+            messageFilterRegularExpressionDeactivationTriggers: filterTriggers(messageFilterDeactivationTriggers),
+            messageFilterRegularExpressionExclusionActivationTriggers: filterTriggers(messageFilterExclusionActivationTriggers),
+            messageFilterRegularExpressionExclusionDeactivationTriggers: filterTriggers(messageFilterExclusionDeactivationTriggers),
+            useBase64Encoding,
             tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
             maximumRecursionDepth: maximumRecursionDepth !== 5 ? maximumRecursionDepth : undefined,
             insertionDepth: insertionDepth !== 0 ? insertionDepth : undefined,
             characterBindings: characterBindings.length > 0 ? characterBindings : undefined,
-
             urls: hasUrls ? [...urls] : undefined,
             includeLinkImages: hasWebContent ? includeLinkImages : undefined,
             maximumLinkDepth: hasWebContent ? linkMaxDepth : undefined,
             limitLinksToSubdirectory: hasWebContent ? (limitLinksToSubdirectory ?? false) : false,
             linkFetchMode: hasWebContent ? linkFetchMode : undefined,
             fetchCacheTimeToLiveMs: hasWebContent ? fetchCacheTimeToLiveMs : undefined,
-
             searchTerms: hasSearchTerms ? [...searchTerms] : undefined,
             searchEngine: hasSearchTerms ? searchEngine : undefined,
-
             firstCreatedTimestamp: isNewClone ? now : (existingContext?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -484,9 +300,9 @@ function ContextEditorModalInner({
     };
 
     const handleClone = async () => {
-        const clonedContext = await buildContextFromForm(true);
-        if (!clonedContext) return;
-        onSave(clonedContext);
+        const cloned = await buildContextFromForm(true);
+        if (!cloned) return;
+        onSave(cloned);
         onClose();
     };
 
@@ -497,7 +313,6 @@ function ContextEditorModalInner({
     const hasWebContent = hasUrls || hasSearchTerms;
     const textRequiresAsterisk = !hasImages && !hasWebContent;
     const imagesRequiresAsterisk = !hasText && !hasWebContent;
-
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
 
     return (
@@ -517,6 +332,7 @@ function ContextEditorModalInner({
                 </div>
 
                 <div className="modal-body editor-modal-body">
+                    {/* ─── Basic Fields ─── */}
                     <div className="context-field-group">
                         <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
                         <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Eldoria City Lore" />
@@ -555,6 +371,7 @@ function ContextEditorModalInner({
                         {errors.images && <div className="editor-error-message">{errors.images}</div>}
                     </div>
 
+                    {/* ─── Web Content Sources ─── */}
                     <div className="editor-section">
                         <span className="editor-section-title">Web Content Sources</span>
 
@@ -633,7 +450,7 @@ function ContextEditorModalInner({
                                         <input type="checkbox" checked={limitLinksToSubdirectory} onChange={(e) => setLimitLinksToSubdirectory(e.target.checked)} className="editor-checkbox-input" />
                                         <span>Limit Links to Subdirectory</span>
                                     </label>
-                                    <div className="context-checkbox-hint">Only follow links within the same directory path as the root URL. Prevents crawling unrelated sections of a website.</div>
+                                    <div className="context-checkbox-hint">Only follow links within the same directory path as the root URL.</div>
                                 </div>
                                 <div className="context-field-group">
                                     <label className="editor-label">Cache Time-To-Live (seconds)</label>
@@ -644,330 +461,122 @@ function ContextEditorModalInner({
                         )}
                     </div>
 
+                    {/* ─── Regular Expression Triggers ─── */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Regular Expression</span>
-
-                        <div className="editor-row-full">
-                            <div>
-                                <label className="editor-label editor-label-small">Activation Trigger</label>
-                                <input type="text" value={regexActivationTrigger} onChange={(e) => { setRegexActivationTrigger(e.target.value); if (errors.regex) setErrors({ ...errors, regex: undefined }); setActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.regex ? 'error' : ''}`} placeholder="/pattern/i" />
-                                {errors.regex && <div className="editor-error-message">{errors.regex}</div>}
-                            </div>
-                        </div>
-
-                        {regexActivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Activation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={activationTestText} onChange={(e) => { setActivationTestText(e.target.value); setActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!activationTestText.trim()}>Test</button>
-                                </div>
-                                {activationTestResult !== null && (
-                                    <div className={`context-test-result ${activationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {activationTestResult ? '✅ Activation matches!' : '❌ Activation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Deactivation Trigger</label>
-                                <input type="text" value={regexDeactivationTrigger} onChange={(e) => { setRegexDeactivationTrigger(e.target.value); if (errors.deactivationRegex) setErrors({ ...errors, deactivationRegex: undefined }); setDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.deactivationRegex ? 'error' : ''}`} placeholder="/peace|calm|aftermath/i" />
-                                {errors.deactivationRegex && <div className="editor-error-message">{errors.deactivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Optional. Deactivates this context entry when matched.
-                                </div>
-                            </div>
-                        </div>
-
-                        {regexDeactivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Deactivation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={deactivationTestText} onChange={(e) => { setDeactivationTestText(e.target.value); setDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!deactivationTestText.trim()}>Test</button>
-                                </div>
-                                {deactivationTestResult !== null && (
-                                    <div className={`context-test-result ${deactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {deactivationTestResult ? '✅ Deactivation matches!' : '❌ Deactivation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Exclusion Activation Trigger</label>
-                                <input type="text" value={regexExclusionActivationTrigger} onChange={(e) => { setRegexExclusionActivationTrigger(e.target.value); if (errors.exclusionActivationRegex) setErrors({ ...errors, exclusionActivationRegex: undefined }); setExclusionActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionActivationRegex ? 'error' : ''}`} placeholder="/fireplace|campfire/i" />
-                                {errors.exclusionActivationRegex && <div className="editor-error-message">{errors.exclusionActivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Optional. Overrides activation when matched (e.g., "fire" activates but "fireplace" excludes).
-                                </div>
-                            </div>
-                        </div>
-
-                        {regexExclusionActivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Exclusion Activation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={exclusionActivationTestText} onChange={(e) => { setExclusionActivationTestText(e.target.value); setExclusionActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestExclusionActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionActivationTestText.trim()}>Test</button>
-                                </div>
-                                {exclusionActivationTestResult !== null && (
-                                    <div className={`context-test-result ${exclusionActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {exclusionActivationTestResult ? '✅ Exclusion activation matches! (context blocked)' : '❌ Exclusion activation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {regexExclusionActivationTrigger.trim() && (
-                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                                <div>
-                                    <label className="editor-label editor-label-small">Exclusion Deactivation Trigger</label>
-                                    <input type="text" value={regexExclusionDeactivationTrigger} onChange={(e) => { setRegexExclusionDeactivationTrigger(e.target.value); if (errors.exclusionDeactivationRegex) setErrors({ ...errors, exclusionDeactivationRegex: undefined }); setExclusionDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.exclusionDeactivationRegex ? 'error' : ''}`} placeholder="/leave kitchen|exit forge/i" />
-                                    {errors.exclusionDeactivationRegex && <div className="editor-error-message">{errors.exclusionDeactivationRegex}</div>}
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                        Optional. When the exclusion stops being active. Without this, exclusion stays active once triggered.
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {regexExclusionDeactivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Exclusion Deactivation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={exclusionDeactivationTestText} onChange={(e) => { setExclusionDeactivationTestText(e.target.value); setExclusionDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestExclusionDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test text" />
-                                    <button type="button" onClick={handleTestExclusionDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!exclusionDeactivationTestText.trim()}>Test</button>
-                                </div>
-                                {exclusionDeactivationTestResult !== null && (
-                                    <div className={`context-test-result ${exclusionDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {exclusionDeactivationTestResult ? '✅ Exclusion deactivation matches!' : '❌ Exclusion deactivation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Context</label>
-                                <select value={regexContext} onChange={(e) => setRegexContext(e.target.value as regularExpressionContext)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
-                                    <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Target</label>
-                                <select value={regexTarget} onChange={(e) => setRegexTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!regexActivationTrigger.trim()}>
-                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {regexExclusionActivationTrigger.trim() && (
-                            <div className="editor-row" style={{ marginTop: '8px' }}>
-                                <div>
-                                    <label className="editor-label editor-label-small">Exclusion Context</label>
-                                    <select value={regexExclusionContext} onChange={(e) => setRegexExclusionContext(e.target.value as regularExpressionContext)} className="editor-select">
-                                        <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Exclusion Target</label>
-                                    <select value={regexExclusionTarget} onChange={(e) => setRegexExclusionTarget(e.target.value as regularExpressionTarget)} className="editor-select">
-                                        <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
+                        <span className="editor-section-title">Regular Expression Triggers</span>
+                        <RegularExpressionTriggerEditor
+                            label="Activation"
+                            description="Context activates when any trigger matches."
+                            triggers={regexActivationTriggers}
+                            onChange={setRegexActivationTriggers}
+                            error={errors.regex}
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Deactivation"
+                            description="Deactivates context when any trigger matches."
+                            triggers={regexDeactivationTriggers}
+                            onChange={setRegexDeactivationTriggers}
+                            error={errors.deactivationRegex}
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Exclusion Activation"
+                            description="Overrides activation when matched."
+                            triggers={regexExclusionActivationTriggers}
+                            onChange={setRegexExclusionActivationTriggers}
+                            error={errors.exclusionActivationRegex}
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Exclusion Deactivation"
+                            description="When exclusion stops being active."
+                            triggers={regexExclusionDeactivationTriggers}
+                            onChange={setRegexExclusionDeactivationTriggers}
+                            error={errors.exclusionDeactivationRegex}
+                        />
                     </div>
 
+                    {/* ─── Message Filter Triggers ─── */}
                     <div className="editor-section">
-                        <span className="editor-section-title">Message Filter Regular Expression</span>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Chat history messages matching the activation pattern will be excluded from the prompt sent to the AI. Use this to hide out-of-character messages, tool outputs, or other patterns from the AI's memory.
+                        <span className="editor-section-title">Message Filter Triggers</span>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px', textAlign: 'center' }}>
+                            Chat history messages matching activation triggers are excluded from the AI prompt.
                         </div>
-
-                        <div className="editor-row-full">
-                            <div>
-                                <label className="editor-label editor-label-small">Filter Activation Trigger</label>
-                                <input type="text" value={messageFilterActivationTrigger} onChange={(e) => { setMessageFilterActivationTrigger(e.target.value); if (errors.messageFilterRegex) setErrors({ ...errors, messageFilterRegex: undefined }); setMessageFilterActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterRegex ? 'error' : ''}`} placeholder="^\/ooc\s+|^\[.*\]$" />
-                                {errors.messageFilterRegex && <div className="editor-error-message">{errors.messageFilterRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Messages under this regex will be not hidden from chat history.</div>
-                            </div>
-                        </div>
-
-                        {messageFilterActivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Filter Activation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={messageFilterActivationTestText} onChange={(e) => { setMessageFilterActivationTestText(e.target.value); setMessageFilterActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
-                                    <button type="button" onClick={handleTestMessageFilterActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterActivationTestText.trim()}>Test</button>
-                                </div>
-                                {messageFilterActivationTestResult !== null && (
-                                    <div className={`context-test-result ${messageFilterActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {messageFilterActivationTestResult ? '✅ Would be filtered (hidden from AI)' : '❌ Would NOT be filtered (visible to AI)'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Filter Deactivation Trigger</label>
-                                <input type="text" value={messageFilterDeactivationTrigger} onChange={(e) => { setMessageFilterDeactivationTrigger(e.target.value); if (errors.messageFilterDeactivationRegex) setErrors({ ...errors, messageFilterDeactivationRegex: undefined }); setMessageFilterDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterDeactivationRegex ? 'error' : ''}`} placeholder="/end_ooc/i" />
-                                {errors.messageFilterDeactivationRegex && <div className="editor-error-message">{errors.messageFilterDeactivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Stops filtering messages when matched.</div>
-                            </div>
-                        </div>
-
-                        {messageFilterDeactivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Filter Deactivation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={messageFilterDeactivationTestText} onChange={(e) => { setMessageFilterDeactivationTestText(e.target.value); setMessageFilterDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
-                                    <button type="button" onClick={handleTestMessageFilterDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterDeactivationTestText.trim()}>Test</button>
-                                </div>
-                                {messageFilterDeactivationTestResult !== null && (
-                                    <div className={`context-test-result ${messageFilterDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {messageFilterDeactivationTestResult ? '✅ Deactivation matches! (filtering stops)' : '❌ Deactivation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Filter Exclusion Activation Trigger</label>
-                                <input type="text" value={messageFilterExclusionActivationTrigger} onChange={(e) => { setMessageFilterExclusionActivationTrigger(e.target.value); if (errors.messageFilterExclusionActivationRegex) setErrors({ ...errors, messageFilterExclusionActivationRegex: undefined }); setMessageFilterExclusionActivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterExclusionActivationRegex ? 'error' : ''}`} placeholder="/important_ooc/i" />
-                                {errors.messageFilterExclusionActivationRegex && <div className="editor-error-message">{errors.messageFilterExclusionActivationRegex}</div>}
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. Overrides filter activation when matched (e.g., OOC is filtered but important OOC is kept).</div>
-                            </div>
-                        </div>
-
-                        {messageFilterExclusionActivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Filter Exclusion Activation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={messageFilterExclusionActivationTestText} onChange={(e) => { setMessageFilterExclusionActivationTestText(e.target.value); setMessageFilterExclusionActivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterExclusionActivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
-                                    <button type="button" onClick={handleTestMessageFilterExclusionActivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterExclusionActivationTestText.trim()}>Test</button>
-                                </div>
-                                {messageFilterExclusionActivationTestResult !== null && (
-                                    <div className={`context-test-result ${messageFilterExclusionActivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {messageFilterExclusionActivationTestResult ? '✅ Filter exclusion activation matches! (message kept visible)' : '❌ Filter exclusion activation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {messageFilterExclusionActivationTrigger.trim() && (
-                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                                <div>
-                                    <label className="editor-label editor-label-small">Filter Exclusion Deactivation Trigger</label>
-                                    <input type="text" value={messageFilterExclusionDeactivationTrigger} onChange={(e) => { setMessageFilterExclusionDeactivationTrigger(e.target.value); if (errors.messageFilterExclusionDeactivationRegex) setErrors({ ...errors, messageFilterExclusionDeactivationRegex: undefined }); setMessageFilterExclusionDeactivationTestResult(null); }} className={`editor-input context-mono-input ${errors.messageFilterExclusionDeactivationRegex ? 'error' : ''}`} placeholder="/end critical scene/i" />
-                                    {errors.messageFilterExclusionDeactivationRegex && <div className="editor-error-message">{errors.messageFilterExclusionDeactivationRegex}</div>}
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Optional. When the filter exclusion stops being active.</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {messageFilterExclusionDeactivationTrigger.trim() && (
-                            <div className="context-field-group">
-                                <label className="editor-label editor-label-small">Test Filter Exclusion Deactivation Pattern</label>
-                                <div className="context-test-row">
-                                    <input type="text" value={messageFilterExclusionDeactivationTestText} onChange={(e) => { setMessageFilterExclusionDeactivationTestText(e.target.value); setMessageFilterExclusionDeactivationTestResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestMessageFilterExclusionDeactivationRegex(); } }} className="editor-input context-test-input" placeholder="Test message text" />
-                                    <button type="button" onClick={handleTestMessageFilterExclusionDeactivationRegex} className="editor-button editor-button-save context-test-button" disabled={!messageFilterExclusionDeactivationTestText.trim()}>Test</button>
-                                </div>
-                                {messageFilterExclusionDeactivationTestResult !== null && (
-                                    <div className={`context-test-result ${messageFilterExclusionDeactivationTestResult ? 'editor-success-message' : 'editor-error-message'}`}>
-                                        {messageFilterExclusionDeactivationTestResult ? '✅ Filter exclusion deactivation matches!' : '❌ Filter exclusion deactivation does not match'}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="editor-row" style={{ marginTop: '8px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Filter Context</label>
-                                <select value={messageFilterContext} onChange={(e) => setMessageFilterContext(e.target.value as regularExpressionContext)} className="editor-select" disabled={!messageFilterActivationTrigger.trim()}>
-                                    <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
-                                </select>
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Which messages to scan for the filter pattern.</div>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Filter Target</label>
-                                <select value={messageFilterTarget} onChange={(e) => setMessageFilterTarget(e.target.value as regularExpressionTarget)} className="editor-select" disabled={!messageFilterActivationTrigger.trim()}>
-                                    <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
-                                </select>
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Whose messages to apply the filter to.</div>
-                            </div>
-                        </div>
-
-                        {messageFilterExclusionActivationTrigger.trim() && (
-                            <div className="editor-row" style={{ marginTop: '8px' }}>
-                                <div>
-                                    <label className="editor-label editor-label-small">Filter Exclusion Context</label>
-                                    <select value={messageFilterExclusionContext} onChange={(e) => setMessageFilterExclusionContext(e.target.value as regularExpressionContext)} className="editor-select">
-                                        <option value="global">Global</option><option value="local">Local</option><option value="previous">Previous</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Filter Exclusion Target</label>
-                                    <select value={messageFilterExclusionTarget} onChange={(e) => setMessageFilterExclusionTarget(e.target.value as regularExpressionTarget)} className="editor-select">
-                                        <option value="everyone">Everyone</option><option value="listener">Listener</option><option value="self">Self</option><option value="protagonist">Protagonist</option><option value="narrator">Narrator</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
+                        <RegularExpressionTriggerEditor
+                            label="Filter Activation"
+                            description="Messages matching any trigger are hidden from AI."
+                            triggers={messageFilterActivationTriggers}
+                            onChange={setMessageFilterActivationTriggers}
+                            error={errors.messageFilterRegex}
+                            placeholder="^\/ooc\s+|^\[.*\]$"
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Filter Deactivation"
+                            description="Stops filtering when any trigger matches."
+                            triggers={messageFilterDeactivationTriggers}
+                            onChange={setMessageFilterDeactivationTriggers}
+                            error={errors.messageFilterDeactivationRegex}
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Filter Exclusion Activation"
+                            description="Overrides filter — keeps message visible."
+                            triggers={messageFilterExclusionActivationTriggers}
+                            onChange={setMessageFilterExclusionActivationTriggers}
+                            error={errors.messageFilterExclusionActivationRegex}
+                        />
+                        <RegularExpressionTriggerEditor
+                            label="Filter Exclusion Deactivation"
+                            description="When filter exclusion stops being active."
+                            triggers={messageFilterExclusionDeactivationTriggers}
+                            onChange={setMessageFilterExclusionDeactivationTriggers}
+                            error={errors.messageFilterExclusionDeactivationRegex}
+                        />
                     </div>
 
+                    {/* ─── Lorebook Settings ─── */}
                     <div className="editor-section">
                         <span className="editor-section-title">Lorebook</span>
                         <div className="editor-row">
                             <div>
                                 <label className="editor-label editor-label-small">Token Budget</label>
-                                <input type="number" step="1" min="0" value={tokenBudget} onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Maximum tokens this entry can consume. 0 = auto-estimate. Total budget: 2048. Bottom entries dropped first on overflow." />
+                                <input type="number" step="1" min="0" value={tokenBudget} onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Maximum tokens this entry can consume. 0 = auto-estimate." />
                                 <div className="context-field-hint">0 = auto · bottom dropped first</div>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Insertion Depth</label>
-                                <input type="number" step="1" min="0" value={insertionDepth} onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Where in the prompt to place this entry. 0 = top of context block, higher = closer to chat history" />
+                                <input type="number" step="1" min="0" value={insertionDepth} onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Where in the prompt to place this entry." />
                                 <div className="context-field-hint">0 = top · higher = closer to chat</div>
                             </div>
                         </div>
                         <div className="editor-row" style={{ marginTop: '10px' }}>
                             <div>
                                 <label className="editor-label editor-label-small">Maximum Recursion Depth</label>
-                                <input type="number" step="1" min="0" max="10" value={maximumRecursionDepth} onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))} className="editor-input context-input-small" title="Maximum recursion depth for lorebook scanning. 0 = direct scan only, never recursive. Default: 5." />
+                                <input type="number" step="1" min="0" max="10" value={maximumRecursionDepth} onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))} className="editor-input context-input-small" title="Maximum recursion depth for lorebook scanning." />
                                 <div className="context-field-hint">0 = no recursion · default: 5</div>
                             </div>
                         </div>
 
-                        {(
-                            <div className="context-field-group">
-                                <span className="editor-label editor-label-small">Character Bindings</span>
-                                <div className="context-binding-hint">Only inject when these characters speak. Empty = all characters.</div>
-                                <div className="context-character-binding-list">
-                                    {characterBindings.map(id => {
-                                        const char = getCharacterById(id);
-                                        if (!char) return null;
-                                        return (
-                                            <div key={id} className="context-character-binding-chip">
-                                                <span className="context-character-binding-name">{char.name}</span>
-                                                <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                    <option value="" disabled>+ Bind to a character</option>
-                                    {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                </select>
+                        <div className="context-field-group">
+                            <span className="editor-label editor-label-small">Character Bindings</span>
+                            <div className="context-binding-hint">Only inject when these characters speak. Empty = all characters.</div>
+                            <div className="context-character-binding-list">
+                                {characterBindings.map(id => {
+                                    const char = getCharacterById(id);
+                                    if (!char) return null;
+                                    return (
+                                        <div key={id} className="context-character-binding-chip">
+                                            <span className="context-character-binding-name">{char.name}</span>
+                                            <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        )}
+                            <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <option value="" disabled>+ Bind to a character</option>
+                                {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                            </select>
+                        </div>
                     </div>
 
+                    {/* ─── Base64 Toggle ─── */}
                     <div className="editor-toggle-section context-toggle-section">
                         <label className="editor-checkbox-label">
                             <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" />

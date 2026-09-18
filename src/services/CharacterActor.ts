@@ -8,7 +8,7 @@ import { getEffectiveTools } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
-import { DefaultBudgetData } from '../defaults';
+import { defaultBudgetData } from '../defaults';
 import { executeTools } from './ToolExecutor';
 import { StreamingAccumulator } from './StreamingAccumulator';
 
@@ -214,7 +214,7 @@ export class CharacterActor {
                 if (!bd) {
                     try { bd = await loadRawBudgetData(); } catch (e) { console.warn('Failed to load budget data:', e); }
                     if (!bd) {
-                        const newBd: BudgetData = { ...DefaultBudgetData, budgetStrategy: strat };
+                        const newBd: BudgetData = { ...defaultBudgetData, budgetStrategy: strat };
                         try {
                             await saveRawBudgetData(newBd);
                             bd = newBd;

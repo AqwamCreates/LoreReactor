@@ -18,7 +18,7 @@ import {
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
-import { DefaultActions, DefaultSampler, defaultCharacterTools, defaultInputStrategy } from '../defaults';
+import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy } from '../defaults';
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS
@@ -601,7 +601,7 @@ const characterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'characters',
   hydrate: async (raw, id) => {
     const samplerId = raw.samplerId;
-    let sampler: Sampler = DefaultSampler;
+    let sampler: Sampler = defaultSampler;
     
     if (samplerId) {
       const loadedSampler = await loadRawSampler(samplerId);
@@ -739,7 +739,7 @@ const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
     loop: false,
     volume: 1,
     audioCategory: 'ambient',
-    playableByParticipant: false,
+    playableByParticipants: false,
     startFadeDurationMs: 1000,
     endFadeDurationMs: 1000,
     locationBindings: [],
@@ -1254,7 +1254,7 @@ export async function deleteRawInteractionData(id: string): Promise<void> {
 
 export async function loadInterjectableActions(): Promise<InterjectableAction[]> {
   const actions = await fetchJson<InterjectableAction[]>(ACTIONS_PATH);
-  return actions && actions.length > 0 ? actions : DefaultActions;
+  return actions && actions.length > 0 ? actions : defaultActions;
 }
 
 export async function saveInterjectableActions(actions: InterjectableAction[]): Promise<void> {

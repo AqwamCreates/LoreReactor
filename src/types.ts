@@ -19,28 +19,26 @@ interface RawData {
   lastUpdatedTimestamp: number;
 }
 
+export interface RegularExpressionTrigger {
+  trigger: string
+  context: regularExpressionContext
+  target: regularExpressionTarget
+}
+
 export interface StopPattern extends ObjectData {
   pattern: string;
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
 }
 
 export interface RawStopPattern extends RawData {
   pattern: string;
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
 }
 
 export interface Sampler extends ObjectData {
@@ -70,22 +68,14 @@ export interface Context extends ObjectData {
   linkFetchMode?: linkFetchMode;
   limitLinksToSubdirectory: boolean;
   fetchCacheTimeToLiveMs?: number;
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -105,22 +95,14 @@ export interface RawContext extends RawData {
   linkFetchMode?: linkFetchMode;
   limitLinksToSubdirectory: boolean;
   fetchCacheTimeToLiveMs?: number;
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   tokenBudget?: number;
   maximumRecursionDepth?: number;
   insertionDepth?: number;
@@ -132,11 +114,10 @@ export interface RawContext extends RawData {
 export interface Location extends ObjectData {
   text?: string;
   images?: string[];
-  regularExpressionActivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
   backgroundImageWeights: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
@@ -150,25 +131,20 @@ export interface Location extends ObjectData {
   longitude: number;
   locationDistances: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   useBase64Encoding: boolean;
 }
 
 export interface RawLocation extends RawData {
   text?: string;
   images?: string[];
-  regularExpressionActivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
   backgroundImageWeights: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
@@ -182,14 +158,10 @@ export interface RawLocation extends RawData {
   longitude: number;
   locationDistances?: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   useBase64Encoding: boolean;
 }
 
@@ -237,7 +209,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "lock" | "unlock" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"  // Invite is basically allowing characters bringing existing participants (not protagonist) to the current location. Kick basically allows the character to kick out participants including the protagonist from existing location to another one. Call essentially gives the character the ability to add non-participants into the existing interaction session. Administrator is basically... Allowing the character to actually manage protagonist to different chat sessions, controlling models, handlong of user-data-related stuff and so on. Creator is basically allowing the character to create user-data-related-stuff. Destroyer basically allows the character to destroy user-data-related stuff.
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "lock" | "unlock" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;
@@ -298,13 +270,9 @@ export interface RawCharacter extends RawData {
   memories: Record<string, string[]>;
 }
 
-//  ─── Inventory ─────────────────────────────
-
 export type inventoryInfo = string | number
 
 export type Inventory = Record<string, inventoryInfo>
-
-// ─── Message Types (Discriminated Union) ─────────────────────────────
 
 export interface BaseMessage {
   id: string;
@@ -315,7 +283,7 @@ export interface BaseMessage {
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
-  characterLockedLocations: Record<string, string[]> // locationId owned by the character -> an array of character ids that is being locked out from this location.
+  characterLockedLocations: Record<string, string[]>
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -338,8 +306,6 @@ export interface ChatMessage extends BaseMessage {
 }
 
 export type HistoryMessage = InteractionMessage | ChatMessage;
-
-// ─── Raw Message Types (Discriminated Union) ─────────────────────────
 
 export interface RawBaseMessage {
   characterId: string;
@@ -371,8 +337,6 @@ export interface RawChatMessage extends RawBaseMessage {
 }
 
 export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
-
-// ─── Interaction Data ────────────────────────────────────────────────
 
 export interface InteractionData extends ObjectData {
   protagonist: Character;
@@ -535,22 +499,14 @@ export type PromptBlockType =
 export interface PromptBlock extends ObjectData {
   textContent: string
   images: string[]
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]
@@ -559,22 +515,14 @@ export interface PromptBlock extends ObjectData {
 export interface RawPromptBlock extends RawData {
   textContent: string
   images: string[]
-  regularExpressionActivationTrigger?: string;
-  regularExpressionDeactivationTrigger?: string;
-  regularExpressionExclusionActivationTrigger?: string;
-  regularExpressionExclusionDeactivationTrigger?: string;
-  regularExpressionContext?: regularExpressionContext;
-  regularExpressionTarget?: regularExpressionTarget;
-  regularExpressionExclusionContext?: regularExpressionContext;
-  regularExpressionExclusionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionActivationTrigger?: string;
-  messageFilterRegularExpressionDeactivationTrigger?: string;
-  messageFilterRegularExpressionExclusionActivationTrigger?: string;
-  messageFilterRegularExpressionExclusionDeactivationTrigger?: string;
-  messageFilterRegularExpressionContext?: regularExpressionContext;
-  messageFilterRegularExpressionTarget?: regularExpressionTarget;
-  messageFilterRegularExpressionExclusionContext?: regularExpressionContext;
-  messageFilterRegularExpressionExclusionTarget?: regularExpressionTarget;
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
   characterBindings: string[]
   contextBindings: string[]
   locationBindings: string[]
@@ -710,15 +658,13 @@ export interface AudioTrack extends ObjectData {
     loop: boolean;
     volume: number;
     audioCategory: audioCategory;
-    playableByParticipant: boolean;
+    playableByParticipants: boolean;
     startFadeDurationMs: number;
     endFadeDurationMs: number;
-    regularExpressionActivationTrigger?: string;
-    regularExpressionDeactivationTrigger?: string;
-    regularExpressionExclusionActivationTrigger?: string;
-    regularExpressionExclusionDeactivationTrigger?: string;
-    regularExpressionExclusionContext?: regularExpressionContext;
-    regularExpressionExclusionTarget?: regularExpressionTarget;
+    regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
     locationBindings: string[];
     contextBindings: string[]
     characterBindings: string[];
@@ -730,15 +676,13 @@ export interface RawAudioTrack extends RawData {
     loop: boolean;
     volume: number;
     audioCategory: audioCategory;
-    playableByParticipant: boolean;
+    playableByParticipants: boolean;
     startFadeDurationMs: number;
     endFadeDurationMs: number;
-    regularExpressionActivationTrigger?: string;
-    regularExpressionDeactivationTrigger?: string;
-    regularExpressionExclusionActivationTrigger?: string;
-    regularExpressionExclusionDeactivationTrigger?: string;
-    regularExpressionExclusionContext?: regularExpressionContext;
-    regularExpressionExclusionTarget?: regularExpressionTarget;
+    regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
     locationBindings: string[];
     contextBindings: string[];
     characterBindings: string[];

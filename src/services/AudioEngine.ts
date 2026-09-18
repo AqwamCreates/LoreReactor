@@ -1,5 +1,5 @@
 // src/services/AudioEngine.ts
-import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location } from '../types';
+import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location, RegularExpressionTrigger } from '../types';
 import { getUniversalMessageFilterFlags } from '../hooks/chatLogic';
 import { getAudioTrackUrl } from '../storage/serverStorage';
 
@@ -9,6 +9,24 @@ interface ActiveTrackState {
     gainNode: GainNode;
     targetVolume: number;
     isPlaying: boolean;
+}
+
+/**
+ * Tests if any trigger in the array matches the given search space.
+ * Audio tracks evaluate against a single latest-message string, so
+ * context/target filtering (designed for full chat history arrays) is
+ * not applicable here — every trigger is tested directly.
+ */
+function doesAnyTriggerMatch(triggers: RegularExpressionTrigger[] | undefined, searchSpace: string): boolean {
+    if (!triggers || triggers.length === 0) return false;
+    for (const trigger of triggers) {
+        if (!trigger.trigger.trim()) continue;
+        try {
+            const regex = new RegExp(trigger.trigger, 'i');
+            if (regex.test(searchSpace)) return true;
+        } catch { /* invalid regex, skip */ }
+    }
+    return false;
 }
 
 export class AudioEngine {
@@ -157,33 +175,40 @@ export class AudioEngine {
         for (const track of tracks) {
             let active = false;
 
-            if (track.regularExpressionActivationTrigger && latestMessageText) {
-                try {
-                    const regex = new RegExp(track.regularExpressionActivationTrigger, 'i');
-                    if (regex.test(latestMessageText)) active = true;
-                } catch { /* invalid regex */ }
+            // Activation triggers: any match against latest message text activates the track
+            if (latestMessageText && doesAnyTriggerMatch(track.regularExpressionActivationTriggers, latestMessageText)) {
+                active = true;
             }
 
-            if (active && track.regularExpressionDeactivationTrigger && latestMessageText) {
-                try {
-                    const regex = new RegExp(track.regularExpressionDeactivationTrigger, 'i');
-                    if (regex.test(latestMessageText)) active = false;
-                } catch { /* invalid regex */ }
+            // Deactivation triggers: any match deactivates the track
+            if (active && latestMessageText && doesAnyTriggerMatch(track.regularExpressionDeactivationTriggers, latestMessageText)) {
+                active = false;
             }
 
+            // Exclusion activation: overrides normal activation logic
+            if (!active && latestMessageText && doesAnyTriggerMatch(track.regularExpressionExclusionActivationTriggers, latestMessageText)) {
+                // Exclusion is active — check if exclusion deactivation overrides it
+                if (!doesAnyTriggerMatch(track.regularExpressionExclusionDeactivationTriggers, latestMessageText)) {
+                    active = false; // Exclusion forces inactive
+                }
+            }
+
+            // Location bindings fallback
             if (!active && track.locationBindings.length > 0 && currentLocationId) {
                 if (track.locationBindings.includes(currentLocationId)) active = true;
             }
 
+            // Context bindings fallback
             if (!active && track.contextBindings.length > 0) {
                 for (const ctxId of track.contextBindings) {
                     if (currentContextIds.has(ctxId)) { active = true; break; }
                 }
             }
 
-            if (!track.regularExpressionActivationTrigger &&
-                track.locationBindings.length === 0 &&
-                track.contextBindings.length === 0) {
+            // No triggers and no bindings = always active
+            const hasTriggers = (track.regularExpressionActivationTriggers?.length ?? 0) > 0;
+            const hasBindings = track.locationBindings.length > 0 || track.contextBindings.length > 0;
+            if (!hasTriggers && !hasBindings) {
                 active = true;
             }
 

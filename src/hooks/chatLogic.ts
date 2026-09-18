@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { detectName } from './nameDetection';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -79,6 +79,8 @@ const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
 const tokenEngine = getLanguageModelEngine();
+
+type CombinationCache = Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>;
 
 function getDateAndTimeString(localTimestamp: number): string {
     const dateAndTime = new Date(localTimestamp);
@@ -240,34 +242,6 @@ function doesRegexMatch(regexString: string | undefined, searchSpace: string, se
     }
 }
 
-function doesRegexDeactivate(regexString: string | undefined, activationRegex: string | undefined, searchSpace: string): boolean {
-    if (!activationRegex) return false;
-    if (!regexString) return false;
-    try {
-        const regex = new RegExp(regexString);
-        return regex.test(searchSpace);
-    } catch (e) {
-        console.warn(`Invalid deactivation regex: ${regexString}`, e);
-        return false;
-    }
-}
-
-function doesContextMatch(context: Context, searchSpace: string, sensitivityMultiplier = 1): boolean {
-    return doesRegexMatch(context.regularExpressionActivationTrigger, searchSpace, sensitivityMultiplier);
-}
-
-function doesContextDeactivate(context: Context, searchSpace: string): boolean {
-    return doesRegexDeactivate(context.regularExpressionDeactivationTrigger, context.regularExpressionActivationTrigger, searchSpace);
-}
-
-function doesStopPatternMatch(stopPattern: StopPattern, searchSpace: string): boolean {
-    return doesRegexMatch(stopPattern.regularExpressionActivationTrigger, searchSpace);
-}
-
-function doesStopPatternDeactivate(stopPattern: StopPattern, searchSpace: string): boolean {
-    return doesRegexDeactivate(stopPattern.regularExpressionDeactivationTrigger, stopPattern.regularExpressionActivationTrigger, searchSpace);
-}
-
 function isCharacterBound(context: Context, currentCharacterId: string): boolean {
     if (!context.characterBindings || context.characterBindings.length === 0) return true;
     return context.characterBindings.includes(currentCharacterId);
@@ -301,92 +275,17 @@ const getImageBase64 = async (url: string): Promise<string | null> => {
 function detectLocationFromText(text: string, locations: Location[]): number | undefined {
     for (let i = 0; i < locations.length; i++) {
         const location = locations[i];
-        if (!location.regularExpressionActivationTrigger) continue;
-        try {
-            const regex = new RegExp(location.regularExpressionActivationTrigger, 'i');
-            if (regex.test(text)) return i;
-        } catch { /* invalid regex, skip */ }
+        const triggers = location.regularExpressionActivationTriggers;
+        if (!triggers || triggers.length === 0) continue;
+        for (const trigger of triggers) {
+            if (!trigger.trigger.trim()) continue;
+            try {
+                const regex = new RegExp(trigger.trigger, 'i');
+                if (regex.test(text)) return i;
+            } catch { /* invalid regex, skip */ }
+        }
     }
     return undefined;
-}
-
-function getMessageFilterFlags(
-    chatMessages: ChatMessage[],
-    contexts: Context[],
-    locations: Location[],
-    promptBlocks: PromptBlock[],
-    characterId: string,
-): boolean[] {
-    const excluded = new Array(chatMessages.length).fill(false);
-
-    const applyFilter = (
-        activationTrigger: string | undefined,
-        deactivationTrigger: string | undefined,
-    ): void => {
-        if (!activationTrigger) return;
-
-        let activationRegex: RegExp;
-        try {
-            activationRegex = new RegExp(activationTrigger);
-        } catch {
-            return;
-        }
-
-        let deactivationRegex: RegExp | null = null;
-        if (deactivationTrigger) {
-            try {
-                deactivationRegex = new RegExp(deactivationTrigger);
-            } catch {
-                deactivationRegex = null;
-            }
-        }
-
-        let including = false;
-
-        for (let i = 0; i < chatMessages.length; i++) {
-            const msg = chatMessages[i];
-
-            if (including) {
-                if (deactivationRegex?.test(msg.textContent)) {
-                    return;
-                }
-            } else {
-                if (activationRegex.test(msg.textContent)) {
-                    including = true;
-                } else {
-                    excluded[i] = true;
-                }
-            }
-        }
-    };
-
-    for (const context of contexts) {
-        if (!isCharacterBound(context, characterId)) continue;
-        applyFilter(
-            context.messageFilterRegularExpressionActivationTrigger,
-            context.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    for (const location of locations) {
-        if (location.characterBindings && location.characterBindings.length > 0) {
-            if (!location.characterBindings.includes(characterId)) continue;
-        }
-        applyFilter(
-            location.messageFilterRegularExpressionActivationTrigger,
-            location.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    for (const block of promptBlocks) {
-        if (!isPromptBlockCharacterBound(block, characterId)) continue;
-        applyFilter(
-            block.messageFilterRegularExpressionActivationTrigger,
-            block.messageFilterRegularExpressionDeactivationTrigger,
-        );
-    }
-
-    return excluded;
 }
 
 /**
@@ -395,7 +294,7 @@ function getMessageFilterFlags(
  * the same prompt build.
  */
 function getFilteredDataCached(
-    cache: Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>,
+    cache: CombinationCache,
     characterIdArray: string[],
     textContentArray: string[],
     characterId: string,
@@ -412,11 +311,188 @@ function getFilteredDataCached(
     return cache[ctxType][tgtType];
 }
 
+/**
+ * Checks if any trigger in the array matches, using each trigger's own
+ * context/target for search space filtering. Falls back to the provided
+ * searchSpace when filtered texts are empty.
+ */
+function doesAnyTriggerMatchCached(
+    triggers: RegularExpressionTrigger[] | undefined,
+    characterIdArray: string[],
+    textContentArray: string[],
+    currentCharacterId: string,
+    protagonistId: string,
+    fallbackSearchSpace: string,
+    combinationCache: CombinationCache,
+    sensitivityMultiplier?: number,
+): boolean {
+    if (!triggers || triggers.length === 0) return false;
+    for (const trigger of triggers) {
+        if (!trigger.trigger.trim()) continue;
+        const { textContentArray: filteredTexts } = getFilteredDataCached(
+            combinationCache, characterIdArray, textContentArray,
+            currentCharacterId, protagonistId,
+            trigger.context || 'global', trigger.target || 'everyone'
+        );
+        const searchSpace = filteredTexts.length > 0
+            ? `${filteredTexts.join('\n')}\n${fallbackSearchSpace}`
+            : fallbackSearchSpace;
+        if (doesRegexMatch(trigger.trigger, searchSpace, sensitivityMultiplier)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Master entity activation check: handles activation, deactivation,
+ * and exclusion using per-trigger context/target filtering with caching.
+ * Returns true if the entity should be considered active.
+ *
+ * - No activation triggers → always active
+ * - Any activation trigger matches → activated
+ * - Any deactivation trigger matches → deactivated (not active)
+ * - Any exclusion activation trigger matches (and no exclusion deactivation matches) → excluded (not active)
+ */
+function isEntityActiveWithCache(
+    activationTriggers: RegularExpressionTrigger[] | undefined,
+    deactivationTriggers: RegularExpressionTrigger[] | undefined,
+    exclusionActivationTriggers: RegularExpressionTrigger[] | undefined,
+    exclusionDeactivationTriggers: RegularExpressionTrigger[] | undefined,
+    characterIdArray: string[],
+    textContentArray: string[],
+    currentCharacterId: string,
+    protagonistId: string,
+    fallbackSearchSpace: string,
+    combinationCache: CombinationCache,
+    sensitivityMultiplier?: number,
+): boolean {
+    // No activation triggers = always active
+    if (!activationTriggers || activationTriggers.length === 0) return true;
+
+    // Check activation: at least one trigger must match
+    if (!doesAnyTriggerMatchCached(
+        activationTriggers, characterIdArray, textContentArray,
+        currentCharacterId, protagonistId, fallbackSearchSpace,
+        combinationCache, sensitivityMultiplier
+    )) {
+        return false;
+    }
+
+    // Check deactivation: any trigger matching means deactivated
+    if (doesAnyTriggerMatchCached(
+        deactivationTriggers, characterIdArray, textContentArray,
+        currentCharacterId, protagonistId, fallbackSearchSpace,
+        combinationCache
+    )) {
+        return false;
+    }
+
+    // Check exclusion: if excluded and not de-excluded, entity is not active
+    if (doesAnyTriggerMatchCached(
+        exclusionActivationTriggers, characterIdArray, textContentArray,
+        currentCharacterId, protagonistId, fallbackSearchSpace,
+        combinationCache
+    )) {
+        if (!doesAnyTriggerMatchCached(
+            exclusionDeactivationTriggers, characterIdArray, textContentArray,
+            currentCharacterId, protagonistId, fallbackSearchSpace,
+            combinationCache
+        )) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Compiles regex patterns from trigger arrays for sequential message filtering.
+ * Returns compiled regex arrays, skipping invalid patterns.
+ */
+function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
+    if (!triggers || triggers.length === 0) return [];
+    const regexes: RegExp[] = [];
+    for (const t of triggers) {
+        if (!t.trigger.trim()) continue;
+        try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
+    }
+    return regexes;
+}
+
+function getMessageFilterFlags(
+    chatMessages: ChatMessage[],
+    contexts: Context[],
+    locations: Location[],
+    promptBlocks: PromptBlock[],
+    characterId: string,
+): boolean[] {
+    const excluded = new Array(chatMessages.length).fill(false);
+
+    const applyFilterTriggers = (
+        activationTriggers: RegularExpressionTrigger[] | undefined,
+        deactivationTriggers: RegularExpressionTrigger[] | undefined,
+    ): void => {
+        const activationRegexes = compileTriggerRegexes(activationTriggers);
+        if (activationRegexes.length === 0) return;
+        const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
+
+        let including = false;
+
+        for (let i = 0; i < chatMessages.length; i++) {
+            const msg = chatMessages[i];
+
+            if (including) {
+                if (deactivationRegexes.some(r => r.test(msg.textContent))) {
+                    return;
+                }
+            } else {
+                if (activationRegexes.some(r => r.test(msg.textContent))) {
+                    including = true;
+                } else {
+                    excluded[i] = true;
+                }
+            }
+        }
+    };
+
+    for (const context of contexts) {
+        if (!isCharacterBound(context, characterId)) continue;
+        applyFilterTriggers(
+            context.messageFilterRegularExpressionActivationTriggers,
+            context.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    for (const location of locations) {
+        if (location.characterBindings && location.characterBindings.length > 0) {
+            if (!location.characterBindings.includes(characterId)) continue;
+        }
+        applyFilterTriggers(
+            location.messageFilterRegularExpressionActivationTriggers,
+            location.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    for (const block of promptBlocks) {
+        if (!isPromptBlockCharacterBound(block, characterId)) continue;
+        applyFilterTriggers(
+            block.messageFilterRegularExpressionActivationTriggers,
+            block.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    return excluded;
+}
+
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
     currentCharacterId: string,
-    getFilteredData: (ctxType: regularExpressionContext, tgtType: regularExpressionTarget) => { characterIdArray: string[]; textContentArray: string[] },
+    protagonistId: string,
+    characterIdArray: string[],
+    textContentArray: string[],
+    combinationCache: CombinationCache,
     fetchedContentMap?: Map<string, string>,
     contextSensitivity?: number
 ): Promise<{ context: Context; formattedLine: string }[]> {
@@ -428,29 +504,18 @@ async function resolveContextEntries(
         if (activated.has(context.id)) continue;
         if (!isCharacterBound(context, currentCharacterId)) continue;
 
-        const ctxType = context.regularExpressionContext || 'global';
-        const tgtType = context.regularExpressionTarget || 'everyone';
-        const { textContentArray: filteredTexts } = getFilteredData(ctxType, tgtType);
-
-        if (filteredTexts.length === 0) {
-            if (!context.regularExpressionActivationTrigger) continue;
-            if (doesContextMatch(context, chatSearchSpace, sensitivityForCharacter)) {
-                if (!doesContextDeactivate(context, chatSearchSpace)) {
-                    activated.add(context.id);
-                    activatedMap.set(context.id, context);
-                }
-            }
-            continue;
-        }
-
-        const searchSpace = filteredTexts.join('\n');
-        const combinedSearch = `${searchSpace}\n${chatSearchSpace}`;
-
-        if (doesContextMatch(context, combinedSearch, sensitivityForCharacter)) {
-            if (!doesContextDeactivate(context, combinedSearch)) {
-                activated.add(context.id);
-                activatedMap.set(context.id, context);
-            }
+        if (isEntityActiveWithCache(
+            context.regularExpressionActivationTriggers,
+            context.regularExpressionDeactivationTriggers,
+            context.regularExpressionExclusionActivationTriggers,
+            context.regularExpressionExclusionDeactivationTriggers,
+            characterIdArray, textContentArray,
+            currentCharacterId, protagonistId,
+            chatSearchSpace, combinationCache,
+            sensitivityForCharacter,
+        )) {
+            activated.add(context.id);
+            activatedMap.set(context.id, context);
         }
     }
 
@@ -484,13 +549,22 @@ async function resolveContextEntries(
             if (contextMaxDepth === 0) continue;
             if (recursionDepth > contextMaxDepth) continue;
 
-            if (doesContextMatch(context, activatedText, sensitivityForCharacter)) {
-                if (!doesContextDeactivate(context, activatedText)) {
-                    activated.add(context.id);
-                    activatedMap.set(context.id, context);
-                    activationDepth.set(context.id, recursionDepth);
-                    newActivations = true;
-                }
+            // For recursive activation, use activatedText as the fallback search space
+            // and pass the same characterIdArray/textContentArray for context/target filtering
+            if (isEntityActiveWithCache(
+                context.regularExpressionActivationTriggers,
+                context.regularExpressionDeactivationTriggers,
+                context.regularExpressionExclusionActivationTriggers,
+                context.regularExpressionExclusionDeactivationTriggers,
+                characterIdArray, textContentArray,
+                currentCharacterId, protagonistId,
+                activatedText, combinationCache,
+                sensitivityForCharacter,
+            )) {
+                activated.add(context.id);
+                activatedMap.set(context.id, context);
+                activationDepth.set(context.id, recursionDepth);
+                newActivations = true;
             }
         }
     }
@@ -957,7 +1031,7 @@ export async function buildPromptAndStopPatterns(
         appearancePromptLines.push(endOfAppearancePromptLine);
     }
 
-    const combinationCache: Record<string, Record<string, { characterIdArray: string[], textContentArray: string[] }>> = {};
+    const combinationCache: CombinationCache = {};
     const activeStopPatterns: StopPattern[] = [];
     const activeContextsForImages: Context[] = [];
     const fetchErrors: string[] = [];
@@ -1014,7 +1088,10 @@ export async function buildPromptAndStopPatterns(
         contexts,
         textContentArray.join('\n'),
         characterId,
-        (ctxType, tgtType) => getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType),
+        protagonist.id,
+        characterIdArray,
+        textContentArray,
+        combinationCache,
         fetchedContentMap,
         effectiveContextSensitivity
     );
@@ -1049,24 +1126,20 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
+    // ─── Stop Pattern Activation ─────────────────────────────────────
+    const allTextSearchSpace = textContentArray.join('\n');
+
     for (const stopPattern of allStopPatterns) {
-        const ctxType = stopPattern.regularExpressionContext || 'global';
-        const tgtType = stopPattern.regularExpressionTarget || 'everyone';
-        const { textContentArray: filteredTexts } = getFilteredDataCached(combinationCache, characterIdArray, textContentArray, characterId, protagonist.id, ctxType, tgtType);
-
-        if (!stopPattern.regularExpressionActivationTrigger) {
+        if (isEntityActiveWithCache(
+            stopPattern.regularExpressionActivationTriggers,
+            stopPattern.regularExpressionDeactivationTriggers,
+            stopPattern.regularExpressionExclusionActivationTriggers,
+            stopPattern.regularExpressionExclusionDeactivationTriggers,
+            characterIdArray, textContentArray,
+            characterId, protagonist.id,
+            allTextSearchSpace, combinationCache,
+        )) {
             activeStopPatterns.push(stopPattern);
-            continue;
-        }
-
-        if (filteredTexts.length === 0) continue;
-
-        const searchSpace = filteredTexts.join('\n');
-
-        if (doesStopPatternMatch(stopPattern, searchSpace)) {
-            if (!doesStopPatternDeactivate(stopPattern, searchSpace)) {
-                activeStopPatterns.push(stopPattern);
-            }
         }
     }
 
@@ -1414,10 +1487,20 @@ export async function buildPromptAndStopPatterns(
         if (block.locationBindings && block.locationBindings.length > 0) {
             if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
         }
-        if (block.regularExpressionActivationTrigger) {
-            if (!doesRegexMatch(block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
-            if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
+
+        // Check trigger-based activation with exclusion support
+        if (!isEntityActiveWithCache(
+            block.regularExpressionActivationTriggers,
+            block.regularExpressionDeactivationTriggers,
+            block.regularExpressionExclusionActivationTriggers,
+            block.regularExpressionExclusionDeactivationTriggers,
+            characterIdArray, textContentArray,
+            characterId, protagonist.id,
+            allTextSearchSpace, combinationCache,
+        )) {
+            continue;
         }
+
         if (block.images && block.images.length > 0) {
             activePromptBlockImages.push(...block.images);
         }
@@ -1448,9 +1531,17 @@ export async function buildPromptAndStopPatterns(
                 if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
             }
 
-            if (block.regularExpressionActivationTrigger) {
-                if (!doesRegexMatch(block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
-                if (doesRegexDeactivate(block.regularExpressionDeactivationTrigger, block.regularExpressionActivationTrigger, textContentArray.join('\n'))) continue;
+            // Check trigger-based activation with exclusion support
+            if (!isEntityActiveWithCache(
+                block.regularExpressionActivationTriggers,
+                block.regularExpressionDeactivationTriggers,
+                block.regularExpressionExclusionActivationTriggers,
+                block.regularExpressionExclusionDeactivationTriggers,
+                characterIdArray, textContentArray,
+                characterId, protagonist.id,
+                allTextSearchSpace, combinationCache,
+            )) {
+                continue;
             }
 
             const replacedText = replacePlaceholders(
@@ -1733,8 +1824,6 @@ export function createChatMessage(
 
     const files = options?.files ?? [];
     
-    // FIX: Default AI messages to partial=true so cursor shows immediately.
-    // User/Protagonist messages are never partial.
     const isProtagonist = character.id === interactionData.protagonist?.id;
     const isPartial = options?.isPartial ?? !isProtagonist;
 
@@ -1754,8 +1843,12 @@ export function createChatMessage(
         isNameRevealed,
         locationIndex,
         isPartial,
+        characterLockedLocations: {},
         modelTextContentSummaries: {},
         modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionMessageId: lastMessageId,
@@ -1778,8 +1871,23 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
     return {
         ...interactionData,
         interactionHistory: interactionHistory.map((message, idx) => {
-            if (idx === index && message.messageType === 'chat') return { ...message, textContent: newText, kvCachePath: undefined };
-            if (idx > index && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
+            if (idx === index && message.messageType === 'chat') {
+                return {
+                    ...message,
+                    textContent: newText,
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                };
+            }
+            if (idx > index && message.messageType === 'chat') {
+                return {
+                    ...message,
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                };
+            }
             return message;
         })
     };
@@ -1813,7 +1921,14 @@ export function deleteInteractionMessage(interactionData: InteractionData, messa
     if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
     const newHistory = interactionHistory.filter(m => m.id !== messageId);
     const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex && message.messageType === 'chat') return { ...message, kvCachePath: undefined };
+        if (idx >= targetIndex && message.messageType === 'chat') {
+            return {
+                ...message,
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+            };
+        }
         return message;
     });
     return { newHistory: finalHistory, invalidatedIds: [messageId] };
@@ -1842,26 +1957,23 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
     };
 }
 
-function applyFilter(
+function applyFilterTriggersUniversal(
     chatMessages: ChatMessage[],
     excluded: boolean[],
-    activationTrigger: string | undefined,
-    deactivationTrigger: string | undefined,
+    activationTriggers: RegularExpressionTrigger[] | undefined,
+    deactivationTriggers: RegularExpressionTrigger[] | undefined,
 ): void {
-    if (!activationTrigger) return;
-    let activationRegex: RegExp;
-    try { activationRegex = new RegExp(activationTrigger); } catch { return; }
-    let deactivationRegex: RegExp | null = null;
-    if (deactivationTrigger) {
-        try { deactivationRegex = new RegExp(deactivationTrigger); } catch { deactivationRegex = null; }
-    }
+    const activationRegexes = compileTriggerRegexes(activationTriggers);
+    if (activationRegexes.length === 0) return;
+    const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
+
     let including = false;
     for (let i = 0; i < chatMessages.length; i++) {
         const msg = chatMessages[i];
         if (including) {
-            if (deactivationRegex && deactivationRegex.test(msg.textContent)) return;
+            if (deactivationRegexes.some(r => r.test(msg.textContent))) return;
         } else {
-            if (activationRegex.test(msg.textContent)) {
+            if (activationRegexes.some(r => r.test(msg.textContent))) {
                 including = true;
             } else {
                 excluded[i] = true;
@@ -1880,31 +1992,31 @@ export function getUniversalMessageFilterFlags(
 
     for (const context of contexts) {
         if (context.characterBindings && context.characterBindings.length > 0) continue;
-        applyFilter(
+        applyFilterTriggersUniversal(
             chatMessages,
             excluded,
-            context.messageFilterRegularExpressionActivationTrigger,
-            context.messageFilterRegularExpressionDeactivationTrigger,
+            context.messageFilterRegularExpressionActivationTriggers,
+            context.messageFilterRegularExpressionDeactivationTriggers,
         );
     }
 
     for (const location of locations) {
         if (location.characterBindings && location.characterBindings.length > 0) continue;
-        applyFilter(
+        applyFilterTriggersUniversal(
             chatMessages,
             excluded,
-            location.messageFilterRegularExpressionActivationTrigger,
-            location.messageFilterRegularExpressionDeactivationTrigger,
+            location.messageFilterRegularExpressionActivationTriggers,
+            location.messageFilterRegularExpressionDeactivationTriggers,
         );
     }
 
     for (const block of promptBlocks) {
         if (block.characterBindings && block.characterBindings.length > 0) continue;
-        applyFilter(
+        applyFilterTriggersUniversal(
             chatMessages,
             excluded,
-            block.messageFilterRegularExpressionActivationTrigger,
-            block.messageFilterRegularExpressionDeactivationTrigger,
+            block.messageFilterRegularExpressionActivationTriggers,
+            block.messageFilterRegularExpressionDeactivationTriggers,
         );
     }
 

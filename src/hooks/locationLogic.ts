@@ -41,7 +41,9 @@ export function getCoLocatedParticipantCount(interactionData: InteractionData, c
 }
 
 /**
- * Find a location by matching text against its regex activation trigger.
+ * Find a location by matching text against its regex activation triggers.
+ * Iterates over the RegularExpressionTrigger[] array and returns the index
+ * of the first location whose any trigger matches the given text.
  * Returns the index in the locations array, or undefined if no match.
  */
 export function findLocationByRegex(locations: Location[], text: string, character: Character): number | undefined {
@@ -49,18 +51,22 @@ export function findLocationByRegex(locations: Location[], text: string, charact
 
     for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
-        if (!loc.regularExpressionActivationTrigger) continue;
+        const triggers = loc.regularExpressionActivationTriggers;
+        if (!triggers || triggers.length === 0) continue;
 
         // Check character bindings — only match if character is bound or no bindings exist
         if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
             continue;
         }
 
-        try {
-            const regex = new RegExp(loc.regularExpressionActivationTrigger, 'i');
-            if (regex.test(text)) return i;
-        } catch {
-            console.warn(`Invalid regex on location ${loc.id}: ${loc.regularExpressionActivationTrigger}`);
+        for (const trigger of triggers) {
+            if (!trigger.trigger.trim()) continue;
+            try {
+                const regex = new RegExp(trigger.trigger, 'i');
+                if (regex.test(text)) return i;
+            } catch {
+                console.warn(`Invalid regex on location ${loc.id}: ${trigger.trigger}`);
+            }
         }
     }
 

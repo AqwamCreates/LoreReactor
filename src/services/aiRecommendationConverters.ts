@@ -1,31 +1,9 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, tool, textType } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
-
-const DEFAULT_CHARACTER_TOOLS: Record<tool, boolean> = {
-    pick: true, date: false, coin: true, dice: true, random: true, rng: false,
-    move: false, timer: false, stopwatch: false, calculator: false, web: false, lookup: false,
-    map: false, audio: false, note: false, inventory: false,
-    invite: false, kick: false, teleport: false, lock: false, unlock: false,
-    summon: false, narrate: false, inspect: false,
-    administrator: false, creator: false, destroyer: false,
-};
-
-const DEFAULT_PROFILE_TOOLS: Record<tool, number> = {
-    pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
-    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
-    map: 0, audio: 0, note: 0, inventory: 0,
-    invite: 0, kick: 0, teleport: 0, lock: 0, unlock: 0,
-    summon: 0, narrate: 0, inspect: 0,
-    administrator: 0, creator: 0, destroyer: 0,
-};
-
-const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
-    normal: false, quoted: false, bolded: false, italicized: false,
-    parenthesized: false, bracketed: false, braced: false,
-};
+import { defaultCharacterTools, defaultProfileTools , defaultNarrateTexts } from '../defaults'
 
 function ensureId(obj: Record<string, unknown>): string {
     return (typeof obj.id === 'string' && obj.id.length > 0) ? obj.id : uuidv4();
@@ -42,6 +20,47 @@ function parseToolsRecord(raw: unknown, defaults: Record<string, boolean | numbe
         }
     }
     return result;
+}
+
+/**
+ * Parses a RegularExpressionTrigger[] from AI-generated JSON.
+ * Accepts either the new array-of-objects format or the legacy flat-string format
+ * for backwards compatibility with older AI outputs.
+ */
+function parseRegexTriggers(
+    raw: unknown,
+    fallbackContext: regularExpressionContext = 'global',
+    fallbackTarget: regularExpressionTarget = 'everyone',
+): RegularExpressionTrigger[] | undefined {
+    if (!raw) return undefined;
+
+    // New format: array of { trigger, context, target }
+    if (Array.isArray(raw)) {
+        const triggers: RegularExpressionTrigger[] = [];
+        for (const item of raw) {
+            if (!item || typeof item !== 'object') continue;
+            const entry = item as Record<string, unknown>;
+            const trigger = entry.trigger;
+            if (typeof trigger !== 'string' || !trigger.trim()) continue;
+            triggers.push({
+                trigger: trigger.trim(),
+                context: (entry.context as regularExpressionContext) || fallbackContext,
+                target: (entry.target as regularExpressionTarget) || fallbackTarget,
+            });
+        }
+        return triggers.length > 0 ? triggers : undefined;
+    }
+
+    // Legacy format: single string (backwards compat)
+    if (typeof raw === 'string' && raw.trim()) {
+        return [{
+            trigger: raw.trim(),
+            context: fallbackContext,
+            target: fallbackTarget,
+        }];
+    }
+
+    return undefined;
 }
 
 function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
@@ -72,7 +91,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         numberOfMessagesToDisableMetaThinkInstructions: (c.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
         numberOfMessagesToDisableDialoguePrompt: (c.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
         numberOfMessagesToDisableStarterPrompt: (c.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
-        tools: parseToolsRecord(c.tools, DEFAULT_CHARACTER_TOOLS) as Record<tool, boolean>,
+        tools: parseToolsRecord(c.tools, defaultCharacterTools) as Record<tool, boolean>,
         enableMemoryWriting: (c.enableMemoryWriting as boolean) ?? false,
         enableMemoryReading: (c.enableMemoryReading as boolean) ?? false,
         memories: {},
@@ -97,22 +116,14 @@ function fillContextDefaults(c: Record<string, unknown>): Context {
         linkFetchMode: (c.linkFetchMode as Context['linkFetchMode']) ?? 'summary',
         limitLinksToSubdirectory: (c.limitLinksToSubdirectory as boolean) ?? false,
         fetchCacheTimeToLiveMs: (c.fetchCacheTimeToLiveMs as number) || undefined,
-        regularExpressionActivationTrigger: (c.regularExpressionActivationTrigger as string) || undefined,
-        regularExpressionDeactivationTrigger: (c.regularExpressionDeactivationTrigger as string) || undefined,
-        regularExpressionExclusionActivationTrigger: (c.regularExpressionExclusionActivationTrigger as string) || undefined,
-        regularExpressionExclusionDeactivationTrigger: (c.regularExpressionExclusionDeactivationTrigger as string) || undefined,
-        regularExpressionContext: (c.regularExpressionContext as Context['regularExpressionContext']) ?? 'global',
-        regularExpressionTarget: (c.regularExpressionTarget as Context['regularExpressionTarget']) ?? 'everyone',
-        regularExpressionExclusionContext: (c.regularExpressionExclusionContext as Context['regularExpressionExclusionContext']) ?? 'global',
-        regularExpressionExclusionTarget: (c.regularExpressionExclusionTarget as Context['regularExpressionExclusionTarget']) ?? 'everyone',
-        messageFilterRegularExpressionActivationTrigger: (c.messageFilterRegularExpressionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionDeactivationTrigger: (c.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionActivationTrigger: (c.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: (c.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionContext: (c.messageFilterRegularExpressionContext as Context['messageFilterRegularExpressionContext']) ?? 'global',
-        messageFilterRegularExpressionTarget: (c.messageFilterRegularExpressionTarget as Context['messageFilterRegularExpressionTarget']) ?? 'everyone',
-        messageFilterRegularExpressionExclusionContext: (c.messageFilterRegularExpressionExclusionContext as Context['messageFilterRegularExpressionExclusionContext']) ?? 'global',
-        messageFilterRegularExpressionExclusionTarget: (c.messageFilterRegularExpressionExclusionTarget as Context['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
+        regularExpressionActivationTriggers: parseRegexTriggers(c.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(c.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(c.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(c.regularExpressionExclusionDeactivationTriggers),
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionExclusionDeactivationTriggers),
         tokenBudget: (c.tokenBudget as number) ?? 512,
         maximumRecursionDepth: (c.maximumRecursionDepth as number) ?? 1,
         insertionDepth: (c.insertionDepth as number) ?? 0,
@@ -132,11 +143,10 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         description: (l.description as string) || undefined,
         text: (l.text as string) || '',
         images: (l.images as string[]) || [],
-        regularExpressionActivationTrigger: (l.regularExpressionActivationTrigger as string) || undefined,
-        regularExpressionExclusionActivationTrigger: (l.regularExpressionExclusionActivationTrigger as string) || undefined,
-        regularExpressionExclusionDeactivationTrigger: (l.regularExpressionExclusionDeactivationTrigger as string) || undefined,
-        regularExpressionExclusionContext: (l.regularExpressionExclusionContext as Location['regularExpressionExclusionContext']) ?? 'global',
-        regularExpressionExclusionTarget: (l.regularExpressionExclusionTarget as Location['regularExpressionExclusionTarget']) ?? 'everyone',
+        regularExpressionActivationTriggers: parseRegexTriggers(l.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(l.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(l.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(l.regularExpressionExclusionDeactivationTriggers),
         backgroundImageRegularExpressionActivationTriggers: (l.backgroundImageRegularExpressionActivationTriggers as Record<number, string>) || {},
         backgroundImageWeights: (l.backgroundImageWeights as Record<number, number>) || {},
         playAudioTrackOnEnterWeights: (l.playAudioTrackOnEnterWeights as Record<string, number>) || undefined,
@@ -150,14 +160,10 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         longitude: (l.longitude as number) ?? 0,
         locationDistances: (l.locationDistances as Record<string, number>) || {},
         messageFilterNonCoLocatedParticipants: (l.messageFilterNonCoLocatedParticipants as boolean) ?? true,
-        messageFilterRegularExpressionActivationTrigger: (l.messageFilterRegularExpressionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionDeactivationTrigger: (l.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionActivationTrigger: (l.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: (l.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionContext: (l.messageFilterRegularExpressionContext as Location['messageFilterRegularExpressionContext']) ?? 'global',
-        messageFilterRegularExpressionTarget: (l.messageFilterRegularExpressionTarget as Location['messageFilterRegularExpressionTarget']) ?? 'everyone',
-        messageFilterRegularExpressionExclusionContext: (l.messageFilterRegularExpressionExclusionContext as Location['messageFilterRegularExpressionExclusionContext']) ?? 'global',
-        messageFilterRegularExpressionExclusionTarget: (l.messageFilterRegularExpressionExclusionTarget as Location['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionExclusionDeactivationTriggers),
         useBase64Encoding: (l.useBase64Encoding as boolean) ?? false,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -177,13 +183,11 @@ function fillAudioTrackDefaults(t: Record<string, unknown>): AudioTrack {
         endFadeDurationMs: (t.endFadeDurationMs as number) ?? 1000,
         audioCategory: (t.audioCategory as AudioTrack['audioCategory']) ?? 'ambient',
         priority: (t.priority as number) ?? 0,
-        playableByParticipant: (t.playableByParticipant as boolean) ?? false,
-        regularExpressionActivationTrigger: (t.regularExpressionActivationTrigger as string) || undefined,
-        regularExpressionDeactivationTrigger: (t.regularExpressionDeactivationTrigger as string) || undefined,
-        regularExpressionExclusionActivationTrigger: (t.regularExpressionExclusionActivationTrigger as string) || undefined,
-        regularExpressionExclusionDeactivationTrigger: (t.regularExpressionExclusionDeactivationTrigger as string) || undefined,
-        regularExpressionExclusionContext: (t.regularExpressionExclusionContext as AudioTrack['regularExpressionExclusionContext']) ?? 'global',
-        regularExpressionExclusionTarget: (t.regularExpressionExclusionTarget as AudioTrack['regularExpressionExclusionTarget']) ?? 'everyone',
+        playableByParticipants: (t.playableByParticipants as boolean) ?? false,
+        regularExpressionActivationTriggers: parseRegexTriggers(t.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(t.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(t.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(t.regularExpressionExclusionDeactivationTriggers),
         locationBindings: (t.locationBindings as string[]) || [],
         contextBindings: (t.contextBindings as string[]) || [],
         characterBindings: (t.characterBindings as string[]) || [],
@@ -200,22 +204,14 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
         description: (b.description as string) || undefined,
         textContent: (b.textContent as string) || '',
         images: (b.images as string[]) || [],
-        regularExpressionActivationTrigger: (b.regularExpressionActivationTrigger as string) || undefined,
-        regularExpressionDeactivationTrigger: (b.regularExpressionDeactivationTrigger as string) || undefined,
-        regularExpressionExclusionActivationTrigger: (b.regularExpressionExclusionActivationTrigger as string) || undefined,
-        regularExpressionExclusionDeactivationTrigger: (b.regularExpressionExclusionDeactivationTrigger as string) || undefined,
-        regularExpressionContext: (b.regularExpressionContext as PromptBlock['regularExpressionContext']) ?? 'global',
-        regularExpressionTarget: (b.regularExpressionTarget as PromptBlock['regularExpressionTarget']) ?? 'everyone',
-        regularExpressionExclusionContext: (b.regularExpressionExclusionContext as PromptBlock['regularExpressionExclusionContext']) ?? 'global',
-        regularExpressionExclusionTarget: (b.regularExpressionExclusionTarget as PromptBlock['regularExpressionExclusionTarget']) ?? 'everyone',
-        messageFilterRegularExpressionActivationTrigger: (b.messageFilterRegularExpressionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionDeactivationTrigger: (b.messageFilterRegularExpressionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionActivationTrigger: (b.messageFilterRegularExpressionExclusionActivationTrigger as string) || undefined,
-        messageFilterRegularExpressionExclusionDeactivationTrigger: (b.messageFilterRegularExpressionExclusionDeactivationTrigger as string) || undefined,
-        messageFilterRegularExpressionContext: (b.messageFilterRegularExpressionContext as PromptBlock['messageFilterRegularExpressionContext']) ?? 'global',
-        messageFilterRegularExpressionTarget: (b.messageFilterRegularExpressionTarget as PromptBlock['messageFilterRegularExpressionTarget']) ?? 'everyone',
-        messageFilterRegularExpressionExclusionContext: (b.messageFilterRegularExpressionExclusionContext as PromptBlock['messageFilterRegularExpressionExclusionContext']) ?? 'global',
-        messageFilterRegularExpressionExclusionTarget: (b.messageFilterRegularExpressionExclusionTarget as PromptBlock['messageFilterRegularExpressionExclusionTarget']) ?? 'everyone',
+        regularExpressionActivationTriggers: parseRegexTriggers(b.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(b.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(b.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(b.regularExpressionExclusionDeactivationTriggers),
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionExclusionDeactivationTriggers),
         characterBindings: (b.characterBindings as string[]) || [],
         contextBindings: (b.contextBindings as string[]) || [],
         locationBindings: (b.locationBindings as string[]) || [],
@@ -259,16 +255,16 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         cacheInvalidationReductionLevel: (p.cacheInvalidationReductionLevel as number) ?? 0,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         narrateTexts: {
-            normal: (rawNarrateTexts.normal as boolean) ?? DEFAULT_NARRATE_TEXTS.normal,
-            quoted: (rawNarrateTexts.quoted as boolean) ?? DEFAULT_NARRATE_TEXTS.quoted,
-            bolded: (rawNarrateTexts.bolded as boolean) ?? DEFAULT_NARRATE_TEXTS.bolded,
-            italicized: (rawNarrateTexts.italicized as boolean) ?? DEFAULT_NARRATE_TEXTS.italicized,
-            parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? DEFAULT_NARRATE_TEXTS.parenthesized,
-            bracketed: (rawNarrateTexts.bracketed as boolean) ?? DEFAULT_NARRATE_TEXTS.bracketed,
-            braced: (rawNarrateTexts.braced as boolean) ?? DEFAULT_NARRATE_TEXTS.braced,
+            normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
+            quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,
+            bolded: (rawNarrateTexts.bolded as boolean) ?? defaultNarrateTexts.bolded,
+            italicized: (rawNarrateTexts.italicized as boolean) ?? defaultNarrateTexts.italicized,
+            parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? defaultNarrateTexts.parenthesized,
+            bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,
+            braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
         },
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
-        tools: parseToolsRecord(p.tools, DEFAULT_PROFILE_TOOLS) as Record<tool, number>,
+        tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, number>,
         enableMemoryWriting: (p.enableMemoryWriting as number) ?? 0,
         enableMemoryReading: (p.enableMemoryReading as number) ?? 0,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location'],

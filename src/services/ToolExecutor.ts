@@ -1038,7 +1038,7 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    if (!track.playableByParticipant) {
+    if (!track.playableByParticipants) {
         const errorContent = `[Error: Track "${trackName}" cannot be controlled by participants]`;
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }

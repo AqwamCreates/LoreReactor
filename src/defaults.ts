@@ -1,11 +1,11 @@
 // src/defaults.ts
-import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, tool } from './types';
+import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from './types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const now = Date.now();
+const now = Date.now()
 
-export const DefaultSampler: Sampler = {
+export const defaultSampler: Sampler = {
     id: "default-sampler",
     name: "Default",
     description: "Fallback sampler",
@@ -16,7 +16,7 @@ export const DefaultSampler: Sampler = {
     lastUpdatedTimestamp: now,
 };
 
-export const DefaultModel: LanguageModel = {
+export const defaultModel: LanguageModel = {
     id: "default-model",
     name: "Default Model",
     description: "Fallback model",
@@ -26,7 +26,7 @@ export const DefaultModel: LanguageModel = {
     lastUpdatedTimestamp: now,
 };
 
-export const DefaultBudgetData: BudgetData = {
+export const defaultBudgetData: BudgetData = {
     id: 'global-budget-data',
     name: 'Global Budget Data',
     description: 'Auto-created on first budget strategy activation',
@@ -52,7 +52,7 @@ export const DefaultBudgetData: BudgetData = {
     lastUpdatedTimestamp: now,
 };
 
-export const DefaultActions: InterjectableAction[] = [
+export const defaultActions: InterjectableAction[] = [
     { label: 'Hug', count: 0 }, { label: 'Kiss At', count: 0 }, { label: 'Slap', count: 0 },
     { label: 'Push Away', count: 0 }, { label: 'Touch', count: 0 }, { label: 'Grab', count: 0 },
     { label: 'Wave At', count: 0 }, { label: 'Poke', count: 0 }, { label: 'Fish', count: 0 },
@@ -109,4 +109,9 @@ export const defaultProfileTools: Record<tool, number> = {
     invite: 0, kick: 0, teleport: 0, lock: 0, unlock: 0,
     summon: 0, narrate: 0, inspect: 0,
     administrator: 0, creator: 0, destroyer: 0,
+};
+
+export const defaultNarrateTexts: Record<textType, boolean> = {
+    normal: false, quoted: false, bolded: false, italicized: false,
+    parenthesized: false, bracketed: false, braced: false,
 };
