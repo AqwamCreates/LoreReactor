@@ -214,6 +214,14 @@ export interface RawMemory extends RawData {
 }
 
 export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "lock" | "unlock" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+
+export interface Clothing extends ObjectData {
+    regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+    initialWearingProbability: number // Higher the number, the more likely it is being worn when this character becomes a participant of chat session. Default is 1.
+    clothingBindings: string[] // IDs of clothing items this one hides when worn.
+}
+
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;
@@ -241,6 +249,7 @@ export interface Character extends ObjectData {
   tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
+  clothings: Clothing[];
   memories: Record<string, Memory[]>;
 }
 
@@ -271,6 +280,7 @@ export interface RawCharacter extends RawData {
   tools: Record<tool, boolean>
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
+  clothings: Clothing[];
   memories: Record<string, string[]>;
 }
 
@@ -287,6 +297,7 @@ export interface BaseMessage {
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
+  characterClothingWearingStatus: Record<string, boolean>
   characterLockedLocations: Record<string, string[]>
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;

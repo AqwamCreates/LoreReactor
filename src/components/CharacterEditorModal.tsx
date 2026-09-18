@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, tool } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
-import { getInstructionTemplateOptions, getChatTemplateOptions } from '../dictionaries/modelTemplates';
+import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 
@@ -121,9 +121,6 @@ function CharacterEditorModalInner({
 
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
 
-    const [chatTemplateOverride, setChatTemplateOverride] = useState<string>(existingCharacter?.chatTemplateOverride || '');
-    const [instructionTemplateOverride, setInstructionTemplateOverride] = useState<string>(existingCharacter?.instructionTemplateOverride || '');
-
     const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
@@ -134,10 +131,12 @@ function CharacterEditorModalInner({
     const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(existingCharacter?.enableMemoryReading ?? false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
+    const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
+    const [showClothingEditor, setShowClothingEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
 
     const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
@@ -282,7 +281,6 @@ function CharacterEditorModalInner({
         setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
-        setChatTemplateOverride(''); setInstructionTemplateOverride('');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
         setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
@@ -291,6 +289,7 @@ function CharacterEditorModalInner({
         setTools({ ...defaultCharacterTools });
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
+        setClothings([]);
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
@@ -421,8 +420,6 @@ function CharacterEditorModalInner({
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
-            chatTemplateOverride: chatTemplateOverride || undefined,
-            instructionTemplateOverride: instructionTemplateOverride || undefined,
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
@@ -430,6 +427,7 @@ function CharacterEditorModalInner({
             tools: { ...tools },
             enableMemoryWriting,
             enableMemoryReading,
+            clothings,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -446,6 +444,7 @@ function CharacterEditorModalInner({
     };
     const hasVoice = !!voiceFile || !!existingVoiceName;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
+    const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
 
     return (
         <>
@@ -518,27 +517,6 @@ function CharacterEditorModalInner({
                                     </select>
 
                                     <div className="editor-section">
-                                        <span className="editor-section-title">Template Overrides</span>
-                                        <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
-                                            Override the model's default templates for this character. Leave as None to use the model's configured template. Chat-Instruct mode is composed automatically when both overrides are set.
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div>
-                                                <label className="editor-label editor-label-small">Chat Template Override</label>
-                                                <select value={chatTemplateOverride} onChange={(e) => setChatTemplateOverride(e.target.value)} className="editor-select" disabled={isUploading}>
-                                                    {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="editor-label editor-label-small">Instruction Template Override</label>
-                                                <select value={instructionTemplateOverride} onChange={(e) => setInstructionTemplateOverride(e.target.value)} className="editor-select" disabled={isUploading}>
-                                                    {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="editor-section">
                                         <label className="editor-checkbox-label">
                                             <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
                                             <span>Do Not Inject Character Image</span>
@@ -547,7 +525,11 @@ function CharacterEditorModalInner({
 
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>Advanced Settings</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({Object.values(memories).reduce((sum, arr) => sum + arr.length, 0)})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
+                                    </div>
+
+                                    <div style={{ marginTop: '8px' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ width: '100%' }}>Memory ({memoryCount})</button>
                                     </div>
                                 </div>
                             </div>
@@ -616,6 +598,13 @@ function CharacterEditorModalInner({
                     if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
                     else if (!imageFile) { setImagePreview(null); }
                 }}
+            />
+
+            <CharacterClothingEditorModal
+                isOpen={showClothingEditor}
+                onClose={() => setShowClothingEditor(false)}
+                clothings={clothings}
+                onSaveClothings={setClothings}
             />
         </>
     );
