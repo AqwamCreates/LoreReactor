@@ -360,7 +360,7 @@ export function AppModals({
                     onSelect={(b: PromptBlock) => promptBlockModal.open(b)}
                     onDelete={promptBlockModal.handleDelete}
                     onCreateNew={() => promptBlockModal.open()}
-                    renderSubtext={(b: PromptBlock) => `${b.textContent ? `📝 ${b.textContent.length} chars` : ''}${b.images.length > 0 ? ` • 🖼️ ${b.images.length}` : ''}${b.characterBindings.length > 0 ? ` • 🎭${b.characterBindings.length}` : ''}${b.contextBindings.length > 0 ? ` • 📜${b.contextBindings.length}` : ''}${b.locationBindings.length > 0 ? ` • 📍${b.locationBindings.length}` : ''}`}
+                    renderSubtext={(b: PromptBlock) => `${b.textContent ? `📝 ${b.textContent.length} characters` : ''}${b.images.length > 0 ? ` • 🖼️ ${b.images.length}` : ''}${b.characterBindings.length > 0 ? ` • 🎭${b.characterBindings.length}` : ''}${b.contextBindings.length > 0 ? ` • 📜${b.contextBindings.length}` : ''}${b.locationBindings.length > 0 ? ` • 📍${b.locationBindings.length}` : ''}`}
                     emptyMessage="No prompt blocks found."
                     actionLabel="Delete"
                 />

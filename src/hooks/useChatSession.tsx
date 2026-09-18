@@ -478,20 +478,31 @@ export function useChatSession() {
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user', allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = getState().interactionData;
-        const currentChar = getState().currentCharacter;
-        if (!currentInteractionData || !acquireLock()) { addToast(acquireLock() ? 'Chat data missing.' : 'Already generating...', 'info'); return; }
+        if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
+        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+
+        const protagonistId = currentInteractionData.protagonist?.id;
+        if (!protagonistId) { addToast('No protagonist set.', 'error'); releaseLock(); return; }
 
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
         const tm = history[ti];
-        const isAI = tm.character.id !== currentInteractionData.protagonist.id;
+        const isUserMessage = tm.character.id === protagonistId;
         let trimIdx: number;
-        if (type === 'ai' && isAI) trimIdx = ti;
-        else if (type === 'user' && !isAI) trimIdx = ti + 1;
-        else { addToast('Mismatched regeneration type.', 'error'); releaseLock(); return; }
+        if (type === 'ai' && !isUserMessage) {
+            // Regenerate this AI message itself
+            trimIdx = ti;
+        } else if (type === 'user' && isUserMessage) {
+            // Keep the user message, delete everything after it (AI response + subsequent), then re-run
+            trimIdx = ti + 1;
+        } else {
+            addToast(`Cannot regenerate a ${isUserMessage ? 'user' : 'AI'} message as ${type}.`, 'error');
+            releaseLock();
+            return;
+        }
 
         const toDelete = history.slice(trimIdx);
         if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
@@ -511,11 +522,11 @@ export function useChatSession() {
 
         try {
             const ud = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, currentInteractionData.protagonist.id); await saveRawInteractionData(fd); setInteractionData(fd); return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, protagonistId); await saveRawInteractionData(fd); setInteractionData(fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
                 const processed = await chatEngine.processPendingTools(ud);
-                const finalized = finalizeLastAIMessage(processed, currentInteractionData.protagonist.id, wasStoppedRef.current);
+                const finalized = finalizeLastAIMessage(processed, protagonistId, wasStoppedRef.current);
 
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
@@ -527,7 +538,7 @@ export function useChatSession() {
                 });
 
                 const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== currentChar?.id) ui.playVoice(lm.textContent, lm.character);
+                if (lm && lm.messageType === 'chat' && lm.character.id !== protagonistId) ui.playVoice(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);

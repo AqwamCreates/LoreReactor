@@ -70,6 +70,26 @@ type BudgetStrategyWithRawModelIds = BudgetStrategy & {
     _rawLocalModelIds?: string[];
 };
 
+function hasMessagesChanged(a: InteractionData | null, b: InteractionData): boolean {
+    if (!a || !a.interactionHistory || !b.interactionHistory) return true;
+    if (a.interactionHistory.length !== b.interactionHistory.length) return true;
+    
+    for (let i = 0; i < a.interactionHistory.length; i++) {
+        const aMsg = a.interactionHistory[i];
+        const bMsg = b.interactionHistory[i];
+        
+        if (aMsg.id !== bMsg.id) return true;
+        if (aMsg.character.id !== bMsg.character.id) return true;
+        
+        // Compare text content for chat messages
+        if ('textContent' in aMsg && 'textContent' in bMsg) {
+            if (aMsg.textContent !== bMsg.textContent) return true;
+        }
+    }
+    
+    return false;
+}
+
 function App() {
     // ─── Session Hook ────────────────────────────────────────────────
     const session = useChatSession();
@@ -431,7 +451,8 @@ function App() {
                 previousData.participants.length !== interactionData.participants.length ||
                 previousData.contexts?.length !== interactionData.contexts?.length ||
                 previousData.locations?.length !== interactionData.locations?.length ||
-                previousData.audioTracks?.length !== interactionData.audioTracks?.length;
+                previousData.audioTracks?.length !== interactionData.audioTracks?.length ||
+                hasMessagesChanged(previousData, interactionData);
             
             if (hasActualChange) {
                 previousMessageCountRef.current = historyLength;
