@@ -80,21 +80,46 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
+const CHAT_TEMPLATE_OPTIONS = [
+    { value: '', label: 'None' },
+    { value: 'chatml', label: 'ChatML' },
+    { value: 'llama3', label: 'Llama 3' },
+    { value: 'mistral', label: 'Mistral / Llama 2' },
+    { value: 'gemma', label: 'Gemma' },
+    { value: 'phi3', label: 'Phi-3' },
+    { value: 'qwen2', label: 'Qwen2' },
+    { value: 'command-r', label: 'Command-R' },
+    { value: 'deepseek', label: 'DeepSeek' },
+    { value: 'yi', label: 'Yi' },
+    { value: 'stablelm', label: 'StableLM' },
+    { value: 'openchat', label: 'OpenChat' },
+    { value: 'vicuna', label: 'Vicuna' },
+    { value: 'alpaca', label: 'Alpaca' },
+];
+
+const INSTRUCTION_TEMPLATE_OPTIONS = [
+    { value: '', label: 'None' },
+    { value: 'alpaca', label: 'Alpaca' },
+    { value: 'chatml', label: 'ChatML' },
+    { value: 'llama3', label: 'Llama 3' },
+    { value: 'mistral', label: 'Mistral / Llama 2' },
+    { value: 'gemma', label: 'Gemma' },
+    { value: 'phi3', label: 'Phi-3' },
+    { value: 'qwen2', label: 'Qwen2' },
+    { value: 'command-r', label: 'Command-R' },
+    { value: 'deepseek', label: 'DeepSeek' },
+    { value: 'yi', label: 'Yi' },
+    { value: 'stablelm', label: 'StableLM' },
+    { value: 'openchat', label: 'OpenChat' },
+    { value: 'vicuna', label: 'Vicuna' },
+];
+
 // ─── Backend capability flags ───────────────────────────────────────
 
-/** Backends that support GPU layer offloading */
 const GPU_LAYERS_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama', 'mistral.rs']);
-
-/** Backends that support llama.cpp-style KV cache quantization (separate K/V types) */
 const SEPARATE_KV_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama']);
-
-/** Backends where speculative decoding is supported */
 const SPEC_DECODING_BACKENDS = new Set<string>(['Llama.cpp', 'vLLM', 'SGLang', 'ExLlamaV3', 'ExLlamaV3 HF']);
-
-/** Backends that support llama.cpp-specific memory options (mmap, mlock, numa, etc.) */
 const LLAMA_MEMORY_BACKENDS = new Set<string>(['Llama.cpp']);
-
-/** Backends where VRAM estimation is supported */
 const VRAM_SUPPORTED_BACKENDS = new Set<string>([
     'Llama.cpp', 'Ollama', 'LM Studio', 'mistral.rs',
     'ExLlamaV2', 'ExLlamaV3', 'ExLlamaV3 HF',
@@ -104,27 +129,16 @@ const VRAM_SUPPORTED_BACKENDS = new Set<string>([
 const getCacheTypes = (backend: string) => {
     switch (backend) {
         case 'Llama.cpp': return [
-            { value: 'f32', label: 'F32' },
-            { value: 'bf16', label: 'BF16' },
-            { value: 'f16', label: 'F16' },
-            { value: 'q8_0', label: 'Q8_0' },
-            { value: 'q5_0', label: 'Q5_0' },
-            { value: 'q5_1', label: 'Q5_1' },
-            { value: 'iq4_nl', label: 'IQ4_NL' },
-            { value: 'q4_1', label: 'Q4_1' },
-            { value: 'q4_0', label: 'Q4_0' },
+            { value: 'f32', label: 'F32' }, { value: 'bf16', label: 'BF16' }, { value: 'f16', label: 'F16' },
+            { value: 'q8_0', label: 'Q8_0' }, { value: 'q5_0', label: 'Q5_0' }, { value: 'q5_1', label: 'Q5_1' },
+            { value: 'iq4_nl', label: 'IQ4_NL' }, { value: 'q4_1', label: 'Q4_1' }, { value: 'q4_0', label: 'Q4_0' },
         ];
         case 'Ollama': return [
-            { value: 'f16', label: 'F16' },
-            { value: 'q8_0', label: 'Q8_0' },
-            { value: 'q4_0', label: 'Q4_0' },
+            { value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' },
         ];
         case 'mistral.rs': return [
-            { value: 'f16', label: 'F16' },
-            { value: 'bf16', label: 'BF16' },
-            { value: 'q8_0', label: 'Q8_0' },
-            { value: 'q4_k', label: 'Q4_K' },
-            { value: 'q4_0', label: 'Q4_0' },
+            { value: 'f16', label: 'F16' }, { value: 'bf16', label: 'BF16' }, { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q4_k', label: 'Q4_K' }, { value: 'q4_0', label: 'Q4_0' },
         ];
         case 'ExLlamaV3': case 'ExLlamaV3 HF':
             return [
@@ -137,8 +151,7 @@ const getCacheTypes = (backend: string) => {
         case 'ExLlamaV2':
             return [
                 { value: 'fp16', label: 'FP16' }, { value: 'fp8', label: 'FP8' },
-                { value: 'q8', label: 'Q8' }, { value: 'q6', label: 'Q6' },
-                { value: 'q4', label: 'Q4' },
+                { value: 'q8', label: 'Q8' }, { value: 'q6', label: 'Q6' }, { value: 'q4', label: 'Q4' },
             ];
         case 'TensorRT-LLM':
             return [
@@ -153,26 +166,22 @@ const getCacheTypes = (backend: string) => {
                 { value: 'quantized', label: 'Quantized' }, { value: 'sliding_window', label: 'Sliding Window' },
                 { value: 'sink', label: 'Sink' },
             ];
-        case 'vLLM':
-            return [
-                { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
-                { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
-            ];
-        case 'SGLang':
-            return [
-                { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
-                { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
-            ];
-        case 'LM Studio':
-            return [
-                { value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' },
-                { value: 'q4_k', label: 'Q4_K' }, { value: 'q4_0', label: 'Q4_0' },
-            ];
-        case 'LocalAI':
-            return [
-                { value: 'default', label: 'Default' }, { value: 'f16', label: 'F16' },
-                { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' },
-            ];
+        case 'vLLM': return [
+            { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
+            { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
+        ];
+        case 'SGLang': return [
+            { value: 'auto', label: 'Auto' }, { value: 'fp16', label: 'FP16' },
+            { value: 'bf16', label: 'BF16' }, { value: 'fp8', label: 'FP8' },
+        ];
+        case 'LM Studio': return [
+            { value: 'f16', label: 'F16' }, { value: 'q8_0', label: 'Q8_0' },
+            { value: 'q4_k', label: 'Q4_K' }, { value: 'q4_0', label: 'Q4_0' },
+        ];
+        case 'LocalAI': return [
+            { value: 'default', label: 'Default' }, { value: 'f16', label: 'F16' },
+            { value: 'q8_0', label: 'Q8_0' }, { value: 'q4_0', label: 'Q4_0' },
+        ];
         case 'DeepSeek': return [{ value: 'auto', label: 'Auto' }];
         case 'Qwen': return [{ value: 'align', label: 'Align' }, { value: 'dynamic', label: 'Dynamic' }];
         default: return [{ value: 'default', label: 'Default' }];
@@ -207,6 +216,9 @@ export function ModelEditorModal({
     const [outputGenerationCostPerMillion, setOutputGenerationCostPerMillion] = useState<number>(0);
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+
+    const [chatTemplate, setChatTemplate] = useState<string>('');
+    const [instructionTemplate, setInstructionTemplate] = useState<string>('');
 
     const modelFileRef = useRef<HTMLInputElement>(null);
     const mmprojFileRef = useRef<HTMLInputElement>(null);
@@ -248,6 +260,8 @@ export function ModelEditorModal({
                     setCacheHitCostPerMillion(existingModel.cacheHitCostPerOneMillionOfTokens || 0);
                     setCacheMissCostPerMillion(existingModel.cacheMissCostPerOneMillionOfTokens || 0);
                     setOutputGenerationCostPerMillion(existingModel.outputGenerationCostPerOneMillionOfTokens || 0);
+                    setChatTemplate(existingModel.chatTemplate || '');
+                    setInstructionTemplate(existingModel.instructionTemplate || '');
 
                     const storedIds = (existingModel.parameters?.stop_pattern_ids as string[]) || [];
                     setSelectedStopPatternIds(storedIds);
@@ -301,6 +315,8 @@ export function ModelEditorModal({
                     setCacheHitCostPerMillion(0);
                     setCacheMissCostPerMillion(0);
                     setOutputGenerationCostPerMillion(0);
+                    setChatTemplate('');
+                    setInstructionTemplate('');
                     setSettings({ ...DEFAULT_SETTINGS });
                     setSelectedStopPatternIds([]);
                 }
@@ -428,6 +444,8 @@ export function ModelEditorModal({
             lora: loraPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
+            chatTemplate: chatTemplate || undefined,
+            instructionTemplate: instructionTemplate || undefined,
             cacheHitCostPerOneMillionOfTokens: inputCacheHitCostPerMillion,
             cacheMissCostPerOneMillionOfTokens: inputCacheMissCostPerMillion,
             outputGenerationCostPerOneMillionOfTokens: outputGenerationCostPerMillion,
@@ -636,6 +654,28 @@ export function ModelEditorModal({
                         {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
                     </div>
 
+                    {/* ─── Chat & Instruction Templates ─── */}
+                    <div className="editor-section">
+                        <span className="editor-section-title">Chat & Instruction Templates</span>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Select the formatting template this model was trained with. Used when "Model Chat Template" or "Model Instruction Template" is added to a profile's input strategy. "None" uses the engine default.
+                        </div>
+                        <div className="editor-row">
+                            <div>
+                                <label className="editor-label editor-label-small">Chat Template</label>
+                                <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
+                                    {CHAT_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Instruction Template</label>
+                                <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
+                                    {INSTRUCTION_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* ─── Main Options (GPU layers backends only) ─── */}
                     {(supportsGpuLayers || !isCloudBackend) && (
                         <div className="editor-section">
@@ -788,7 +828,6 @@ export function ModelEditorModal({
                             <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
                             <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
 
-                            {/* llama.cpp-specific memory options */}
                             {supportsLlamaMemory && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
                                     <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>

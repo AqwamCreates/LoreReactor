@@ -181,6 +181,8 @@ export interface LanguageModel extends ObjectData {
   lora?: string;
   apiKey?: string;
   parameters?: Record<string, unknown>;
+  instructionTemplate?: string;
+  chatTemplate?: string;
   cacheHitCostPerOneMillionOfTokens?: number;
   cacheMissCostPerOneMillionOfTokens?: number;
   outputGenerationCostPerOneMillionOfTokens?: number;
@@ -193,7 +195,9 @@ export interface RawLanguageModel extends RawData {
   mmproj?: string;
   lora?: string;
   apiKey?: string;
-  parameters?: Record<string, unknown>;
+  parameters?: Record<string, unknown>;       // e.g., "<|im_start|>{role}\n{content}<|im_end|>\n"
+  instructionTemplate?: string;
+  chatTemplate?: string;
   cacheHitCostPerOneMillionOfTokens?: number;
   cacheMissCostPerOneMillionOfTokens?: number;
   outputGenerationCostPerOneMillionOfTokens?: number;
@@ -494,7 +498,9 @@ export type PromptBlockType =
   | 'Fatigue Information'
   | 'Starter Prompt'
   | 'Tool Instructions'
-  | 'Text Injection';
+  | 'Text Injection'
+  | 'Model Chat Template'
+  | 'Model Instruction Template';
 
 export interface PromptBlock extends ObjectData {
   textContent: string

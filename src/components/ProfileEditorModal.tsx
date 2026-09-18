@@ -74,8 +74,10 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
+const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Chat Template', 'Model Instruction Template']
+
 function isBuiltInBlockType(value: string): value is PromptBlockType {
-    return (defaultInputStrategy as string[]).includes(value);
+    return (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);
 }
 
 function migrateNarrateTexts(profile: Profile): Record<textType, boolean> {
@@ -235,7 +237,7 @@ function ProfileEditorContent({
     const addBlock = (blockEntry: PromptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
-    const missingBuiltInBlocks = defaultInputStrategy.filter(b => !inputStrategy.includes(b));
+    const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 
     const handleStepDragStart = (e: React.DragEvent, index: number) => { setDraggedStepIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
