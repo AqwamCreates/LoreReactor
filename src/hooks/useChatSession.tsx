@@ -5,6 +5,7 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
+import { processPendingToolActions } from '../services/ToolExecutor';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
@@ -20,10 +21,6 @@ import { detectName } from './nameDetection';
 import type { Character, InteractionData, PromptBlock, ChatMessage } from '../types';
 
 const engine = getLanguageModelEngine();
-
-function sanitizeStreamedText(text: string): string {
-    return text.replace(/▋$/g, '').trimEnd();
-}
 
 function finalizeLastAIMessage(
     data: InteractionData,
@@ -41,14 +38,12 @@ function finalizeLastAIMessage(
         lastMsg.character.id !== protagonistId &&
         (lastMsg as ChatMessage).isPartial
     ) {
-        const cleanText = sanitizeStreamedText(lastMsg.textContent);
         const wasRevealed = lastMsg.isNameRevealed ?? false;
-        const isNameRevealed = wasRevealed || detectName(data, lastMsg.character, cleanText);
+        const isNameRevealed = wasRevealed || detectName(data, lastMsg.character, lastMsg.textContent);
 
         const finalizedHistory = [...history];
         finalizedHistory[finalizedHistory.length - 1] = {
             ...lastMsg,
-            textContent: cleanText,
             isPartial: false,
             isNameRevealed,
             lastUpdatedTimestamp: Date.now(),
@@ -266,7 +261,8 @@ export function useChatSession() {
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = await chatEngine.processPendingTools(ud);
+                const allCharacters = getState().allCharacters ?? [];
+                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, currentState.currentCharacter.id, wasStoppedRef.current);
 
                 await saveRawInteractionData(finalized);
@@ -330,7 +326,8 @@ export function useChatSession() {
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = await chatEngine.processPendingTools(ud);
+                const allCharacters = getState().allCharacters ?? [];
+                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, currentState.interactionData.protagonist?.id ?? '', wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
@@ -493,10 +490,8 @@ export function useChatSession() {
         const isUserMessage = tm.character.id === protagonistId;
         let trimIdx: number;
         if (type === 'ai' && !isUserMessage) {
-            // Regenerate this AI message itself
             trimIdx = ti;
         } else if (type === 'user' && isUserMessage) {
-            // Keep the user message, delete everything after it (AI response + subsequent), then re-run
             trimIdx = ti + 1;
         } else {
             addToast(`Cannot regenerate a ${isUserMessage ? 'user' : 'AI'} message as ${type}.`, 'error');
@@ -525,7 +520,8 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, protagonistId); await saveRawInteractionData(fd); setInteractionData(fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
-                const processed = await chatEngine.processPendingTools(ud);
+                const allCharacters = getState().allCharacters ?? [];
+                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, protagonistId, wasStoppedRef.current);
 
                 await saveRawInteractionData(finalized);

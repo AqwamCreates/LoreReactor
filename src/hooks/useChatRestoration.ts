@@ -23,14 +23,6 @@ interface UseChatRestorationOptions {
 }
 
 /**
- * Strips any trailing cursor characters that may have been baked into
- * streamed text before the browser was refreshed mid-generation.
- */
-function sanitizeStreamedText(text: string): string {
-    return text.replace(/▋$/g, '').trimEnd();
-}
-
-/**
  * Finalizes any messages that were left in a partial state due to
  * a browser refresh or crash mid-generation. After a reload, there is
  * no active stream to complete them, so they must be treated as finished.
@@ -42,7 +34,7 @@ function finalizeStalePartials(data: InteractionData): InteractionData {
             changed = true;
             return {
                 ...m,
-                textContent: sanitizeStreamedText(m.textContent),
+                textContent: m.textContent.trimEnd(),
                 isPartial: false,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage;
@@ -107,7 +99,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 }
             }
 
-            // FIX: Finalize any stale partial messages left from a mid-generation refresh
+            // Finalize any stale partial messages left from a mid-generation refresh
             fullChat = finalizeStalePartials(fullChat);
 
             if (fullChat.protagonist) {

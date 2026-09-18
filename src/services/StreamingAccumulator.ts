@@ -63,7 +63,7 @@ export class StreamingAccumulator {
      * into saved message history. Cursor rendering is handled purely by the UI layer.
      */
     getDisplayText(): string {
-        return StreamingAccumulator.sanitizeCursor(this.committed + this.live);
+        return this.committed + this.live;
     }
 
     /** Returns only the committed (finalized) portion. */
@@ -87,13 +87,5 @@ export class StreamingAccumulator {
     resetLive(): void {
         this.live = '';
         this.lastRawLength = 0;
-    }
-
-    /**
-     * Removes trailing cursor characters from text.
-     * This ensures the accumulator never persists UI-only artifacts.
-     */
-    private static sanitizeCursor(text: string): string {
-        return text.replace(/▋$/g, '');
     }
 }
