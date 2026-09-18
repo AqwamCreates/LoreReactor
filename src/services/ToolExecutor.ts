@@ -2,7 +2,7 @@
 
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, tool, Clothing } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { v4 as uuidv4 } from 'uuid';
