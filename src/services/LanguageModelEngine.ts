@@ -33,13 +33,6 @@ export interface StreamResult {
   completionTokens?: number;
 }
 
-function endsWithStopPattern(text: string, stopPatterns: string[]): boolean {
-  for (const pattern of stopPatterns) {
-    if (pattern && text.endsWith(pattern)) return true;
-  }
-  return false;
-}
-
 interface ResolvedParams {
   temperature?: number;
   top_p?: number;
@@ -79,6 +72,7 @@ interface OpenAIChoiceDelta {
 interface OpenAIChoice {
     delta?: OpenAIChoiceDelta;
     message?: { content?: string };
+    finish_reason?: string | null;
 }
 
 interface OpenAIStreamChunk {
@@ -145,10 +139,6 @@ export class LanguageModelEngine {
   private runtimePort: number | undefined = undefined;
   private runningModels: Record<string, { isRunning: boolean; port?: number }> = {};
 
-  /**
-   * Set the active model. Resolves runtime port internally from stored running models.
-   * This is the single entry point for telling the engine which model to use.
-   */
   setContext(model: LanguageModel): void {
     this.model = model;
     const running = model.id ? this.runningModels[model.id] : undefined;
@@ -164,13 +154,8 @@ export class LanguageModelEngine {
     return this.model?.id ?? null;
   }
 
-  /**
-   * Update running models state so setContext can resolve runtime ports.
-   * Call this whenever running models change.
-   */
   setRunningModels(runningModels: Record<string, { isRunning: boolean; port?: number }>): void {
     this.runningModels = runningModels;
-    // Re-resolve runtime port if a model is already set
     if (this.model) {
       const running = this.model.id ? this.runningModels[this.model.id] : undefined;
       this.runtimePort = running?.port
@@ -272,7 +257,7 @@ export class LanguageModelEngine {
     };
 
     if (localBackends.includes(backendName as localBackend)){
-      bodyObj.cache_prompt = true // ← Enable llama.cpp slot-based KV cache reuse. Apparently some APIs hates this...
+      bodyObj.cache_prompt = true;
     }
 
     if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
@@ -308,11 +293,6 @@ export class LanguageModelEngine {
     return { url, headers, body };
   }
 
-  /**
-   * Build an OpenAI-compatible request targeting a local backend's /v1/chat/completions endpoint.
-   * Used for local backends that speak OpenAI API format (vLLM, SGLang, ExLlama, Ollama, etc.)
-   * instead of llama.cpp's native /completion endpoint.
-   */
   private buildLocalOpenAIRequest(
     port: number | undefined,
     modelPath: string | undefined,
@@ -361,17 +341,14 @@ export class LanguageModelEngine {
     const backendName = this.model?.backend;
     const modelPath = this.model?.model;
 
-    // Cloud backends always use OpenAI message format with API key auth
     if (apiKey && backendName && cloudBackends.includes(backendName as cloudBackend)) {
       return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
     }
 
-    // Local backends that speak OpenAI-compatible API use /v1/chat/completions without auth
     if (backendName && openAiCompatibleLocalBackends.has(backendName)) {
       return this.buildLocalOpenAIRequest(this.runtimePort, modelPath, finalPrompt, stream, params);
     }
 
-    // Llama.cpp native /completion endpoint (default fallback)
     return this.buildLocalRequest(this.runtimePort, finalPrompt, stream, params);
   }
 
@@ -601,7 +578,6 @@ export class LanguageModelEngine {
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     try {
       const { url, headers, body } = this.resolveRequest(prompt, false, {
@@ -618,7 +594,8 @@ export class LanguageModelEngine {
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
-      return { text, isCompleted: endsWithStopPattern(text, stopPatterns) };
+      // Non-streaming completions are always complete — the server finished generating
+      return { text, isCompleted: true };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return { text: '', isCompleted: false };
@@ -636,7 +613,6 @@ export class LanguageModelEngine {
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
-    const stopPatterns: string[] = Array.isArray(stop) ? stop : [];
 
     const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
@@ -686,10 +662,11 @@ export class LanguageModelEngine {
       while (true) {
         const { value, done } = await reader.read();
 
+        // Stream ended naturally — generation is complete
         if (done) {
           return {
             text: fullContent.trim(),
-            isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+            isCompleted: true,
             msPerToken: lastMsPerToken || undefined,
             timeToFirstToken: lastTimeToFirstToken || undefined,
             completionTokens: newNumberOfTokens || undefined,
@@ -703,10 +680,12 @@ export class LanguageModelEngine {
           if (!line.startsWith('data: ')) continue;
 
           const jsonStr = line.slice(6);
+
+          // [DONE] sentinel — generation is complete
           if (jsonStr.trim() === '[DONE]') {
             return {
               text: fullContent.trim(),
-              isCompleted: endsWithStopPattern(fullContent.trim(), stopPatterns),
+              isCompleted: true,
               msPerToken: lastMsPerToken || undefined,
               timeToFirstToken: lastTimeToFirstToken || undefined,
               completionTokens: newNumberOfTokens || undefined,
@@ -716,6 +695,37 @@ export class LanguageModelEngine {
           try {
             const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
             let token = "";
+
+            // Check for finish_reason indicating natural completion
+            const finishReason = json.choices?.[0]?.finish_reason;
+            if (finishReason === 'stop' || finishReason === 'eos') {
+              // Model signaled natural completion via finish_reason
+              // Process any remaining content in this chunk first
+              if (json.choices?.[0]?.delta?.content) {
+                token = json.choices[0].delta.content;
+                if (!hasReceivedNonWhitespace && !existingText) {
+                  const trimmed = token.trimStart();
+                  if (trimmed.length > 0) {
+                    token = trimmed;
+                    hasReceivedNonWhitespace = true;
+                    if (newNumberOfTokens === 0) firstTokenTime = performance.now();
+                    newNumberOfTokens++;
+                    fullContent += token;
+                  }
+                } else if (hasReceivedNonWhitespace) {
+                  newNumberOfTokens++;
+                  fullContent += token;
+                }
+              }
+
+              return {
+                text: fullContent.trim(),
+                isCompleted: true,
+                msPerToken: lastMsPerToken || undefined,
+                timeToFirstToken: lastTimeToFirstToken || undefined,
+                completionTokens: newNumberOfTokens || undefined,
+              };
+            }
 
             if (json.choices?.[0]?.delta?.content !== undefined) {
               token = json.choices[0].delta.content;
