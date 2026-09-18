@@ -592,13 +592,13 @@ export class BudgetStrategyEngine {
 
         // Return whatever partial text we accumulated instead of throwing
         if (accumulatedPartialText.trim()) {
-            return {text: fullOutput, isCompleted: result.isCompleted};
+            return {text: accumulatedPartialText, isCompleted: false};
         }
 
         // All pools exhausted — return empty string instead of throwing
         // This allows the caller to handle the empty response gracefully
         console.warn('[BudgetEngine] All models exhausted. Returning empty response.');
-        return '';
+        return {text: "", isCompleted: false};
     }
 
     // ─── Non-Streaming Completion ────────────────────────────────────

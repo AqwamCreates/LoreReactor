@@ -156,8 +156,16 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
+        // Only create a new message for non-resume turns.
+        // During resume, the partial message already exists in history and is
+        // updated incrementally by useChatEngine's onDisplayText callback.
+        // Message lifecycle (creation, finalization) is owned by the session layer.
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
+        // Resolve clothing wearing statuses upfront so they're available for
+        // both the prompt build and the message creation. We call prepareRequestBody
+        // once here just for the clothing statuses; the actual streaming calls below
+        // will call it again with potentially updated state after tool processing.
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
             const probeModelId = strat
@@ -198,6 +206,8 @@ export class CharacterActor {
 
                     callbacks?.onDisplayText(displayOut);
 
+                    // Sentiment analysis runs incrementally per-chunk during streaming.
+                    // This is the single source of truth for expression detection.
                     const enableExpression = data.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
@@ -252,6 +262,7 @@ export class CharacterActor {
                     rawText = streamResult.text;
                     lastIsCompleted = streamResult.isCompleted;
 
+                    // Capture cache miss and request count from budget engine
                     statsDelta.numberOfRequests++;
                     if (bse.getLastCacheMiss()) statsDelta.numberOfCacheInvalidations++;
 
@@ -363,6 +374,7 @@ export class CharacterActor {
             if (isResuming) {
                 updatedData = data;
             } else {
+                // Normal mode: finalize the pre-created message and add to history
                 if (aiMessage) {
                     aiMessage.textContent = displayText;
                     aiMessage.characterExpression = latestExpression ?? undefined;
