@@ -1429,7 +1429,7 @@ export async function buildPrompt(
 
     if (enabledToolNames.length > 0) {
         const firstTool = enabledToolNames[0]
-        toolInstructions.push(`${generalStartString}I understand that I can access the tools by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}firstTool${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. Available tools: ${enabledToolNames.join(', ')}.${generalEndString}`);
+        toolInstructions.push(`${generalStartString}I understand that I can access the tools by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}}${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. Available tools: ${enabledToolNames.join(', ')}.${generalEndString}`);
     }
 
     const fatigueLines: string[] = [];
