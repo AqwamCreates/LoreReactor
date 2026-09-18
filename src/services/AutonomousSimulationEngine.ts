@@ -16,9 +16,8 @@ import {
     computeMovementCost,
 } from '../hooks/dynamicCharacterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
-import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
-type AutonomousExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
+type AutonomousExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<InteractionData | null>;
 
 interface AutonomousConfig {
     tickIntervalMs: number;
@@ -214,13 +213,11 @@ export class AutonomousSimulationEngine {
                     continue;
                 }
 
-                const result = await this.executor(workingData, speaker, this.abortController.signal);
-                if (!result) {
+                const resultData = await this.executor(workingData, speaker, this.abortController.signal);
+                if (!resultData) {
                     processedThisTick.add(speaker.id);
                     continue;
                 }
-
-                const resultData = result.interactionData;
 
                 // Post-speech: consume stamina, resolve location
                 const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
