@@ -1,7 +1,6 @@
 // src/components/CharacterClothingEditorModal.tsx
-import type React from 'react';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import type { Clothing, RegularExpressionTrigger } from '../types';
+import type { Clothing } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import {

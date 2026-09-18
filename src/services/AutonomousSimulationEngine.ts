@@ -38,6 +38,7 @@ function createSilentInteraction(
     locationIndex: number | undefined,
     previousChatStamina: number | undefined,
     previousActionStamina: number | undefined,
+    clothingWearingStatuses: Record<string, boolean>,
     parentId: string | null | undefined,
 ): InteractionMessage {
     const now = Date.now();
@@ -48,6 +49,7 @@ function createSilentInteraction(
         remainingChatStamina: previousChatStamina,
         remainingActionStamina: previousActionStamina,
         locationIndex,
+        characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: {},
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
@@ -302,9 +304,10 @@ export class AutonomousSimulationEngine {
                     }
                 }
 
-                const previousMessage = findPreviousMessage(workingData, mover.id)
+                const previousMessage = findPreviousMessage(workingData, mover.id);
                 const prevChatStamina = previousMessage?.remainingChatStamina;
                 const prevActionStamina = previousMessage?.remainingActionStamina;
+                const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses ?? {};
 
                 const reachable = getReachableLocations(workingData.locations, moverLoc!, triggeringMessageText);
                 const newLoc = sampleReachableLocationByWeight(reachable, mover);
@@ -322,6 +325,7 @@ export class AutonomousSimulationEngine {
                         newLoc,
                         prevChatStamina,
                         postRegenMsg?.remainingActionStamina ?? prevActionStamina,
+                        prevClothingStatuses,
                         lastParentId,
                     );
                     workingData.interactionHistory.push(silent);

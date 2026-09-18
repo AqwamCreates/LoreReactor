@@ -28,6 +28,7 @@ function createSilentInteraction(
     locationIndex: number | undefined,
     previousChatStamina: number | undefined,
     previousActionStamina: number | undefined,
+    clothingWearingStatuses: Record<string, boolean>,
     parentId: string | null | undefined,
 ): InteractionMessage {
     const now = Date.now();
@@ -38,6 +39,7 @@ function createSilentInteraction(
         remainingChatStamina: previousChatStamina,
         remainingActionStamina: previousActionStamina,
         locationIndex,
+        characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: {},
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
@@ -216,7 +218,7 @@ export async function runTurnSequence(
                 const leaveGroup = [mover, ...coLocatedOthers];
                 const leavePool: { item: Character; weight: number }[] = [];
                 for (const char of leaveGroup) {
-                    const impatience = getEffectiveChatImpatienceSensitivity(char, profile);;
+                    const impatience = getEffectiveChatImpatienceSensitivity(char, profile);
                     const leaveWeight = impatience > 0 ? 1 / impatience : Number.POSITIVE_INFINITY;
                     leavePool.push({ item: char, weight: leaveWeight });
                 }
@@ -234,9 +236,10 @@ export async function runTurnSequence(
                 }
             }
 
-            const previousMessage = findPreviousMessage(workingData, mover.id)
+            const previousMessage = findPreviousMessage(workingData, mover.id);
             const prevChatStamina = previousMessage?.remainingChatStamina;
             const prevActionStamina = previousMessage?.remainingActionStamina;
+            const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses ?? {};
 
             const reachable = getReachableLocations(workingData.locations, moverLoc!, triggeringMessageText);
             const newLoc = sampleReachableLocationByWeight(reachable, mover);
@@ -258,6 +261,7 @@ export async function runTurnSequence(
                     newLoc,
                     prevChatStamina,
                     postRegenMsg?.remainingActionStamina ?? prevActionStamina,
+                    prevClothingStatuses,
                     lastParentId,
                 );
                 workingData.interactionHistory.push(silent);
